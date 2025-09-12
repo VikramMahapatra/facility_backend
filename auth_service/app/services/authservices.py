@@ -15,6 +15,7 @@ twilio_client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
 
 ALLOWED_ROLES = {"manager", "admin", "superadmin", "user"}
 
+
 security = HTTPBearer()
 
 # Dependency to get current user
@@ -54,24 +55,15 @@ def google_login(db: Session, req: authchemas.GoogleAuthRequest):
             return {
                 "needs_registration": True,
                 "email": email,
-                "allowed_roles": sorted(ALLOWED_ROLES),
+                "allowed_roles": {"default"},
             }
-
-        token = authhelper.create_access_token({"user_id": user.id, "email": user.email, "role": user.role})
-        return {
-            "needs_registration": False,
-            "token": {
-                "access_token": token,
-                "token_type": "bearer",
-                "redirect_url": role_redirect(user.role),
-            },
-        }
+            
+        return get_user_token(user)
     
     except ValueError as e:
         raise HTTPException(status_code=401, detail="Invalid token")
     
-def role_redirect(role: str) -> str:
-    return f"/dashboard/{role}"
+
     
 #### MOBILE AUTHENTICATION ###  
     
@@ -100,28 +92,25 @@ def verify_otp(db: Session, request: authchemas.OTPVerify):
     user = db.query(Users).filter(Users.phone == request.mobile).first()
 
     if not user:
-        # if not request.role:
-        #     raise HTTPException(status_code=400, detail="New user must provide role")
-        # user = models.User(mobile=request.mobile, role=request.role)
-        # db.add(user)
-        # db.commit()
-        # db.refresh(user)
-        is_new = True
-        
         return {
-                "access_token": "",
-                "token_type": "bearer",
                 "needs_registration": True,
+                "mobile": request.mobile,
+                "allowed_roles": {"default"},
             }
-    else:
-        is_new = False
-
-        token = authhelper.create_access_token({"user_id": user.id, "mobile": user.mobile, "role": user.role})
-        redirect_map = {"admin": "/admin/home", "superadmin": "/superadmin/dashboard", "user": "/user/home"}
-
-        return {
+    
+    return get_user_token(user)
+        
+def get_user_token(user:Users):
+    roles = [r.name for r in user.roles]
+    token = authhelper.create_access_token({"user_id": str(user.id), "mobile": user.phone, "email": user.email, "role": roles})
+    
+    return {
         "access_token": token,
         "token_type": "bearer",
-        "new_user": is_new,
-        "redirect_url": redirect_map.get(user.role, "/user/home")
-}
+        "needs_registration": False,
+        "redirect_url": role_redirect(user.roles[0].name)
+    }
+    
+def role_redirect(role: str) -> str:
+    return f"/dashboard/{role}"
+    

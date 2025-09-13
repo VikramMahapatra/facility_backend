@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+python-multipart        # if you handle form uploads
+psycopg2-binary         # if you use PostgreSQL
+databases[sqlite]       # if you use async SQLite
+databases[postgresql]   # if you use async PostgreSQL
+python-jose[cryptography]  # for JWT
+passlib[bcrypt]         # for password hashing
+PyJWT[crypto]  
+pydantic-settings
+python-dotenv 
+requests

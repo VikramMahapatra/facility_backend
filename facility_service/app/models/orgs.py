@@ -1,0 +1,23 @@
+# app/models/orgs.py
+import uuid
+from sqlalchemy import Column, String
+from sqlalchemy.orm import relationship
+from app.core.databases import Base
+
+class Org(Base):
+    __tablename__ = "orgs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(200), nullable=False)
+    legal_name = Column(String(200))
+    gst_vat_id = Column(String(64))
+    billing_email = Column(String(200))
+    contact_phone = Column(String(32))
+    plan = Column(String(32), default="pro")
+    locale = Column(String(16), default="en-IN")
+    timezone = Column(String(64), default="Asia/Kolkata")
+    status = Column(String(16), default="active")
+    created_at = Column(String, default="now")
+    updated_at = Column(String, default="now")
+
+    sites = relationship("Site", back_populates="org", cascade="all, delete")

@@ -22,5 +22,6 @@ class LeaseChargeUpdate(LeaseChargeBase):
 class LeaseChargeOut(LeaseChargeBase):
     id: str
 
-    class Config:
-        attribute = True
+    model_config = {
+    "from_attributes": True
+}

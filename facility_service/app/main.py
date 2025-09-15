@@ -15,11 +15,13 @@ from app.router import (
     commercial_partners_router,
     leases_router,
     lease_charges_router,
+    asset_category_router,
+    assets_router,
 )
 
-app = FastAPI(title="Property / Inventory SaaS API")
+app = FastAPI(title="Facility Service API")
 
-# Create DB tables
+# Create all tables
 Base.metadata.create_all(bind=engine)
 
 # Include routers
@@ -37,3 +39,5 @@ app.include_router(purchase_order_lines_router.router)
 app.include_router(commercial_partners_router.router)
 app.include_router(leases_router.router)
 app.include_router(lease_charges_router.router)
+app.include_router(asset_category_router.router)
+app.include_router(assets_router.router)

@@ -19,5 +19,6 @@ class CommercialPartnerUpdate(CommercialPartnerBase):
 class CommercialPartnerOut(CommercialPartnerBase):
     id: str
 
-    class Config:
-        attribute = True
+    model_config = {
+    "from_attributes": True
+}

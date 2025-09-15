@@ -22,5 +22,6 @@ class InventoryItemUpdate(InventoryItemBase):
 class InventoryItemOut(InventoryItemBase):
     id: str
 
-    class Config:
-        attribute = True
+    model_config = {
+    "from_attributes": True
+}

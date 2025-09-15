@@ -23,5 +23,6 @@ class ContractUpdate(ContractBase):
 class ContractOut(ContractBase):
     id: str
 
-    class Config:
-        attribute = True
+    model_config = {
+    "from_attributes": True
+}

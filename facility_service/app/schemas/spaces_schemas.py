@@ -28,5 +28,6 @@ class SpaceOut(SpaceBase):
     created_at: Optional[str]
     updated_at: Optional[str]
 
-    class Config:
-        attribute = True
+    model_config = {
+    "from_attributes": True
+}

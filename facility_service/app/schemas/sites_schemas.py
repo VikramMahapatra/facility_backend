@@ -2,9 +2,9 @@
 from pydantic import BaseModel
 from typing import Optional, Any
 from datetime import date
-
+from uuid import UUID
 class SiteBase(BaseModel):
-    org_id: str
+    org_id: UUID
     name: str
     code: Optional[str] = None
     kind: str
@@ -20,7 +20,7 @@ class SiteUpdate(SiteBase):
     pass
 
 class SiteOut(SiteBase):
-    id: str
+    id: UUID
     created_at: Optional[str]
     updated_at: Optional[str]
 

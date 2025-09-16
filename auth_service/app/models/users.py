@@ -1,7 +1,9 @@
 import uuid
-from sqlalchemy import TIMESTAMP, UUID, Column, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import TIMESTAMP, Column, Integer, String, Text, func
 from app.core.database import Base
 from sqlalchemy.orm import relationship
+
 
 class Users(Base):
     __tablename__ = "users"

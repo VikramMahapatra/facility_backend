@@ -10,11 +10,11 @@ class Lease(Base):
     __tablename__ = "leases"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(String, nullable=False)
-    site_id = Column(String, nullable=False)
+    org_id = Column(UUID(as_uuid=True), nullable=False)
+    site_id = Column(UUID(as_uuid=True), nullable=False)
     partner_id = Column(String)
     resident_id = Column(String)
-    space_id = Column(String, ForeignKey("spaces.id"))
+    space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"))
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     rent_amount = Column(Numeric(14,2), nullable=False)

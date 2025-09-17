@@ -9,8 +9,8 @@ class CommercialPartner(Base):
     __tablename__ = "commercial_partners"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(String, nullable=False)
-    site_id = Column(String, nullable=False)
+    org_id = Column(UUID(as_uuid=True), nullable=False)
+    site_id = Column(UUID(as_uuid=True), nullable=False)
     type = Column(String(16), nullable=False)  # merchant|brand|kiosk
     legal_name = Column(String(200), nullable=False)
     contact = Column(JSONB)

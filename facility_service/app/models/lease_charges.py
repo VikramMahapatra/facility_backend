@@ -10,7 +10,7 @@ class LeaseCharge(Base):
     __tablename__ = "lease_charges"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    lease_id = Column(String, ForeignKey("leases.id", ondelete="CASCADE"))
+    lease_id = Column(UUID(as_uuid=True), ForeignKey("leases.id", ondelete="CASCADE"))
     charge_code = Column(String(32))
     period_start = Column(Date)
     period_end = Column(Date)

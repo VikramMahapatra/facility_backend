@@ -10,8 +10,8 @@ class Space(Base):
     __tablename__ = "spaces"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(String, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False)
-    site_id = Column(String, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False)
+    site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
     code = Column(String(64), nullable=False)
     name = Column(String(128))
     kind = Column(String(32), nullable=False)

@@ -1,8 +1,14 @@
 import uuid
+<<<<<<< HEAD
 from sqlalchemy import UUID, Column, String, Text
 from app.core.database import Base
 # The line `from sqlalchemy.orm import relationship` is importing the `relationship` function from the
 # SQLAlchemy ORM (Object-Relational Mapping) module.
+=======
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Text
+from app.core.database import Base
+>>>>>>> rohit
 from sqlalchemy.orm import relationship
 
 

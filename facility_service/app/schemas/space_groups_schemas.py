@@ -1,10 +1,9 @@
 # app/schemas/space_groups.py
 from pydantic import BaseModel
 from typing import Optional, Any
-from uuid import UUID
 
 class SpaceGroupBase(BaseModel):
-    org_id: UUID
+    org_id: str
     site_id: str
     name: str
     kind: str

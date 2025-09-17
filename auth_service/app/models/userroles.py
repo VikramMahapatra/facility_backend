@@ -1,10 +1,6 @@
 import uuid
-<<<<<<< HEAD
-from sqlalchemy import UUID, Column, ForeignKey
-=======
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, ForeignKey
->>>>>>> rohit
 
 from app.core.database import Base
 

@@ -1,17 +1,10 @@
 import uuid
-<<<<<<< HEAD
-from sqlalchemy import TIMESTAMP, UUID, Column, Integer, String, Text, func
-from app.core.database import Base
-from sqlalchemy.orm import relationship
-
-=======
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import TIMESTAMP, Column, Integer, String, Text, func
 from app.core.database import Base
 from sqlalchemy.orm import relationship
 
 
->>>>>>> rohit
 class Users(Base):
     __tablename__ = "users"
 

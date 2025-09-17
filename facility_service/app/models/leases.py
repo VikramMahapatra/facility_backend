@@ -1,14 +1,15 @@
 # app/models/leases.py
 import uuid
 from sqlalchemy import Column, String, Date, Numeric, ForeignKey
-from sqlalchemy.dialects.sqlite import JSON
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+
 from sqlalchemy.orm import relationship
 from app.core.databases import Base
 
 class Lease(Base):
     __tablename__ = "leases"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(String, nullable=False)
     site_id = Column(String, nullable=False)
     partner_id = Column(String)
@@ -19,12 +20,12 @@ class Lease(Base):
     rent_amount = Column(Numeric(14,2), nullable=False)
     deposit_amount = Column(Numeric(14,2))
     frequency = Column(String(16), default="monthly")
-    escalation = Column(JSON)
-    revenue_share = Column(JSON)
+    escalation = Column(JSONB)
+    revenue_share = Column(JSONB)
     cam_method = Column(String(24), default="area_share")
     cam_rate = Column(Numeric(12,4))
-    utilities = Column(JSON)
+    utilities = Column(JSONB)
     status = Column(String(16), default="active")
-    documents = Column(JSON)
+    documents = Column(JSONB)
 
     charges = relationship("LeaseCharge", back_populates="lease", cascade="all, delete")

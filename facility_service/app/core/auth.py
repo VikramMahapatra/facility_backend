@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
+import string
 
 from jose import jwt, JWTError
 
@@ -11,7 +12,8 @@ def get_current_token(credentials: HTTPAuthorizationCredentials = Depends(securi
     try:
         payload = jwt.decode(token,settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         return payload
-    except Exception:
+    except Exception as e:
+        print("Exception message:",e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",

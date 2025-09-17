@@ -1,4 +1,4 @@
-# app/crud.py
+# app/crud/assets.py
 from sqlalchemy.orm import Session
 from uuid import UUID
 from app import models, schemas

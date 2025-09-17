@@ -1,11 +1,13 @@
+# app/schemas/asset_category.py
 from pydantic import BaseModel
 from typing import Optional, Any
+from uuid import UUID
 
 class AssetCategoryBase(BaseModel):
-    org_id: str
+    org_id: UUID
     name: str
     code: Optional[str] = None
-    parent_id: Optional[str] = None
+    parent_id: Optional[UUID] = None
     attributes: Optional[Any] = None
 
 class AssetCategoryCreate(AssetCategoryBase):
@@ -15,8 +17,8 @@ class AssetCategoryUpdate(AssetCategoryBase):
     pass
 
 class AssetCategoryOut(AssetCategoryBase):
-    id: str
+    id: UUID
 
     model_config = {
-    "from_attributes": True
-}
+        "from_attributes": True
+    }

@@ -15,7 +15,7 @@ def read_sites(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 
 @router.get("/{site_id}", response_model=SiteOut)
 def read_site(site_id: str, db: Session = Depends(get_db)):
-    db_site = crud.get_site_by_id(db, site_id)
+    db_site = crud.get_site(db, site_id)
     if not db_site:
         raise HTTPException(status_code=404, detail="Site not found")
     return db_site

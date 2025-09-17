@@ -1,8 +1,8 @@
-# app/schemas.py
-from uuid import UUID
-from datetime import date
-from typing import Optional, Dict
+# app/schemas/asset.py
 from pydantic import BaseModel
+from typing import Optional, Dict
+from uuid import UUID
+from datetime import date, datetime
 
 class AssetBase(BaseModel):
     org_id: UUID
@@ -37,9 +37,9 @@ class AssetUpdate(BaseModel):
 
 class AssetResponse(AssetBase):
     id: UUID
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
 
     model_config = {
-    "from_attributes": True
-}
+        "from_attributes": True
+    }

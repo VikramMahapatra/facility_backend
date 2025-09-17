@@ -3,11 +3,12 @@ import uuid
 from sqlalchemy import Column, String, Numeric, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.databases import Base
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 class PurchaseOrderLine(Base):
     __tablename__ = "purchase_order_lines"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     po_id = Column(String, ForeignKey("purchase_orders.id", ondelete="CASCADE"))
     item_id = Column(String)
     qty = Column(Numeric(14,3), nullable=False)

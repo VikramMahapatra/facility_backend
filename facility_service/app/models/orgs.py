@@ -3,11 +3,12 @@ import uuid
 from sqlalchemy import Column, String
 from sqlalchemy.orm import relationship
 from app.core.databases import Base
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 class Org(Base):
     __tablename__ = "orgs"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(200), nullable=False)
     legal_name = Column(String(200))
     gst_vat_id = Column(String(64))

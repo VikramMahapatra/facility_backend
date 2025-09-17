@@ -10,7 +10,7 @@ class Vendor(Base):
     __tablename__ = "vendors"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(String, nullable=False)
+    org_id = Column(UUID(as_uuid=True), nullable=False)
     name = Column(String(200), nullable=False)
     gst_vat_id = Column(String(64))
     contact = Column(JSONB)

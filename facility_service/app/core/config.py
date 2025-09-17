@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 import os
+=======
+>>>>>>> origin/rohit
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 import os
@@ -7,6 +10,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
+<<<<<<< HEAD
 DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 DB_HOST = os.getenv("DB_HOST")
@@ -30,3 +34,16 @@ class Settings(BaseSettings):
     UPLOAD_DIR : str | None = os.getenv("PROFILE_PIC_PATH")
 
 settings = Settings()
+=======
+class Settings(BaseSettings):
+    
+
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "supersecretkey")
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 1440  # 24 hours default
+
+   
+settings = Settings()
+
+
+>>>>>>> origin/rohit

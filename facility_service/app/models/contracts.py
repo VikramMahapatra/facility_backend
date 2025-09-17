@@ -10,9 +10,9 @@ class Contract(Base):
     __tablename__ = "contracts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(String, nullable=False)
-    vendor_id = Column(String, ForeignKey("vendors.id"))
-    site_id = Column(String)
+    org_id = Column(UUID(as_uuid=True), nullable=False)
+    vendor_id = Column(UUID(as_uuid=True), ForeignKey("vendors.id"))
+    site_id = Column(UUID(as_uuid=True))
     title = Column(String(200), nullable=False)
     type = Column(String(32))
     start_date = Column(Date)

@@ -11,9 +11,9 @@ class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(String, nullable=False)
-    vendor_id = Column(String)
-    site_id = Column(String)
+    org_id = Column(UUID(as_uuid=True), nullable=False)
+    vendor_id = Column(UUID(as_uuid=True))
+    site_id = Column(UUID(as_uuid=True))
     po_no = Column(String(64), nullable=False)
     status = Column(String(16), default="draft")
     currency = Column(String(8), default="INR")

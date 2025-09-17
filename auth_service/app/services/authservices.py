@@ -108,7 +108,7 @@ def get_user_token(user:Users):
         "access_token": token,
         "token_type": "bearer",
         "needs_registration": False,
-        "redirect_url": role_redirect(user.roles[0].name)
+        #"redirect_url": role_redirect(user.roles[0].name)
     }
     
 def role_redirect(role: str) -> str:

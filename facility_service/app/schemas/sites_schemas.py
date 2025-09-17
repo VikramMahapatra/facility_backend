@@ -1,10 +1,11 @@
 # app/schemas/sites.py
 from pydantic import BaseModel
 from typing import Optional, Any
-from datetime import date
+from datetime import date, datetime
+from uuid import UUID
 
 class SiteBase(BaseModel):
-    org_id: str
+    org_id: UUID   # ✅ UUID instead of str
     name: str
     code: Optional[str] = None
     kind: str
@@ -20,10 +21,10 @@ class SiteUpdate(SiteBase):
     pass
 
 class SiteOut(SiteBase):
-    id: str
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    id: UUID   # ✅ UUID
+    created_at: Optional[datetime]   # ✅ datetime
+    updated_at: Optional[datetime]
 
     model_config = {
-    "from_attributes": True
-}
+        "from_attributes": True
+    }

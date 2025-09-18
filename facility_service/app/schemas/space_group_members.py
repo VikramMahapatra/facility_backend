@@ -9,5 +9,6 @@ class SpaceGroupMemberCreate(SpaceGroupMemberBase):
     pass
 
 class SpaceGroupMemberOut(SpaceGroupMemberBase):
-    class Config:
-        attribute = True
+    model_config = {
+    "from_attributes": True
+}

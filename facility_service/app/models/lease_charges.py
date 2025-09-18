@@ -1,4 +1,3 @@
-# app/models/lease_charges.py
 import uuid
 from sqlalchemy import Column, String, Date, Numeric, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -16,6 +15,5 @@ class LeaseCharge(Base):
     period_end = Column(Date)
     amount = Column(Numeric(14,2), nullable=False)
     tax_pct = Column(Numeric(5,2), default=0)
-    
 
     lease = relationship("Lease", back_populates="charges")

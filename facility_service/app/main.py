@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from app.core.databases import engine, Base
 from app.router import (
     orgs_router,
-    site_router,
     spaces_router,
     space_groups_router,
     space_group_members_router,
@@ -15,16 +14,17 @@ from app.router import (
     commercial_partners_router,
     leases_router,
     lease_charges_router,
+    asset_category_router,
+    assets_router,
 )
+from app.router.space_sites.sites_router import router as sites_router
+app = FastAPI(title="Facility Service API")
 
-app = FastAPI(title="Property / Inventory SaaS API")
-
-# Create DB tables
+# Create all tables
 Base.metadata.create_all(bind=engine)
 
 # Include routers
 app.include_router(orgs_router.router)
-app.include_router(site_router.router)
 app.include_router(spaces_router.router)
 app.include_router(space_groups_router.router)
 app.include_router(space_group_members_router.router)
@@ -37,3 +37,6 @@ app.include_router(purchase_order_lines_router.router)
 app.include_router(commercial_partners_router.router)
 app.include_router(leases_router.router)
 app.include_router(lease_charges_router.router)
+app.include_router(asset_category_router.router)
+app.include_router(assets_router.router)
+app.include_router(sites_router, prefix="/sites", tags=["Sites"])

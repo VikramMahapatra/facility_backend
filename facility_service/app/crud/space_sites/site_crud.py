@@ -3,8 +3,8 @@ from sqlalchemy import func, cast, and_
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 from app.models.space_sites.sites import Site
-from app.models.spaces import Space   # ✅ import Space model
-from app.models.leases import Lease   # ✅ import Lease model
+from app.models.space_sites.spaces import Space   # ✅ import Space model
+from app.models.leasing_tenants.leases import Lease   # ✅ import Lease model
 from app.schemas.space_sites.sites_schemas import SiteCreate, SiteUpdate
 import uuid
 

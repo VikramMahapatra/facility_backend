@@ -14,7 +14,6 @@ class Lease(Base):
     partner_id = Column(UUID(as_uuid=True), nullable=True)  # if referencing partners.id
     resident_id = Column(UUID(as_uuid=True), nullable=True)  # if referencing residents.id
     space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"), nullable=True)
-    
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     rent_amount = Column(Numeric(14,2), nullable=False)

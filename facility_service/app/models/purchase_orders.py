@@ -1,7 +1,8 @@
 # app/models/purchase_orders.py
 import uuid
 from sqlalchemy import Column, String, Date, ForeignKey
-from sqlalchemy.dialects.sqlite import JSON
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+
 from sqlalchemy.orm import relationship
 from sqlalchemy import DateTime
 from app.core.databases import Base
@@ -9,10 +10,10 @@ from app.core.databases import Base
 class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    org_id = Column(String, nullable=False)
-    vendor_id = Column(String)
-    site_id = Column(String)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), nullable=False)
+    vendor_id = Column(UUID(as_uuid=True))
+    site_id = Column(UUID(as_uuid=True))
     po_no = Column(String(64), nullable=False)
     status = Column(String(16), default="draft")
     currency = Column(String(8), default="INR")

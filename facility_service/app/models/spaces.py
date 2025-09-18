@@ -1,6 +1,8 @@
-from sqlalchemy import Column, String, Integer, Numeric, ForeignKey, DateTime, func
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.dialects.sqlite import JSON
+# app/models/spaces.py
+import uuid
+from sqlalchemy import Column, String, Integer, Numeric, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+
 from sqlalchemy.orm import relationship
 import uuid
 from app.core.databases import Base
@@ -19,7 +21,7 @@ class Space(Base):
     area_sqft = Column(Numeric(12, 2))
     beds = Column(Integer)
     baths = Column(Integer)
-    attributes = Column(JSON)
+    attributes = Column(JSONB)
     status = Column(String(24), default="available")
     
     # Use proper datetime columns

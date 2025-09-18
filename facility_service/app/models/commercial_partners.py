@@ -1,7 +1,8 @@
 # app/models/commercial_partners.py
 import uuid
 from sqlalchemy import Column, String
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+
 from app.core.databases import Base
 
 class CommercialPartner(Base):

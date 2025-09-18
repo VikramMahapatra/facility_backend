@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from app.crud.overview import dashboard_crud
 from app.core.auth import get_current_token
+
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"], dependencies=[Depends(get_current_token)])
 
 @router.get("/Overview")
@@ -22,18 +23,19 @@ def access_and_parking():
 @router.get("/FinancialSummary")
 def financial_summary():
     return dashboard_crud.financial_summary()
-@router.get("/monthly-revenue-trend")
-def monthly_revenue_trend():
-    return analytics_crud.monthly_revenue_trend()
 
-@router.get("/space-occupancy")
-def space_occupancy():
-    return analytics_crud.space_occupancy()
+# @router.get("/monthly-revenue-trend")
+# def monthly_revenue_trend():
+#     return analytics_crud.monthly_revenue_trend()
 
-@router.get("/work-orders-priority")
-def work_orders_priority():
-    return analytics_crud.work_orders_priority()
+# @router.get("/space-occupancy")
+# def space_occupancy():
+#     return analytics_crud.space_occupancy()
 
-@router.get("/energy-consumption-trend")
-def get_energy_consumption_trend():
-    return analytics_crud.get_energy_consumption_trend()
+# @router.get("/work-orders-priority")
+# def work_orders_priority():
+#     return analytics_crud.work_orders_priority()
+
+# @router.get("/energy-consumption-trend")
+# def get_energy_consumption_trend():
+#     return analytics_crud.get_energy_consumption_trend()

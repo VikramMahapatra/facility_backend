@@ -4,6 +4,7 @@ from sqlalchemy import Column, String, Integer, Numeric, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from sqlalchemy.orm import relationship
+import uuid
 from app.core.databases import Base
 
 class Space(Base):
@@ -22,7 +23,10 @@ class Space(Base):
     baths = Column(Integer)
     attributes = Column(JSONB)
     status = Column(String(24), default="available")
-    created_at = Column(String, default="now")
-    updated_at = Column(String, default="now")
+    
+    # Use proper datetime columns
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
+    org = relationship("Org", back_populates="spaces")
     site = relationship("Site", back_populates="spaces")

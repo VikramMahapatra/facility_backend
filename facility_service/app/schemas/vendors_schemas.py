@@ -20,5 +20,6 @@ class VendorUpdate(VendorBase):
 class VendorOut(VendorBase):
     id: str
 
-    class Config:
-        attribute = True
+    model_config = {
+    "from_attributes": True
+}

@@ -1,11 +1,12 @@
-# app/schemas/spaces.py
+from datetime import datetime
+from uuid import UUID
 from pydantic import BaseModel
 from typing import Optional, Any
 from decimal import Decimal
 
 class SpaceBase(BaseModel):
-    org_id: str
-    site_id: str
+    org_id: UUID
+    site_id: UUID
     code: str
     name: Optional[str] = None
     kind: str
@@ -24,9 +25,10 @@ class SpaceUpdate(SpaceBase):
     pass
 
 class SpaceOut(SpaceBase):
-    id: str
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    id: UUID
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
 
-    class Config:
-        attribute = True
+    model_config = {
+        "from_attributes": True
+    }

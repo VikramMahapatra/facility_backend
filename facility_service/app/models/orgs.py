@@ -1,6 +1,7 @@
 # app/models/orgs.py
+from sqlalchemy.dialects.postgresql import UUID
 import uuid
-from sqlalchemy import Column, String
+from sqlalchemy import Column, String, DateTime, func
 from sqlalchemy.orm import relationship
 from app.core.databases import Base
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -18,7 +19,10 @@ class Org(Base):
     locale = Column(String(16), default="en-IN")
     timezone = Column(String(64), default="Asia/Kolkata")
     status = Column(String(16), default="active")
-    created_at = Column(String, default="now")
-    updated_at = Column(String, default="now")
+
+    # ✅ Proper DateTime fields for Postgres
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     sites = relationship("Site", back_populates="org", cascade="all, delete")
+    spaces = relationship("Space", back_populates="org", cascade="all, delete")

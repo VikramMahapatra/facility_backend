@@ -1,7 +1,6 @@
 import os
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
-import os
 
 # Always load .env from root
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))

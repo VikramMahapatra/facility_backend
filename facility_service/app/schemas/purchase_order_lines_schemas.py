@@ -19,5 +19,6 @@ class PurchaseOrderLineUpdate(PurchaseOrderLineBase):
 class PurchaseOrderLineOut(PurchaseOrderLineBase):
     id: str
 
-    class Config:
-        attribute = True
+    model_config = {
+    "from_attributes": True
+}

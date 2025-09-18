@@ -6,9 +6,6 @@ from dotenv import load_dotenv
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-
-
-
 class Settings(BaseSettings):
     JWT_SECRET: str = os.getenv("JWT_SECRET")
     JWT_ALGORITHM: str = "HS256"

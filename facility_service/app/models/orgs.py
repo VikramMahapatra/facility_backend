@@ -4,6 +4,7 @@ import uuid
 from sqlalchemy import Column, String, DateTime, func
 from sqlalchemy.orm import relationship
 from app.core.databases import Base
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 class Org(Base):
     __tablename__ = "orgs"

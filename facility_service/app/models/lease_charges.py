@@ -1,6 +1,7 @@
 import uuid
-from sqlalchemy import Column, Date, Numeric, String, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Date, Numeric, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+
 from sqlalchemy.orm import relationship
 from app.core.databases import Base
 

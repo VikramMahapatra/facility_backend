@@ -1,4 +1,3 @@
-# app/models/leases.py
 import uuid
 from sqlalchemy import Column, String, Date, Numeric, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -10,11 +9,11 @@ class Lease(Base):
     __tablename__ = "leases"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), nullable=False)
-    site_id = Column(UUID(as_uuid=True), nullable=False)
-    partner_id = Column(String)
-    resident_id = Column(String)
-    space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"))
+    org_id = Column(UUID(as_uuid=True), nullable=False)  # if referencing orgs.id
+    site_id = Column(UUID(as_uuid=True), nullable=False)  # if referencing sites.id
+    partner_id = Column(UUID(as_uuid=True), nullable=True)  # if referencing partners.id
+    resident_id = Column(UUID(as_uuid=True), nullable=True)  # if referencing residents.id
+    space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"), nullable=True)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     rent_amount = Column(Numeric(14,2), nullable=False)

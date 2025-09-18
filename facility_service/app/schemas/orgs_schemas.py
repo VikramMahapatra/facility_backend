@@ -2,6 +2,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 
 class OrgBase(BaseModel):
     name: str
@@ -21,9 +22,10 @@ class OrgUpdate(OrgBase):
     pass
 
 class OrgOut(OrgBase):
-    id: str
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    id: UUID   # ✅ use UUID instead of str
+    created_at: Optional[datetime]  # ✅ datetime instead of str
+    updated_at: Optional[datetime]
 
-    class Config:
-        attribute = True
+    model_config = {
+        "from_attributes": True   # ✅ for Pydantic v2 (replaces orm_mode=True)
+    }

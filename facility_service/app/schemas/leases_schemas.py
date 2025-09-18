@@ -31,5 +31,6 @@ class LeaseUpdate(LeaseBase):
 class LeaseOut(LeaseBase):
     id: str
 
-    class Config:
-        attribute = True
+    model_config = {
+    "from_attributes": True
+}

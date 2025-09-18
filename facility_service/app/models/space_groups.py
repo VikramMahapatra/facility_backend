@@ -1,4 +1,3 @@
-# app/models/space_groups.py
 import uuid
 from sqlalchemy import Column, String, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID

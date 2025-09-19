@@ -1,4 +1,3 @@
-# app/models/spaces.py
 import uuid
 from sqlalchemy import Column, String, Integer, Numeric, ForeignKey, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID

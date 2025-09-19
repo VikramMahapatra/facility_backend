@@ -2,8 +2,8 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.models.space_group_members import SpaceGroupMember
-from app.schemas.space_group_members import SpaceGroupMemberCreate
+from ..models.space_group_members import SpaceGroupMember
+from ..schemas.space_group_members import SpaceGroupMemberCreate
 
 def get_space_group_members(db: Session, skip: int = 0, limit: int = 100) -> List[SpaceGroupMember]:
     return db.query(SpaceGroupMember).offset(skip).limit(limit).all()

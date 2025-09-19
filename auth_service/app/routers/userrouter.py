@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, File, UploadFile
 from requests import Session
-from shared.database import get_db
-from app.schemas import userschema
-from app.services import userservices
+from shared.database import get_auth_db as get_db
+from ..schemas import userschema
+from ..services import userservices
 
 router = APIRouter(prefix="/api/user", tags=["Facility User"])
 

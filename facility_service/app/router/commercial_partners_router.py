@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.auth import validate_current_token
 from shared.database import get_facility_db as get_db
-from app.schemas.commercial_partners_schemas import CommercialPartnerOut, CommercialPartnerCreate, CommercialPartnerUpdate
-from app.crud import commercial_partners_crud as crud
+from ..schemas.commercial_partners_schemas import CommercialPartnerOut, CommercialPartnerCreate, CommercialPartnerUpdate
+from ..crud import commercial_partners_crud as crud
 
 router = APIRouter(prefix="/api/commercial-partners", tags=["commercial_partners"],dependencies=[Depends(validate_current_token)])
 

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
-from app.core.databases import engine, Base
-from app.router import (
+from shared.database import facility_engine, Base
+from .router import (
     orgs_router,
     space_groups_router,
     space_group_members_router,
@@ -14,16 +14,15 @@ from app.router import (
     asset_category_router,
     assets_router,
 )
-from app.router.space_sites.sites_router import router as sites_router
-from app.router.leasing_tenants import lease_charges_router, leases_router
-from app.router.space_sites import spaces_router
-from app.router.overview import dashboard_router
-from app.router.space_sites import space_filter_router 
+from .router.space_sites.sites_router import router as sites_router
+from .router.leasing_tenants import lease_charges_router, leases_router
+from .router.space_sites import (spaces_router)
+from .router.overview import (dashboard_router,analytics_router)
 
 app = FastAPI(title="Facility Service API")
 
 # Create all tables
-Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=facility_engine)
 
 # Include routers
 app.include_router(orgs_router.router)
@@ -43,5 +42,4 @@ app.include_router(asset_category_router.router)
 app.include_router(assets_router.router)
 app.include_router(sites_router)
 app.include_router(dashboard_router.router)
-app.include_router(space_filter_router.router)
 app.include_router(analytics_router.router)

@@ -2,8 +2,8 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.models.contracts import Contract
-from app.schemas.contracts_schemas import ContractCreate, ContractUpdate
+from ..models.contracts import Contract
+from ..schemas.contracts_schemas import ContractCreate, ContractUpdate
 
 def get_contracts(db: Session, skip: int = 0, limit: int = 100) -> List[Contract]:
     return db.query(Contract).offset(skip).limit(limit).all()

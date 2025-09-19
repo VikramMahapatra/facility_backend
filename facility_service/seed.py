@@ -3,7 +3,7 @@ import random
 from faker import Faker
 from sqlalchemy.orm import Session
 from app.core.databases import SessionLocal, engine, Base
-from app.models import Org, Site, Space, SpaceGroup, SpaceGroupMember
+from .models import Org, Site, Space, SpaceGroup, SpaceGroupMember
 
 # Create tables
 Base.metadata.create_all(bind=engine)

@@ -3,8 +3,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
-from app.schemas.lease_charges_schemas import LeaseChargeOut, LeaseChargeCreate, LeaseChargeUpdate
-from app.crud.leasing_tenants import lease_charges_crud as crud
+from ...schemas.lease_charges_schemas import LeaseChargeOut, LeaseChargeCreate, LeaseChargeUpdate
+from ...crud.leasing_tenants import lease_charges_crud as crud
 from shared.auth import validate_current_token
 
 router = APIRouter(prefix="/api/lease-charges", tags=["lease_charges"],dependencies=[Depends(validate_current_token)])

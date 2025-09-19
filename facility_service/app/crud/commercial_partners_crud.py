@@ -2,8 +2,8 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.models.commercial_partners import CommercialPartner
-from app.schemas.commercial_partners_schemas import CommercialPartnerCreate, CommercialPartnerUpdate
+from ..models.commercial_partners import CommercialPartner
+from ..schemas.commercial_partners_schemas import CommercialPartnerCreate, CommercialPartnerUpdate
 
 def get_commercial_partners(db: Session, skip: int = 0, limit: int = 100) -> List[CommercialPartner]:
     return db.query(CommercialPartner).offset(skip).limit(limit).all()

@@ -2,8 +2,8 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.models.leasing_tenants.lease_charges import LeaseCharge
-from app.schemas.lease_charges_schemas import LeaseChargeCreate, LeaseChargeUpdate
+from ...models.leasing_tenants.lease_charges import LeaseCharge
+from ...schemas.lease_charges_schemas import LeaseChargeCreate, LeaseChargeUpdate
 
 def get_lease_charges(db: Session, skip: int = 0, limit: int = 100) -> List[LeaseCharge]:
     return db.query(LeaseCharge).offset(skip).limit(limit).all()

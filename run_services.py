@@ -1,3 +1,4 @@
+import time
 import uvicorn
 from concurrent.futures import ThreadPoolExecutor
 
@@ -11,3 +12,12 @@ if __name__ == "__main__":
     with ThreadPoolExecutor() as executor:
         executor.submit(run_auth)
         executor.submit(run_facility)
+        
+        print("✅ Both services started: auth_service(8001), facility_service(8002)")
+        
+        # Keep main thread alive
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n🛑 Stopping services...")

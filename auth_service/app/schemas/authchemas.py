@@ -5,7 +5,7 @@ AllowedRole = Literal["manager", "admin", "superadmin", "user", "default"]
 
 # -------- Google --------
 class GoogleAuthRequest(BaseModel):
-    token: str
+    access_token: str
 
 
 # -------- Mobile --------

@@ -1,12 +1,12 @@
 # app/main.py
 from fastapi import FastAPI
-from shared.database import Base, engine
-from app.routers import authrouter, userrouter
+from shared.database import Base, auth_engine
 from fastapi.middleware.cors import CORSMiddleware
-from app.models import users, roles, userroles, rolepolicy
+from .routers import authrouter, userrouter
+from .models import users, roles, userroles, rolepolicy
 
 # Create tables
-Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=auth_engine)
 
 # This MUST exist for uvicorn
 app = FastAPI(title="Unified Auth (Google + Mobile)")

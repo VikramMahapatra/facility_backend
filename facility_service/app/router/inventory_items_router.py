@@ -3,8 +3,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
-from app.schemas.inventory_items_schemas import InventoryItemOut, InventoryItemCreate, InventoryItemUpdate
-from app.crud import inventory_items_crud as crud
+from ..schemas.inventory_items_schemas import InventoryItemOut, InventoryItemCreate, InventoryItemUpdate
+from ..crud import inventory_items_crud as crud
 from shared.auth import validate_current_token
 
 router = APIRouter(prefix="/api/inventory-items", tags=["inventory_items"],dependencies=[Depends(validate_current_token)])

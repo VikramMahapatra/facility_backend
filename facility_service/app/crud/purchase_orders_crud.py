@@ -2,8 +2,8 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.models.purchase_orders import PurchaseOrder
-from app.schemas.purchase_orders_schemas import PurchaseOrderCreate, PurchaseOrderUpdate
+from ..models.purchase_orders import PurchaseOrder
+from ..schemas.purchase_orders_schemas import PurchaseOrderCreate, PurchaseOrderUpdate
 
 def get_purchase_orders(db: Session, skip: int = 0, limit: int = 100) -> List[PurchaseOrder]:
     return db.query(PurchaseOrder).offset(skip).limit(limit).all()

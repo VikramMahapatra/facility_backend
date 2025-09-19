@@ -3,8 +3,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
-from app.schemas.purchase_orders_schemas import PurchaseOrderOut, PurchaseOrderCreate, PurchaseOrderUpdate
-from app.crud import purchase_orders_crud as crud
+from ..schemas.purchase_orders_schemas import PurchaseOrderOut, PurchaseOrderCreate, PurchaseOrderUpdate
+from ..crud import purchase_orders_crud as crud
 from shared.auth import validate_current_token
 
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase_orders"],dependencies=[Depends(validate_current_token)])

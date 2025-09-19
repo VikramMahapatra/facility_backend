@@ -3,28 +3,18 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-<<<<<<< HEAD
 from shared.database import get_facility_db as get_db
-from app.schemas.leases_schemas import LeaseOut, LeaseCreate, LeaseUpdate
-from app.crud.leasing_tenants import leases_crud as crud
-from shared.auth import validate_current_token
-
-router = APIRouter(prefix="/api/leases", tags=["leases"],dependencies=[Depends(validate_current_token)])
-=======
-
-from app.core.databases import get_db
-from app.schemas.leases_schemas import (
+from ...schemas.leases_schemas import (
     LeaseOut,
     LeaseCreate,
     LeaseUpdate,
     LeasesCardDataOut,
     LeaseListResponse,
 )
-from app.crud.leasing_tenants.leases_crud import Lease as crud
-from app.core.auth import get_current_token
+from ...crud.leasing_tenants.leases_crud import Lease as crud
+from shared.auth import validate_current_token
 
-router = APIRouter(prefix="/api/leases", tags=["leases"], dependencies=[Depends(get_current_token)])
->>>>>>> origin/rohit
+router = APIRouter(prefix="/api/leases", tags=["leases"],dependencies=[Depends(validate_current_token)])
 
 # ----------------------------
 # Helpers for query params

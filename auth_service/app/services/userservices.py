@@ -10,7 +10,6 @@ from app.models.users import Users
 from app.schemas.userschema import UserCreate
 from app.core.config import settings
 
-
 def get_user_by_id(db:Session, id:int):
     user_data = db.query(Users)\
         .filter(Users.id == id)\
@@ -72,3 +71,4 @@ def create_user(db: Session, user : UserCreate, file: UploadFile):
 def get_user_by_id(db:Session, id:int):
     return db.query(Users).filter(Users.user_id == id).first()
     
+

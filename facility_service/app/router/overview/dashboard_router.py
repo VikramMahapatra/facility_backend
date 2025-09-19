@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from app.crud.overview import dashboard_crud
 from app.core.auth import get_current_token
 
-router = APIRouter(prefix="/dashboard", tags=["Dashboard"], dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"], dependencies=[Depends(get_current_token)])
 
 @router.get("/Overview")
 def overview():

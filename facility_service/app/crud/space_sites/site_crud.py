@@ -44,15 +44,9 @@ def get_sites(db: Session, skip: int = 0, limit: int = 100):
         # available spaces = total - occupied
         available = total_spaces - occupied
 
-        # ✅ Explicit logic for occupied_percent
-        if total_spaces == 0:
-            occupied_percent = 0.0
-        elif available == total_spaces:  # all available
-            occupied_percent = 0.0
-        elif available == 0:  # none available
-            occupied_percent = 100.0
-        else:  # mixed
-            occupied_percent = (occupied / total_spaces) * 100
+        # ✅ Explicit logic for occupied_percent------------------------make this logic in one line 
+        occupied_percent = max(0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0))
+
 
         site.total_spaces = total_spaces
         site.buildings = buildings
@@ -98,14 +92,7 @@ def get_site(db: Session, site_id: str):
     available = total_spaces - occupied
 
     # ✅ Explicit logic for occupied_percent
-    if total_spaces == 0:
-        occupied_percent = 0.0
-    elif available == total_spaces:  # all available
-        occupied_percent = 0.0
-    elif available == 0:  # none available
-        occupied_percent = 100.0
-    else:  # mixed
-        occupied_percent = (occupied / total_spaces) * 100
+    occupied_percent = max(0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0))
 
     site.total_spaces = total_spaces
     site.buildings = buildings

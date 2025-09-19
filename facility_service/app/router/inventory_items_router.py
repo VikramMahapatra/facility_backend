@@ -2,12 +2,12 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.core.databases import get_db
+from shared.database import get_facility_db as get_db
 from app.schemas.inventory_items_schemas import InventoryItemOut, InventoryItemCreate, InventoryItemUpdate
 from app.crud import inventory_items_crud as crud
-from app.core.auth import get_current_token
+from shared.auth import validate_current_token
 
-router = APIRouter(prefix="/api/inventory-items", tags=["inventory_items"],dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/inventory-items", tags=["inventory_items"],dependencies=[Depends(validate_current_token)])
 
 @router.get("/", response_model=List[InventoryItemOut])
 def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

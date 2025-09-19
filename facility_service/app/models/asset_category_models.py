@@ -4,7 +4,7 @@ from sqlalchemy import Column, String, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
-from app.core.databases import Base
+from shared.database import Base
 
 class AssetCategory(Base):
     __tablename__ = "asset_categories"

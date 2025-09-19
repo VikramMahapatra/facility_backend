@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from requests import Session
-from app.core.database import get_db
+from shared.database import get_db
 from app.schemas import authchemas
 from app.services import authservices
 

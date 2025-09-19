@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, File, UploadFile
 from requests import Session
-from app.core.database import get_db
+from shared.database import get_db
 from app.schemas import userschema
 from app.services import userservices
 

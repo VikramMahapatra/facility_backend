@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from google.auth.transport import requests
-from app.core.config import settings
+from shared.config import settings
 from google.oauth2 import id_token
-from app.core.database import get_db
+from shared.database import get_db
 from app.helpers import authhelper
 from app.models.users import Users
 from app.schemas import authchemas

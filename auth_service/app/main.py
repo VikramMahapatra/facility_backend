@@ -1,6 +1,6 @@
 # app/main.py
 from fastapi import FastAPI
-from app.core.database import Base, engine
+from shared.database import Base, engine
 from app.routers import authrouter, userrouter
 from fastapi.middleware.cors import CORSMiddleware
 from app.models import users, roles, userroles, rolepolicy

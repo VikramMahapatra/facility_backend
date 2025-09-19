@@ -2,12 +2,12 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.core.databases import get_db
+from shared.database import get_facility_db as get_db
 from app.schemas.spaces_schemas import SpaceOut, SpaceCreate, SpaceUpdate
 from app.crud.space_sites import spaces_crud as crud
-from app.core.auth import get_current_token
+from shared.auth import validate_current_token
 
-router = APIRouter(prefix="/api/spaces", tags=["spaces"],dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/spaces", tags=["spaces"],dependencies=[Depends(validate_current_token)])
 
 @router.get("/", response_model=List[SpaceOut])
 def read_spaces(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

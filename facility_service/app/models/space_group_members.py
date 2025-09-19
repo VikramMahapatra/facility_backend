@@ -2,7 +2,7 @@ from sqlalchemy import Column, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
-from app.core.databases import Base
+from shared.database import Base
 
 class SpaceGroupMember(Base):
     __tablename__ = "space_group_members"

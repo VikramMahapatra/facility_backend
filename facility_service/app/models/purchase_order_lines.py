@@ -2,7 +2,7 @@
 import uuid
 from sqlalchemy import Column, String, Numeric, ForeignKey
 from sqlalchemy.orm import relationship
-from app.core.databases import Base
+from shared.database import Base
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 class PurchaseOrderLine(Base):

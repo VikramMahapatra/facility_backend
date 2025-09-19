@@ -4,7 +4,7 @@ from sqlalchemy import Column, String, Date, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from sqlalchemy.orm import relationship
-from app.core.databases import Base
+from shared.database import Base
 
 class Contract(Base):
     __tablename__ = "contracts"

@@ -2,12 +2,12 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.core.databases import get_db
+from shared.database import get_facility_db as get_db
 from app.schemas.lease_charges_schemas import LeaseChargeOut, LeaseChargeCreate, LeaseChargeUpdate
 from app.crud.leasing_tenants import lease_charges_crud as crud
-from app.core.auth import get_current_token
+from shared.auth import validate_current_token
 
-router = APIRouter(prefix="/api/lease-charges", tags=["lease_charges"],dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/lease-charges", tags=["lease_charges"],dependencies=[Depends(validate_current_token)])
 
 @router.get("/", response_model=List[LeaseChargeOut])
 def read_charges(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

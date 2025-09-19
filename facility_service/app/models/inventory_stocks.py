@@ -2,7 +2,7 @@
 import uuid
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy import Column, String, Numeric, ForeignKey
-from app.core.databases import Base
+from shared.database import Base
 
 class InventoryStock(Base):
     __tablename__ = "inventory_stocks"

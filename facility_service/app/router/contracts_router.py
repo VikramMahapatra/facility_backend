@@ -2,12 +2,12 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.core.databases import get_db
+from shared.database import get_facility_db as get_db
 from app.schemas.contracts_schemas import ContractOut, ContractCreate, ContractUpdate
 from app.crud import contracts_crud as crud
-from app.core.auth import get_current_token
+from shared.auth import validate_current_token
 
-router = APIRouter(prefix="/api/contracts", tags=["contracts"],dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/contracts", tags=["contracts"],dependencies=[Depends(validate_current_token)])
 
 @router.get("/", response_model=List[ContractOut])
 def read_contracts(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

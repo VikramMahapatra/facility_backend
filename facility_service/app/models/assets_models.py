@@ -4,7 +4,7 @@ from sqlalchemy import Column, String, Date, Numeric, ForeignKey, JSON, TIMESTAM
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from app.core.databases import Base
+from shared.database import Base
 
 class Asset(Base):
     __tablename__ = "assets"

@@ -2,13 +2,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from app.core.databases import get_db
+from shared.database import get_facility_db as get_db
 from app.schemas.orgs_schemas import OrgOut, OrgCreate, OrgUpdate
 from app.crud import orgs_crud as crud_orgs
-from app.core.auth import get_current_token
+from shared.auth import validate_current_token
 
 
-router = APIRouter(prefix="/api/orgs", tags=["orgs"],dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/orgs", tags=["orgs"],dependencies=[Depends(validate_current_token)])
 
 @router.get("/", response_model=List[OrgOut])
 def read_orgs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

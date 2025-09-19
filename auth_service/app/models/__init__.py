@@ -1,4 +1,4 @@
-from app.core.database import Base
+from shared.database import Base
 from app.models.users import Users
 from app.models.roles import Roles
 from app.models.userroles import UserRoles

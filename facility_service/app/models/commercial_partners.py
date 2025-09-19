@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
-from app.core.databases import Base
+from shared.database import Base
 
 class CommercialPartner(Base):
     __tablename__ = "commercial_partners"

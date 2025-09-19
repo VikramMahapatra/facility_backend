@@ -2,7 +2,11 @@ from fastapi import APIRouter, Depends
 from app.crud.overview import dashboard_crud
 from shared.auth import validate_current_token
 
+<<<<<<< HEAD
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"], dependencies=[Depends(validate_current_token)])
+=======
+router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"], dependencies=[Depends(get_current_token)])
+>>>>>>> origin/rohit
 
 @router.get("/Overview")
 def overview():

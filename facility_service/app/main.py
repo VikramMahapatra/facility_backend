@@ -18,6 +18,7 @@ from app.router.space_sites.sites_router import router as sites_router
 from app.router.leasing_tenants import lease_charges_router, leases_router
 from app.router.space_sites import spaces_router
 from app.router.overview import dashboard_router
+from app.router.overview import analytics_router
 app = FastAPI(title="Facility Service API")
 
 # Create all tables
@@ -41,3 +42,4 @@ app.include_router(asset_category_router.router)
 app.include_router(assets_router.router)
 app.include_router(sites_router, prefix="/sites", tags=["Sites"])
 app.include_router(dashboard_router.router)
+app.include_router(analytics_router.router)

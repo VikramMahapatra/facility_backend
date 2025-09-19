@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from requests import Session
-from shared.database import get_db
-from app.schemas import authchemas
-from app.services import authservices
+from shared.database import get_auth_db as get_db
+from ..schemas import authchemas
+from ..services import authservices
 
 router = APIRouter(prefix="/api/auth", tags=["Facility Auth"])
 

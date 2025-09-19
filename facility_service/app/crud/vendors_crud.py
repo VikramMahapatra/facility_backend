@@ -2,8 +2,8 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.models.vendors import Vendor
-from app.schemas.vendors_schemas import VendorCreate, VendorUpdate
+from ..models.vendors import Vendor
+from ..schemas.vendors_schemas import VendorCreate, VendorUpdate
 
 def get_vendors(db: Session, skip: int = 0, limit: int = 100) -> List[Vendor]:
     return db.query(Vendor).offset(skip).limit(limit).all()

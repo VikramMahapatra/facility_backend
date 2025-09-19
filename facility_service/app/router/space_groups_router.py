@@ -3,8 +3,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
-from app.schemas.space_groups_schemas import SpaceGroupOut, SpaceGroupCreate, SpaceGroupUpdate
-from app.crud import space_groups_crud as crud
+from ..schemas.space_groups_schemas import SpaceGroupOut, SpaceGroupCreate, SpaceGroupUpdate
+from ..crud import space_groups_crud as crud
 from shared.auth import validate_current_token
 
 router = APIRouter(prefix="/api/space-groups", tags=["space_groups"],dependencies=[Depends(validate_current_token)])

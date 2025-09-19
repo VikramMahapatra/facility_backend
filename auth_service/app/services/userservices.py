@@ -3,12 +3,13 @@ import shutil
 from fastapi import UploadFile
 from requests import Session
 from sqlalchemy import func
-from app.helpers import authhelper
-from app.models.roles import Roles
-from app.models.userroles import UserRoles
-from app.models.users import Users
-from app.schemas.userschema import UserCreate
+from shared import auth
+from ..models.roles import Roles
+from ..models.userroles import UserRoles
+from ..models.users import Users
+from ..schemas.userschema import UserCreate
 from shared.config import settings
+
 
 def get_user_by_id(db:Session, id:int):
     user_data = db.query(Users)\
@@ -60,7 +61,7 @@ def create_user(db: Session, user : UserCreate, file: UploadFile):
     
     roles = [r.name for r in user_instance.roles]
     
-    token = authhelper.create_access_token({"user_id": str(user_instance.id), "email": user_instance.email, "role": roles})
+    token = auth.create_access_token({"user_id": str(user_instance.id), "email": user_instance.email, "role": roles})
     
     return {
         "access_token": token,
@@ -71,4 +72,3 @@ def create_user(db: Session, user : UserCreate, file: UploadFile):
 def get_user_by_id(db:Session, id:int):
     return db.query(Users).filter(Users.user_id == id).first()
     
-

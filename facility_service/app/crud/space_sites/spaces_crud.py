@@ -6,10 +6,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, cast
 from sqlalchemy.dialects.postgresql import UUID
 
-from app.models.space_sites.sites import Site
-from app.models.space_sites.spaces import Space
-from app.models.leasing_tenants.leases import Lease
-from app.schemas.space_sites.spaces_schemas import SpaceCreate, SpaceUpdate
+from ...models.space_sites.sites import Site
+from ...models.space_sites.spaces import Space
+from ...models.leasing_tenants.leases import Lease
+from ...schemas.space_sites.spaces_schemas import SpaceCreate, SpaceUpdate
 
 
 # ----------------------------------------------------------------------

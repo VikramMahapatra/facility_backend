@@ -9,6 +9,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_USERINFO_URL: str = os.getenv("GOOGLE_USERINFO_URL")
 
     JWT_SECRET: str = os.getenv("JWT_SECRET")
     JWT_ALGORITHM: str = "HS256"

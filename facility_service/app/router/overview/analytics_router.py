@@ -1,13 +1,8 @@
 from fastapi import APIRouter
-from app.crud.overview import analytics_crud
-<<<<<<< HEAD
+from ...crud.overview import analytics_crud
 from shared.auth import validate_current_token
-router = APIRouter(prefix="/analytics", tags=["Analytics"],dependencies=[Depends(validate_current_token)])
-=======
-from app.core.auth import get_current_token
->>>>>>> origin/rohit
 
-router = APIRouter(prefix="/api/analytics", tags=["Analytics"])#, dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/analytics", tags=["Analytics"])#, dependencies=[Depends(validate_current_token)])
 
 @router.get("/advance-analytics")
 def advance_analytics(months: int): 

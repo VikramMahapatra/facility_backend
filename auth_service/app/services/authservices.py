@@ -2,26 +2,25 @@ from twilio.rest import Client
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
-from google.auth.transport import requests
+import requests
 from shared.config import settings
 from google.oauth2 import id_token
-from shared.database import get_db
-from app.helpers import authhelper
-from app.models.users import Users
-from app.schemas import authchemas
-from app.services import userservices
+from shared.database import get_auth_db as get_db
+from shared import auth
+from ..models.users import Users
+from ..schemas import authchemas
+from ..services import userservices
 
 twilio_client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
 
 ALLOWED_ROLES = {"manager", "admin", "superadmin", "user"}
-
 
 security = HTTPBearer()
 
 # Dependency to get current user
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db:Session=Depends(get_db)):
     token = credentials.credentials
-    payload = authhelper.verify_token(token)
+    payload = auth.verify_token(token)
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -40,14 +39,24 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 def google_login(db: Session, req: authchemas.GoogleAuthRequest):
     try:
-        request = requests.Request()
-        id_info = id_token.verify_oauth2_token(req.token, request, settings.GOOGLE_CLIENT_ID)
+        if not req.access_token:
+            raise HTTPException(status_code=400, detail="Missing access token")
+        
+        # Call Google API to get user info
+        response = requests.get(
+            settings.GOOGLE_USERINFO_URL,
+            params={"alt": "json", "access_token": req.access_token}
+        )
 
-        if id_info.get("aud") != settings.GOOGLE_CLIENT_ID:
-            raise HTTPException(status_code=401, detail="Google ID token audience mismatch")
-
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail="Invalid access token")
+        
+        id_info = response.json()
+        
+        print(id_info)
+        
         email = id_info.get("email")
-        if not email or id_info.get("email_verified") not in (True, "true", "True", "1", 1):
+        if not email or id_info.get("verified_email") not in (True, "true", "True", "1", 1):
             raise HTTPException(status_code=400, detail="Google email not verified")
 
         user = db.query(Users).filter(Users.email == email).first()
@@ -102,7 +111,7 @@ def verify_otp(db: Session, request: authchemas.OTPVerify):
         
 def get_user_token(user:Users):
     roles = [r.name for r in user.roles]
-    token = authhelper.create_access_token({"user_id": str(user.id), "mobile": user.phone, "email": user.email, "role": roles})
+    token = auth.create_access_token({"user_id": str(user.id), "mobile": user.phone, "email": user.email, "role": roles})
     
     return {
         "access_token": token,

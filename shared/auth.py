@@ -1,7 +1,11 @@
 import datetime
 from typing import Optional
+from fastapi import HTTPException, status, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from shared.config import settings
+
+security = HTTPBearer()
 
 def create_access_token(data:dict):
     expires = datetime.datetime.utcnow() + datetime.timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
@@ -14,8 +18,12 @@ def verify_token(token:str) -> Optional[dict]:
         payload= jwt.decode(token, settings.JWT_SECRET, algorithms=settings.JWT_ALGORITHM)
         return payload
     except JWTError:
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a hashed password."""
-    return plain_password == hashed_password  # Replace with actual hashing logic if needed
+def validate_current_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    return verify_token(token)

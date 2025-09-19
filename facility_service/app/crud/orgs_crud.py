@@ -1,8 +1,8 @@
 # app/crud/orgs.py
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from app.models.orgs import Org
-from app.schemas.orgs_schemas import OrgCreate, OrgUpdate
+from ..models.orgs import Org
+from ..schemas.orgs_schemas import OrgCreate, OrgUpdate
 
 def get_orgs(db: Session, skip: int = 0, limit: int = 100) -> List[Org]:
     return db.query(Org).offset(skip).limit(limit).all()

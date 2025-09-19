@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from shared.database import get_facility_db as get_db
-from app.schemas.orgs_schemas import OrgOut, OrgCreate, OrgUpdate
-from app.crud import orgs_crud as crud_orgs
+from ..schemas.orgs_schemas import OrgOut, OrgCreate, OrgUpdate
+from ..crud import orgs_crud as crud_orgs
 from shared.auth import validate_current_token
 
 

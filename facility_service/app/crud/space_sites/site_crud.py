@@ -2,10 +2,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, and_
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
-from app.models.space_sites.sites import Site
-from app.models.space_sites.spaces import Space   # ✅ import Space model
-from app.models.leasing_tenants.leases import Lease   # ✅ import Lease model
-from app.schemas.space_sites.sites_schemas import SiteCreate, SiteUpdate
+from ...models.space_sites.sites import Site
+from ...models.space_sites.spaces import Space   # ✅ import Space model
+from ...models.leasing_tenants.leases import Lease   # ✅ import Lease model
+from ...schemas.space_sites.sites_schemas import SiteCreate, SiteUpdate
 import uuid
 
 

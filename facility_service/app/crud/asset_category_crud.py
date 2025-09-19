@@ -1,8 +1,8 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.models.asset_category_models import AssetCategory
-from app.schemas.asset_category_schemas import AssetCategoryCreate, AssetCategoryUpdate
+from ..models.asset_category_models import AssetCategory
+from ..schemas.asset_category_schemas import AssetCategoryCreate, AssetCategoryUpdate
 
 def get_asset_categories(db: Session, skip: int = 0, limit: int = 100) -> List[AssetCategory]:
     return db.query(AssetCategory).offset(skip).limit(limit).all()

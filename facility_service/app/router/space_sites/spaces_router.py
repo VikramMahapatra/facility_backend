@@ -1,16 +1,15 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from app.core.databases import get_db
-from app.schemas.space_sites.spaces_schemas import SpaceOut, SpaceCreate, SpaceUpdate
-from app.crud.space_sites import spaces_crud as crud
-from app.core.auth import get_current_token #for dependicies 
-from app.crud.space_sites.spaces_crud import get_single_site_overview,get_aggregated_overview
+from shared.database import get_facility_db as get_db
+from ...schemas.space_sites.spaces_schemas import SpaceOut, SpaceCreate, SpaceUpdate
+from ...crud.space_sites import spaces_crud as crud
+from shared.auth import validate_current_token #for dependicies 
 from uuid import UUID
 router = APIRouter(
     prefix="/api/spaces",
     tags=["spaces"],
-    dependencies=[Depends(get_current_token)]
+    dependencies=[Depends(validate_current_token)]
 )
 
 @router.get("/", response_model=List[SpaceOut])

@@ -3,12 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List
-from app import crud
-from app.models import assets_models as models
-from app.schemas import assets_schemas as schemas
+from ..models import assets_models as models
+from ..schemas import assets_schemas as schemas
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
-from app.crud.assets_crud import create_asset
+from ..crud import assets_crud as crud
+
 router = APIRouter(
     prefix="/assets",
     tags=["assets"],

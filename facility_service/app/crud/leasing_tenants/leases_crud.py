@@ -6,8 +6,8 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.models.leasing_tenants.leases import Lease
-from app.schemas.leases_schemas import LeaseCreate, LeaseUpdate
+from ...models.leasing_tenants.leases import Lease
+from ...schemas.leases_schemas import LeaseCreate, LeaseUpdate
 
 # ----------------------------
 # Basic CRUD

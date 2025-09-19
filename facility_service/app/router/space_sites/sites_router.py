@@ -2,8 +2,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
-from app.schemas.space_sites.sites_schemas import SiteOut, SiteCreate, SiteUpdate
-from app.crud.space_sites import site_crud as crud
+from ...schemas.space_sites.sites_schemas import SiteOut, SiteCreate, SiteUpdate
+from ...crud.space_sites import site_crud as crud
 
 from shared.auth import validate_current_token
 

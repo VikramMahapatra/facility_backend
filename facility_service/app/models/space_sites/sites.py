@@ -13,7 +13,7 @@ class Site(Base):
     name = Column(String(200), nullable=False)
     code = Column(String(32))
     kind = Column(String(24), nullable=False)
-    address = Column(JSONB)  # ✅ use JSONB for Postgres
+    address = Column(JSONB)  
     geo = Column(JSONB)
     opened_on = Column(Date)
     status = Column(String(16), default="active")
@@ -24,3 +24,9 @@ class Site(Base):
     org = relationship("Org", back_populates="sites")
     assets = relationship("Asset", back_populates="site", cascade="all, delete")
     spaces = relationship("Space", back_populates="site", cascade="all, delete")
+    
+    # Relationship to spaces
+    spaces = relationship("Space", back_populates="site", cascade="all, delete")
+
+    # Relationship to space filters
+    #filters = relationship("SpaceFilter", back_populates="site", cascade="all, delete")

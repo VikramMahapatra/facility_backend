@@ -1,8 +1,7 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, ForeignKey
-
-from app.core.database import Base
+from shared.database import Base
 
 
 class UserRoles(Base):

@@ -2,12 +2,12 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
-from app.core.databases import get_db
+from shared.database import get_facility_db as get_db
 from app.schemas.space_group_members import SpaceGroupMemberOut, SpaceGroupMemberCreate
 from app.crud import space_group_members_crud as crud
-from app.core.auth import get_current_token
+from shared.auth import validate_current_token
 
-router = APIRouter(prefix="/api/space-group-members", tags=["space_group_members"],dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/space-group-members", tags=["space_group_members"],dependencies=[Depends(validate_current_token)])
 
 @router.get("/", response_model=List[SpaceGroupMemberOut])
 def read_members(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

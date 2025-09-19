@@ -1,13 +1,13 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.core.databases import get_db
+from shared.database import get_facility_db as get_db
 from app.schemas.space_sites.sites_schemas import SiteOut, SiteCreate, SiteUpdate
 from app.crud.space_sites import site_crud as crud
 
-from app.core.auth import get_current_token
+from shared.auth import validate_current_token
 
-router = APIRouter(prefix="/api/sites", tags=["sites"], dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/sites", tags=["sites"], dependencies=[Depends(validate_current_token)])
 
 @router.get("/", response_model=List[SiteOut])
 def read_sites(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

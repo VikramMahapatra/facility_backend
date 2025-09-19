@@ -8,7 +8,7 @@ from app.models.roles import Roles
 from app.models.userroles import UserRoles
 from app.models.users import Users
 from app.schemas.userschema import UserCreate
-from app.core.config import settings
+from shared.config import settings
 
 
 def get_user_by_id(db:Session, id:int):

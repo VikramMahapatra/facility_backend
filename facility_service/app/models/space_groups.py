@@ -3,7 +3,7 @@ from sqlalchemy import Column, String, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from sqlalchemy.orm import relationship
-from app.core.databases import Base
+from shared.database import Base
 
 class SpaceGroup(Base):
     __tablename__ = "space_groups"

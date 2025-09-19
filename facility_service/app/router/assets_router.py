@@ -6,13 +6,13 @@ from typing import List
 from app import crud
 from app.models import assets_models as models
 from app.schemas import assets_schemas as schemas
-from app.core.databases import get_db
-from app.core.auth import get_current_token
+from shared.database import get_facility_db as get_db
+from shared.auth import validate_current_token
 from app.crud.assets_crud import create_asset
 router = APIRouter(
     prefix="/assets",
     tags=["assets"],
-    dependencies=[Depends(get_current_token)]
+    dependencies=[Depends(validate_current_token)]
 )
 
 @router.post("/", response_model=schemas.AssetResponse)

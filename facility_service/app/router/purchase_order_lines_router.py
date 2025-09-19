@@ -2,12 +2,12 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.core.databases import get_db
+from shared.database import get_facility_db as get_db
 from app.schemas.purchase_order_lines_schemas import PurchaseOrderLineOut, PurchaseOrderLineCreate, PurchaseOrderLineUpdate
 from app.crud import purchase_order_lines_crud as crud
-from app.core.auth import get_current_token
+from shared.auth import validate_current_token
 
-router = APIRouter(prefix="/api/purchase-order-lines", tags=["purchase_order_lines"],dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/purchase-order-lines", tags=["purchase_order_lines"],dependencies=[Depends(validate_current_token)])
 
 @router.get("/", response_model=List[PurchaseOrderLineOut])
 def read_lines(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

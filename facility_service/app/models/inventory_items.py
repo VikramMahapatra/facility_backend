@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import Column, String, Numeric
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
-from app.core.databases import Base
+from shared.database import Base
 
 class InventoryItem(Base):
     __tablename__ = "inventory_items"

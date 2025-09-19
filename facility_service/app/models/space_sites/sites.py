@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import Column, String, Date, ForeignKey, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from app.core.databases import Base
+from shared.database import Base
 
 class Site(Base):
     __tablename__ = "sites"

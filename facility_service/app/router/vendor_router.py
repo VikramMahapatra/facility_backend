@@ -2,12 +2,12 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.core.databases import get_db
+from shared.database import get_facility_db as get_db
 from app.schemas.vendors_schemas import VendorOut, VendorCreate, VendorUpdate
 from app.crud import vendors_crud as crud
-from app.core.auth import get_current_token
+from shared.auth import validate_current_token
 
-router = APIRouter(prefix="/api/vendors", tags=["vendors"],dependencies=[Depends(get_current_token)])
+router = APIRouter(prefix="/api/vendors", tags=["vendors"],dependencies=[Depends(validate_current_token)])
 
 @router.get("/", response_model=List[VendorOut])
 def read_vendors(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

@@ -1,7 +1,7 @@
 
 from fastapi import Form
 from pydantic import BaseModel, EmailStr,  HttpUrl
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 from datetime import datetime
 
@@ -26,12 +26,20 @@ class UserRead(UserBase):
 class UserCreate(BaseModel):
     name: str
     email: str
-    phone: str
-    role: str
+    phone: Optional[str] = None
+    accountType: Literal["Organization", "Vendor", "Tenant"]
+    organizationName: Optional[str] = None
+    pictureUrl: Optional[HttpUrl] = None
     
     class Config:
         from_attributes = True  # allows Pydantic to work with SQLAlchemy objects
         
+class UserResponse(BaseModel):
+    id:str
+    name: str
+    email: str
+    accountType: str
+    organizationName: str
         
         # dependency to convert Form fields → Pydantic model
 def as_form(

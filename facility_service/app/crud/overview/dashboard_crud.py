@@ -10,12 +10,10 @@ def overview(org_id:str):
 
 def lease_overview():
     return {
-        "active_leases": 187,
-        "renewals": {
-            "30_days": 12,
-            "60_days": 8,
-            "90_days": 15
-        },
+        "activeLeases": 187,
+        "renewalsDue30Days": 12,
+        "renewalsDue60Days": 8,
+        "renewalsDue90Days": 15,
         "collection_rate": "94.2%"
     }
 

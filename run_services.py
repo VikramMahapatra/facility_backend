@@ -1,23 +1,33 @@
-import time
+import asyncio
 import uvicorn
-from concurrent.futures import ThreadPoolExecutor
 
-def run_auth():
-    uvicorn.run("auth_service.app.main:app", host="0.0.0.0", port=8001)  # no reload
+async def start_servers():
+    # First app
+    config1 = uvicorn.Config(
+        "auth_service.app.main:app",  
+        host="0.0.0.0",
+        port=8001,
+        reload=True,
+    )
+    server1 = uvicorn.Server(config1)
 
-def run_facility():
-    uvicorn.run("facility_service.app.main:app", host="0.0.0.0", port=8002)  # no reload
+    # Second app
+    config2 = uvicorn.Config(
+        "facility_service.app.main:app",  # replace with your actual module:app
+        host="0.0.0.0",
+        port=8002,
+        reload=True,
+    )
+    server2 = uvicorn.Server(config2)
+
+    # Run both servers concurrently
+    await asyncio.gather(
+        server1.serve(),
+        server2.serve(),
+    )
 
 if __name__ == "__main__":
-    with ThreadPoolExecutor() as executor:
-        executor.submit(run_auth)
-        executor.submit(run_facility)
-        
-        print("✅ Both services started: auth_service(8001), facility_service(8002)")
-        
-        # Keep main thread alive
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\n🛑 Stopping services...")
+    try:
+        asyncio.run(start_servers())
+    except KeyboardInterrupt:
+        print("\nShutting down servers...")

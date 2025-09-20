@@ -54,8 +54,8 @@ def aggregated_site_overview(
 
 #-----------------------------------------------------------------
 @router.get("/", response_model=List[SpaceOut])
-def read_spaces(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_spaces(db, skip=skip, limit=limit)
+def read_spaces(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user = Depends(validate_current_token)):
+    return crud.get_spaces(db,skip=skip, limit=limit)
 
 
 @router.get("/{space_id}", response_model=SpaceOut)

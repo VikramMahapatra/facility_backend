@@ -1,19 +1,21 @@
 from sqlalchemy.dialects.postgresql import UUID
-import uuid
-from sqlalchemy import Column, String, Date, ForeignKey, DateTime, func
+from sqlalchemy import Column, String, Date, DateTime, func, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
+import uuid
+
 from shared.database import Base
+
 
 class Site(Base):
     __tablename__ = "sites"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False)  # Use ForeignKey in your Org model
     name = Column(String(200), nullable=False)
     code = Column(String(32))
     kind = Column(String(24), nullable=False)
-    address = Column(JSONB)  
+    address = Column(JSONB)
     geo = Column(JSONB)
     opened_on = Column(Date)
     status = Column(String(16), default="active")
@@ -21,12 +23,7 @@ class Site(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    org = relationship("Org", back_populates="sites")
-    assets = relationship("Asset", back_populates="site", cascade="all, delete")
+    # Relationships (use string references to avoid circular imports)
+    buildings = relationship("Building", back_populates="site", cascade="all, delete")
     spaces = relationship("Space", back_populates="site", cascade="all, delete")
-    
-    # Relationship to spaces
-    spaces = relationship("Space", back_populates="site", cascade="all, delete")
-
-    # Relationship to space filters
-    #filters = relationship("SpaceFilter", back_populates="site", cascade="all, delete")
+    org = relationship("Org", back_populates="sites", cascade="all, delete")

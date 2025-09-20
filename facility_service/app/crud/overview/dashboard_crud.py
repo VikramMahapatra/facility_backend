@@ -1,4 +1,4 @@
-def overview():
+def overview(org_id:str):
     return {
         "total_properties": 24,
         "occupancy_rate": "75.4%",

@@ -111,7 +111,7 @@ def verify_otp(db: Session, request: authchemas.OTPVerify):
         
 def get_user_token(user:Users):
     roles = [r.name for r in user.roles]
-    token = auth.create_access_token({"user_id": str(user.id), "mobile": user.phone, "email": user.email, "role": roles})
+    token = auth.create_access_token({"user_id": str(user.id),"org_id": str(user.org_id), "mobile": user.phone, "email": user.email, "role": roles})
     
     return {
         "access_token": token,

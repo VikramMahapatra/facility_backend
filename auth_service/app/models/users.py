@@ -1,11 +1,11 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import TIMESTAMP, Column, Integer, String, Text, func
-from shared.database import Base
+from shared.database import AuthBase
 from sqlalchemy.orm import relationship
 
 
-class Users(Base):
+class Users(AuthBase):
     __tablename__ = "users"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -22,9 +22,8 @@ class OTPVerify(BaseModel):
 # -------Common----------
 class NotRegisteredResponse(BaseModel):
     needs_registration: bool = True
-    name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    mobile: Optional[str] = None
+    name: str
+    email: EmailStr
     picture: Optional[HttpUrl] = None
 
 class LoginSuccessResponse(BaseModel):

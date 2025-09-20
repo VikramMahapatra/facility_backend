@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from shared.database import facility_engine, Base
 from .router import (
     orgs_router,
@@ -25,6 +26,21 @@ app = FastAPI(title="Facility Service API")
 
 # Create all tables
 Base.metadata.create_all(bind=facility_engine)
+
+# Allow requests from your React app
+origins = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8002"
+    # Add other origins if deploying later
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # or ["*"] to allow all origins (not recommended for production)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Include routers
 app.include_router(orgs_router.router)

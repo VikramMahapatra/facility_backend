@@ -37,7 +37,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 #### GOOGLE AUTHENTICATION ###
 
-def google_login(db: Session, req: authchemas.GoogleAuthRequest):
+def google_login(db: Session, facility_db: Session, req: authchemas.GoogleAuthRequest):
     try:
         if not req.access_token:
             raise HTTPException(status_code=400, detail="Missing access token")
@@ -53,21 +53,21 @@ def google_login(db: Session, req: authchemas.GoogleAuthRequest):
         
         id_info = response.json()
         
-        print(id_info)
-        
         email = id_info.get("email")
         if not email or id_info.get("verified_email") not in (True, "true", "True", "1", 1):
             raise HTTPException(status_code=400, detail="Google email not verified")
-
+        
         user = db.query(Users).filter(Users.email == email).first()
+                 
         if not user:
             return {
                 "needs_registration": True,
                 "email": email,
-                "allowed_roles": {"default"},
+                "name": id_info.get("name"),
+                "picture" : id_info.get("picture")
             }
             
-        return get_user_token(user)
+        return get_user_token(facility_db, user)
     
     except ValueError as e:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -86,7 +86,7 @@ def send_otp(request: authchemas.MobileRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Twilio error: {str(e)}")
 
-def verify_otp(db: Session, request: authchemas.OTPVerify):
+def verify_otp(db: Session, facility_db: Session, request: authchemas.OTPVerify):
     try:
         check = twilio_client.verify.v2.services(settings.TWILIO_VERIFY_SID).verification_checks.create(
             to=request.mobile,
@@ -100,6 +100,8 @@ def verify_otp(db: Session, request: authchemas.OTPVerify):
 
     user = db.query(Users).filter(Users.phone == request.mobile).first()
 
+   
+    
     if not user:
         return {
                 "needs_registration": True,
@@ -107,17 +109,18 @@ def verify_otp(db: Session, request: authchemas.OTPVerify):
                 "allowed_roles": {"default"},
             }
     
-    return get_user_token(user)
+    return get_user_token(facility_db, user)
         
-def get_user_token(user:Users):
+def get_user_token(facility_db:Session, user:Users):
     roles = [r.name for r in user.roles]
     token = auth.create_access_token({"user_id": str(user.id),"org_id": str(user.org_id), "mobile": user.phone, "email": user.email, "role": roles})
+    user_data = userservices.get_user_by_id(facility_db, user)
     
     return {
         "access_token": token,
         "token_type": "bearer",
         "needs_registration": False,
-        #"redirect_url": role_redirect(user.roles[0].name)
+        "user" : user_data
     }
     
 def role_redirect(role: str) -> str:

@@ -14,6 +14,7 @@ class Users(AuthBase):
     email = Column(String(200), nullable=True)
     phone = Column(String(20), nullable=True)
     picture_url = Column(Text, nullable=True)
+    account_type = Column(String(20), nullable=False)
     status = Column(String(16), nullable=False, default="active")
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())

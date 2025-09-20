@@ -12,6 +12,7 @@ router = APIRouter(
     dependencies=[Depends(validate_current_token)]
 )
 
+#-----------------------------------------------------------------
 @router.get("/", response_model=List[SpaceOut])
 def read_spaces(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user = Depends(validate_current_token)):
     return crud.get_spaces(db,skip=skip, limit=limit)

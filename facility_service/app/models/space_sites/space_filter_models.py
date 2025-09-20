@@ -19,5 +19,4 @@ class SpaceFilter(Base):
     status = Column(String, default="available")  # available, occupied, out_of_service
     area = Column(Float, nullable=True)
 
-    site = relationship("Site", back_populates="spaces")
     site = relationship("Site", back_populates="filters")  # <--- must match Site.filters

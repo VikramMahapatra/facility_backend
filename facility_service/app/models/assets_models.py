@@ -29,5 +29,5 @@ class Asset(Base):
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     site = relationship("Site", back_populates="assets")
-    space = relationship("Space")
-    category = relationship("AssetCategory")
+    space = relationship("Space", back_populates="assets")
+    category = relationship("AssetCategory", back_populates="assets")

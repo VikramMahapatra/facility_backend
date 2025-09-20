@@ -11,7 +11,7 @@ class Space(Base):
     __tablename__ = "spaces"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), nullable=False)  # Use ForeignKey to orgs.id if Org exists
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id")) # Use ForeignKey to orgs.id if Org exists
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
     building_block_id = Column(UUID(as_uuid=True), ForeignKey("buildings.id", ondelete="SET NULL"), nullable=True)
     code = Column(String(64), nullable=False)
@@ -30,3 +30,5 @@ class Space(Base):
     # Relationships (string references)
     site = relationship("Site", back_populates="spaces")
     building = relationship("Building", back_populates="spaces")
+    org = relationship("Org", back_populates="spaces")
+    assets = relationship("Asset", back_populates="space", cascade="all, delete")

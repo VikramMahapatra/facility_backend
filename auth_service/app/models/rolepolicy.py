@@ -1,11 +1,11 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import JSON, Column, ForeignKey, String
-from shared.database import Base
+from shared.database import AuthBase
 from sqlalchemy.orm import relationship
 
 
-class RolePolicy(Base):
+class RolePolicy(AuthBase):
     __tablename__ = "role_policies"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

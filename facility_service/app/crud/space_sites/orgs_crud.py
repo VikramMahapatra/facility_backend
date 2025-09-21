@@ -1,8 +1,8 @@
 # app/crud/orgs.py
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from ..models.orgs import Org
-from ..schemas.orgs_schemas import OrgCreate, OrgUpdate
+from ...models.space_sites.orgs import Org
+from ...schemas.orgs_schemas import OrgCreate, OrgUpdate
 
 def get_orgs(db: Session, skip: int = 0, limit: int = 100) -> List[Org]:
     return db.query(Org).offset(skip).limit(limit).all()
@@ -17,8 +17,8 @@ def create_org(db: Session, org: OrgCreate) -> Org:
     db.refresh(db_org)
     return db_org
 
-def update_org(db: Session, org_id: str, org: OrgUpdate) -> Optional[Org]:
-    db_org = db.query(Org).filter(Org.id == org_id).first()
+def update_org(db: Session, org: OrgUpdate) -> Optional[Org]:
+    db_org = db.query(Org).filter(Org.id == org.id).first()
     if not db_org:
         return None
     for key, value in org.dict(exclude_unset=True).items():

@@ -11,12 +11,25 @@ class SpaceBase(BaseModel):
     name: Optional[str] = None
     kind: str
     floor: Optional[str] = None
-    building_block: Optional[str] = None
+    building_block: UUID
     area_sqft: Optional[Decimal] = None
     beds: Optional[int] = None
     baths: Optional[int] = None
     attributes: Optional[Any] = None
     status: Optional[str] = "available"
+
+class SpaceListResponse(BaseModel):
+    id: UUID
+    site_id: UUID
+    kind: str
+    code: str
+    status: str
+    area: Optional[float] = None
+    building_block_id: UUID
+    floor: Optional[str] = None
+
+    class Config:
+        orm_mode = True
 
 class SpaceCreate(SpaceBase):
     pass

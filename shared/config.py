@@ -36,9 +36,9 @@ class Settings(BaseSettings):
 settings = Settings()
 
 AUTH_DATABASE_URL = (
-    f"postgresql://{settings.DB_USER}:{settings.DB_PASS}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.AUTH_DB_NAME}"
+    f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASS}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.AUTH_DB_NAME}?sslmode=require"
 )
 
 FACILITY_DATABASE_URL = (
-    f"postgresql://{settings.DB_USER}:{settings.DB_PASS}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.FACILITY_DB_NAME}"
+    f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASS}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.FACILITY_DB_NAME}?sslmode=require"
 )

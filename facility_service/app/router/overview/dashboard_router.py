@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends
-from ...schemas.user_schemas import UserToken
 from ...crud.overview import dashboard_crud
 from shared.auth import validate_current_token
 

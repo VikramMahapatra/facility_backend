@@ -28,5 +28,5 @@ class Site(Base):
     buildings = relationship("Building", back_populates="site", cascade="all, delete-orphan")
     spaces = relationship("Space", back_populates="site", cascade="all, delete")
     org = relationship("Org", back_populates="sites", cascade="all, delete")
-     # 👇 Add this
-    assets = relationship("Asset", back_populates="site", cascade="all, delete-orphan")
+    assets = relationship("Asset", back_populates="site")
+    filters  = relationship("SpaceFilter", back_populates="site", cascade="all, delete")

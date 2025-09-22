@@ -16,3 +16,7 @@ class AssetCategory(Base):
     parent_id = Column(UUID(as_uuid=True), ForeignKey("asset_categories.id"), nullable=True)
     children = relationship("AssetCategory", backref="parent", remote_side=[id])
     attributes = Column(JSONB, nullable=True)
+
+
+    # one category → many assets
+    assets = relationship("Asset", back_populates="category", cascade="all, delete")

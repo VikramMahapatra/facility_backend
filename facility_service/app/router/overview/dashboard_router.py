@@ -1,16 +1,14 @@
 from fastapi import APIRouter, Depends
-from ...schemas.user_schemas import UserToken
 from ...crud.overview import dashboard_crud
 from shared.auth import validate_current_token
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"], dependencies=[Depends(validate_current_token)])
 
 @router.get("/Overview")
-def overview(current_user : UserToken = Depends(validate_current_token)):
-    print(current_user)
-    return dashboard_crud.overview(current_user.org_id)
+def overview():
+    return dashboard_crud.overview()
 
-@router.get("/LeaseOverview")
+@router.get("/leaseoverview")
 def lease_overview():
     return dashboard_crud.lease_overview()
 

@@ -4,6 +4,7 @@ from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from shared.config import settings
+from shared.schemas import UserToken
 
 security = HTTPBearer()
 
@@ -16,7 +17,7 @@ def verify_token(token:str) -> Optional[dict]:
     """Verify and decode a JWT token."""
     try:
         payload= jwt.decode(token, settings.JWT_SECRET, algorithms=settings.JWT_ALGORITHM)
-        return payload
+        return UserToken(**payload)
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

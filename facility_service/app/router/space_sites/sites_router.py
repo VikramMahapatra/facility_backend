@@ -2,6 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
+from shared.schemas import UserToken
 from ...schemas.space_sites.sites_schemas import SiteOut, SiteCreate, SiteUpdate
 from ...crud.space_sites import site_crud as crud
 
@@ -10,8 +11,9 @@ from shared.auth import validate_current_token
 router = APIRouter(prefix="/api/sites", tags=["sites"], dependencies=[Depends(validate_current_token)])
 
 @router.get("/", response_model=List[SiteOut])
-def read_sites(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_sites(db, skip=skip, limit=limit)
+def read_sites(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), 
+    current_user : UserToken = Depends(validate_current_token)):
+    return crud.get_sites(db, current_user.org_id, skip=skip, limit=limit)
 
 @router.get("/{site_id}", response_model=SiteOut)
 def read_site(site_id: str, db: Session = Depends(get_db)):

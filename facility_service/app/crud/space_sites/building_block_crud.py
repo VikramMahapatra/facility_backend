@@ -2,13 +2,13 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime
-
+from uuid import UUID
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.leases import Lease
-from ...models.space_sites.building_models import Building
+from ...models.space_sites.buildings import Building
 
-def get_aggregate_overview(db: Session, org_id: str, site_id: Optional[str] = None):
+def get_aggregate_overview(db: Session, org_id: UUID, site_id: Optional[str] = None):
     now = datetime.utcnow()
 
     site = None
@@ -67,7 +67,7 @@ def get_aggregate_overview(db: Session, org_id: str, site_id: Optional[str] = No
 from sqlalchemy.orm import Session
 from ...models.space_sites.sites import Site
 
-def get_sites_by_org_and_site(db: Session, org_id: str, site_id: str):
+def get_sites_by_org_and_site(db: Session, org_id: UUID, site_id: str):
     query = db.query(Site).filter(Site.org_id == org_id)
     if site_id:
         query = query.filter(Site.id == site_id)

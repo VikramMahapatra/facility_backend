@@ -99,15 +99,13 @@ def verify_otp(db: Session, facility_db: Session, request: authchemas.OTPVerify)
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
     user = db.query(Users).filter(Users.phone == request.mobile).first()
-
-   
     
     if not user:
-        return {
-                "needs_registration": True,
-                "mobile": request.mobile,
-                "allowed_roles": {"default"},
-            }
+        return authchemas.NotRegisteredResponse(
+                needs_registration = True,
+                mobile = request.mobile,
+                allowed_roles = {"default"},
+            )
     
     return get_user_token(facility_db, user)
         
@@ -116,12 +114,12 @@ def get_user_token(facility_db:Session, user:Users):
     token = auth.create_access_token({"user_id": str(user.id),"org_id": str(user.org_id), "mobile": user.phone, "email": user.email, "role": roles})
     user_data = userservices.get_user_by_id(facility_db, user)
     
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "needs_registration": False,
-        "user" : user_data
-    }
+    return authchemas.LoginSuccessResponse(
+        needs_registration = False,
+        access_token = token,
+        token_type = "bearer",
+        user = user_data
+    )
     
 def role_redirect(role: str) -> str:
     return f"/dashboard/{role}"

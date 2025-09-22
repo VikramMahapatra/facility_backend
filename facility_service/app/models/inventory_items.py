@@ -2,7 +2,7 @@
 import uuid
 from sqlalchemy import Column, String, Numeric
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-
+from sqlalchemy.orm import relationship
 from shared.database import Base
 
 class InventoryItem(Base):
@@ -17,3 +17,11 @@ class InventoryItem(Base):
     tracking = Column(String(16), default="none")
     reorder_level = Column(Numeric(12,3))
     attributes = Column(JSONB)
+
+    # 🔑 Added relationship to stocks
+    stocks = relationship(
+        "InventoryStock",
+        back_populates="item",
+        cascade="all, delete-orphan",  # Ensures stocks are deleted if item is deleted
+        passive_deletes=True           # Pushes deletes to DB level for efficiency
+    )

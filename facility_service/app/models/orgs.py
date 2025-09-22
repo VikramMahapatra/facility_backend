@@ -26,4 +26,4 @@ class Org(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     sites = relationship("Site", back_populates="org", cascade="all, delete")
-    spaces = relationship("Space", back_populates="org", cascade="all, delete")
+    spaces = relationship("Space", back_populates="org")

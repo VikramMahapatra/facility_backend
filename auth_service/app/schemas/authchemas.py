@@ -1,5 +1,6 @@
-from pydantic import BaseModel, EmailStr
-from typing import Literal, Optional, Union
+from pydantic import BaseModel, EmailStr, Field, HttpUrl
+from typing import Annotated, Literal, Optional, Union
+from ..schemas.userschema import UserResponse
 
 AllowedRole = Literal["manager", "admin", "superadmin", "user", "default"]
 
@@ -20,15 +21,18 @@ class OTPVerify(BaseModel):
 
 # -------Common----------
 class NotRegisteredResponse(BaseModel):
-    needs_registration: bool = True
-    email: Optional[EmailStr] = None
-    mobile: Optional[str] = None
-    allowed_roles: list[AllowedRole]
+    needs_registration: Literal[True]
+    name: str
+    email: EmailStr
+    picture: Optional[HttpUrl] = None
 
 class LoginSuccessResponse(BaseModel):
-    needs_registration: bool = False
+    needs_registration: Literal[False]
     access_token: str
     token_type: str = "bearer"
-    redirect_url: Optional[str] = None
+    user: UserResponse
 
-AuthResponse = Union[NotRegisteredResponse, LoginSuccessResponse]
+AuthResponse = Annotated[
+    Union[NotRegisteredResponse, LoginSuccessResponse],
+    Field(discriminator="needs_registration"),
+]

@@ -19,6 +19,7 @@ class OrgCreate(OrgBase):
     pass
 
 class OrgUpdate(OrgBase):
+    id: str  
     pass
 
 class OrgOut(OrgBase):

@@ -13,9 +13,8 @@ app = FastAPI(title="Unified Auth (Google + Mobile)")
 
 # Allow requests from your React app
 origins = [
-    "http://localhost:9090",
-    "http://127.0.0.1:8002",
-    "http://192.0.0.2:9090"
+    "http://localhost:8080",
+    "http://127.0.0.1:8001"
     # Add other origins if deploying later
 ]
 

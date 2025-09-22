@@ -9,7 +9,12 @@ from shared.auth import validate_current_token
 from shared.schemas import UserToken
 
 
-router = APIRouter(prefix="/api/orgs", tags=["orgs"],dependencies=[Depends(validate_current_token)])
+router = APIRouter(
+    prefix="/api/orgs",
+    tags=["orgs"],
+    # dependencies=[Depends(validate_current_token)]
+)
+
 
 @router.get("/getall", response_model=List[OrgOut])
 def read_orgs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

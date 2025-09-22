@@ -1,17 +1,43 @@
 # app/crud/leasing_tenants/leases_crud.py
 import uuid
-from typing import List, Optional, Dict, Tuple, Union
+from typing import List, Optional, Dict, Tuple, Union, Any
 from datetime import date, timedelta
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from ...models.leasing_tenants.leases import Lease
 from ...schemas.leases_schemas import LeaseCreate, LeaseUpdate
 
-# Basic CRUD
+# -- Helpers ---------------------------------------------------------------
 
+def _coerce_to_uuid(v: Union[uuid.UUID, str, None]) -> Optional[uuid.UUID]:
+    if v is None:
+        return None
+    if isinstance(v, uuid.UUID):
+        return v
+    try:
+        return uuid.UUID(str(v))
+    except Exception:
+        return None
 
-def create_lease(db: Session, lease: LeaseCreate) -> Lease:
-    payload = lease.dict()
+def _coerce_uuid_fields(payload: Dict[str, Any], keys=("org_id", "site_id", "partner_id", "resident_id", "space_id")) -> Dict[str, Any]:
+    for k in keys:
+        if k in payload and isinstance(payload[k], str) and payload[k]:
+            try:
+                payload[k] = uuid.UUID(payload[k])
+            except Exception:
+                # leave as-is if can't coerce; DB or Pydantic will raise properly
+                pass
+    return payload
+
+# -- Basic CRUD -----------------------------------------------------------
+
+def create_lease(db: Session, lease: Union[LeaseCreate, dict]) -> Lease:
+    """
+    Accepts either a LeaseCreate Pydantic model or a plain dict.
+    Coerces string UUIDs to uuid.UUID before creating.
+    """
+    payload = lease.dict() if hasattr(lease, "dict") else dict(lease)
+    payload = _coerce_uuid_fields(payload)
     db_lease = Lease(id=uuid.uuid4(), **payload)
     db.add(db_lease)
     db.commit()
@@ -19,41 +45,38 @@ def create_lease(db: Session, lease: LeaseCreate) -> Lease:
     return db_lease
 
 def update_lease(db: Session, lease_id: uuid.UUID, lease: LeaseUpdate) -> Optional[Lease]:
-    db_lease = db.query(Lease).filter(Lease.id == lease_id).first()
+    """
+    Uses Session.get (primary-key lookup). Applies only fields present in payload.
+    Coerces UUID-like strings in the update payload.
+    """
+    db_lease = db.get(Lease, lease_id)
     if not db_lease:
         return None
-    for k, v in lease.dict(exclude_unset=True).items():
+
+    data = lease.dict(exclude_unset=True)
+    data = _coerce_uuid_fields(data)
+    for k, v in data.items():
         setattr(db_lease, k, v)
     db.commit()
     db.refresh(db_lease)
     return db_lease
 
 def delete_lease(db: Session, lease_id: uuid.UUID) -> Optional[Lease]:
-    db_lease = db.query(Lease).filter(Lease.id == lease_id).first()
+    db_lease = db.get(Lease, lease_id)
     if not db_lease:
         return None
     db.delete(db_lease)
     db.commit()
     return db_lease
 
+# -- Dashboard ------------------------------------------------------------
 
-# Dashboard 
 def get_leases_card_data(db: Session, org_id: Optional[Union[uuid.UUID, str]] = None, days: int = 90) -> Dict:
     """
-    Dashboard card data. Accepts org_id from token (string) or uuid.UUID.
-    Invalid org_id strings are treated as None (no org filter).
+    Dashboard card data. Accepts org_id (UUID or string).
     Returns JSON-friendly primitives.
     """
-    # coerce org_id if it's a string
-    org_uuid: Optional[uuid.UUID] = None
-    if org_id:
-        if isinstance(org_id, uuid.UUID):
-            org_uuid = org_id
-        else:
-            try:
-                org_uuid = uuid.UUID(str(org_id))
-            except Exception:
-                org_uuid = None  # token had invalid org id; treat as no filter
+    org_uuid = _coerce_to_uuid(org_id)
 
     today = date.today()
     until = today + timedelta(days=days)
@@ -62,7 +85,6 @@ def get_leases_card_data(db: Session, org_id: Optional[Union[uuid.UUID, str]] = 
     if org_uuid:
         base_q = base_q.filter(Lease.org_id == org_uuid)
 
-    # active leases count
     active_count = int(
         base_q
         .filter(Lease.start_date <= today, Lease.end_date >= today)
@@ -70,19 +92,18 @@ def get_leases_card_data(db: Session, org_id: Optional[Union[uuid.UUID, str]] = 
         .scalar() or 0
     )
 
-    # monthly rent (only active leases)
     rent_q = db.query(func.coalesce(func.sum(Lease.rent_amount), 0)).filter(
         Lease.start_date <= today, Lease.end_date >= today
     )
     if org_uuid:
         rent_q = rent_q.filter(Lease.org_id == org_uuid)
+
     monthly_rent_val = rent_q.scalar() or 0
     try:
         monthly_rent = float(monthly_rent_val)
     except Exception:
         monthly_rent = 0.0
 
-    # expiring soon count
     expiring_count = int(
         base_q
         .filter(Lease.end_date >= today, Lease.end_date <= until)
@@ -90,7 +111,6 @@ def get_leases_card_data(db: Session, org_id: Optional[Union[uuid.UUID, str]] = 
         .scalar() or 0
     )
 
-    # average lease term for active leases (in years)
     active_rows = base_q.filter(Lease.start_date <= today, Lease.end_date >= today).all()
     if active_rows:
         total_days = sum(((r.end_date or today) - (r.start_date or today)).days for r in active_rows)
@@ -106,18 +126,8 @@ def get_leases_card_data(db: Session, org_id: Optional[Union[uuid.UUID, str]] = 
         "avg_lease_term_years": float(avg_years),
     }
 
-# Listing with filters
-def _coerce_to_uuid(v: Union[uuid.UUID, str, None]) -> Optional[uuid.UUID]:
-    if v is None:
-        return None
-    if isinstance(v, uuid.UUID):
-        return v
-    try:
-        return uuid.UUID(str(v))
-    except Exception:
-        return None
+# -- Listing with filters -------------------------------------------------
 
-# Replace get_leases_for_listing with:
 def get_leases_for_listing(
     db: Session,
     org_id: Optional[Union[uuid.UUID, str]] = None,
@@ -137,9 +147,8 @@ def get_leases_for_listing(
     if org_uuid:
         q = q.filter(Lease.org_id == org_uuid)
 
-    # coerce site_ids list elements if they are strings
     if site_ids:
-        coerced_site_ids = []
+        coerced_site_ids: List[uuid.UUID] = []
         for s in site_ids:
             s_uuid = _coerce_to_uuid(s)
             if s_uuid:
@@ -151,7 +160,6 @@ def get_leases_for_listing(
         q = q.filter(Lease.status.in_(statuses))
 
     if search:
-        # search on partner_id or space_id (original behavior)
         s = f"%{search.strip().lower()}%"
         q = q.filter(
             or_(

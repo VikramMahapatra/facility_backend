@@ -4,72 +4,30 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
+from shared.schemas import UserToken
 from ...schemas.lease_charges_schemas import (
     LeaseChargeOut, LeaseChargeCreate, LeaseChargeUpdate,
-    LeaseChargesCardData, ChargeByTypeItem, LeaseChargeListResponse,  LeaseChargeListItem   
+    LeaseChargesCardData, LeaseChargeListResponse
 )
 from ...crud.leasing_tenants import lease_charges_crud as crud
+from ...models.leasing_tenants.leases import Lease
 from shared.auth import validate_current_token
 
-router = APIRouter(
-    prefix="/api/lease-charges",
-    tags=["lease_charges"],
-    # dependencies=[Depends(validate_current_token)]
-)
+router = APIRouter(prefix="/api/lease-charges", tags=["lease_charges"])
 
-# Basic CRUD routes (keep your existing ones if present)
-@router.get("/", response_model=List[LeaseChargeOut])
-def read_charges(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_lease_charges(db, skip=skip, limit=limit)
-
-@router.get("/{charge_id}", response_model=LeaseChargeOut)
-def read_charge(charge_id: str, db: Session = Depends(get_db)):
-    try:
-        cid = uuid.UUID(charge_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid charge_id")
-    db_charge = crud.get_lease_charge_by_id(db, cid)
-    if not db_charge:
-        raise HTTPException(status_code=404, detail="LeaseCharge not found")
-    return db_charge
-
-@router.post("/", response_model=LeaseChargeOut)
-def create_charge(payload: LeaseChargeCreate, db: Session = Depends(get_db)):
-    return crud.create_lease_charge(db, payload)
-
-@router.put("/{charge_id}", response_model=LeaseChargeOut)
-def update_charge(charge_id: str, payload: LeaseChargeUpdate, db: Session = Depends(get_db)):
-    try:
-        cid = uuid.UUID(charge_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid charge_id")
-    db_charge = crud.update_lease_charge(db, cid, payload)
-    if not db_charge:
-        raise HTTPException(status_code=404, detail="LeaseCharge not found")
-    return db_charge
-
-@router.delete("/{charge_id}", response_model=LeaseChargeOut)
-def delete_charge(charge_id: str, db: Session = Depends(get_db)):
-    try:
-        cid = uuid.UUID(charge_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid charge_id")
-    db_charge = crud.delete_lease_charge(db, cid)
-    if not db_charge:
-        raise HTTPException(status_code=404, detail="LeaseCharge not found")
-    return db_charge
 
 # ---------------------
-# Dashboard endpoint
+# Dashboard (single endpoint)
 # ---------------------
 @router.get("/dashboard", response_model=LeaseChargesCardData)
-def charges_dashboard(org_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
-    org_uuid = None
-    if org_id:
-        try:
-            org_uuid = uuid.UUID(org_id)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid org_id")
+def charges_dashboard(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    try:
+        org_uuid = uuid.UUID(str(current_user.org_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid org_id in token")
     data = crud.get_lease_charges_card_data(db, org_id=org_uuid)
     return {
         "total_charges": data["total_charges"],
@@ -78,41 +36,110 @@ def charges_dashboard(org_id: Optional[str] = Query(None), db: Session = Depends
         "avg_charge": data["avg_charge"],
     }
 
-# ---------------------
-# Charges by type
-# ---------------------
-@router.get("/by-type", response_model=List[ChargeByTypeItem])
-def charges_by_type(org_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
-    org_uuid = None
-    if org_id:
-        try:
-            org_uuid = uuid.UUID(org_id)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid org_id")
-    rows = crud.get_charges_by_type(db, org_id=org_uuid)
-    return rows
 
 # ---------------------
-# Listing for UI (filters: charge_codes, year, month)
+# Create / Update / Delete (mutations) — ownership enforced
+# ---------------------
+@router.post("/", response_model=LeaseChargeOut)
+def create_charge(
+    payload: LeaseChargeCreate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    # validate lease exists and belongs to user's org
+    try:
+        lease_id = uuid.UUID(str(payload.lease_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid lease_id in payload")
+    lease = db.get(Lease, lease_id)
+    if not lease:
+        raise HTTPException(status_code=404, detail="Lease not found")
+    if str(lease.org_id) != str(current_user.org_id):
+        raise HTTPException(status_code=403, detail="Forbidden: lease not in your org")
+    return crud.create_lease_charge(db, payload)
+
+
+@router.put("/{charge_id}", response_model=LeaseChargeOut)
+def update_charge(
+    charge_id: str,
+    payload: LeaseChargeUpdate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    try:
+        cid = uuid.UUID(charge_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid charge_id")
+
+    existing = crud.get_lease_charge_by_id(db, cid)
+    if not existing:
+        raise HTTPException(status_code=404, detail="LeaseCharge not found")
+    lease = db.get(Lease, existing.lease_id)
+    if not lease or str(lease.org_id) != str(current_user.org_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    updated = crud.update_lease_charge(db, cid, payload)
+    if not updated:
+        raise HTTPException(status_code=404, detail="LeaseCharge not found")
+    return updated
+
+
+@router.delete("/{charge_id}", response_model=LeaseChargeOut)
+def delete_charge(
+    charge_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    try:
+        cid = uuid.UUID(charge_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid charge_id")
+
+    existing = crud.get_lease_charge_by_id(db, cid)
+    if not existing:
+        raise HTTPException(status_code=404, detail="LeaseCharge not found")
+
+    lease = db.get(Lease, existing.lease_id)
+    if not lease or str(lease.org_id) != str(current_user.org_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    deleted = crud.delete_lease_charge(db, cid)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="LeaseCharge not found")
+    return deleted
+
+
+# ---------------------
+# Listing for UI (single endpoint)
 # ---------------------
 @router.get("/list", response_model=LeaseChargeListResponse)
 def list_charges(
-    org_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description="search lease/partner/space"),
     charge_codes: Optional[str] = Query(None, description="comma separated charge codes"),
+    month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    site_ids: Optional[str] = Query(None, description="comma separated site UUIDs"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
 ):
-    org_uuid = None
-    if org_id:
-        try:
-            org_uuid = uuid.UUID(org_id)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid org_id")
+    try:
+        org_uuid = uuid.UUID(str(current_user.org_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid org_id in token")
 
     codes_list = [c.strip() for c in charge_codes.split(",")] if charge_codes else None
+    site_uuid_list = None
+    if site_ids:
+        s = []
+        for p in site_ids.split(","):
+            p = p.strip()
+            if not p:
+                continue
+            try:
+                s.append(uuid.UUID(p))
+            except Exception:
+                continue
+        site_uuid_list = s if s else None
 
     total, items = crud.get_lease_charges_for_listing(
         db=db,
@@ -120,9 +147,10 @@ def list_charges(
         charge_codes=codes_list,
         month=month,
         year=year,
+        site_ids=site_uuid_list,
+        search=search,
         skip=skip,
         limit=limit,
     )
 
-    # items are dicts already prepared in CRUD
     return {"total": total, "items": items}

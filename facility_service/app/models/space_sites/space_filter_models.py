@@ -12,7 +12,7 @@ class SpaceFilter(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), nullable=False)
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id", ondelete="CASCADE"))
-    building_block = Column(String, nullable=True)
+    building_block_id = Column(UUID(as_uuid=True), ForeignKey("buildings.id", ondelete="SET NULL"), nullable=True)
     floor = Column(String, nullable=True)
     kind = Column(String, nullable=False)  # apartment, shop, office, etc.
     code = Column(String, nullable=False)
@@ -21,3 +21,4 @@ class SpaceFilter(Base):
 
     site = relationship("Site", back_populates="spaces")
     site = relationship("Site", back_populates="filters")  # <--- must match Site.filters
+    building = relationship("Building", back_populates="spaces")

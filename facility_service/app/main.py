@@ -17,9 +17,13 @@ from .router import (
 )
 from .router.space_sites.sites_router import router as sites_router
 from .router.leasing_tenants import lease_charges_router, leases_router
-from .router.space_sites import (spaces_router ,building_block_router)
+from .router.space_sites import (spaces_router ,building_block_router,space_filter_router)
 from .router.overview import (dashboard_router,analytics_router)
-
+from .models.space_sites.sites import Site
+from .models.space_sites.building_models import Building
+from .models.space_sites.spaces import Space
+from .models.assets_models import Asset
+from .models.orgs import Org
 
 
 app = FastAPI(title="Facility Service API")
@@ -62,3 +66,4 @@ app.include_router(sites_router)
 app.include_router(dashboard_router.router)
 app.include_router(analytics_router.router)
 app.include_router(building_block_router.router)
+app.include_router(space_filter_router.router)

@@ -16,7 +16,7 @@ from .router import (
 )
 from .router.space_sites.sites_router import router as sites_router
 from .router.leasing_tenants import lease_charges_router, leases_router
-from .router.space_sites import (orgs_router, spaces_router ,building_block_router)
+from .router.space_sites import (orgs_router, spaces_router ,building_block_router,space_filter_router)
 from .router.overview import (dashboard_router,analytics_router)
 from .models import (
     asset_category_models, assets_models, commercial_partners, contracts, inventory_items, inventory_stocks,
@@ -67,3 +67,4 @@ app.include_router(sites_router)
 app.include_router(dashboard_router.router)
 app.include_router(analytics_router.router)
 app.include_router(building_block_router.router)
+app.include_router(space_filter_router.router)

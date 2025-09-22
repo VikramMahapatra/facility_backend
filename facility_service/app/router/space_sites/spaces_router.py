@@ -5,6 +5,7 @@ from shared.database import get_facility_db as get_db
 from ...schemas.space_sites.spaces_schemas import SpaceOut, SpaceCreate, SpaceUpdate
 from ...crud.space_sites import spaces_crud as crud
 from shared.auth import validate_current_token #for dependicies 
+from shared.schemas import UserToken
 from uuid import UUID
 router = APIRouter(
     prefix="/api/spaces",
@@ -14,8 +15,8 @@ router = APIRouter(
 
 #-----------------------------------------------------------------
 @router.get("/", response_model=List[SpaceOut])
-def read_spaces(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user = Depends(validate_current_token)):
-    return crud.get_spaces(db,skip=skip, limit=limit)
+def read_spaces(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_spaces(db,current_user.org_id ,skip=skip, limit=limit )
 
 
 @router.get("/{space_id}", response_model=SpaceOut)

@@ -3,15 +3,14 @@ from sqlalchemy import Column, String, Date, DateTime, func, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
-
+from sqlalchemy import JSON
 from shared.database import Base
-
 
 class Site(Base):
     __tablename__ = "sites"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False) 
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(200), nullable=False)
     code = Column(String(32))
     kind = Column(String(24), nullable=False)
@@ -23,10 +22,9 @@ class Site(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # Relationships (use string references to avoid circular imports)
-    # 👇 Add this reverse side of the relationship
-    buildings = relationship("Building", back_populates="site", cascade="all, delete-orphan")
-    spaces = relationship("Space", back_populates="site", cascade="all, delete")
+    # Relationships
     org = relationship("Org", back_populates="sites", cascade="all, delete")
     assets = relationship("Asset", back_populates="site")
-    filters  = relationship("SpaceFilter", back_populates="site", cascade="all, delete")
+    buildings = relationship("Building", back_populates="site", cascade="all, delete-orphan")
+    spaces = relationship("Space", back_populates="site", cascade="all, delete-orphan")
+    space_filters = relationship("SpaceFilter", back_populates="site", cascade="all, delete-orphan")

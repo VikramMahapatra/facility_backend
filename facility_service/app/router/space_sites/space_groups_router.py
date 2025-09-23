@@ -3,15 +3,19 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
-from ..schemas.space_groups_schemas import SpaceGroupOut, SpaceGroupCreate, SpaceGroupUpdate
-from ..crud import space_groups_crud as crud
+from shared.schemas import UserToken
+from ...schemas.space_sites.space_groups_schemas import SpaceGroupOut, SpaceGroupCreate, SpaceGroupRequest, SpaceGroupResponse, SpaceGroupUpdate
+from ...crud.space_sites import space_groups_crud as crud
 from shared.auth import validate_current_token
 
 router = APIRouter(prefix="/api/space-groups", tags=["space_groups"],dependencies=[Depends(validate_current_token)])
 
-@router.get("/", response_model=List[SpaceGroupOut])
-def read_space_groups(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_space_groups(db, skip=skip, limit=limit)
+@router.get("/", response_model=SpaceGroupResponse)
+def get_space_groups( 
+    params : SpaceGroupRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_space_groups(db, current_user.org_id, params)
 
 @router.get("/{group_id}", response_model=SpaceGroupOut)
 def read_space_group(group_id: str, db: Session = Depends(get_db)):
@@ -21,7 +25,11 @@ def read_space_group(group_id: str, db: Session = Depends(get_db)):
     return db_group
 
 @router.post("/", response_model=SpaceGroupOut)
-def create_space_group(group: SpaceGroupCreate, db: Session = Depends(get_db)):
+def create_space_group(
+    group: SpaceGroupCreate, 
+    db: Session = Depends(get_db),
+    current_user : UserToken = Depends(validate_current_token)):
+    group.org_id = current_user.org_id
     return crud.create_space_group(db, group)
 
 @router.put("/{group_id}", response_model=SpaceGroupOut)

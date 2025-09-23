@@ -3,17 +3,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
 from shared.schemas import UserToken
-from ...schemas.space_sites.sites_schemas import SiteOut, SiteCreate, SiteUpdate
+from ...schemas.space_sites.sites_schemas import SiteLookup, SiteListResponse, SiteOut, SiteCreate, SiteRequest, SiteUpdate
 from ...crud.space_sites import site_crud as crud
 
 from shared.auth import validate_current_token
 
 router = APIRouter(prefix="/api/sites", tags=["sites"], dependencies=[Depends(validate_current_token)])
 
-@router.get("/", response_model=List[SiteOut])
-def read_sites(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), 
+@router.get("/", response_model=SiteListResponse)
+def read_sites(params : SiteRequest = Depends(), db: Session = Depends(get_db), 
     current_user : UserToken = Depends(validate_current_token)):
-    return crud.get_sites(db, current_user.org_id, skip=skip, limit=limit)
+    return crud.get_sites(db, current_user.org_id, params)
+
+@router.get("/lookup", response_model=List[SiteLookup])
+def site_lookup(db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
+    return crud.get_site_lookup(db, current_user.org_id)
 
 @router.get("/{site_id}", response_model=SiteOut)
 def read_site(site_id: str, db: Session = Depends(get_db)):
@@ -23,12 +27,13 @@ def read_site(site_id: str, db: Session = Depends(get_db)):
     return db_site
 
 @router.post("/", response_model=SiteOut)
-def create_site(site: SiteCreate, db: Session = Depends(get_db)):
+def create_site(site: SiteCreate, db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
+    site.org_id = current_user.org_id
     return crud.create_site(db, site)
 
-@router.put("/{site_id}", response_model=SiteOut)
-def update_site(site_id: str, site: SiteUpdate, db: Session = Depends(get_db)):
-    db_site = crud.update_site(db, site_id, site)
+@router.put("/", response_model=SiteOut)
+def update_site(site: SiteUpdate, db: Session = Depends(get_db)):
+    db_site = crud.update_site(db, site)
     if not db_site:
         raise HTTPException(status_code=404, detail="Site not found")
     return db_site

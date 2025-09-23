@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy import Column, String, ForeignKey, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from sqlalchemy.orm import relationship
@@ -14,6 +14,8 @@ class SpaceGroup(Base):
     name = Column(String(128), nullable=False)
     kind = Column(String(32), nullable=False)
     specs = Column(JSONB)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     org = relationship("Org")
     site = relationship("Site")

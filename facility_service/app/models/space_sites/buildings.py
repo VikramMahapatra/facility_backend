@@ -1,6 +1,6 @@
 # building.py
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Column, String, Integer, JSON, ForeignKey
+from sqlalchemy import Column, String, Integer, JSON, ForeignKey, func, DateTime
 from sqlalchemy.orm import relationship
 import uuid
 from shared.database import Base
@@ -14,6 +14,7 @@ class Building(Base):
     floors = Column(Integer)
     status = Column(String(16), default="active")
     attributes = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     site = relationship("Site", back_populates="buildings")

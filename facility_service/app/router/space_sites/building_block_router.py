@@ -11,38 +11,34 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from ...crud.space_sites import building_block_crud as crud
-from ...schemas.space_sites.building_schemas import BuildingListResponse
+from ...schemas.space_sites.building_schemas import BuildingCreate, BuildingListResponse, BuildingOut, BuildingRequest, BuildingUpdate
 from uuid import UUID
 router = APIRouter(
     prefix="/api/buildings",
     tags=["Buildings"] ,dependencies=[Depends(validate_current_token)],
 )
-# ------------------------------
-# Aggregate overview (all sites)
-# ------------------------------
 
-@router.get("/overview", summary="Aggregated Space Overview")
-def aggregated_overview(
-    current_user: UserToken = Depends(validate_current_token),#Query(..., description="Organization ID"),
-    site_id: Optional[str] = Query(None, description="Optional Site ID"),
-    db: Session = Depends(get_db)
-):
-    """
-    Returns aggregated overview for spaces under the given org_id.
-
-    Rules:
-    - Only include spaces where Space.org_id == org_id
-    - If site_id is provided → filter by Space.site_id == site_id
-    - If site_id is None or invalid → include all sites in that org
-    """
-    overview = get_aggregate_overview(db, current_user.org_id, site_id)
-    return overview
-
-
-@router.get("/getall", response_model=List[BuildingListResponse])
+@router.get("/", response_model=BuildingListResponse)
 def get_all_buildings(
-    site_id: Optional[str] = None,
+    params : BuildingRequest = Depends(),
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token),#Query(..., description="Organization ID"),  # org_id from token
+    current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_sites_by_org_and_site(db,current_user.org_id, site_id)
+    return crud.get_buildings(db,current_user.org_id, params)
+
+
+@router.post("/", response_model=BuildingOut)
+def create_building(building: BuildingCreate, db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
+    building.org_id = current_user.org_id
+    return crud.create_building(db, building)
+
+@router.put("/", response_model=BuildingOut)
+def update_building(building: BuildingUpdate, db: Session = Depends(get_db)):
+    db_site = crud.update_site(db, building)
+    if not db_site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    return db_site
+
+@router.delete("/{id}")
+def delete_building(id: str, db: Session = Depends(get_db)):
+    crud.delete_building(db, id)

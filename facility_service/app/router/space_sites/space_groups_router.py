@@ -32,16 +32,15 @@ def create_space_group(
     group.org_id = current_user.org_id
     return crud.create_space_group(db, group)
 
-@router.put("/{group_id}", response_model=SpaceGroupOut)
-def update_space_group(group_id: str, group: SpaceGroupUpdate, db: Session = Depends(get_db)):
-    db_group = crud.update_space_group(db, group_id, group)
+@router.put("/", response_model=SpaceGroupOut)
+def update_space_group(group: SpaceGroupUpdate, db: Session = Depends(get_db)):
+    db_group = crud.update_space_group(db, group)
     if not db_group:
         raise HTTPException(status_code=404, detail="SpaceGroup not found")
     return db_group
 
-@router.delete("/{group_id}", response_model=SpaceGroupOut)
+@router.delete("/{group_id}")
 def delete_space_group(group_id: str, db: Session = Depends(get_db)):
     db_group = crud.delete_space_group(db, group_id)
     if not db_group:
         raise HTTPException(status_code=404, detail="SpaceGroup not found")
-    return db_group

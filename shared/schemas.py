@@ -18,3 +18,7 @@ class CommonQueryParams(BaseModel):
     search: Optional[str] = None
     skip: Optional[int] = 0
     limit: Optional[int] = 100
+    
+class Lookup(BaseModel):
+    id: UUID
+    name: str

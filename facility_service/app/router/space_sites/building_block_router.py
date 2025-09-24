@@ -4,8 +4,7 @@ from sqlalchemy.orm import Session
 # Use relative imports
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
-from shared.schemas import UserToken #dependancies
-from ...crud.space_sites.building_block_crud import get_aggregate_overview
+from shared.schemas import Lookup, UserToken #dependancies
 #for get all list of sites 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -25,6 +24,10 @@ def get_all_buildings(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.get_buildings(db,current_user.org_id, params)
+
+@router.get("/lookup", response_model=List[Lookup])
+def building_lookup(site_id: Optional[str]= Query(None), db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
+    return crud.get_building_lookup(db, site_id, current_user.org_id)
 
 
 @router.post("/", response_model=BuildingOut)

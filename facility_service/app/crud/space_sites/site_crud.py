@@ -48,7 +48,7 @@ def get_sites(db: Session, org_id:str, params:SiteRequest):
     )
     
     if params.kind and params.kind.lower() != "all":
-        site_query = site_query.filter(Site.kind == params.kind)
+        site_query = site_query.filter(func.lower(Site.kind) == params.kind.lower())
         
     if params.search:
         search_term = f"%{params.search}%"

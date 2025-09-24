@@ -2,8 +2,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
-from shared.schemas import UserToken
-from ...schemas.space_sites.sites_schemas import SiteLookup, SiteListResponse, SiteOut, SiteCreate, SiteRequest, SiteUpdate
+from shared.schemas import Lookup, UserToken
+from ...schemas.space_sites.sites_schemas import  SiteListResponse, SiteOut, SiteCreate, SiteRequest, SiteUpdate
 from ...crud.space_sites import site_crud as crud
 
 from shared.auth import validate_current_token
@@ -15,7 +15,7 @@ def read_sites(params : SiteRequest = Depends(), db: Session = Depends(get_db),
     current_user : UserToken = Depends(validate_current_token)):
     return crud.get_sites(db, current_user.org_id, params)
 
-@router.get("/lookup", response_model=List[SiteLookup])
+@router.get("/lookup", response_model=List[Lookup])
 def site_lookup(db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
     return crud.get_site_lookup(db, current_user.org_id)
 

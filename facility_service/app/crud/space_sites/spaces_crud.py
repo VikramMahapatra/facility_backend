@@ -64,6 +64,7 @@ def get_spaces(db: Session, org_id: UUID, params: SpaceRequest) -> SpaceListResp
     
     spaces = (
         base_query
+        .order_by(Space.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
         .all()

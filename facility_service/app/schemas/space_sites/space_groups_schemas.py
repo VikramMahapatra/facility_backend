@@ -32,7 +32,7 @@ class SpaceGroupRequest(CommonQueryParams):
     
     
 class SpaceGroupResponse(BaseModel):
-    spaceGroups: List[SpaceGroupBase]
+    spaceGroups: List[SpaceGroupOut]
     total: int
     
     model_config = {"from_attributes": True}

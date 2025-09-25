@@ -11,6 +11,8 @@ class SpaceGroupMemberBase(BaseModel):
     group_id:UUID
     space_id:UUID
     assigned_by:str
+    
+    model_config = {"from_attributes": True}
 
 class SpaceGroupMemberCreate(SpaceGroupMemberBase):
     pass

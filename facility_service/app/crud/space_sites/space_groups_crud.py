@@ -90,6 +90,7 @@ def get_space_group_lookup(db: Session, site_id:str, space_id:str, org_id: str):
         )
         .join(Site, SpaceGroup.site_id == Site.id)
         .filter(SpaceGroup.org_id == org_id)
+        .distinct(SpaceGroup.id)
     )
     
     if site_id and site_id.lower() != "all":  # only add filter if site_id is provided

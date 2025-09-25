@@ -2,7 +2,7 @@ import uuid
 from typing import List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, or_, case
+from sqlalchemy import func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
@@ -108,4 +108,19 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
     db.delete(db_space)
     db.commit()
     return db_space
+
+def get_space_lookup(db: Session, site_id:str, org_id: str):
+    space_query = (
+        db.query(
+            Space.id,
+            func.concat(Space.name, literal(" - "), Site.name).label("name")
+        )
+        .join(Site, Space.site_id == Site.id)
+        .filter(Space.org_id == org_id)
+    )
+    
+    if site_id and site_id.lower() != "all":  # only add filter if site_id is provided
+        space_query = space_query.filter(Space.site_id == site_id)
+        
+    return space_query.all()
 

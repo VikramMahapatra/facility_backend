@@ -5,7 +5,7 @@ from shared.database import get_facility_db as get_db
 from ...schemas.space_sites.spaces_schemas import SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate
 from ...crud.space_sites import spaces_crud as crud
 from shared.auth import validate_current_token #for dependicies 
-from shared.schemas import UserToken
+from shared.schemas import Lookup, UserToken
 from uuid import UUID
 router = APIRouter(
     prefix="/api/spaces",
@@ -53,3 +53,6 @@ def delete_space(space_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Space not found")
     return db_space
 
+@router.get("/lookup", response_model=List[Lookup])
+def space_lookup(site_id: Optional[str]= Query(None), db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
+    return crud.get_space_lookup(db, site_id, current_user.org_id)

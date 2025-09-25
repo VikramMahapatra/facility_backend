@@ -11,7 +11,7 @@ class SpaceGroupBase(BaseModel):
     name: str
     kind: str
     specs: Optional[Any] = None
-    members: Optional[int] = None
+    group_members: Optional[int] = None
 
 class SpaceGroupCreate(SpaceGroupBase):
     pass

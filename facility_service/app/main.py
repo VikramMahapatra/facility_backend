@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shared.database import facility_engine, Base
 from .router import (
-    space_group_members_router,
     vendor_router,
     contracts_router,
     inventory_items_router,
@@ -16,7 +15,8 @@ from .router import (
 from .router.leasing_tenants import lease_charges_router, leases_router
 from .router.space_sites import (
     orgs_router, 
-    sites_router, 
+    sites_router,
+    space_group_members_router, 
     space_groups_router, 
     spaces_router ,
     building_block_router,
@@ -24,9 +24,9 @@ from .router.space_sites import (
 from .router.overview import (dashboard_router,analytics_router)
 from .models import (
     asset_category_models, assets_models, commercial_partners, contracts, inventory_items, inventory_stocks,
-    purchase_order_lines, purchase_orders, space_group_members, vendors
+    purchase_order_lines, purchase_orders, vendors
 )
-from .models.space_sites import buildings, orgs, sites, space_filter_models, space_groups
+from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.leasing_tenants import leases, lease_charges
 
 

@@ -11,7 +11,7 @@ from ...models.space_sites.sites import Site
 from ...models.space_sites.space_groups import SpaceGroup
 from ...models.space_sites.spaces import Space
 from ...models.space_sites.space_group_members import SpaceGroupMember
-from ...schemas.space_sites.space_group_members_schemas import SpaceGroupMemberCreate, SpaceGroupMemberOut, SpaceGroupMemberRequest, SpaceGroupMemberResponse, SpaceGroupMemberUpdate
+from ...schemas.space_sites.space_group_members_schemas import SpaceGroupMemberBase, SpaceGroupMemberCreate, SpaceGroupMemberOut, SpaceGroupMemberRequest, SpaceGroupMemberResponse, SpaceGroupMemberUpdate
 
 def build_filters(org_id : UUID, params: SpaceGroupMemberRequest):
     filters = []
@@ -134,7 +134,7 @@ def get_space_group_member_by_id(db: Session, group_id: str, space_id: str) -> O
         SpaceGroupMember.space_id == space_id
     ).first()
 
-def add_member(db: Session, data: SpaceGroupMemberCreate) -> SpaceGroupMemberOut:
+def add_member(db: Session, data: SpaceGroupMemberCreate) -> SpaceGroupMemberBase:
     # check if already exists
     existing = db.query(SpaceGroupMember).filter_by(
         group_id=data.group_id, space_id=data.space_id
@@ -153,10 +153,10 @@ def add_member(db: Session, data: SpaceGroupMemberCreate) -> SpaceGroupMemberOut
     db.commit()
     db.refresh(member)
 
-    return SpaceGroupMemberOut.model_validate(member)
+    return SpaceGroupMemberBase.model_validate(member)
 
 
-def update_member(db: Session, data: SpaceGroupMemberUpdate) -> SpaceGroupMemberOut:
+def update_member(db: Session, data: SpaceGroupMemberUpdate) -> SpaceGroupMemberBase:
     member = db.query(SpaceGroupMember).filter_by(
         group_id=data.group_id, space_id=data.space_id
     ).first()
@@ -170,7 +170,7 @@ def update_member(db: Session, data: SpaceGroupMemberUpdate) -> SpaceGroupMember
     db.commit()
     db.refresh(member)
 
-    return SpaceGroupMemberOut.model_validate(member)
+    return SpaceGroupMemberBase.model_validate(member)
 
 
 def delete_member(db: Session, group_id: UUID, space_id: UUID) -> bool:

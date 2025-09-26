@@ -29,8 +29,6 @@ from .models import (
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.leasing_tenants import leases, lease_charges, tenants
 
-
-
 app = FastAPI(title="Facility Service API")
 
 # Create all tables

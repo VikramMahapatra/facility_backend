@@ -12,7 +12,7 @@ from .router import (
     asset_category_router,
     assets_router,
 )
-from .router.leasing_tenants import lease_charges_router, leases_router
+from .router.leasing_tenants import lease_charges_router, leases_router, tenants_router
 from .router.space_sites import (
     orgs_router, 
     sites_router,
@@ -27,7 +27,7 @@ from .models import (
     purchase_order_lines, purchase_orders, vendors
 )
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
-from .models.leasing_tenants import leases, lease_charges
+from .models.leasing_tenants import leases, lease_charges, tenants
 
 
 
@@ -72,3 +72,4 @@ app.include_router(dashboard_router.router)
 app.include_router(analytics_router.router)
 app.include_router(building_block_router.router)
 app.include_router(space_filter_router.router)
+app.include_router(tenants_router.router)

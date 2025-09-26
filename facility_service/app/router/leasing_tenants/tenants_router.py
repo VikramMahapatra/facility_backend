@@ -10,10 +10,15 @@ from shared.auth import validate_current_token
 
 router = APIRouter(prefix="/tenants", tags=["Tenants"])
 
-# ---------- Create Tenant ----------
+# ---------- Get Tenant ----------
 @router.get("/{tenant_id}", response_model=TenantView)
 def get_tenant_by_id(tenant_id: str, db: Session = Depends(get_db)):
     db_tenant = crud.get_tenant(db, tenant_id)
     if not db_tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return db_tenant
+
+#----------- Delete Tenant -------------
+@router.delete("/{tenant_id}", summary="Delete a tenant by ID")
+def delete_tenant(tenant_id: str, db: Session = Depends(get_db)):
+    return crud.delete_tenant(db=db, tenant_id=tenant_id)

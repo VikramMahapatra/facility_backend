@@ -33,6 +33,6 @@ class Lease(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
+    kind = Column(String(32), nullable=False)
     # relation (optional)
     charges = relationship("LeaseCharge", back_populates="lease", cascade="all, delete")

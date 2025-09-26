@@ -46,4 +46,20 @@ class TenantView(TenantBase):
 # ---------- Delete Schema ----------
 class TenantDelete(BaseModel):
     id: UUID
-    
+
+class TenantStatsResponse(BaseModel):
+    total: int
+    active: int
+    commercial: int
+    individual: int
+
+class TenantFilterResponse(BaseModel):
+    id: UUID
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    flat_number: Optional[str] = None
+    site_id: UUID
+
+    class Config:
+        orm_mode = True

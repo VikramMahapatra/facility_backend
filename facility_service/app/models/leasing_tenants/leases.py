@@ -36,3 +36,5 @@ class Lease(Base):
     kind = Column(String(32), nullable=False)
     # relation (optional)
     charges = relationship("LeaseCharge", back_populates="lease", cascade="all, delete")
+    tenant = relationship("Tenant", back_populates="leases")
+    

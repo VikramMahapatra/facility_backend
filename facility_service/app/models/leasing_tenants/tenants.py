@@ -22,4 +22,5 @@ class Tenant(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # relationships
+    leases = relationship("Lease", back_populates="tenant", uselist=True)
     site = relationship("Site", back_populates="tenants")

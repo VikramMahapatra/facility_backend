@@ -22,13 +22,16 @@ from .router.space_sites import (
     building_block_router,
     space_filter_router)
 from .router.overview import (dashboard_router,analytics_router)
+from .router.financials import (invoice_router)
+from .router.crm import contact_router
 from .models import (
     asset_category_models, assets_models, commercial_partners, contracts, inventory_items, inventory_stocks,
     purchase_order_lines, purchase_orders, vendors
 )
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.leasing_tenants import leases, lease_charges
-
+from .models.financials import invoices
+from .models.crm import contacts, companies
 
 
 app = FastAPI(title="Facility Service API")
@@ -72,3 +75,5 @@ app.include_router(dashboard_router.router)
 app.include_router(analytics_router.router)
 app.include_router(building_block_router.router)
 app.include_router(space_filter_router.router)
+app.include_router(invoice_router.router)
+app.include_router(contact_router.router)

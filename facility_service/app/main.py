@@ -22,7 +22,7 @@ from .router.space_sites import (
     building_block_router,
     space_filter_router)
 from .router.overview import (dashboard_router,analytics_router)
-from .router.financials import (invoice_router)
+from .router.financials import (invoice_router, tax_codes_router)
 from .router.crm import contact_router
 from .models import (
     asset_category_models, assets_models, commercial_partners, contracts, inventory_items, inventory_stocks,
@@ -77,3 +77,4 @@ app.include_router(building_block_router.router)
 app.include_router(space_filter_router.router)
 app.include_router(invoice_router.router)
 app.include_router(contact_router.router)
+app.include_router(tax_codes_router.router)

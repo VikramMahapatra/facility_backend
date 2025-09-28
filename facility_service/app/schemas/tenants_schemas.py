@@ -1,65 +1,43 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, Any
-from datetime import date
+# app/schemas/leasing_tenants/tenants_schemas.py
 from uuid import UUID
-
-
-# ---------- Base Schema ----------
+from typing import Optional, List, Any
+from datetime import date
+from pydantic import BaseModel
+from shared.schemas import CommonQueryParams
+ 
 class TenantBase(BaseModel):
-    name: str
-    email: Optional[EmailStr] = None
+    name: Optional[str] = None
+    email: Optional[str] = None
     phone: Optional[str] = None
     vehicle_info: Optional[Any] = None
     family_info: Optional[Any] = None
     tenancy_info: Optional[date] = None
     police_verification_info: Optional[bool] = False
     flat_number: Optional[str] = None
-    site_id: UUID
-    
-
-# ---------- Create Schema ----------
-class TenantCreate(TenantBase):
-    pass
-
-
-# ---------- Update Schema ----------
-class TenantUpdate(BaseModel):
-    name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    vehicle_info: Optional[Any] = None
-    family_info: Optional[Any] = None
-    tenancy_info: Optional[date] = None
-    police_verification_info: Optional[bool] = None
-    flat_number: Optional[str] = None
     site_id: Optional[UUID] = None
-
-
-# ---------- View Schema ----------
-class TenantView(TenantBase):
-    id: UUID
-
-    class Config:
-        from_attributes = True   # ✅ for Pydantic v2
-
-
-# ---------- Delete Schema ----------
-class TenantDelete(BaseModel):
-    id: UUID
-
-class TenantStatsResponse(BaseModel):
-    total: int
-    active: int
-    commercial: int
-    individual: int
-
-class TenantFilterResponse(BaseModel):
-    id: UUID
+ 
+class TenantCreate(TenantBase):
     name: str
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    flat_number: Optional[str] = None
     site_id: UUID
-
-    class Config:
-        orm_mode = True
+ 
+class TenantUpdate(TenantBase):
+    id: str
+ 
+class TenantOut(TenantBase):
+    id: UUID
+    active_leases: int = 0
+    model_config = {"from_attributes": True}
+ 
+class TenantRequest(CommonQueryParams):
+    site_id: Optional[str] = None   # "all" or UUID
+ 
+class TenantListResponse(BaseModel):
+    tenants: List[TenantOut]
+    total: int
+ 
+class TenantOverview(BaseModel):
+    totalTenants: int
+    activeTenants: int
+    commercialTenants: int   
+    individualTenants: int   
+ 

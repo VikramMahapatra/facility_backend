@@ -16,8 +16,10 @@ class TaxCode(Base):
     jurisdiction = Column(String(64), default="IN")
     status: str = Column(String(16), default="active")  # active|inactive
     accounts = Column(JSONB, nullable=True)  # mapping to GL
-    created_at = Column(DateTime, default=func.now)
-    updated_at = Column(DateTime, default=func.now, onupdate=func.now)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True),
+                        server_default=func.now(), onupdate=func.now())
 
     # Optional relationship if you have an Org model
     org = relationship("Org", back_populates="tax_codes")

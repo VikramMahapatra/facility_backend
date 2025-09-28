@@ -1,73 +1,58 @@
-# app/schemas/leases.py
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import datetime, date
 from uuid import UUID
-
-# Keep nested JSON as plain dicts to stay simple (you asked to keep one LeaseBase)
+from typing import Optional, List, Any
+from decimal import Decimal
+from pydantic import BaseModel
+ 
+from shared.schemas import CommonQueryParams
+ 
 class LeaseBase(BaseModel):
-    org_id: UUID
-    site_id: UUID
-    partner_id: Optional[UUID] = None
-    resident_id: Optional[UUID] = None
+    org_id: Optional[UUID] = None
+    site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
-
-    start_date: date
-    end_date: date
-
-    rent_amount: Decimal
+ 
+    kind: Optional[str] = None                 # "commercial" | "residential"
+    partner_id: Optional[UUID] = None          # when kind="commercial"
+    tenant_id: Optional[UUID] = None           # when kind="residential"
+ 
+    reference: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    rent_amount: Optional[Decimal] = None
     deposit_amount: Optional[Decimal] = None
-    frequency: Optional[str] = "monthly"
-
-    escalation: Optional[Dict[str, Any]] = None
-    revenue_share: Optional[Dict[str, Any]] = None
-
-    cam_method: Optional[str] = "area_share"
     cam_rate: Optional[Decimal] = None
-
-    utilities: Optional[Dict[str, Any]] = None
-    status: Optional[str] = "active"
-    documents: Optional[List[str]] = None
-
-    class Config:
-        orm_mode = True
-
+    utilities: Optional[Any] = None
+    status: Optional[str] = "draft"
+    documents: Optional[Any] = None
+ 
 class LeaseCreate(LeaseBase):
-    pass
-
+    # org_id will be filled from token in router
+    kind: str
+ 
 class LeaseUpdate(LeaseBase):
-    pass
-
+    id: UUID
+ 
 class LeaseOut(LeaseBase):
     id: UUID
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-    # ensure fields appear in JSON in same order as declared in class
-    class Config:
-        orm_mode = True
-        json_encoders = {
-            Decimal: lambda v: float(v)  # convert Decimal to float for JSON
-        }
-
-# Dashboard response
-class LeasesCardDataOut(BaseModel):
-    active_leases: int
-    monthly_rent_value: float
-    expiring_soon: int
-    avg_lease_term_years: float
-
-    class Config:
-        orm_mode = True
-
-# List response
-class LeaseListItem(LeaseOut):
-    pass
-
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    space_code: Optional[str] = None
+    site_name: Optional[str] = None
+ 
+    model_config = {"from_attributes": True}
+ 
+class LeaseRequest(CommonQueryParams):
+    site_id: Optional[str] = None      
+    kind: Optional[str] = None         # "all" | "commercial" | "residential"
+    status: Optional[str] = None       # "all" | "active" | ...
+ 
 class LeaseListResponse(BaseModel):
+    leases: List[LeaseOut]
     total: int
-    items: List[LeaseListItem]
-
-    class Config:
-        orm_mode = True
+ 
+class LeaseOverview(BaseModel):
+    activeLeases: int
+    monthlyRentValue: float
+    expiringSoon: int
+    avgLeaseTermMonths: float
+ 

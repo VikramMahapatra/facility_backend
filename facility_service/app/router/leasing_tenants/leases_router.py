@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
 from ...schemas.leases_schemas import (
-    LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeaseRequest, LeaseUpdate
+    LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeaseRequest, LeaseUpdate, LeaseSiteKindResponse
 )
 from ...crud.leasing_tenants import leases_crud as crud
 from shared.auth import validate_current_token
 from shared.schemas import UserToken
- 
+from typing import List
+from uuid import UUID
 router = APIRouter(
     prefix="/api/leases",
     tags=["leases"],
@@ -58,3 +59,13 @@ def delete_lease(lease_id: str, db: Session = Depends(get_db)):
     if not obj:
         raise HTTPException(status_code=404, detail="Lease not found")
     return obj
+
+from ...crud.leasing_tenants.leases_crud import fetch_leases_by_site_kind
+
+@router.get("/by-site-kind", response_model=List[LeaseSiteKindResponse])
+def get_leases_by_site_kind(
+    org_id: UUID,
+    kind: str = Query(..., description="Kind of site"),
+    db: Session = Depends(get_db),
+):
+    return fetch_leases_by_site_kind(org_id, kind, db)

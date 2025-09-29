@@ -1,7 +1,7 @@
 from typing import Optional
 from datetime import date, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, NUMERIC
+from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
  
 from ...models.leasing_tenants.leases import Lease
@@ -119,3 +119,30 @@ def delete(db: Session, lease_id: str) -> Optional[Lease]:
     db.delete(obj)
     db.commit()
     return obj
+
+def fetch_leases_by_site_kind(org_id: UUID, kind: str, db: Session):
+    results = (
+    db.query(
+        Lease.org_id.label("org_id"),
+        Lease.start_date.label("start_date"),
+        Lease.end_date.label("end_date"),
+        Lease.rent_amount.label("rent_amount"),
+        Site.kind.label("kind"),
+        Space.name.label("name"),
+    )
+    .join(Space, Space.id == Lease.space_id)
+    .join(Site, Site.id == Space.site_id)
+    .filter(and_(Lease.org_id == org_id, Site.kind == kind))
+    .all()
+)
+    return [
+        {
+            "org_id": r.org_id,
+            "kind": r.kind,
+            "name": r.name,
+            "start_date": r.start_date,
+            "end_date": r.end_date,
+            "rent_amount": float(r.rent_amount) if r.rent_amount else None
+        }
+        for r in results
+    ]

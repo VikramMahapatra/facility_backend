@@ -12,7 +12,7 @@ from .router import (
     asset_category_router,
     assets_router,
 )
-from .router.leasing_tenants import lease_charges_router, leases_router
+from .router.leasing_tenants import lease_charges_router, leases_router, tenants_router
 from .router.space_sites import (
     orgs_router, 
     sites_router,
@@ -29,11 +29,10 @@ from .models import (
     purchase_order_lines, purchase_orders, vendors
 )
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
+from .models.leasing_tenants import leases, lease_charges, tenants
 from .models.leasing_tenants import leases, lease_charges
 from .models.financials import invoices
 from .models.crm import contacts, companies
-
-
 app = FastAPI(title="Facility Service API")
 
 # Create all tables
@@ -56,7 +55,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(orgs_router.router)
-app.include_router(spaces_router.router) #----------------added space overview
+app.include_router(spaces_router.router)
 app.include_router(space_groups_router.router)
 app.include_router(space_group_members_router.router)
 app.include_router(vendor_router.router)
@@ -75,6 +74,7 @@ app.include_router(dashboard_router.router)
 app.include_router(analytics_router.router)
 app.include_router(building_block_router.router)
 app.include_router(space_filter_router.router)
+app.include_router(tenants_router.router)
 app.include_router(invoice_router.router)
 app.include_router(contact_router.router)
 app.include_router(tax_codes_router.router)

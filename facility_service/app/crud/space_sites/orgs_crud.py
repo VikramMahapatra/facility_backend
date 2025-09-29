@@ -2,13 +2,16 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from ...models.space_sites.orgs import Org
-from ...schemas.orgs_schemas import OrgCreate, OrgUpdate
+from ...schemas.space_sites.orgs_schemas import OrgCreate, OrgUpdate
+
 
 def get_orgs(db: Session, skip: int = 0, limit: int = 100) -> List[Org]:
     return db.query(Org).offset(skip).limit(limit).all()
 
+
 def get_org_by_id(db: Session, org_id: str) -> Optional[Org]:
     return db.query(Org).filter(Org.id == org_id).first()
+
 
 def create_org(db: Session, org: OrgCreate) -> Org:
     db_org = Org(**org.dict())
@@ -16,6 +19,7 @@ def create_org(db: Session, org: OrgCreate) -> Org:
     db.commit()
     db.refresh(db_org)
     return db_org
+
 
 def update_org(db: Session, org: OrgUpdate) -> Optional[Org]:
     db_org = db.query(Org).filter(Org.id == org.id).first()
@@ -26,6 +30,7 @@ def update_org(db: Session, org: OrgUpdate) -> Optional[Org]:
     db.commit()
     db.refresh(db_org)
     return db_org
+
 
 def delete_org(db: Session, org_id: str) -> Optional[Org]:
     db_org = db.query(Org).filter(Org.id == org_id).first()

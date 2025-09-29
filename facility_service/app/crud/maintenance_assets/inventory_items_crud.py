@@ -2,14 +2,17 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from ..models.maintenance_assets.inventory_items import InventoryItem
-from ..schemas.maintenance_assets.inventory_items_schemas import InventoryItemCreate, InventoryItemUpdate
+from ...models.maintenance_assets.inventory_items import InventoryItem
+from ...schemas.maintenance_assets.inventory_items_schemas import InventoryItemCreate, InventoryItemUpdate
+
 
 def get_inventory_items(db: Session, skip: int = 0, limit: int = 100) -> List[InventoryItem]:
     return db.query(InventoryItem).offset(skip).limit(limit).all()
 
+
 def get_inventory_item_by_id(db: Session, item_id: str) -> Optional[InventoryItem]:
     return db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
+
 
 def create_inventory_item(db: Session, item: InventoryItemCreate) -> InventoryItem:
     db_item = InventoryItem(id=str(uuid.uuid4()), **item.dict())
@@ -17,6 +20,7 @@ def create_inventory_item(db: Session, item: InventoryItemCreate) -> InventoryIt
     db.commit()
     db.refresh(db_item)
     return db_item
+
 
 def update_inventory_item(db: Session, item_id: str, item: InventoryItemUpdate) -> Optional[InventoryItem]:
     db_item = get_inventory_item_by_id(db, item_id)
@@ -27,6 +31,7 @@ def update_inventory_item(db: Session, item_id: str, item: InventoryItemUpdate) 
     db.commit()
     db.refresh(db_item)
     return db_item
+
 
 def delete_inventory_item(db: Session, item_id: str) -> Optional[InventoryItem]:
     db_item = get_inventory_item_by_id(db, item_id)

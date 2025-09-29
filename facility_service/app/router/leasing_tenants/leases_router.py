@@ -60,6 +60,7 @@ def delete_lease(lease_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Lease not found")
     return obj
 
+
 from ...crud.leasing_tenants.leases_crud import fetch_leases_by_site_kind
 
 @router.get("/by-site-kind", response_model=List[LeaseSiteKindResponse])
@@ -69,3 +70,34 @@ def get_leases_by_site_kind(
     db: Session = Depends(get_db),
 ):
     return fetch_leases_by_site_kind(org_id, kind, db)
+
+from ...crud.leasing_tenants.leases_crud import get_leases_with_space_name
+from ...schemas.leases_schemas import LeaseSpaceResponse
+from uuid import UUID
+from fastapi import Query
+from typing import List
+@router.get("/by-space-name", response_model=List[LeaseSpaceResponse])
+def filter_leases_by_space_name(
+    org_id: UUID,
+    name: str = Query(..., description="Space name to search"),
+    db: Session = Depends(get_db),
+):
+    return get_leases_with_space_name(org_id, name, db)
+
+
+from fastapi import APIRouter, Depends, Query
+from typing import List
+from uuid import UUID
+from sqlalchemy.orm import Session
+ 
+from ...crud.leasing_tenants.leases_crud import get_leases_by_status
+from ...schemas.leases_schemas import LeaseStatusResponse
+ 
+@router.get("/by-status", response_model=List[LeaseStatusResponse])
+def filter_leases_by_status(
+    org_id: UUID,
+    status: str = Query(..., description="Status of lease"),
+    db: Session = Depends(get_db),
+):
+    return get_leases_by_status(org_id, status, db)
+

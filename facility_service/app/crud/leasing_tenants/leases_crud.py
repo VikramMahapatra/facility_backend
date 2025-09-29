@@ -140,9 +140,47 @@ def fetch_leases_by_site_kind(org_id: UUID, kind: str, db: Session):
             "org_id": r.org_id,
             "kind": r.kind,
             "name": r.name,
+from sqlalchemy.orm import Session
+from sqlalchemy import and_
+from ...models.leasing_tenants.leases import Lease
+from ...models.space_sites.spaces import Space
+from uuid import UUID
+ 
+def get_leases_with_space_name(org_id: UUID, space_name: str, db: Session):
+    # Join Lease with Space and select only the fields we need
+    results = (
+        db.query(Lease.org_id, Space.name)
+        .join(Space, Space.id == Lease.space_id)
+        .filter(and_(Lease.org_id == org_id, Space.name.ilike(f"%{space_name}%")))
+        .all()
+    )
+   
+    # Convert each row to a dict that matches LeaseSpaceResponse
+    return [{"org_id": r.org_id, "name": r.name} for r in results]
+
+from sqlalchemy.orm import Session
+from sqlalchemy import and_
+from uuid import UUID
+from ...models.leasing_tenants.leases import Lease
+ 
+def get_leases_by_status(org_id: UUID, status: str, db: Session):
+    results = db.query(
+        Lease.org_id,
+        Lease.status,
+        Lease.start_date,
+        Lease.end_date,
+        Lease.rent_amount
+    ).filter(and_(Lease.org_id == org_id, Lease.status == status)).all()
+ 
+    # Convert query results to dicts matching LeaseStatusResponse
+    return [
+        {
+            "org_id": r.org_id,
+            "status": r.status,
             "start_date": r.start_date,
             "end_date": r.end_date,
             "rent_amount": float(r.rent_amount) if r.rent_amount else None
         }
         for r in results
+    ]
     ]

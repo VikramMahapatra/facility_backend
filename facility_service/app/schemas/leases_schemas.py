@@ -55,4 +55,19 @@ class LeaseOverview(BaseModel):
     monthlyRentValue: float
     expiringSoon: int
     avgLeaseTermMonths: float
+
+from pydantic import BaseModel
+from typing import Optional
+from uuid import UUID
+from datetime import date
  
+class LeaseSiteKindResponse(BaseModel):
+    org_id: UUID       # from Lease
+    kind: Optional[str]  # from Site
+    name: Optional[str]  # from Space (optional if needed)
+    start_date: Optional[date]
+    end_date: Optional[date]
+    rent_amount: Optional[float]
+ 
+    class Config:
+        from_attributes = True

@@ -2,7 +2,7 @@
 import uuid
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-
+from sqlalchemy.orm import relationship
 from shared.database import Base
 
 class CommercialPartner(Base):
@@ -15,3 +15,5 @@ class CommercialPartner(Base):
     legal_name = Column(String(200), nullable=False)
     contact = Column(JSONB)
     status = Column(String(16), default="active")
+    
+    leases = relationship("Lease", back_populates="partner")

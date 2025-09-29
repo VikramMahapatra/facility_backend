@@ -27,3 +27,5 @@ class Org(Base):
 
     sites = relationship("Site", back_populates="org", cascade="all, delete")
     spaces = relationship("Space", back_populates="org")
+    tax_codes = relationship("TaxCode", back_populates="org", cascade="all, delete")
+    tax_reports = relationship("TaxReport", back_populates="org", cascade="all, delete")

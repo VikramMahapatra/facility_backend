@@ -154,3 +154,124 @@ def list_charges(
     )
 
     return {"total": total, "items": items}
+
+#lease charge filters-----------------------------------------------------------------
+from fastapi import APIRouter, Depends, Query
+from typing import Optional
+from sqlalchemy.orm import Session
+from shared.database import get_facility_db as get_db
+from shared.auth import validate_current_token
+from shared.schemas import UserToken
+from ...schemas.lease_charges_schemas import LeaseChargeListResponse, LeaseChargeListItem
+from ...crud.leasing_tenants.lease_charges_crud import get_lease_charges_with_lease_details
+
+@router.get("/charge_code", response_model=LeaseChargeListResponse)
+def list_lease_charges(
+    charge_code: Optional[str] = Query(None, description="Filter by charge code"),
+    db: Session = Depends(get_db),
+    token: UserToken = Depends(validate_current_token),
+):
+    results = get_lease_charges_with_lease_details(db, org_id=token.org_id, charge_code=charge_code)
+
+    items = [
+        LeaseChargeListItem(
+            id=r[0].id,
+            lease_id=r[0].lease_id,
+            charge_code=r[0].charge_code,
+            period_start=r[0].period_start,
+            period_end=r[0].period_end,
+            amount=float(r[0].amount or 0),
+            tax_pct=float(r[0].tax_pct or 0),
+            lease_start=r[1],
+            lease_end=r[2],
+            rent_amount=float(r[3]) if r[3] else None,
+            period_days=r[4].days if r[4] else None,   # convert timedelta to int
+            tax_amount=float(r[5]) if r[5] else None
+        )
+        for r in results
+    ]
+
+    return {"total": len(items), "items": items}
+
+
+#filter by months
+
+# app/routers/lease_charges_router.py
+from fastapi import APIRouter, Depends, Query
+from typing import Optional
+from sqlalchemy.orm import Session
+from shared.database import get_facility_db as get_db
+from shared.auth import validate_current_token
+from shared.schemas import UserToken
+from ...schemas.lease_charges_schemas import LeaseChargeListResponse, LeaseChargeListItem
+from ...crud.leasing_tenants.lease_charges_crud import get_lease_charges_by_month
+
+@router.get("/by_month", response_model=LeaseChargeListResponse)
+def list_lease_charges_by_month(
+    month: Optional[int] = Query(None, ge=1, le=12, description="Month number 1-12"),
+    db: Session = Depends(get_db),
+    token: UserToken = Depends(validate_current_token),
+):
+    """
+    List lease charges filtered by month (period_start).
+    If no month provided, returns all charges for the org.
+    """
+    results = get_lease_charges_by_month(db, org_id=token.org_id, month=month)
+
+    items = [
+        LeaseChargeListItem(
+            id=r[0].id,
+            lease_id=r[0].lease_id,
+            charge_code=r[0].charge_code,
+            period_start=r[0].period_start,
+            period_end=r[0].period_end,
+            amount=float(r[0].amount or 0),
+            tax_pct=float(r[0].tax_pct or 0),
+            lease_start=r[1],
+            lease_end=r[2],
+            rent_amount=float(r[3]) if r[3] else None,
+            period_days=r[4].days if r[4] else None,  # convert timedelta to int
+            tax_amount=float(r[5]) if r[5] else None
+        )
+        for r in results
+    ]
+
+    return {"total": len(items), "items": items}
+
+
+#filter by types 
+
+from fastapi import Query
+from ...crud.leasing_tenants.lease_charges_crud import get_lease_charges_by_types
+
+@router.get("/by_type", response_model=LeaseChargeListResponse)
+def list_lease_charges_by_type(
+    types: Optional[List[str]] = Query(None, description="Filter by charge types"),
+    db: Session = Depends(get_db),
+    token: UserToken = Depends(validate_current_token),
+):
+    """
+    List lease charges filtered by type(s). 
+    If no type provided, returns all charges for the org.
+    """
+    results = get_lease_charges_by_types(db, org_id=token.org_id, types=types)
+
+    items = [
+        LeaseChargeListItem(
+            id=r[0].id,
+            lease_id=r[0].lease_id,
+            charge_code=r[0].charge_code,
+            period_start=r[0].period_start,
+            period_end=r[0].period_end,
+            amount=float(r[0].amount or 0),
+            tax_pct=float(r[0].tax_pct or 0),
+            lease_start=r[1],
+            lease_end=r[2],
+            rent_amount=float(r[3]) if r[3] else None,
+            period_days=r[4].days if r[4] else None,
+            tax_amount=float(r[5]) if r[5] else None
+        )
+        for r in results
+    ]
+
+    return {"total": len(items), "items": items}

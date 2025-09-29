@@ -14,7 +14,7 @@ from ...schemas.tenants_schemas import (
     TenantRequest,
     TenantOverview,
 )
-from ...crud.leasing_tenants import tenant_crud as crud
+from ...crud.leasing_tenants import tenants_crud as crud
  
 router = APIRouter(
     prefix="/api/tenants",

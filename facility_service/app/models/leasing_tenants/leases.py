@@ -11,7 +11,7 @@ class Lease(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), nullable=False)
     site_id = Column(UUID(as_uuid=True), nullable=False)
- kind = Column(String(32), nullable=False)  # "commercial" | "residential"
+    kind = Column(String(32), nullable=False)  # "commercial" | "residential"
     partner_id = Column(UUID(as_uuid=True), ForeignKey("commercial_partners.id"), nullable=True)
     tenant_id  = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True)
  
@@ -39,3 +39,4 @@ class Lease(Base):
     charges = relationship("LeaseCharge", back_populates="lease", cascade="all, delete")
     space   = relationship("Space", back_populates="leases")
     partner = relationship("CommercialPartner", back_populates="leases")
+   

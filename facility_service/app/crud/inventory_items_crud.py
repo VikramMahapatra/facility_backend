@@ -2,8 +2,8 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from ..models.inventory_items import InventoryItem
-from ..schemas.inventory_items_schemas import InventoryItemCreate, InventoryItemUpdate
+from ..models.maintenance_assets.inventory_items import InventoryItem
+from ..schemas.maintenance_assets.inventory_items_schemas import InventoryItemCreate, InventoryItemUpdate
 
 def get_inventory_items(db: Session, skip: int = 0, limit: int = 100) -> List[InventoryItem]:
     return db.query(InventoryItem).offset(skip).limit(limit).all()

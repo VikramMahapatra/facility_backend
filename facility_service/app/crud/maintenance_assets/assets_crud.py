@@ -135,3 +135,5 @@ def delete_asset(db: Session, asset_id: str):
     db.delete(db_asset)
     db.commit()
     return True
+
+

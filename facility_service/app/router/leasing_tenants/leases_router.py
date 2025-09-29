@@ -2,12 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
 from ...schemas.leases_schemas import (
-    LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeaseRequest, LeaseUpdate, LeaseSiteKindResponse
+    LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeaseRequest, LeaseUpdate,LeaseStatusResponse,LeaseSpaceResponse, 
 )
 from ...crud.leasing_tenants import leases_crud as crud
 from shared.auth import validate_current_token
 from shared.schemas import UserToken
 from typing import List
+from ...crud.leasing_tenants.leases_crud import get_leases_by_status
+from ...crud.leasing_tenants.leases_crud import get_leases_with_space_name
 from uuid import UUID
 router = APIRouter(
     prefix="/api/leases",
@@ -61,21 +63,6 @@ def delete_lease(lease_id: str, db: Session = Depends(get_db)):
     return obj
 
 
-from ...crud.leasing_tenants.leases_crud import fetch_leases_by_site_kind
-
-@router.get("/by-site-kind", response_model=List[LeaseSiteKindResponse])
-def get_leases_by_site_kind(
-    org_id: UUID,
-    kind: str = Query(..., description="Kind of site"),
-    db: Session = Depends(get_db),
-):
-    return fetch_leases_by_site_kind(org_id, kind, db)
-
-from ...crud.leasing_tenants.leases_crud import get_leases_with_space_name
-from ...schemas.leases_schemas import LeaseSpaceResponse
-from uuid import UUID
-from fastapi import Query
-from typing import List
 @router.get("/by-space-name", response_model=List[LeaseSpaceResponse])
 def filter_leases_by_space_name(
     org_id: UUID,
@@ -83,15 +70,6 @@ def filter_leases_by_space_name(
     db: Session = Depends(get_db),
 ):
     return get_leases_with_space_name(org_id, name, db)
-
-
-from fastapi import APIRouter, Depends, Query
-from typing import List
-from uuid import UUID
-from sqlalchemy.orm import Session
- 
-from ...crud.leasing_tenants.leases_crud import get_leases_by_status
-from ...schemas.leases_schemas import LeaseStatusResponse
  
 @router.get("/by-status", response_model=List[LeaseStatusResponse])
 def filter_leases_by_status(

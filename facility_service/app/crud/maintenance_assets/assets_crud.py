@@ -1,14 +1,13 @@
 import uuid
 from typing import List, Optional
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, or_, case, literal, Numeric, and_
+from sqlalchemy.orm import Session,joinedload
+from sqlalchemy import func, cast, or_, case, literal, Numeric, and_ ,  distinct
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.dialects.postgresql import UUID
 from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.maintenance_assets.assets import Asset
 from ...schemas.maintenance_assets.assets_schemas import AssetCreate, AssetOut, AssetUpdate, AssetsRequest, AssetsResponse
-
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
@@ -45,7 +44,7 @@ def get_asset_overview(db: Session, org_id: UUID):
     asset_fields = db.query(
         func.count(Asset.id).label("total_assets"),
         func.sum(
-            case((Asset.status == "active", 1), else_=0)
+            case((func.lower(Asset.status) == "active", 1), else_=0)
         ).label("active_assets"),
         func.coalesce(func.sum(Asset.cost), 0).label("total_cost"),
         func.sum(
@@ -98,7 +97,7 @@ def get_assets(db: Session, org_id: UUID, params: AssetsRequest) -> AssetsRespon
             .scalar()
         )
         assets.append(AssetOut.model_validate({
-            **asset,
+            **asset.__dict__,
             "category_name": category_name
         }))
 
@@ -136,4 +135,55 @@ def delete_asset(db: Session, asset_id: str):
     db.commit()
     return True
 
+#get assets by category
+def get_assets_by_category(
+    db: Session,
+    org_id: UUID,
+    category_name: str | None = None
+):
+    """
+    Returns assets filtered by category_name (case-insensitive)
+    """
+    query = db.query(Asset).options(
+        joinedload(Asset.category),
+        joinedload(Asset.site)
+    ).filter(Asset.org_id == org_id)
 
+    if category_name:
+        query = query.join(AssetCategory).filter(
+            func.lower(AssetCategory.name) == category_name.lower()
+        )
+
+    return query.all()
+
+def get_assets_by_status(
+    db: Session,
+    org_id: UUID,
+    status: str | None = None
+):
+    """
+    Returns assets filtered by status (case-insensitive)
+    """
+    query = db.query(Asset).options(
+        joinedload(Asset.category),
+        joinedload(Asset.site)
+    ).filter(Asset.org_id == org_id)
+
+    if status:
+        query = query.filter(func.lower(Asset.status) == status.lower())
+
+    return query.all()
+
+
+def get_distinct_statuses(db: Session, org_id: UUID):
+    """
+    Returns distinct statuses (case-insensitive)
+    """
+    statuses = (
+        db.query(func.lower(Asset.status).label("status"))
+        .filter(Asset.org_id == org_id)
+        .distinct()
+        .order_by(func.lower(Asset.status))
+        .all()
+    )
+    return [s.status.capitalize() for s in statuses if s.status]

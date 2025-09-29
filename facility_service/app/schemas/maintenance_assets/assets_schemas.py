@@ -29,6 +29,7 @@ class AssetCreate(AssetBase):
 
 
 class AssetUpdate(BaseModel):
+    id: UUID                  #id added besuce of error 'AssetUpdate' object has no attribute 'id'
     name: Optional[str]
     tag: Optional[str]
     serial_no: Optional[str]
@@ -74,6 +75,9 @@ class AssetOut(BaseModel):
     attributes: Optional[Dict]
     status: Optional[str] = "active"
 
+    model_config = {"from_attributes": True}
+
+
 
 class AssetsResponse(BaseModel):
     assets: List[AssetBase]
@@ -90,3 +94,11 @@ class AssetOverview(BaseModel):
     lastMonthAssetPercentage: float
 
     model_config = {"from_attributes": True}
+
+class AssetStatusOut(BaseModel):
+    status: str
+
+    model_config = {"from_attributes": True}
+
+
+

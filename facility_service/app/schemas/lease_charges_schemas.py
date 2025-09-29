@@ -51,26 +51,6 @@ class ChargeByTypeItem(BaseModel):
     class Config:
         orm_mode = True
 
-'''class LeaseChargeListItem(BaseModel):
-    id: UUID
-    lease_id: UUID
-    charge_code: Optional[str]
-    period_start: Optional[date]
-    period_end: Optional[date]
-    amount: float
-    tax_pct: float
-    # lease summary fields (from joined Lease)
-    lease_start: Optional[date] = None
-    lease_end: Optional[date] = None
-    rent_amount: Optional[float] = None
-    # computed fields
-    tax_amount: Optional[float] = None
-    period_days: Optional[int] = None
-
-    class Config:
-        orm_mode = True'''
-
-
 class LeaseChargeListItem(BaseModel):
     id: UUID
     lease_id: UUID

@@ -202,3 +202,98 @@ def delete_lease_charge(db: Session, charge_id: uuid.UUID, org_id: Optional[uuid
     db.delete(obj)
     db.commit()
     return obj
+
+
+
+
+#lease charge_CODE filters_----------------------------------------------------------
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from typing import Optional
+from uuid import UUID
+from ...models.leasing_tenants.lease_charges import LeaseCharge
+from ...models.leasing_tenants.leases import Lease
+
+
+def get_lease_charges_with_lease_details(
+    db: Session,
+    org_id: UUID,
+    charge_code: Optional[str] = None
+):
+    """
+    Returns LeaseCharge objects with lease details and computed tax amount.
+    """
+    query = db.query(
+        LeaseCharge,
+        Lease.start_date.label("lease_start"),
+        Lease.end_date.label("lease_end"),
+        Lease.rent_amount.label("rent_amount"),
+        func.age(LeaseCharge.period_end, LeaseCharge.period_start).label("period_days"),
+        (LeaseCharge.amount * LeaseCharge.tax_pct / 100.0).label("tax_amount")
+    ).join(Lease, Lease.id == LeaseCharge.lease_id)\
+     .filter(Lease.org_id == org_id)
+
+    if charge_code:
+        query = query.filter(LeaseCharge.charge_code.ilike(f"%{charge_code}%"))
+
+    return query.all()
+
+
+
+#filter by month
+
+from sqlalchemy.orm import Session
+from sqlalchemy import func, extract
+from typing import Optional
+from uuid import UUID
+from ...models.leasing_tenants.lease_charges import LeaseCharge
+from ...models.leasing_tenants.leases import Lease
+
+
+def get_lease_charges_by_month(
+    db: Session,
+    org_id: UUID,
+    month: Optional[int] = None #ADD START PERIOD
+):
+    query = db.query(
+        LeaseCharge,
+        Lease.start_date.label("lease_start"),
+        Lease.end_date.label("lease_end"),
+        Lease.rent_amount.label("rent_amount"),
+        func.age(LeaseCharge.period_end, LeaseCharge.period_start).label("period_days"),
+        (LeaseCharge.amount * LeaseCharge.tax_pct / 100.0).label("tax_amount")
+    ).join(Lease, Lease.id == LeaseCharge.lease_id)\
+     .filter(Lease.org_id == org_id)
+
+    if month:
+        query = query.filter(extract("month", LeaseCharge.period_start) == month)
+
+    return query.all()
+
+# filter by types
+from typing import List, Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from ...models.leasing_tenants.lease_charges import LeaseCharge
+from ...models.leasing_tenants.leases import Lease
+from uuid import UUID
+
+def get_lease_charges_by_types(
+    db: Session,
+    org_id: UUID,
+    types: Optional[List[str]] = None
+):
+    query = db.query(
+        LeaseCharge,
+        Lease.start_date.label("lease_start"),
+        Lease.end_date.label("lease_end"),
+        Lease.rent_amount.label("rent_amount"),
+        func.age(LeaseCharge.period_end, LeaseCharge.period_start).label("period_days"),
+        (LeaseCharge.amount * LeaseCharge.tax_pct / 100.0).label("tax_amount")
+    ).join(Lease, Lease.id == LeaseCharge.lease_id)\
+     .filter(Lease.org_id == org_id)
+
+    if types:
+        query = query.filter(LeaseCharge.charge_code.in_(types))
+
+    return query.all()

@@ -33,4 +33,8 @@ class Space(Base):
     org = relationship("Org", back_populates="spaces")
     assets = relationship("Asset", back_populates="space", cascade="all, delete-orphan")
     filters = relationship("SpaceFilter", back_populates="space", cascade="all, delete-orphan")
+<<<<<<< HEAD
     leases = relationship("Lease", back_populates="space")
+=======
+    leases = relationship("Lease", back_populates="space")
+>>>>>>> origin/rohit

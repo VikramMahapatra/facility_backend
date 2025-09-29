@@ -15,5 +15,7 @@ class CommercialPartner(Base):
     legal_name = Column(String(200), nullable=False)
     contact = Column(JSONB)
     status = Column(String(16), default="active")
+    
+    leases = relationship("Lease", back_populates="partner")
 
     leases = relationship("Lease", back_populates="partner")

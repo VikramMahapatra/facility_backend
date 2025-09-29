@@ -2,7 +2,7 @@
 from sqlalchemy.orm import Session
 from uuid import UUID
 from .. import models, schemas
-from ..schemas.assets_schemas import AssetCreate ,AssetUpdate
+from ..schemas.maintenance_assets.assets_schemas import AssetCreate ,AssetUpdate
 
 def get_asset(db: Session, asset_id: UUID):
     return db.query(models.Asset).filter(models.Asset.id == asset_id).first()

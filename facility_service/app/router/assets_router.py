@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List
-from ..models import assets_models as models
-from ..schemas import assets_schemas as schemas
+from ..models.maintenance_assets import assets as models
+from ..schemas.maintenance_assets import assets_schemas as schemas
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
 from ..crud import assets_crud as crud

@@ -1,3 +1,4 @@
+from .models.maintenance_assets import asset_category, assets, inventory_items, inventory_stocks
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shared.database import facility_engine, Base
@@ -14,20 +15,20 @@ from .router import (
 )
 from .router.leasing_tenants import lease_charges_router, leases_router, tenants_router
 from .router.space_sites import (
-    orgs_router, 
+    orgs_router,
     sites_router,
-    space_group_members_router, 
-    space_groups_router, 
-    spaces_router ,
+    space_group_members_router,
+    space_groups_router,
+    spaces_router,
     building_block_router,
     space_filter_router)
-from .router.overview import (dashboard_router,analytics_router)
+from .router.overview import (dashboard_router, analytics_router)
 from .router.financials import (invoice_router, tax_codes_router)
 from .router.crm import contact_router
 from .models import (
-    asset_category_models, assets_models, commercial_partners, contracts, inventory_items, inventory_stocks,
-    purchase_order_lines, purchase_orders, vendors
+    commercial_partners, contracts, purchase_order_lines, purchase_orders, vendors
 )
+from .router.maintenance_assets import (assets_router)
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.leasing_tenants import leases, lease_charges, tenants
 from .models.leasing_tenants import leases, lease_charges
@@ -47,7 +48,8 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # or ["*"] to allow all origins (not recommended for production)
+    # or ["*"] to allow all origins (not recommended for production)
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -78,3 +80,4 @@ app.include_router(tenants_router.router)
 app.include_router(invoice_router.router)
 app.include_router(contact_router.router)
 app.include_router(tax_codes_router.router)
+app.include_router(assets_router.router)

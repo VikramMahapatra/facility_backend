@@ -59,12 +59,31 @@ class LeaseOverview(BaseModel):
 from pydantic import BaseModel
 from typing import Optional
 from uuid import UUID
+<<<<<<< HEAD
+ 
+class LeaseSpaceResponse(BaseModel):
+    org_id: UUID
+    name: Optional[str]  # from Space
+ 
+    class Config:
+        from_attributes = True
+
+from pydantic import BaseModel
+from typing import Optional
+from uuid import UUID
+from datetime import date
+ 
+class LeaseStatusResponse(BaseModel):
+    org_id: UUID
+    status: str
+=======
 from datetime import date
  
 class LeaseSiteKindResponse(BaseModel):
     org_id: UUID       # from Lease
     kind: Optional[str]  # from Site
     name: Optional[str]  # from Space (optional if needed)
+>>>>>>> origin/rohit
     start_date: Optional[date]
     end_date: Optional[date]
     rent_amount: Optional[float]

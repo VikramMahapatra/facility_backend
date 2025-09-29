@@ -17,3 +17,5 @@ class CommercialPartner(Base):
     status = Column(String(16), default="active")
     
     leases = relationship("Lease", back_populates="partner")
+
+    leases = relationship("Lease", back_populates="partner")

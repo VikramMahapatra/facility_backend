@@ -34,6 +34,7 @@ from .models.leasing_tenants import leases, lease_charges, tenants
 from .models.leasing_tenants import leases, lease_charges
 from .models.financials import invoices
 from .models.crm import contacts, companies
+from .models.parking_access import parking_zones, parking_pass
 app = FastAPI(title="Facility Service API")
 
 # Create all tables

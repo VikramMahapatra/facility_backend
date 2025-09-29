@@ -51,7 +51,7 @@ class ChargeByTypeItem(BaseModel):
     class Config:
         orm_mode = True
 
-class LeaseChargeListItem(BaseModel):
+'''class LeaseChargeListItem(BaseModel):
     id: UUID
     lease_id: UUID
     charge_code: Optional[str]
@@ -68,7 +68,26 @@ class LeaseChargeListItem(BaseModel):
     period_days: Optional[int] = None
 
     class Config:
-        orm_mode = True
+        orm_mode = True'''
+
+
+class LeaseChargeListItem(BaseModel):
+    id: UUID
+    lease_id: UUID
+    charge_code: Optional[str]
+    period_start: Optional[date]
+    period_end: Optional[date]
+    amount: float
+    tax_pct: float
+    lease_start: Optional[date] = None
+    lease_end: Optional[date] = None
+    rent_amount: Optional[float] = None
+    tax_amount: Optional[float] = None
+    period_days: Optional[int] = None
+
+    model_config = {
+        "from_attributes": True  # enable from_orm usage
+    }
 
 class LeaseChargeListResponse(BaseModel):
     total: int

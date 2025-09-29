@@ -2,8 +2,8 @@
 import uuid
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from ..models.inventory_stocks import InventoryStock
-from ..schemas.inventory_stocks_schemas import InventoryStockCreate, InventoryStockUpdate
+from ..models.maintenance_assets.inventory_stocks import InventoryStock
+from ..schemas.maintenance_assets.inventory_stocks_schemas import InventoryStockCreate, InventoryStockUpdate
 
 def get_inventory_stocks(db: Session, skip: int = 0, limit: int = 100) -> List[InventoryStock]:
     return db.query(InventoryStock).offset(skip).limit(limit).all()

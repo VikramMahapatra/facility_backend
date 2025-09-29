@@ -10,6 +10,7 @@ from ...models.space_sites.spaces import Space
 from ...schemas.leases_schemas import (
     LeaseCreate, LeaseListResponse, LeaseOut, LeaseRequest, LeaseUpdate
 )
+from uuid import UUID
  
 def build_filters(org_id: UUID, params: LeaseRequest):
     filters = [Lease.org_id == org_id]
@@ -139,12 +140,10 @@ def fetch_leases_by_site_kind(org_id: UUID, kind: str, db: Session):
         {
             "org_id": r.org_id,
             "kind": r.kind,
-            "name": r.name,
-from sqlalchemy.orm import Session
-from sqlalchemy import and_
-from ...models.leasing_tenants.leases import Lease
-from ...models.space_sites.spaces import Space
-from uuid import UUID
+            "name": r.name
+            }
+            for r in results 
+            ]
  
 def get_leases_with_space_name(org_id: UUID, space_name: str, db: Session):
     # Join Lease with Space and select only the fields we need
@@ -158,10 +157,6 @@ def get_leases_with_space_name(org_id: UUID, space_name: str, db: Session):
     # Convert each row to a dict that matches LeaseSpaceResponse
     return [{"org_id": r.org_id, "name": r.name} for r in results]
 
-from sqlalchemy.orm import Session
-from sqlalchemy import and_
-from uuid import UUID
-from ...models.leasing_tenants.leases import Lease
  
 def get_leases_by_status(org_id: UUID, status: str, db: Session):
     results = db.query(
@@ -183,4 +178,4 @@ def get_leases_by_status(org_id: UUID, status: str, db: Session):
         }
         for r in results
     ]
-    ]
+    

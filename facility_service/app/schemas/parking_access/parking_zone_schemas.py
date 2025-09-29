@@ -32,6 +32,7 @@ class ParkingZoneRequest(CommonQueryParams):
 
 class ParkingZoneOut(ParkingZoneBase):
     id: UUID
+    site_name: str
 
 
 class ParkingZonesResponse(BaseModel):

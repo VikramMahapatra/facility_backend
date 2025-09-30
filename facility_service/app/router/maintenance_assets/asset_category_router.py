@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.auth import validate_current_token
 from shared.database import get_facility_db as get_db
-from ..schemas.maintenance_assets.asset_category_schemas import AssetCategoryOut, AssetCategoryCreate, AssetCategoryUpdate
-from ..crud.maintenance_assets import asset_category_crud as crud
+from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryOut, AssetCategoryCreate, AssetCategoryUpdate
+from ...crud.maintenance_assets import asset_category_crud as crud
 
 router = APIRouter(
     prefix="/api/asset-categories",

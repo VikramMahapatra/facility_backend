@@ -8,7 +8,7 @@ from shared.schemas import CommonQueryParams
 
 
 class ParkingZoneBase(BaseModel):
-    org_id: Optional[UUID]
+    org_id: Optional[UUID] = None
     site_id: UUID
     name: str
     capacity: Optional[int]

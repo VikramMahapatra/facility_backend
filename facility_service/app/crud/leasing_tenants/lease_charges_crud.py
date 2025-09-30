@@ -144,6 +144,10 @@ def get_lease_charges_for_listing(
 # -------------------------
 # 3) Create
 # -------------------------
+
+def get_lease_charge_by_id(db: Session, charge_id: UUID):
+    return db.query(LeaseCharge).filter(LeaseCharge.id == charge_id).first()
+
 def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
     """
     Create a LeaseCharge from a Pydantic model.

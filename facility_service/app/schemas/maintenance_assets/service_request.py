@@ -41,7 +41,7 @@ class ServiceRequestBase(BaseModel):
     site_id: UUID
     space_id: UUID
     requester_kind: Optional[str]
-    requester_id: Optional[UUID] = None
+    #requester_id: Optional[UUID] = None
     category: Optional[str]
     channel: Optional[str]
     description: Optional[str]

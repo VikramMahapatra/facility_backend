@@ -7,7 +7,8 @@ from sqlalchemy import func, extract, or_
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.leasing_tenants.leases import Lease
 from ...schemas.lease_charges_schemas import LeaseChargeCreate, LeaseChargeUpdate
-
+from uuid import UUID
+from decimal import Decimal
 # -------------------------
 # Internal helper (private)
 # -------------------------
@@ -114,7 +115,10 @@ def get_lease_charges_for_listing(
 
     items: List[Dict[str, Any]] = []
     for lc, lease_start, lease_end, rent_amount, site_id, partner_id in rows:
-        tax_amount = float((lc.amount * (lc.tax_pct or 0)) / 100.0)
+            # ensure tax_pct is Decimal
+        tax_pct = lc.tax_pct if lc.tax_pct is not None else Decimal("0")
+        # compute tax_amount safely
+        tax_amount = (lc.amount * tax_pct) / Decimal("100")
         period_days = None
         if lc.period_start and lc.period_end:
             period_days = (lc.period_end - lc.period_start).days
@@ -140,6 +144,10 @@ def get_lease_charges_for_listing(
 # -------------------------
 # 3) Create
 # -------------------------
+
+def get_lease_charge_by_id(db: Session, charge_id: UUID):
+    return db.query(LeaseCharge).filter(LeaseCharge.id == charge_id).first()
+
 def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
     """
     Create a LeaseCharge from a Pydantic model.
@@ -206,23 +214,13 @@ def delete_lease_charge(db: Session, charge_id: uuid.UUID, org_id: Optional[uuid
 
 
 
-#lease charge_CODE filters_----------------------------------------------------------
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-from typing import Optional
-from uuid import UUID
-from ...models.leasing_tenants.lease_charges import LeaseCharge
-from ...models.leasing_tenants.leases import Lease
-
+#lease charge_CODE filters_---------------------------------------------------------
 
 def get_lease_charges_with_lease_details(
     db: Session,
     org_id: UUID,
     charge_code: Optional[str] = None
 ):
-    """
-    Returns LeaseCharge objects with lease details and computed tax amount.
-    """
     query = db.query(
         LeaseCharge,
         Lease.start_date.label("lease_start"),
@@ -241,15 +239,6 @@ def get_lease_charges_with_lease_details(
 
 
 #filter by month
-
-from sqlalchemy.orm import Session
-from sqlalchemy import func, extract
-from typing import Optional
-from uuid import UUID
-from ...models.leasing_tenants.lease_charges import LeaseCharge
-from ...models.leasing_tenants.leases import Lease
-
-
 def get_lease_charges_by_month(
     db: Session,
     org_id: UUID,
@@ -271,13 +260,6 @@ def get_lease_charges_by_month(
     return query.all()
 
 # filter by types
-from typing import List, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-from ...models.leasing_tenants.lease_charges import LeaseCharge
-from ...models.leasing_tenants.leases import Lease
-from uuid import UUID
-
 def get_lease_charges_by_types(
     db: Session,
     org_id: UUID,
@@ -294,6 +276,6 @@ def get_lease_charges_by_types(
      .filter(Lease.org_id == org_id)
 
     if types:
-        query = query.filter(LeaseCharge.charge_code.in_(types))
+        query = query.filter(func.lower(LeaseCharge.charge_code).in_([t.lower() for t in types]))
 
     return query.all()

@@ -7,11 +7,12 @@ from shared.database import get_facility_db as get_db
 from shared.schemas import UserToken
 from ...schemas.lease_charges_schemas import (
     LeaseChargeOut, LeaseChargeCreate, LeaseChargeUpdate,
-    LeaseChargesCardData, LeaseChargeListResponse
+    LeaseChargesCardData, LeaseChargeListResponse ,LeaseChargeListItem
 )
 from ...crud.leasing_tenants import lease_charges_crud as crud
 from ...models.leasing_tenants.leases import Lease
 from shared.auth import validate_current_token
+from ...crud.leasing_tenants.lease_charges_crud import get_lease_charges_by_types ,get_lease_charges_with_lease_details,get_lease_charges_by_month ,get_lease_charge_by_id
 
 router = APIRouter(prefix="/api/lease-charges", tags=["lease_charges"])
 
@@ -156,15 +157,6 @@ def list_charges(
     return {"total": total, "items": items}
 
 #lease charge filters-----------------------------------------------------------------
-from fastapi import APIRouter, Depends, Query
-from typing import Optional
-from sqlalchemy.orm import Session
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token
-from shared.schemas import UserToken
-from ...schemas.lease_charges_schemas import LeaseChargeListResponse, LeaseChargeListItem
-from ...crud.leasing_tenants.lease_charges_crud import get_lease_charges_with_lease_details
-
 @router.get("/charge_code", response_model=LeaseChargeListResponse)
 def list_lease_charges(
     charge_code: Optional[str] = Query(None, description="Filter by charge code"),
@@ -195,27 +187,12 @@ def list_lease_charges(
 
 
 #filter by months
-
-# app/routers/lease_charges_router.py
-from fastapi import APIRouter, Depends, Query
-from typing import Optional
-from sqlalchemy.orm import Session
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token
-from shared.schemas import UserToken
-from ...schemas.lease_charges_schemas import LeaseChargeListResponse, LeaseChargeListItem
-from ...crud.leasing_tenants.lease_charges_crud import get_lease_charges_by_month
-
 @router.get("/by_month", response_model=LeaseChargeListResponse)
 def list_lease_charges_by_month(
     month: Optional[int] = Query(None, ge=1, le=12, description="Month number 1-12"),
     db: Session = Depends(get_db),
     token: UserToken = Depends(validate_current_token),
 ):
-    """
-    List lease charges filtered by month (period_start).
-    If no month provided, returns all charges for the org.
-    """
     results = get_lease_charges_by_month(db, org_id=token.org_id, month=month)
 
     items = [
@@ -240,20 +217,13 @@ def list_lease_charges_by_month(
 
 
 #filter by types 
-
-from fastapi import Query
-from ...crud.leasing_tenants.lease_charges_crud import get_lease_charges_by_types
-
 @router.get("/by_type", response_model=LeaseChargeListResponse)
 def list_lease_charges_by_type(
     types: Optional[List[str]] = Query(None, description="Filter by charge types"),
     db: Session = Depends(get_db),
     token: UserToken = Depends(validate_current_token),
 ):
-    """
-    List lease charges filtered by type(s). 
-    If no type provided, returns all charges for the org.
-    """
+
     results = get_lease_charges_by_types(db, org_id=token.org_id, types=types)
 
     items = [

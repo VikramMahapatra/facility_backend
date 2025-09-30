@@ -12,7 +12,7 @@ from ...schemas.lease_charges_schemas import (
 from ...crud.leasing_tenants import lease_charges_crud as crud
 from ...models.leasing_tenants.leases import Lease
 from shared.auth import validate_current_token
-from ...crud.leasing_tenants.lease_charges_crud import get_lease_charges_by_types ,get_lease_charges_with_lease_details,get_lease_charges_by_month
+from ...crud.leasing_tenants.lease_charges_crud import get_lease_charges_by_types ,get_lease_charges_with_lease_details,get_lease_charges_by_month ,get_lease_charge_by_id
 
 router = APIRouter(prefix="/api/lease-charges", tags=["lease_charges"])
 

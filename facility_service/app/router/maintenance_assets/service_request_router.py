@@ -59,7 +59,7 @@ def filter_by_category(
 
 #-----------------CRUD OPERTION-------------------------------------
 
-
+#update create change by using userid 
 # Create
 @router.post("/", response_model=ServiceRequestOut)
 def create_request(
@@ -67,7 +67,12 @@ def create_request(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return create_service_request(db, current_user.org_id, request)
+    return create_service_request(
+        db=db,
+        org_id=current_user.org_id,
+        user_id=current_user.user_id,   #  force requester_id from token
+        request=request
+    )
 
 # Read single
 @router.get("/{request_id}", response_model=ServiceRequestOut)
@@ -98,10 +103,20 @@ def update_request(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    updated = update_service_request(db, current_user.org_id, request_id, request_update)
+    updated = update_service_request(
+        db,
+        current_user.org_id,
+        current_user.user_id,   #  ensure requester_id == user_id
+        request_id,
+        request_update
+    )
     if not updated:
-        raise HTTPException(status_code=404, detail="Request not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Request not found or you are not the requester"
+        )
     return updated
+
 
 # Delete
 @router.delete("/{request_id}")

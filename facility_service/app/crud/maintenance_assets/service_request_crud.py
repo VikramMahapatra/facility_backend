@@ -86,10 +86,15 @@ def filter_service_requests_by_category(db: Session, org_id: UUID, category: Opt
 
 
 #--------------------------crud operation enpointss-----------------------------
-def create_service_request(db: Session, org_id: UUID, request: ServiceRequestCreate) -> ServiceRequest:
+def create_service_request(
+    db: Session,
+    org_id: UUID,
+    user_id: UUID,
+    request: ServiceRequestCreate
+) -> ServiceRequest:
     db_request = ServiceRequest(
         org_id=org_id,
-        requester_id=request.requester_id or None,
+        requester_id=user_id,  # 👈 always taken from token
         linked_work_order_id=request.linked_work_order_id or None,
         sla=request.sla or {},
         **request.dict(exclude={"requester_id", "linked_work_order_id", "sla"})
@@ -98,6 +103,7 @@ def create_service_request(db: Session, org_id: UUID, request: ServiceRequestCre
     db.commit()
     db.refresh(db_request)
     return db_request
+
 
 
 def get_service_request(db: Session, org_id: UUID, request_id: UUID) -> Optional[ServiceRequest]:
@@ -111,21 +117,33 @@ def get_all_service_requests(db: Session, org_id: UUID) -> List[ServiceRequest]:
     return db.query(ServiceRequest).filter(ServiceRequest.org_id == org_id).all()
 
 
-def update_service_request(db: Session, org_id: UUID, request_id: UUID, update_data: ServiceRequestUpdate) -> Optional[ServiceRequest]:
+def update_service_request(
+    db: Session,
+    org_id: UUID,
+    user_id: UUID,   # 👈 new param
+    request_id: UUID,
+    update_data: ServiceRequestUpdate
+) -> Optional[ServiceRequest]:
     db_request = db.query(ServiceRequest).filter(
         ServiceRequest.org_id == org_id,
-        ServiceRequest.id == request_id
+        ServiceRequest.id == request_id,
+        ServiceRequest.requester_id == user_id   # 👈 enforce requester_id match
     ).first()
+
     if not db_request:
         return None
+
     update_dict = update_data.dict(exclude_unset=True)
     if "sla" in update_dict:
         update_dict["sla"] = update_dict["sla"] or {}
+
     for key, value in update_dict.items():
         setattr(db_request, key, value)
+
     db.commit()
     db.refresh(db_request)
     return db_request
+
 
 
 def delete_service_request(db: Session, org_id: UUID, request_id: UUID) -> bool:

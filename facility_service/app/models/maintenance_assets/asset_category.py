@@ -20,3 +20,4 @@ class AssetCategory(Base):
 
     # one category → many assets
     assets = relationship("Asset", back_populates="category", cascade="all, delete")
+    pm_templates = relationship("PMTemplate", back_populates="category")

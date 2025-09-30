@@ -23,7 +23,7 @@ from .router.overview import (dashboard_router, analytics_router)
 from .router.financials import (invoice_router, tax_codes_router)
 from .router.crm import contact_router
 from .router.maintenance_assets import (
-    asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, service_request_router)
+    asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, service_request_router, pm_template)
 from .router.parking_access import parking_zones_router
 
 from .models import (
@@ -82,3 +82,4 @@ app.include_router(tax_codes_router.router)
 app.include_router(assets_router.router)
 app.include_router(parking_zones_router.router)
 app.include_router(service_request_router.router)
+app.include_router(pm_template.router)

@@ -42,15 +42,14 @@ def get_parking_zone_overview(db: Session, org_id: UUID):
     ).filter(ParkingZone.org_id == org_id).one()
 
     if zone_fields.total_zones > 0:
-        avg_capacity = (
-            zone_fields.total_capacity * 100) / zone_fields.total_zones
+        avg_capacity = zone_fields.total_capacity / zone_fields.total_zones
     else:
         avg_capacity = 0
 
     return {
         "totalZones": int(zone_fields.total_zones or 0),
         "totalCapacity": int(zone_fields.total_capacity or 0),
-        "avgCapacity": float(zone_fields.avg_capacity or 0),
+        "avgCapacity": float(avg_capacity or 0),
     }
 
 

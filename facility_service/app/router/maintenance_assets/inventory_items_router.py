@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
 from ...schemas.maintenance_assets.inventory_items_schemas import InventoryItemOut, InventoryItemCreate, InventoryItemUpdate
-from ..crud.maintenance_assets import inventory_items_crud as crud
+from ...crud.maintenance_assets import inventory_items_crud as crud
 from shared.auth import validate_current_token
 
 router = APIRouter(prefix="/api/inventory-items",

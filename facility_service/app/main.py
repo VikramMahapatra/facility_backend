@@ -21,11 +21,13 @@ from .router.space_sites import (
 from .router.overview import (dashboard_router, analytics_router)
 from .router.financials import (invoice_router, tax_codes_router)
 from .router.crm import contact_router
+from .router.maintenance_assets import (
+    asset_category_router, assets_router, inventory_items_router, inventory_stocks_router)
+from .router.parking_access import parking_zones_router
+
 from .models import (
     commercial_partners, contracts, purchase_order_lines, purchase_orders, vendors
 )
-from .router.maintenance_assets import (
-    asset_category_router, assets_router, inventory_items_router, inventory_stocks_router)
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.leasing_tenants import leases, lease_charges, tenants
 from .models.financials import invoices
@@ -77,3 +79,4 @@ app.include_router(invoice_router.router)
 app.include_router(contact_router.router)
 app.include_router(tax_codes_router.router)
 app.include_router(assets_router.router)
+app.include_router(parking_zones_router.router)

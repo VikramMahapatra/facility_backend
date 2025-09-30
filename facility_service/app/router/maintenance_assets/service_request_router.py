@@ -59,7 +59,7 @@ def filter_by_category(
 
 #-----------------CRUD OPERTION-------------------------------------
 
-
+#update create change by using userid 
 # Create
 @router.post("/", response_model=ServiceRequestOut)
 def create_request(
@@ -70,7 +70,7 @@ def create_request(
     return create_service_request(
         db=db,
         org_id=current_user.org_id,
-        user_id=current_user.user_id,   # 👈 force requester_id from token
+        user_id=current_user.user_id,   #  force requester_id from token
         request=request
     )
 
@@ -106,7 +106,7 @@ def update_request(
     updated = update_service_request(
         db,
         current_user.org_id,
-        current_user.user_id,   # 👈 ensure requester_id == user_id
+        current_user.user_id,   #  ensure requester_id == user_id
         request_id,
         request_update
     )

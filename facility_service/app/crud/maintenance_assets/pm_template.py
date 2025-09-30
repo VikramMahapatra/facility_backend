@@ -8,7 +8,6 @@ from ...schemas.maintenance_assets.pm_template import PMTemplateCreate ,PMTempla
 from uuid import UUID
 
 
-
 def get_pm_templates_overview(db: Session, org_id: UUID):
     # Total templates
     total_templates = db.query(PMTemplate).filter(PMTemplate.org_id == org_id).count()

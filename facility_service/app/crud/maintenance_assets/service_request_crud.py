@@ -94,7 +94,7 @@ def create_service_request(
 ) -> ServiceRequest:
     db_request = ServiceRequest(
         org_id=org_id,
-        requester_id=user_id,  # 👈 always taken from token
+        requester_id=user_id,  #  always taken from token
         linked_work_order_id=request.linked_work_order_id or None,
         sla=request.sla or {},
         **request.dict(exclude={"requester_id", "linked_work_order_id", "sla"})
@@ -120,14 +120,14 @@ def get_all_service_requests(db: Session, org_id: UUID) -> List[ServiceRequest]:
 def update_service_request(
     db: Session,
     org_id: UUID,
-    user_id: UUID,   # 👈 new param
+    user_id: UUID,   #  new param
     request_id: UUID,
     update_data: ServiceRequestUpdate
 ) -> Optional[ServiceRequest]:
     db_request = db.query(ServiceRequest).filter(
         ServiceRequest.org_id == org_id,
         ServiceRequest.id == request_id,
-        ServiceRequest.requester_id == user_id   # 👈 enforce requester_id match
+        ServiceRequest.requester_id == user_id   #  enforce requester_id match
     ).first()
 
     if not db_request:

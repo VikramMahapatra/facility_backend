@@ -25,7 +25,7 @@ from .models import (
     commercial_partners, contracts, purchase_order_lines, purchase_orders, vendors
 )
 from .router.maintenance_assets import (
-    asset_category_router, assets_router, inventory_items_router, inventory_stocks_router)
+    asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, service_request_router)
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.leasing_tenants import leases, lease_charges, tenants
 from .models.financials import invoices
@@ -77,3 +77,4 @@ app.include_router(invoice_router.router)
 app.include_router(contact_router.router)
 app.include_router(tax_codes_router.router)
 app.include_router(assets_router.router)
+app.include_router(service_request_router.router)

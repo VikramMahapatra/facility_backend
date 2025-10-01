@@ -32,3 +32,4 @@ class Asset(Base):
     space = relationship("Space", back_populates="assets")
     category = relationship("AssetCategory", back_populates="assets")
     work_orders = relationship("WorkOrder", back_populates="asset")
+

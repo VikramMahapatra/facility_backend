@@ -31,3 +31,4 @@ class Org(Base):
     tax_reports = relationship("TaxReport", back_populates="org", cascade="all, delete")
     pm_templates = relationship("PMTemplate", back_populates="organization")
     work_orders = relationship("WorkOrder", back_populates="org")
+

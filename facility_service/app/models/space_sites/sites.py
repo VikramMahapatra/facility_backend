@@ -30,3 +30,4 @@ class Site(Base):
     space_filters = relationship("SpaceFilter", back_populates="site", cascade="all, delete-orphan")
     tenants = relationship("Tenant", back_populates="site", cascade="all, delete-orphan")
     work_orders = relationship("WorkOrder", back_populates="site")
+

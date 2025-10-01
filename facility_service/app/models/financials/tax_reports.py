@@ -24,8 +24,9 @@ class TaxReport(Base):
 
     filed = Column(Boolean, default=False, nullable=False)
 
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime(timezone=True), default=datetime.now)
+    updated_at = Column(DateTime(timezone=True),
+                        default=datetime.now, onupdate=datetime.now)
 
     # Relationships
     org = relationship("Org", back_populates="tax_reports")

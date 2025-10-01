@@ -24,7 +24,7 @@ from .router.financials import (invoice_router, tax_codes_router)
 from .router.crm import contact_router
 from .router.maintenance_assets import (
     asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, service_request_router)
-from .router.parking_access import parking_zones_router, access_events_router
+from .router.parking_access import parking_zones_router, access_events_router, visitors_router
 
 from .models import (
     commercial_partners, contracts, purchase_order_lines, purchase_orders, vendors
@@ -33,7 +33,7 @@ from .models.space_sites import buildings, orgs, sites, space_filter_models, spa
 from .models.leasing_tenants import leases, lease_charges, tenants
 from .models.financials import invoices
 from .models.crm import contacts, companies
-from .models.parking_access import parking_zones, parking_pass, access_events
+from .models.parking_access import parking_zones, parking_pass, access_events, visitors
 app = FastAPI(title="Facility Service API")
 
 # Create all tables
@@ -83,3 +83,4 @@ app.include_router(assets_router.router)
 app.include_router(parking_zones_router.router)
 app.include_router(service_request_router.router)
 app.include_router(access_events_router.router)
+app.include_router(visitors_router.router)

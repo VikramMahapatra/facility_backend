@@ -135,55 +135,18 @@ def delete_asset(db: Session, asset_id: str):
     db.commit()
     return True
 
-#get assets by category
-def get_assets_by_category(
-    db: Session,
-    org_id: UUID,
-    category_name: str | None = None
-):
+
+def get_asset_status_lookup(db: Session, org_id: UUID):
     """
-    Returns assets filtered by category_name (case-insensitive)
-    """
-    query = db.query(Asset).options(
-        joinedload(Asset.category),
-        joinedload(Asset.site)
-    ).filter(Asset.org_id == org_id)
-
-    if category_name:
-        query = query.join(AssetCategory).filter(
-            func.lower(AssetCategory.name) == category_name.lower()
-        )
-
-    return query.all()
-
-def get_assets_by_status(
-    db: Session,
-    org_id: UUID,
-    status: str | None = None
-):
-    """
-    Returns assets filtered by status (case-insensitive)
-    """
-    query = db.query(Asset).options(
-        joinedload(Asset.category),
-        joinedload(Asset.site)
-    ).filter(Asset.org_id == org_id)
-
-    if status:
-        query = query.filter(func.lower(Asset.status) == status.lower())
-
-    return query.all()
-
-
-def get_distinct_statuses(db: Session, org_id: UUID):
-    """
-    Returns distinct statuses (case-insensitive)
+    Returns distinct statuses (case-insensitive) return name id 
     """
     statuses = (
-        db.query(func.lower(Asset.status).label("status"))
+        db.query(
+            func.lower(Asset.status).label("id"),
+            Asset.status.capitalize().label("name"))
         .filter(Asset.org_id == org_id)
         .distinct()
         .order_by(func.lower(Asset.status))
         .all()
     )
-    return [s.status.capitalize() for s in statuses if s.status]
+    return statuses

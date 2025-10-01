@@ -29,7 +29,7 @@ class AssetCreate(AssetBase):
 
 
 class AssetUpdate(BaseModel):
-    id: UUID                  #id added besuce of error 'AssetUpdate' object has no attribute 'id'
+    id: UUID                 
     name: Optional[str]
     tag: Optional[str]
     serial_no: Optional[str]

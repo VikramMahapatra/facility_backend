@@ -33,3 +33,5 @@ class ServiceRequest(Base):
     org = relationship("Org", backref="service_requests")
     site = relationship("Site", backref="service_requests")
     space = relationship("Space", backref="service_requests")
+    work_orders = relationship("WorkOrder", back_populates="service_requests")
+

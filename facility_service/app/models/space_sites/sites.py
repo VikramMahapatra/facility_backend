@@ -29,3 +29,4 @@ class Site(Base):
     spaces = relationship("Space", back_populates="site", cascade="all, delete-orphan")
     space_filters = relationship("SpaceFilter", back_populates="site", cascade="all, delete-orphan")
     tenants = relationship("Tenant", back_populates="site", cascade="all, delete-orphan")
+    work_orders = relationship("WorkOrder", back_populates="site")

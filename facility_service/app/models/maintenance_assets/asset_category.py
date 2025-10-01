@@ -17,6 +17,6 @@ class AssetCategory(Base):
     children = relationship("AssetCategory", backref="parent", remote_side=[id])
     attributes = Column(JSONB, nullable=True)
 
-
-    # one category → many assets
     assets = relationship("Asset", back_populates="category", cascade="all, delete")
+    pm_templates = relationship("PMTemplate", back_populates="category")
+

@@ -9,7 +9,7 @@ from shared.schemas import Lookup, UserToken
 from uuid import UUID
 from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryOutFilter
 from ...schemas.maintenance_assets.assets_schemas import AssetStatusOut
-from ...crud.maintenance_assets.assets_crud import get_assets_by_status, get_assets_by_category,get_distinct_statuses
+from ...crud.maintenance_assets.assets_crud import get_asset_status_lookup
 
 router = APIRouter(
     prefix="/api/assets",
@@ -60,45 +60,6 @@ def delete_space(asset_id: str, db: Session = Depends(get_db)):
     return db_asset
 
 
-#get assets by category
-@router.get("/by-category", response_model=list[AssetCategoryOutFilter])
-def list_assets_by_category(
-    category_name: Optional[str] = Query(None, description="Filter assets by category name"),
-    db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token),
-):
-    assets = get_assets_by_category(db, current_user.org_id, category_name)
-
-    return [
-        AssetCategoryOutFilter(
-            tag=a.tag,
-            name=a.name,
-            category=a.category.name if a.category else None,
-            location=a.site.name if a.site else None,
-            status=a.status,
-            cost=a.cost,
-            warranty_expiry=a.warranty_expiry
-        )
-        for a in assets
-    ]
-
-@router.get("/by-status", response_model=list[AssetCategoryOutFilter])
-def list_assets_by_status(
-    status: Optional[str] = Query(None, description="Filter assets by status"),
-    db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token),
-):
-    assets = get_assets_by_status(db, current_user.org_id, status)
-
-    return [
-        AssetCategoryOutFilter(
-            tag=a.tag,
-            name=a.name,
-            category=a.category.name if a.category else None,
-            location=a.site.name if a.site else None,
-            status=a.status,
-            cost=a.cost,
-            warranty_expiry=a.warranty_expiry
-        )
-        for a in assets
-    ]
+@router.get("/status-lookup", response_model=list[Lookup])
+def status_lookup(db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
+    return crud.get_asset_status_lookup(db, current_user.org_id)

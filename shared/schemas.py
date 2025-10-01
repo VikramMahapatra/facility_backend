@@ -20,9 +20,7 @@ class CommonQueryParams(BaseModel):
     limit: Optional[int] = 100
     
 class Lookup(BaseModel):
-    id: UUID
+    id: Optional[UUID] =None
+    code : Optional[str]=None
     name: str
     
-    @field_serializer("id")
-    def serialize_id(self, v: UUID, _info):
-        return str(v)

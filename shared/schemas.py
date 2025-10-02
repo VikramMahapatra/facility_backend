@@ -6,6 +6,8 @@ from uuid import UUID
 from datetime import datetime
 
 # Shared properties
+
+
 class UserToken(BaseModel):
     user_id: str
     org_id: UUID
@@ -13,16 +15,15 @@ class UserToken(BaseModel):
     email: EmailStr
     role: list[str]
     exp: int
-    
+
+
 class CommonQueryParams(BaseModel):
     search: Optional[str] = None
     skip: Optional[int] = 0
     limit: Optional[int] = 100
-    
+
+
 class Lookup(BaseModel):
-    id: UUID
+    id: Optional[UUID] = None
+    code: Optional[str] = None
     name: str
-    
-    @field_serializer("id")
-    def serialize_id(self, v: UUID, _info):
-        return str(v)

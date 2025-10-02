@@ -1,7 +1,7 @@
 
 from fastapi import Form
 from pydantic import BaseModel, EmailStr,  HttpUrl, field_serializer
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 from datetime import datetime
 
@@ -24,6 +24,8 @@ class CommonQueryParams(BaseModel):
 
 
 class Lookup(BaseModel):
-    id: Optional[UUID] = None
-    code: Optional[str] = None
+    id: Union[str, UUID]  # accepts both UUID and str
     name: str
+
+    class Config:
+        from_attributes = True

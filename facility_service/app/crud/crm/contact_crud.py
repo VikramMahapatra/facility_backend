@@ -17,8 +17,12 @@ def to_contact_kind(invoice_kind: str) -> str:
 
 
 def get_customer_lookup(db: Session, kind: str, org_id: str):
-    cust_query = db.query(Contact.id, Contact.full_name.label(
-        "name")).filter(Contact.org_id == org_id)
+    cust_query = (
+        db.query(
+            Contact.id,
+            Contact.full_name.label("name")
+        ).filter(Contact.org_id == org_id)
+    )
 
     if kind:
         cust_query = cust_query.filter(Contact.kind == to_contact_kind(kind))

@@ -160,13 +160,13 @@ def lease_charge_month_lookup(
 ):
     query = (
         db.query(
-            cast(extract("month", LeaseCharge.period_start), String).label("code"),
+            cast(extract("month", LeaseCharge.period_start), String).label("id"),
             func.to_char(LeaseCharge.period_start, "FMMonth").label("name")
         )
         .distinct()
         .join(Lease, LeaseCharge.lease_id == Lease.id)
         .filter(Lease.org_id == org_id)
-        .order_by("code")
+        .order_by("id")
     )
 
     return query.all()
@@ -180,13 +180,13 @@ def lease_charge_code_lookup(
 ):
     query = (
         db.query(
-            LeaseCharge.charge_code.label('code'),
+            LeaseCharge.charge_code.label('id'),
             LeaseCharge.charge_code.label('name')
         )
         .distinct()
         .join(Lease, LeaseCharge.lease_id == Lease.id)
         .filter(Lease.org_id == org_id)
-        .order_by("code")
+        .order_by("id")
 
     )
     return query.all()

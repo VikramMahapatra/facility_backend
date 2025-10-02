@@ -39,3 +39,9 @@ def delete_asset_category(db: Session, category_id: str) -> Optional[AssetCatego
     db.delete(db_category)
     db.commit()
     return db_category
+
+
+def get_asset_category_lookup(db: Session, org_id: str):
+    categories = db.query(AssetCategory.id, AssetCategory.name).filter(
+        AssetCategory.org_id == org_id).all()
+    return categories

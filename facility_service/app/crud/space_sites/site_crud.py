@@ -13,8 +13,8 @@ import uuid
 
 
 # def get_sites(db: Session, org_id:str, skip: int = 0, limit: int = 100):
-    
-def get_sites(db: Session, org_id:str, params:SiteRequest):
+
+def get_sites(db: Session, org_id: str, params: SiteRequest):
     now = datetime.utcnow()
     site_query = (
         db.query(
@@ -33,12 +33,12 @@ def get_sites(db: Session, org_id:str, params:SiteRequest):
             func.count(Building.id).label("buildings"),
             func.sum(
                 case(
-                (
-                    (Lease.start_date <= now) & (Lease.end_date >= now),
-                    1
-                ),
-                else_=0
-            )
+                    (
+                        (Lease.start_date <= now) & (Lease.end_date >= now),
+                        1
+                    ),
+                    else_=0
+                )
             ).label("occupied"),
         )
         .outerjoin(Building, Site.id == Building.site_id)
@@ -46,22 +46,28 @@ def get_sites(db: Session, org_id:str, params:SiteRequest):
         .outerjoin(Lease, Space.id == Lease.space_id)
         .filter(Site.org_id == org_id)
     )
-    
+
     if params.kind and params.kind.lower() != "all":
-        site_query = site_query.filter(func.lower(Site.kind) == params.kind.lower())
-        
+        site_query = site_query.filter(
+            func.lower(Site.kind) == params.kind.lower())
+
     if params.search:
         search_term = f"%{params.search}%"
-        site_query = site_query.filter(or_(Site.name.ilike(search_term),Site.code.ilike(search_term)))
-    
+        site_query = site_query.filter(
+            or_(Site.name.ilike(search_term), Site.code.ilike(search_term)))
+
     total = site_query.group_by(Site.id).count()
-    site_query = site_query.group_by(Site.id).offset(params.skip).limit(params.limit)
+    site_query = site_query.group_by(Site.id).offset(
+        params.skip).limit(params.limit)
     sites = site_query.all()
     return {"sites": sites, "total": total}
 
+
 def get_site_lookup(db: Session, org_id: str):
-    site = db.query(Site.id, Site.name).filter(Site.org_id == org_id).all()
+    site = db.query(Site.id, Site.name).filter(
+        Site.org_id == org_id).all()
     return site
+
 
 def get_site(db: Session, site_id: str):
     site = db.query(Site).filter(Site.id == site_id).first()
@@ -72,7 +78,7 @@ def get_site(db: Session, site_id: str):
 
     total_spaces = len(site.spaces or []) if site.spaces else 0
     total_buildings = len(site.buildings or []) if site.buildings else 0
-    
+
     # occupied spaces based on Lease
     occupied = (
         db.query(func.count(Space.id))
@@ -86,7 +92,8 @@ def get_site(db: Session, site_id: str):
     ) or 0
 
     # ✅ Explicit logic for occupied_percent
-    occupied_percent = max(0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0))
+    occupied_percent = max(
+        0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0))
 
     return SiteOut(
         id=site.id,
@@ -115,7 +122,7 @@ def create_site(db: Session, site: SiteCreate):
 
 
 def update_site(db: Session, site: SiteUpdate):
-    db_site =  db.query(Site).filter(Site.id == site.id).first()
+    db_site = db.query(Site).filter(Site.id == site.id).first()
     if not db_site:
         return None
     for key, value in site.dict(exclude_unset=True).items():
@@ -132,4 +139,3 @@ def delete_site(db: Session, site_id: str):
     db.delete(db_site)
     db.commit()
     return db_site
-

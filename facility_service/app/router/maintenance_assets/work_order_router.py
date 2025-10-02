@@ -28,6 +28,13 @@ router = APIRouter(
     dependencies=[Depends(validate_current_token)]
 )
 
+@router.get("/all", response_model=WorkOrderListResponse)
+def get_work_orders(
+    params : WorkOrderRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)) :
+    return crud.get_work_orders(db, current_user.org_id, params)
+
 # ---------------- Work Orders Overview ----------------
 @router.get("/overview", response_model=WorkOrderOverviewResponse)
 def overview(
@@ -36,6 +43,31 @@ def overview(
 ):
     return get_work_orders_overview(db, current_user.org_id)
 
+
+@router.put("/{work_order_id}", response_model=None)
+def update_work_order(  
+    work_order: WorkOrderUpdate,
+    db: Session = Depends(get_db)
+):
+    db_work_order = crud.update_work_order(db, work_order)
+    if not db_work_order:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    return {"message": "Work order updated successfully"}
+
+@router.post("/", response_model=WorkOrderOut)
+def create_work_order_endpoint(
+    work_order: WorkOrderCreate, 
+    db: Session = Depends(get_db),
+    current_user : UserToken = Depends(validate_current_token)):
+    work_order.org_id = current_user.org_id
+    return create_work_order(db, work_order)
+
+@router.delete("/{work_order_id}", response_model=None)
+def delete_work_order(work_order_id: str, db: Session = Depends(get_db)):
+    db_work_order = crud.delete_work_order(db, work_order_id)
+    if not db_work_order:
+        raise HTTPException(status_code=404, detail="work order not found")
+    return db_work_order
 
 # ---------------- Filter Work Orders by Status ----------------
 @router.get("/status-lookup", response_model=List[Lookup])
@@ -52,39 +84,3 @@ def work_order_priority_lookup(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.work_orders_priority_lookup(db, current_user.org_id)
-
-
-@router.get("/", response_model=WorkOrderListResponse)
-def get_work_orders(
-    params : WorkOrderRequest = Depends(),
-    db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)) :
-    return crud.get_work_orders(db, current_user.org_id, params)
-
-
-@router.post("/", response_model=WorkOrderOut)
-def create_work_order_endpoint(
-    work_order: WorkOrderCreate, 
-    db: Session = Depends(get_db),
-    current_user : UserToken = Depends(validate_current_token)):
-    work_order.org_id = current_user.org_id
-    return create_work_order(db, work_order)
-
-
-@router.put("/{work_order_id}", response_model=None)
-def update_work_order(  
-    work_order: WorkOrderUpdate,
-    db: Session = Depends(get_db)
-):
-    db_work_order = crud.update_work_order(db, work_order)
-    if not db_work_order:
-        raise HTTPException(status_code=404, detail="Work order not found")
-    return {"message": "Work order updated successfully"}
-
-
-@router.delete("/{work_order_id}", response_model=None)
-def delete_work_order(work_order_id: str, db: Session = Depends(get_db)):
-    db_work_order = crud.delete_work_order(db, work_order_id)
-    if not db_work_order:
-        raise HTTPException(status_code=404, detail="work order not found")
-    return db_work_order

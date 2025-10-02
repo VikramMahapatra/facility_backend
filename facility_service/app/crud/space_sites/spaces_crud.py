@@ -135,3 +135,20 @@ def get_space_lookup(db: Session, site_id: str, org_id: str):
         space_query = space_query.filter(Space.site_id == site_id)
 
     return space_query.all()
+
+
+def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
+    space_query = (
+        db.query(
+            Space.id,
+            func.concat(Building.name, literal(
+                " - "), Space.name).label("name")
+        )
+        .join(Building, Space.building_block_id == Building.id)
+        .filter(Space.org_id == org_id)
+    )
+
+    if site_id and site_id.lower() != "all":  # only add filter if site_id is provided
+        space_query = space_query.filter(Space.site_id == site_id)
+
+    return space_query.all()

@@ -22,22 +22,34 @@ class TenantCreate(TenantBase):
  
 class TenantUpdate(TenantBase):
     id: str
- 
-class TenantOut(TenantBase):
+
+class TenantRequest(BaseModel):
+    search: Optional[str] = None
+    skip: int = 0
+    limit: int = 10
+    status: Optional[str] = None   # <- add this
+    kind: Optional[str] = None     # <- add this
+
+class TenantOut(BaseModel):
     id: UUID
-    active_leases: int = 0
-    model_config = {"from_attributes": True}
- 
-class TenantRequest(CommonQueryParams):
-    site_id: Optional[str] = None   # "all" or UUID
- 
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    flat_number: Optional[str] = None
+    site_id: Optional[UUID] = None
+    '''model_config = {"from_attributes": True}'''
+
+
 class TenantListResponse(BaseModel):
     tenants: List[TenantOut]
     total: int
+
  
-class TenantOverview(BaseModel):
-    totalTenants: int
-    activeTenants: int
-    commercialTenants: int   
-    individualTenants: int   
- 
+class TenantOverviewResponse(BaseModel):
+    total_tenants: int
+    active_tenants: int
+    commercial: int
+    individual: int
+
+    class Config:
+        orm_mode = True

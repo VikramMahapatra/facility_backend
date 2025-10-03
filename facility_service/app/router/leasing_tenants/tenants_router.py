@@ -1,18 +1,19 @@
 # app/routes/leasing_tenants/tenants_router.py
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Dict, List
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
-from shared.schemas import UserToken
+from shared.schemas import Lookup, UserToken
 
-from ...schemas.tenants_schemas import (
+from ...schemas.leasing_tenants.tenants_schemas import (
     TenantListResponse,
     TenantOut,
     TenantCreate,
+    TenantOverviewResponse,
     TenantUpdate,
     TenantRequest,
-    TenantOverview,
 )
 from ...crud.leasing_tenants import tenants_crud as crud
 
@@ -22,60 +23,69 @@ router = APIRouter(
     dependencies=[Depends(validate_current_token)],
 )
 
-# List
-
-
-@router.get("/", response_model=TenantListResponse)
-def get_tenants(
+#------------all
+@router.get("/all", response_model=TenantListResponse)
+def tenants_all(
     params: TenantRequest = Depends(),
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token),
+    current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_tenants(db, current_user.org_id, params)
-
+    return crud.get_all_tenants(db, current_user.org_id, params)
 
 # Overview
-@router.get("/overview", response_model=TenantOverview)
-def get_tenants_overview(
-    params: TenantRequest = Depends(),
+@router.get("/overview", response_model=TenantOverviewResponse)
+def tenants_overview(
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token),
+    current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_tenants_overview(db, current_user.org_id, params)
+    return crud.get_tenants_overview(db, current_user.org_id)
 
+# ----------------- Update Tenant -----------------
+@router.put("/{tenant_id}", response_model=None)
+def update_tenant_endpoint(
+    tenant_id: UUID,
+    tenant_update: TenantUpdate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    updated = crud.update_tenant(db, tenant_id, tenant_update)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return {"message": "Tenant updated successfully"}
 
-# Create
+# ----------------- Create Tenant -----------------
 @router.post("/", response_model=TenantOut)
-def create_tenant(
-    payload: TenantCreate,
+def create_tenant_endpoint(
+    tenant: TenantCreate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token),
+    current_user: UserToken = Depends(validate_current_token)
 ):
-    obj = crud.create_tenant(db, payload)
-    return TenantOut.model_validate(obj)
-
-
-# Update
-@router.put("/", response_model=TenantOut)
-def update_tenant(
-    payload: TenantUpdate,
+    return crud.create_tenant(db, tenant)
+# ---------------- Delete Tenant ----------------
+@router.delete("/{tenant_id}")
+def delete_tenant_route(
+    tenant_id: UUID,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token),
+    current_user: UserToken = Depends(validate_current_token)
 ):
-    obj = crud.update_tenant(db, payload)
-    if not obj:
+    success = crud.delete_tenant(db, tenant_id)
+    if not success:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    return TenantOut.model_validate(obj)
+    return {"message": "Tenant deleted successfully"}
 
 
-# Delete
-@router.delete("/{tenant_id}", response_model=TenantOut)
-def delete_tenant(
-    tenant_id: str,
+# ----------------  Type Lookup ----------------
+@router.get("/type-lookup", response_model=List[Lookup])
+def tenant_type_lookup_endpoint(
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token),
+    current_user: UserToken = Depends(validate_current_token)
 ):
-    obj = crud.delete_tenant(db, tenant_id)
-    if not obj:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    return TenantOut.model_validate(obj)
+    return crud.tenant_type_lookup(db, current_user.org_id)
+
+# ----------------  Status Lookup ----------------
+@router.get("/status-lookup", response_model=List[Lookup])
+def tenant_status_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.tenant_status_lookup(db, current_user.org_id)

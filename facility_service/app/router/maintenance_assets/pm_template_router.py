@@ -89,3 +89,10 @@ def pm_template_category_lookup(
 ):
     return crud.pm_templates_category_lookup(db, current_user.org_id)
 
+# ----------------  Status Lookup ----------------
+@router.get("/status-lookup", response_model=List[Lookup])
+def pm_templates_status_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.pm_template_status_lookup(db, current_user.org_id)

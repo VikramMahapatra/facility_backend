@@ -63,3 +63,11 @@ def delete_space(asset_id: str, db: Session = Depends(get_db)):
 @router.get("/status-lookup", response_model=list[Lookup])
 def status_lookup(db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
     return crud.get_asset_status_lookup(db, current_user.org_id)
+
+# ---------------- Category Lookup ----------------
+@router.get("/category-lookup", response_model=List[Lookup])
+def category_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.assets_category_lookup(db, current_user.org_id)

@@ -37,7 +37,6 @@ def create_lease_charge(
         data: LeaseChargeCreate,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    data.org_id = current_user.org_id
     return crud.create_lease_charge(db, data)
 
 

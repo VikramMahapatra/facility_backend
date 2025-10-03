@@ -1,8 +1,10 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, literal, or_, select
 from datetime import datetime
+
+from ...enum.maintenance_assets_enum import WorkOrderPriority, WorkOrderStatus
 from ...models.space_sites.spaces import Space
-from shared.schemas import UserToken
+from shared.schemas import Lookup, UserToken
 from ...models.maintenance_assets.work_order import WorkOrder
 from uuid import UUID
 from typing import List, Optional
@@ -49,30 +51,38 @@ def get_work_orders_overview(db: Session, org_id: UUID):
 
 
 def work_orders_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
-    query = (
-        db.query(
-            WorkOrder.status.label('id'),
-            WorkOrder.status.label('name')
-        )
-        .filter(WorkOrder.org_id == org_id)
-        .distinct()
-    )
-    return query.all()
+    return [
+        Lookup(id=kind.value, name=kind.name.capitalize())
+        for kind in WorkOrderStatus
+    ]
+    # query = (
+    #     db.query(
+    #         WorkOrder.status.label('id'),
+    #         WorkOrder.status.label('name')
+    #     )
+    #     .filter(WorkOrder.org_id == org_id)
+    #     .distinct()
+    # )
+    # return query.all()
 
 
 # ---------------- Filter Work Orders by Priority ----------------
 
 
 def work_orders_priority_lookup(db: Session, org_id: UUID):
-    query = (
-        db.query(
-            WorkOrder.priority.label('id'),
-            WorkOrder.priority.label('name')
-        )
-        .filter(WorkOrder.org_id == org_id)
-        .distinct()
-    )
-    return query.all()
+    return [
+        Lookup(id=order.value, name=order.name.capitalize())
+        for order in WorkOrderPriority
+    ]
+    # query = (
+    #     db.query(
+    #         WorkOrder.priority.label('id'),
+    #         WorkOrder.priority.label('name')
+    #     )
+    #     .filter(WorkOrder.org_id == org_id)
+    #     .distinct()
+    # )
+    # return query.all()
 
 # ---------------- Get All ----------------
 

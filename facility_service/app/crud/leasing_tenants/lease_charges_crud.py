@@ -3,9 +3,13 @@ import calendar
 import uuid
 from typing import List, Optional, Tuple, Dict, Any
 from datetime import date
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import String, func, extract, or_, cast, Date
 
+from ...models.commercial_partners import CommercialPartner
+from ...models.space_sites.sites import Site
+from ...models.space_sites.spaces import Space
+from ...models.leasing_tenants.tenants import Tenant
 from ...enum.leasing_tenants_enum import LeaseChargeCode
 from shared.schemas import Lookup
 from ...models.leasing_tenants.lease_charges import LeaseCharge
@@ -19,7 +23,8 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
     filters = [Lease.org_id == org_id]
 
     if params.charge_code and params.charge_code != "all":
-        filters.append(func.lower(LeaseCharge.charge_code) == params.charge_code.lower())
+        filters.append(func.lower(LeaseCharge.charge_code)
+                       == params.charge_code.lower())
 
     if params.month and params.month != "all":
         filters.append(func.extract(
@@ -73,6 +78,13 @@ def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
             LeaseCharge,
             Lease
         ).join(Lease, LeaseCharge.lease_id == Lease.id)
+        .options(
+            joinedload(Lease.tenant).load_only(Tenant.id, Tenant.name),
+            joinedload(Lease.partner).load_only(
+                CommercialPartner.id, CommercialPartner.legal_name),
+            joinedload(Lease.space).load_only(Space.id, Space.name),
+            joinedload(Lease.site).load_only(Site.id, Site.name),
+        )
         .filter(*filters)
     )
 
@@ -95,6 +107,18 @@ def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
         if lc.period_start and lc.period_end:
             period_days = (lc.period_end - lc.period_start).days
 
+        display_name = None
+        if lease.partner is not None:
+            display_name = lease.partner.legal_name
+        elif lease.tenant is not None:
+            display_name = lease.tenant.name
+        else:
+            display_name = "Unknown"  # fallback
+
+        # append space and site names if available
+        space_name = lease.space.name if lease.space else None
+        site_name = lease.site.name if lease.site else None
+
         items.append(LeaseChargeOut.model_validate({
             **lc.__dict__,
             "lease_start": lease.start_date,
@@ -104,6 +128,9 @@ def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
             "period_days": period_days,
             "site_id": lease.site_id,
             "partner_id": lease.partner_id,
+            "tenant_name": display_name,
+            "site_name": site_name,
+            "space_name": space_name
         }))
 
     return {"items": items, "total": total}
@@ -123,17 +150,11 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
 
 def update_lease_charge(
     db: Session,
-    payload: LeaseChargeUpdate,
-    org_id: UUID,
+    payload: LeaseChargeUpdate
 ) -> Optional[LeaseCharge]:
     obj = get_lease_charge_by_id(db, payload.id)
     if not obj:
         return None
-
-    if org_id is not None:
-        lease = db.query(Lease).filter(Lease.id == obj.lease_id).first()
-        if not lease or lease.org_id != org_id:
-            return None  # caller should treat as not allowed / not found
 
     for k, v in payload.dict(exclude_unset=True).items():
         setattr(obj, k, v)

@@ -39,6 +39,9 @@ class LeaseChargesOverview(BaseModel):
 class LeaseChargeOut(BaseModel):
     id: UUID
     lease_id: UUID
+    tenant_name: str
+    site_name: str
+    space_name: str
     charge_code: Optional[str]
     period_start: Optional[date]
     period_end: Optional[date]

@@ -23,7 +23,8 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
     filters = [Lease.org_id == org_id]
 
     if params.charge_code and params.charge_code != "all":
-        filters.append(func.lower(LeaseCharge.status) == params.status.lower())
+        filters.append(func.lower(LeaseCharge.charge_code)
+                       == params.charge_code.lower())
 
     if params.month and params.month != "all":
         filters.append(func.extract(

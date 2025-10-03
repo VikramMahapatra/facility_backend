@@ -145,8 +145,7 @@ def lease_lookup(org_id: UUID, db: Session):
             joinedload(Lease.partner).load_only(
                 CommercialPartner.id, CommercialPartner.legal_name),
             joinedload(Lease.space).load_only(Space.id, Space.name),
-            joinedload(Lease.space).joinedload(
-                Space.site).load_only(Site.id, Site.name),
+            joinedload(Lease.site).load_only(Site.id, Site.name),
         )
         .filter(Lease.org_id == org_id)
         .distinct(Lease.id)

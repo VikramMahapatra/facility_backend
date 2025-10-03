@@ -149,8 +149,7 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
 
 def update_lease_charge(
     db: Session,
-    payload: LeaseChargeUpdate,
-    org_id: UUID,
+    payload: LeaseChargeUpdate
 ) -> Optional[LeaseCharge]:
     obj = get_lease_charge_by_id(db, payload.id)
     if not obj:

@@ -156,11 +156,6 @@ def update_lease_charge(
     if not obj:
         return None
 
-    if org_id is not None:
-        lease = db.query(Lease).filter(Lease.id == obj.lease_id).first()
-        if not lease or lease.org_id != org_id:
-            return None  # caller should treat as not allowed / not found
-
     for k, v in payload.dict(exclude_unset=True).items():
         setattr(obj, k, v)
     db.commit()

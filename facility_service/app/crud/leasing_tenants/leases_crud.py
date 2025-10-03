@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
 
-from facility_service.app.models.commercial_partners import CommercialPartner
+from ...models.commercial_partners import CommercialPartner
+from ...models.leasing_tenants.tenants import Tenant
 
 from ...enum.leasing_tenants_enum import LeaseKind, LeaseStatus
 from shared.schemas import Lookup
@@ -140,10 +141,12 @@ def lease_lookup(org_id: UUID, db: Session):
     leases = (
         db.query(Lease)
         .options(
-            joinedload(Lease.tenant).load_only("id", "name"),
-            joinedload(Lease.partner).load_only("id", "legal_name"),
-            joinedload(Lease.site).load_only("name"),
-            joinedload(Lease.space).load_only("name")
+            joinedload(Lease.tenant).load_only(Tenant.id, Tenant.name),
+            joinedload(Lease.partner).load_only(
+                CommercialPartner.id, CommercialPartner.legal_name),
+            joinedload(Lease.space).load_only(Space.id, Space.name),
+            joinedload(Lease.space).joinedload(
+                Space.site).load_only(Site.id, Site.name),
         )
         .filter(Lease.org_id == org_id)
         .distinct(Lease.id)

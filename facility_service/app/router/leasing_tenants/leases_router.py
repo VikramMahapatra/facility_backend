@@ -67,17 +67,25 @@ def delete_lease(lease_id: str, db: Session = Depends(get_db)):
     return obj
 
 
-@router.get("/by-space-name", response_model=List[Lookup])
-def lease_kind_lookup(
-    org_id: UUID,
+@router.get("/lease-lookup", response_model=List[Lookup])
+def lease_lookup(
     db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.lease_kind_lookup(org_id, db)
+    return crud.lease_lookup(current_user.org_id, db)
+
+
+@router.get("/kind-lookup", response_model=List[Lookup])
+def lease_kind_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.lease_kind_lookup(current_user.org_id, db)
 
 
 @router.get("/status-lookup", response_model=List[Lookup])
 def lease_status_lookup(
-    org_id: UUID,
     db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.lease_status_lookup(org_id, db)
+    return crud.lease_status_lookup(current_user.org_id, db)

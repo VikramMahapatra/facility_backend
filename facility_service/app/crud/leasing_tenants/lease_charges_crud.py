@@ -1,9 +1,13 @@
 # app/crud/lease_charges_crud.py
+import calendar
 import uuid
 from typing import List, Optional, Tuple, Dict, Any
 from datetime import date
 from sqlalchemy.orm import Session
 from sqlalchemy import String, func, extract, or_, cast, Date
+
+from ...enum.leasing_tenants_enum import LeaseChargeCode
+from shared.schemas import Lookup
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.leasing_tenants.leases import Lease
 from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeOut, LeaseChargeUpdate, LeaseChargeRequest
@@ -158,16 +162,21 @@ def lease_charge_month_lookup(
     db: Session,
     org_id: UUID
 ):
-    query = (
-        db.query(
-            cast(extract("month", LeaseCharge.period_start), String).label("id"),
-            func.to_char(LeaseCharge.period_start, "FMMonth").label("name")
-        )
-        .distinct()
-        .join(Lease, LeaseCharge.lease_id == Lease.id)
-        .filter(Lease.org_id == org_id)
-        .order_by("id")
-    )
+    months = [
+        Lookup(id=f"{i:02}", name=calendar.month_name[i])
+        for i in range(1, 13)
+    ]
+    return months
+    # query = (
+    #     db.query(
+    #         cast(extract("month", LeaseCharge.period_start), String).label("id"),
+    #         func.to_char(LeaseCharge.period_start, "FMMonth").label("name")
+    #     )
+    #     .distinct()
+    #     .join(Lease, LeaseCharge.lease_id == Lease.id)
+    #     .filter(Lease.org_id == org_id)
+    #     .order_by("id")
+    # )
 
     return query.all()
 
@@ -178,15 +187,19 @@ def lease_charge_code_lookup(
     db: Session,
     org_id: UUID
 ):
-    query = (
-        db.query(
-            LeaseCharge.charge_code.label('id'),
-            LeaseCharge.charge_code.label('name')
-        )
-        .distinct()
-        .join(Lease, LeaseCharge.lease_id == Lease.id)
-        .filter(Lease.org_id == org_id)
-        .order_by("id")
+    return [
+        Lookup(id=code.value, name=code.name.capitalize())
+        for code in LeaseChargeCode
+    ]
+    # query = (
+    #     db.query(
+    #         LeaseCharge.charge_code.label('id'),
+    #         LeaseCharge.charge_code.label('name')
+    #     )
+    #     .distinct()
+    #     .join(Lease, LeaseCharge.lease_id == Lease.id)
+    #     .filter(Lease.org_id == org_id)
+    #     .order_by("id")
 
-    )
-    return query.all()
+    # )
+    # return query.all()

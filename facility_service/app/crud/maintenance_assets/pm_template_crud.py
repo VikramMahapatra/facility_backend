@@ -85,6 +85,20 @@ def pm_templates_category_lookup(db: Session, org_id: str) -> List[Dict]:
     # Return as list of dicts
     return [{"id": r.id, "name": r.name} for r in rows]
 
+#-----------status_lookup 
+def pm_template_status_lookup(db: Session, org_id: str) -> List[Dict]:
+    # Query distinct lease statuses for the org
+    query = (
+        db.query(
+            PMTemplate.status.label("id"),
+            PMTemplate.status.label("name")
+        )
+        .filter(PMTemplate.org_id == org_id)
+        .distinct()
+        .order_by(PMTemplate.status)
+    )
+    rows = query.all()
+    return [{"id": r.id, "name": r.name} for r in rows]
 
 # ----------------- Build Filters -----------------
 def build_pm_template_filters(org_id: UUID, params: PMTemplateRequest):

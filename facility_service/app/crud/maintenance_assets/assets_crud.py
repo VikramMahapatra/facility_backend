@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session,joinedload
 from sqlalchemy import func, cast, or_, case, literal, Numeric, and_ ,  distinct
@@ -150,3 +150,20 @@ def get_asset_status_lookup(db: Session, org_id: UUID):
         .all()
     )
     return statuses
+
+
+
+# ---------------- Category Lookup ----------------
+def assets_category_lookup(db: Session, org_id: UUID) -> List[Dict]:
+    query = (
+        db.query(
+            AssetCategory.id.label("id"),
+            AssetCategory.name.label("name")
+        )
+        .join(Asset, Asset.category_id == AssetCategory.id)
+        .filter(Asset.org_id == org_id)
+        .distinct()
+        .order_by(AssetCategory.name)
+    )
+    rows = query.all()
+    return [{"id": r.id, "name": r.name} for r in rows]

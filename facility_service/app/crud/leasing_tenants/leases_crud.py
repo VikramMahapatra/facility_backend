@@ -1,8 +1,13 @@
 from typing import Optional
 from datetime import date, timedelta
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
+
+from facility_service.app.models.commercial_partners import CommercialPartner
+
+from ...enum.leasing_tenants_enum import LeaseKind, LeaseStatus
+from shared.schemas import Lookup
 
 from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.sites import Site
@@ -131,29 +136,79 @@ def delete(db: Session, lease_id: str) -> Optional[Lease]:
     return obj
 
 
-def lease_kind_lookup(org_id: UUID, db: Session):
-    query = (
-        db.query(
-            Lease.kind.label('id'),
-            Lease.kind.label('name')
+def lease_lookup(org_id: UUID, db: Session):
+    leases = (
+        db.query(Lease)
+        .options(
+            joinedload(Lease.tenant).load_only("id", "name"),
+            joinedload(Lease.partner).load_only("id", "legal_name"),
+            joinedload(Lease.site).load_only("name"),
+            joinedload(Lease.space).load_only("name")
         )
-        .distinct()
         .filter(Lease.org_id == org_id)
-        .order_by("id")
-
+        .distinct(Lease.id)
+        .all()
     )
-    return query.all()
+
+    lookups = []
+    for lease in leases:
+        base_name = None
+        if lease.partner is not None:
+            base_name = lease.partner.legal_name
+        elif lease.tenant is not None:
+            base_name = lease.tenant.name
+        else:
+            base_name = "Unknown"  # fallback
+
+        # append space and site names if available
+        space_name = lease.space.name if lease.space else None
+        site_name = lease.site.name if lease.site else None
+
+        # combine into display_name
+        parts = [base_name]
+        if space_name:
+            parts.append(space_name)
+        if site_name:
+            parts.append(site_name)
+
+        display_name = " - ".join(parts)
+
+        lookups.append(Lookup(id=lease.id, name=display_name))
+
+    return lookups
+
+
+def lease_kind_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=kind.value, name=kind.name.capitalize())
+        for kind in LeaseKind
+    ]
+    # query = (
+    #     db.query(
+    #         Lease.kind.label('id'),
+    #         Lease.kind.label('name')
+    #     )
+    #     .distinct()
+    #     .filter(Lease.org_id == org_id)
+    #     .order_by("id")
+
+    # )
+    # return query.all()
 
 
 def lease_status_lookup(org_id: UUID, db: Session):
-    query = (
-        db.query(
-            Lease.status.label('id'),
-            Lease.status.label('name')
-        )
-        .distinct()
-        .filter(Lease.org_id == org_id)
-        .order_by("id")
+    return [
+        Lookup(id=status.value, name=status.name.capitalize())
+        for status in LeaseStatus
+    ]
+    # query = (
+    #     db.query(
+    #         Lease.status.label('id'),
+    #         Lease.status.label('name')
+    #     )
+    #     .distinct()
+    #     .filter(Lease.org_id == org_id)
+    #     .order_by("id")
 
-    )
-    return query.all()
+    # )
+    # return query.all()

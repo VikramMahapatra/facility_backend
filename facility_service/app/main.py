@@ -1,11 +1,11 @@
+from .router.procurement import contracts_router, vendor_router
+from .models.procurement import contracts, vendors
 from .models.maintenance_assets import asset_category, assets, inventory_items, inventory_stocks
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shared.database import facility_engine, Base
 
 from .router import (
-    vendor_router,
-    contracts_router,
     purchase_orders_router,
     purchase_order_lines_router,
     commercial_partners_router,
@@ -27,7 +27,7 @@ from .router.maintenance_assets import (
 from .router.parking_access import parking_zones_router, access_events_router, visitors_router
 
 from .models import (
-    commercial_partners, contracts, purchase_order_lines, purchase_orders, vendors
+    commercial_partners, purchase_order_lines, purchase_orders
 )
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.leasing_tenants import leases, lease_charges, tenants

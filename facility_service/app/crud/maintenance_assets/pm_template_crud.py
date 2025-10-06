@@ -131,7 +131,6 @@ def get_pm_template_query(db: Session, org_id: UUID, params: PMTemplateRequest):
 
 
 # ----------------- Get All Templates -----------------
-# ----------------- Get All Templates -----------------
 def get_pm_templates(db: Session, org_id: UUID, params: PMTemplateRequest) -> PMTemplateListResponse:
     base_query = get_pm_template_query(db, org_id, params)
     total = base_query.with_entities(func.count(PMTemplate.id)).scalar()

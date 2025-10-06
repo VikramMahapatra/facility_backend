@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from shared.auth import validate_current_token #for dependicies 
 from shared.database import get_facility_db as get_db
 from shared.schemas import Lookup, UserToken
-from facility_service.app.schemas.maintenance_assets.pm_templates_schemas import (
+from ...schemas.maintenance_assets.pm_templates_schemas import (
     PMTemplateCreate,
     PMTemplateOverviewResponse,
     PMTemplateUpdate,
@@ -13,7 +13,7 @@ from facility_service.app.schemas.maintenance_assets.pm_templates_schemas import
     PMTemplateRequest,
     PMTemplateListResponse,
 )
-from facility_service.app.crud.maintenance_assets import pm_template_crud as crud
+from ...crud.maintenance_assets import pm_template_crud as crud
 
 router = APIRouter(prefix="/api/pm_templates", tags=["PM Templates"])
 

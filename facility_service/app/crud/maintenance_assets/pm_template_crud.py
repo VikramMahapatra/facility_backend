@@ -207,3 +207,6 @@ def delete_pm_template(db: Session, template_id: UUID) -> bool:
     db.delete(db_template)
     db.commit()
     return True
+
+
+#abc

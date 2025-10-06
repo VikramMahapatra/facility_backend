@@ -3,53 +3,64 @@ from uuid import UUID
 from typing import Optional, List, Any
 from datetime import date
 from pydantic import BaseModel
+from ...schemas.leases_schemas import LeaseOut
 from shared.schemas import CommonQueryParams
- 
+
+
 class TenantBase(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    vehicle_info: Optional[Any] = None
-    family_info: Optional[Any] = None
-    tenancy_info: Optional[date] = None
-    police_verification_info: Optional[bool] = False
-    flat_number: Optional[str] = None
-    site_id: Optional[UUID] = None
- 
-class TenantCreate(TenantBase):
-    name: str
     site_id: UUID
- 
+    name: str
+    email: Optional[str] = None   # <- make optional
+    phone: Optional[str] = None
+    tenant_type: str
+    status: str
+    contact_info: Optional[Any] = None
+    type:  Optional[str] = None
+    legal_name: Optional[str] = None
+
+
+class TenantCreate(TenantBase):
+    pass
+
+
 class TenantUpdate(TenantBase):
     id: str
+
 
 class TenantRequest(BaseModel):
     search: Optional[str] = None
     skip: int = 0
     limit: int = 10
     status: Optional[str] = None   # <- add this
-    kind: Optional[str] = None     # <- add this
+    type: Optional[str] = None     # <- add this
+
 
 class TenantOut(BaseModel):
     id: UUID
+    org_id: UUID
+    site_id: UUID
     name: str
-    email: Optional[str] = None
+    email: Optional[str] = None   # <- make optional
     phone: Optional[str] = None
-    flat_number: Optional[str] = None
-    site_id: Optional[UUID] = None
-    '''model_config = {"from_attributes": True}'''
+    tenant_type: str
+    type:  Optional[str] = None
+    status: str
+    contact_info: Optional[Any] = None
+    tenant_leases: Optional[List[LeaseOut]] = None
+
+    model_config = {"from_attributes": True}
 
 
 class TenantListResponse(BaseModel):
     tenants: List[TenantOut]
     total: int
 
- 
+
 class TenantOverviewResponse(BaseModel):
-    total_tenants: int
-    active_tenants: int
-    commercial: int
-    individual: int
+    totalTenants: int
+    activeTenants: int
+    commercialTenants: int
+    individualTenants: int
 
     class Config:
         orm_mode = True

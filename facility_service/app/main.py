@@ -27,10 +27,10 @@ from .router.maintenance_assets import (
 from .router.parking_access import parking_zones_router, access_events_router, visitors_router
 
 from .models import (
-    commercial_partners, purchase_order_lines, purchase_orders
+    purchase_order_lines, purchase_orders
 )
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
-from .models.leasing_tenants import leases, lease_charges, tenants
+from .models.leasing_tenants import commercial_partners, leases, lease_charges, tenants
 from .models.financials import invoices
 from .models.crm import contacts, companies
 from .models.parking_access import parking_zones, parking_pass, access_events, visitors

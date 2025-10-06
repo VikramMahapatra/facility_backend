@@ -6,7 +6,7 @@ from datetime import date
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import String, func, extract, or_, cast, Date
 
-from ...models.commercial_partners import CommercialPartner
+from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.tenants import Tenant

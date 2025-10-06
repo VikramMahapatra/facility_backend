@@ -21,3 +21,14 @@ class LeaseChargeCode(str, Enum):
     PARK = "PARK"
     PENALTY = "PENALTY"
     MAINTENANCE = "MAINTENANCE"
+
+
+class TenantStatus(str, Enum):
+    active = "active"
+    inactive = "inactive"
+    suspended = "suspended"
+
+
+class TenantType(str, Enum):
+    individual = "individual"
+    commercial = "commercial"

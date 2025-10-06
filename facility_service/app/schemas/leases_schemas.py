@@ -25,6 +25,7 @@ class LeaseBase(BaseModel):
     utilities: Optional[Any] = None
     status: Optional[str] = "draft"
     documents: Optional[Any] = None
+    frequency: Optional[str] = None
 
 
 class LeaseCreate(LeaseBase):

@@ -72,6 +72,15 @@ def get_list(db: Session, org_id: UUID, params: LeaseRequest) -> LeaseListRespon
 
     leases = []
     for row in rows:
+
+        tenant_name = None
+        if row.partner is not None:
+            tenant_name = row.partner.legal_name
+        elif row.tenant is not None:
+            tenant_name = row.tenant.name
+        else:
+            tenant_name = "Unknown"  # fallback
+
         space_code = None
         site_name = None
         if row.space_id:
@@ -82,7 +91,12 @@ def get_list(db: Session, org_id: UUID, params: LeaseRequest) -> LeaseListRespon
                 Site.id == row.site_id).scalar()
         leases.append(
             LeaseOut.model_validate(
-                {**row.__dict__, "space_code": space_code, "site_name": site_name}
+                {
+                    **row.__dict__,
+                    "space_code": space_code,
+                    "site_name": site_name,
+                    "tenant_name": tenant_name
+                }
             )
         )
     return {"leases": leases, "total": total}
@@ -116,13 +130,16 @@ def update(db: Session, payload: LeaseUpdate) -> Optional[Lease]:
     kind = data.get("kind", obj.kind)
     partner_id = data.get("partner_id", obj.partner_id)
     tenant_id = data.get("tenant_id", obj.tenant_id)
-    if kind == "commercial" and not partner_id:
-        raise ValueError("partner_id is required for commercial leases")
-    if kind == "residential" and not tenant_id:
-        raise ValueError("tenant_id is required for residential leases")
+    if kind == "commercial" and "partner_id" in payload.model_fields_set:
+        data["partner_id"] = partner_id
+        data["tenant_id"] = None
+    if kind == "residential" and "tenant_id" in payload.model_fields_set:
+        data["tenant_id"] = tenant_id
+        data["partner_id"] = None
 
     for k, v in data.items():
         setattr(obj, k, v)
+
     db.commit()
     db.refresh(obj)
     return obj
@@ -214,3 +231,30 @@ def lease_status_lookup(org_id: UUID, db: Session):
 
     # )
     # return query.all()
+
+
+def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Session):
+
+    partners = []
+    if kind.lower() == LeaseKind.commercial:
+        partners = (
+            db.query(
+                CommercialPartner.id,
+                CommercialPartner.legal_name.label('name')
+            )
+            .filter(and_(CommercialPartner.org_id == org_id, CommercialPartner.site_id == site_id))
+            .distinct()
+            .all()
+        )
+    else:
+        partners = (
+            db.query(
+                Tenant.id,
+                Tenant.name
+            )
+            .filter(Tenant.site_id == site_id)
+            .distinct()
+            .all()
+        )
+
+    return partners

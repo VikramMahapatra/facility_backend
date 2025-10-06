@@ -7,7 +7,7 @@ from ...schemas.leases_schemas import (
 from ...crud.leasing_tenants import leases_crud as crud
 from shared.auth import validate_current_token
 from shared.schemas import Lookup, UserToken
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 router = APIRouter(
@@ -35,7 +35,7 @@ def get_lease_overview(
     return crud.get_overview(db, current_user.org_id, params)
 
 
-@router.post("/", response_model=LeaseOut)
+@router.post("/", response_model=None)
 def create_lease(
     payload: LeaseCreate,
     db: Session = Depends(get_db),
@@ -48,7 +48,7 @@ def create_lease(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.put("/", response_model=LeaseOut)
+@router.put("/", response_model=None)
 def update_lease(payload: LeaseUpdate, db: Session = Depends(get_db)):
     try:
         obj = crud.update(db, payload)
@@ -59,7 +59,7 @@ def update_lease(payload: LeaseUpdate, db: Session = Depends(get_db)):
     return obj
 
 
-@router.delete("/{lease_id}", response_model=LeaseOut)
+@router.delete("/{lease_id}", response_model=None)
 def delete_lease(lease_id: str, db: Session = Depends(get_db)):
     obj = crud.delete(db, lease_id)
     if not obj:
@@ -89,3 +89,13 @@ def lease_status_lookup(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.lease_status_lookup(current_user.org_id, db)
+
+
+@router.get("/partner-lookup", response_model=List[Lookup])
+def lease_partner_lookup(
+    kind: str = Query(),
+    site_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.lease_partner_lookup(current_user.org_id, kind, site_id, db)

@@ -94,7 +94,8 @@ def build_work_orders_filters(org_id: UUID, params: WorkOrderRequest):
         filters.append(WorkOrder.status.lower() == params.status.lower())
 
     if params.priority and params.priority.lower() != "all":
-        filters.append(WorkOrder.priority.lower() == params.priority.lower())
+        filters.append(func.lower(WorkOrder.priority)
+                       == params.priority.lower())
 
     if params.search:
         search_term = f"%{params.search}%"

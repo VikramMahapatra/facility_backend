@@ -54,7 +54,7 @@ def get_pm_templates_overview(db: Session, org_id: UUID):
 
 
 # ----------------- LOOKUP by Frequency -----------------
-def pm_templates_frequency_lookup(db: Session, org_id: str):
+def pm_templates_filter_frequency_lookup(db: Session, org_id: str):
     rows = (
         db.query(
             func.lower(PMTemplate.frequency).label("id"),
@@ -69,7 +69,7 @@ def pm_templates_frequency_lookup(db: Session, org_id: str):
 
 
 # ----------------- Filter by Frequency Enum-----------------
-def pm_templates_filter_frequency_lookup(db: Session, org_id: str):
+def pm_templates_frequency_lookup(db: Session, org_id: str):
     return [
         Lookup(id=frequency.value, name=frequency.name.capitalize())
         for frequency in PmtemplateFrequency
@@ -208,5 +208,3 @@ def delete_pm_template(db: Session, template_id: UUID) -> bool:
     db.commit()
     return True
 
-
-#abc

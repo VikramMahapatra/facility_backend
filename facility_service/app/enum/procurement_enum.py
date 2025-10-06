@@ -46,3 +46,12 @@ class VendorCategories(str, Enum):
     games = "games"
     plastics = "plastics"
     pharmaceuticals = "pharmaceuticals"
+
+class ContractType(str, Enum) :
+
+    AMC ="AMC"
+    SLA = "SLA"
+    cleaning = "cleaning"
+    security = "security"
+    rent_share = "rent share"
+    

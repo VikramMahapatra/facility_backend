@@ -43,6 +43,26 @@ class ServiceRequestCategory (str ,Enum):
     maintenance = "maintenance"
     electrical = "electrical"
 
+class ServiceRequestRequesterKind(str ,Enum):
+
+    tenant = "tenant"
+    employee ="employee"
+    vendor ="vendor"
+    visitor = "visitor"
+    other = "other"
+
+class ServiceRequestPriority(str , Enum):
+
+    low ="low"
+    medium = "medium"
+    high = "high"
+
+class ServiceRequestchannel (str,Enum):
+
+    phone ="phone"
+    portal = "portal"
+    email = "email"
+
 class AssetStatus (str , Enum):
 
     active = "active"

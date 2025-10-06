@@ -1,9 +1,11 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import Text, func, cast, Float ,or_
+
+from shared.schemas import UserToken
 from ...models.maintenance_assets.service_request import ServiceRequest
 from uuid import UUID
-from ...schemas.maintenance_assets.service_request import ServiceRequestCreate, ServiceRequestUpdate
+from ...schemas.maintenance_assets.service_requests_schemas import (ServiceRequestCreate, ServiceRequestListResponse, ServiceRequestOut, ServiceRequestRequest, ServiceRequestUpdate )
 
 
 
@@ -42,64 +44,95 @@ def get_service_request_overview(db: Session, org_id: UUID):
         "in_progress_requests": in_progress_requests or 0,
         "avg_resolution_hours": float(avg_resolution) if avg_resolution else None
     }
-def _normalize_sla_value(sla):
-    if sla is None:
-        return {}
-    if isinstance(sla, str):
-        # Wrap string into dict
-        return {"duration": sla}
-    if isinstance(sla, dict):
-        return sla
-    return {}
 
-def _convert_sla_to_string(requests: List[ServiceRequest]) -> List[ServiceRequest]:
-    for r in requests:
-        r.sla = _normalize_sla_value(r.sla)
-    return requests
+# ----------------- Build Filters -----------------
+def build_service_request_filters(org_id: UUID, params: ServiceRequestRequest):
+    filters = [ServiceRequest.org_id == org_id]
 
-def search_service_requests(db: Session, org_id: UUID, query: Optional[str] = None) -> List[ServiceRequest]:
-    query_base = db.query(ServiceRequest).filter(ServiceRequest.org_id == org_id)
-    if query:
-        lower_query = query.lower()
-        query_base = query_base.filter(
+    if params.category and params.category.lower() != "all":
+        filters.append(func.lower(ServiceRequest.category) == params.category.lower())
+
+    if params.status and params.status.lower() != "all":
+        filters.append(func.lower(ServiceRequest.status) == params.status.lower())
+
+    if params.search:
+        search_term = f"%{params.search}%"
+        filters.append(
             or_(
-                func.lower(ServiceRequest.description).like(f"%{lower_query}%"),
-                func.lower(ServiceRequest.requester_kind).like(f"%{lower_query}%")
+                ServiceRequest.title.ilike(search_term),
+                ServiceRequest.description.ilike(search_term),
+                func.cast(ServiceRequest.id, func.Text).ilike(search_term),
             )
         )
-    results = query_base.all()
-    return _convert_sla_to_string(results)
+    return filters
 
-def filter_service_requests_by_status(db: Session, org_id: UUID, status: Optional[str] = None) -> List[ServiceRequest]:
-    query = db.query(ServiceRequest).filter(ServiceRequest.org_id == org_id)
-    if status:
-        query = query.filter(func.lower(ServiceRequest.status) == status.lower())
-    results = query.all()
-    return _convert_sla_to_string(results)
+def get_service_request_query(db: Session, org_id: UUID, params: ServiceRequestRequest):
+    filters = build_service_request_filters(org_id, params)
+    return db.query(ServiceRequest).filter(*filters)
 
-def filter_service_requests_by_category(db: Session, org_id: UUID, category: Optional[str] = None) -> List[ServiceRequest]:
-    query = db.query(ServiceRequest).filter(ServiceRequest.org_id == org_id)
-    if category:
-        query = query.filter(func.lower(ServiceRequest.category) == category.lower())
-    results = query.all()
-    return _convert_sla_to_string(results)
+# ----------------- Get All Service Requests -----------------
+def get_service_requests(db: Session, org_id: UUID, params: ServiceRequestRequest) -> ServiceRequestListResponse:
+    base_query = get_service_request_query(db, org_id, params)
+    total = base_query.with_entities(func.count(ServiceRequest.id)).scalar()
+
+    requests = (
+        base_query
+        .order_by(ServiceRequest.created_at.desc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+
+    results = []
+    for r in requests:
+        results.append(ServiceRequestOut.model_validate(r.__dict__))
+
+    return {"requests": results, "total": total}
+
+# ----------- Status Lookup -----------
+def service_request_status_lookup(db: Session, org_id: str) -> List[Dict]:
+    # Query distinct service request statuses for the org
+    query = (
+        db.query(
+            ServiceRequest.status.label("id"),
+            ServiceRequest.status.label("name")
+        )
+        .filter(ServiceRequest.org_id == org_id)
+        .distinct()
+        .order_by(ServiceRequest.status)
+    )
+    rows = query.all()
+    return [{"id": r.id, "name": r.name} for r in rows]
 
 
-#--------------------------crud operation enpointss-----------------------------
+# ----------- Category Lookup -----------
+def service_request_category_lookup(db: Session, org_id: str) -> List[Dict]:
+    # Query distinct service request categories for the org
+    query = (
+        db.query(
+            ServiceRequest.category.label("id"),
+            ServiceRequest.category.label("name")
+        )
+        .filter(ServiceRequest.org_id == org_id)
+        .distinct()
+        .order_by(ServiceRequest.category)
+    )
+    rows = query.all()
+    return [{"id": r.id, "name": r.name} for r in rows]
+
+
+
+#--------------------------crud operation enpoints-----------------------------
 #update create change by using userid 
 
-def create_service_request(
-    db: Session,
-    org_id: UUID,
-    user_id: UUID,
-    request: ServiceRequestCreate
-) -> ServiceRequest:
+# ----------------- Create Service Request -----------------
+def create_service_request(db: Session, org_id: UUID, user_id: UUID, request: ServiceRequestCreate) -> ServiceRequest:
     db_request = ServiceRequest(
         org_id=org_id,
-        requester_id=user_id,  #  always taken from token
+        requester_id=user_id,
         linked_work_order_id=request.linked_work_order_id or None,
         sla=request.sla or {},
-        **request.dict(exclude={"requester_id", "linked_work_order_id", "sla"})
+        **request.dict(exclude={"org_id", "requester_id", "linked_work_order_id", "sla"})
     )
     db.add(db_request)
     db.commit()
@@ -107,55 +140,31 @@ def create_service_request(
     return db_request
 
 
-
-def get_service_request(db: Session, org_id: UUID, request_id: UUID) -> Optional[ServiceRequest]:
-    return db.query(ServiceRequest).filter(
-        ServiceRequest.org_id == org_id,
-        ServiceRequest.id == request_id
-    ).first()
-
-
-def get_all_service_requests(db: Session, org_id: UUID) -> List[ServiceRequest]:
-    return db.query(ServiceRequest).filter(ServiceRequest.org_id == org_id).all()
-
-
-def update_service_request(
-    db: Session,
-    org_id: UUID,
-    user_id: UUID,   #  new param
-    request_id: UUID,
-    update_data: ServiceRequestUpdate
-) -> Optional[ServiceRequest]:
+def update_service_request(db: Session, request_update: ServiceRequestUpdate, current_user: UserToken) -> Optional[ServiceRequest]:
     db_request = db.query(ServiceRequest).filter(
-        ServiceRequest.org_id == org_id,
-        ServiceRequest.id == request_id,
-        ServiceRequest.requester_id == user_id   #  enforce requester_id match
+        ServiceRequest.id == request_update.id,
+        ServiceRequest.org_id == current_user.org_id,
+        or_(ServiceRequest.requester_id == current_user.user_id, ServiceRequest.requester_id.is_(None))
     ).first()
-
+    
     if not db_request:
         return None
 
-    update_dict = update_data.dict(exclude_unset=True)
-    if "sla" in update_dict:
-        update_dict["sla"] = update_dict["sla"] or {}
-
-    for key, value in update_dict.items():
-        setattr(db_request, key, value)
+    # Update only fields provided (handles SLA dict directly from payload)
+    [setattr(db_request, k, v) for k, v in request_update.dict(exclude_unset=True).items()]
 
     db.commit()
     db.refresh(db_request)
     return db_request
 
 
-
-def delete_service_request(db: Session, org_id: UUID, request_id: UUID) -> bool:
-    db_request = db.query(ServiceRequest).filter(
-        ServiceRequest.org_id == org_id,
-        ServiceRequest.id == request_id
-    ).first()
+# ----------------- Delete -----------------
+def delete_service_request(db: Session, request_id: UUID) -> bool:
+    db_request = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not db_request:
         return False
     db.delete(db_request)
     db.commit()
     return True
+
  

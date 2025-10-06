@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session,joinedload
 from sqlalchemy import func, cast, or_, case, literal, Numeric, and_ ,  distinct
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.dialects.postgresql import UUID
+
+from ...enum.maintenance_assets_enum import AssetStatus
+from shared.schemas import Lookup
 from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.maintenance_assets.assets import Asset
 from ...schemas.maintenance_assets.assets_schemas import AssetCreate, AssetOut, AssetUpdate, AssetsRequest, AssetsResponse
@@ -136,14 +139,14 @@ def delete_asset(db: Session, asset_id: str):
     return True
 
 
-def get_asset_status_lookup(db: Session, org_id: UUID):
+def asset_filter_status_lookup(db: Session, org_id: UUID):
     """
     Returns distinct statuses (case-insensitive) return name id 
     """
     statuses = (
         db.query(
             func.lower(Asset.status).label("id"),
-            Asset.status.capitalize().label("name"))
+            func.initcap(Asset.status).label("name") )
         .filter(Asset.org_id == org_id)
         .distinct()
         .order_by(func.lower(Asset.status))
@@ -151,6 +154,12 @@ def get_asset_status_lookup(db: Session, org_id: UUID):
     )
     return statuses
 
+#--------------------AssetStatus filter by Enum -----------
+def asset_status_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=status.value, name=status.name.capitalize())
+        for status in AssetStatus
+    ]
 
 
 # ---------------- Category Lookup ----------------

@@ -4,10 +4,11 @@ from typing import Dict, List, Optional
 from sqlalchemy import func, lateral, or_ , select
 from sqlalchemy.orm import Session
 
-from facility_service.app.models.maintenance_assets.asset_category import AssetCategory
+from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.procurement.vendors import Vendor
 from ...schemas.procurement.vendors_schemas import VendorCreate, VendorListResponse, VendorOut, VendorRequest, VendorUpdate
-
+from ...enum.procurement_enum import VendorStatus , VendorCategories
+from shared.schemas import Lookup
 
 # ---------------- Overview ----------------
 def get_vendors_overview(db: Session, org_id: uuid.UUID):
@@ -42,7 +43,7 @@ def get_vendors_overview(db: Session, org_id: uuid.UUID):
 
 
 #-----status_lookup
-def vendors_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
+def vendors_filter_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
     query = (
         db.query(
             Vendor.status.label("id"),
@@ -56,8 +57,15 @@ def vendors_status_lookup(db: Session, org_id: str, status: Optional[str] = None
         
     return query.all()
 
+# ----------------- Filter by status Enum-----------------
+def vendors_status_lookup(db: Session, org_id: str):
+    return [
+        Lookup(id=status.value, name=status.name.capitalize())
+        for status in VendorStatus
+    ]
+
 #---------categories_lookup
-def vendors_categories_lookup(db: Session, org_id: str):
+def vendors_filter_categories_lookup(db: Session, org_id: str):
     # Use jsonb_array_elements_text to expand JSON array into rows
     categories_subquery = (
         db.query(
@@ -72,6 +80,13 @@ def vendors_categories_lookup(db: Session, org_id: str):
     )
 
     return query.all()
+
+def Vendor_Categories_lookup(org_id: uuid.UUID, db: Session):
+    return [
+        Lookup(id=categories.value, name=categories.name.capitalize())
+        for categories in VendorCategories
+    ]
+
 
 
 # ----------------- Build Filters for Vendors -----------------

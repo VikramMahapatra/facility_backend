@@ -1,7 +1,8 @@
 from datetime import date, timedelta
 from typing import Optional
 from uuid import UUID
-
+from ...enum.maintenance_assets_enum import PmtemplateFrequency , PmtemplateStatus
+from shared.schemas import Lookup
 from sqlalchemy import func, literal, or_
 from sqlalchemy.orm import Session
 from typing import List, Dict
@@ -52,7 +53,7 @@ def get_pm_templates_overview(db: Session, org_id: UUID):
 
 
 
-# ----------------- Filter by Frequency -----------------
+# ----------------- LOOKUP by Frequency -----------------
 def pm_templates_frequency_lookup(db: Session, org_id: str):
     rows = (
         db.query(
@@ -65,6 +66,15 @@ def pm_templates_frequency_lookup(db: Session, org_id: str):
         .all()
     )
     return [{"id": r.id, "name": r.name} for r in rows]
+
+
+# ----------------- Filter by Frequency Enum-----------------
+def pm_templates_filter_frequency_lookup(db: Session, org_id: str):
+    return [
+        Lookup(id=frequency.value, name=frequency.name.capitalize())
+        for frequency in PmtemplateFrequency
+    ]
+
 
 # ----------------- Filter by Category -----------------
 
@@ -86,7 +96,7 @@ def pm_templates_category_lookup(db: Session, org_id: str) -> List[Dict]:
     return [{"id": r.id, "name": r.name} for r in rows]
 
 #-----------status_lookup 
-def pm_template_status_lookup(db: Session, org_id: str) -> List[Dict]:
+def pm_templates_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
     # Query distinct lease statuses for the org
     query = (
         db.query(
@@ -99,6 +109,13 @@ def pm_template_status_lookup(db: Session, org_id: str) -> List[Dict]:
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
+
+# ----------------- Filter by status Enum-----------------
+def pm_templates_status_lookup(db: Session, org_id: str):
+    return [
+        Lookup(id=status.value, name=status.name.capitalize())
+        for status in PmtemplateStatus
+    ]
 
 # ----------------- Build Filters -----------------
 def build_pm_template_filters(org_id: UUID, params: PMTemplateRequest):

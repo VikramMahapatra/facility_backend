@@ -78,3 +78,19 @@ def vendors_categories_lookup_endpoint(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.vendors_categories_lookup(db, current_user.org_id)
+
+#----------filter_status_lookup-------------
+@router.get("/filter-status-lookup", response_model=List[Lookup])
+def vendors_filter_status_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.vendors_filter_status_lookup(db, current_user.org_id)
+
+#----------filter_categories lookup---------
+@router.get("/filter-categories-lookup", response_model=List[Lookup])
+def Vendor_filter_Categories_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.Vendor_filter_Categories_lookup(db, current_user.org_id)

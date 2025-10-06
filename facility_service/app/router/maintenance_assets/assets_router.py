@@ -9,7 +9,6 @@ from shared.schemas import Lookup, UserToken
 from uuid import UUID
 from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryOutFilter
 from ...schemas.maintenance_assets.assets_schemas import AssetStatusOut
-from ...crud.maintenance_assets.assets_crud import get_asset_status_lookup
 
 router = APIRouter(
     prefix="/api/assets",
@@ -62,7 +61,7 @@ def delete_space(asset_id: str, db: Session = Depends(get_db)):
 
 @router.get("/status-lookup", response_model=list[Lookup])
 def status_lookup(db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
-    return crud.get_asset_status_lookup(db, current_user.org_id)
+    return crud.asset_status_lookup(db, current_user.org_id)
 
 # ---------------- Category Lookup ----------------
 @router.get("/category-lookup", response_model=List[Lookup])
@@ -71,3 +70,8 @@ def category_lookup(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.assets_category_lookup(db, current_user.org_id)
+
+
+@router.get("/filter-status-lookup", response_model=list[Lookup])
+def asset_filter_status_lookup_endpoint(db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
+    return crud.asset_filter_status_lookup(db, current_user.org_id)

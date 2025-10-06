@@ -86,3 +86,19 @@ def service_request_category_lookup_endpoint(
 ):
     return crud.service_request_category_lookup(db, current_user.org_id)
 
+
+# ----------------filter  Status Lookup ----------------
+@router.get("/filter-status-lookup", response_model=List[Lookup])
+def service_request_filter_status_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.service_request_filter_status_lookup(db, current_user.org_id)
+
+# ----------------filter  Category Lookup ----------------
+@router.get("/filter-category-lookup", response_model=List[Lookup])
+def service_request_filter_category_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.service_request_filter_category_lookup(db, current_user.org_id)

@@ -31,6 +31,7 @@ class PMTemplateUpdate(PMTemplateBase):
 
 
 class PMTemplateOut(PMTemplateBase):
+    id: UUID
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

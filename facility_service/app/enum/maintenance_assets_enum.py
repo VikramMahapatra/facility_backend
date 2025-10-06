@@ -14,3 +14,57 @@ class WorkOrderPriority(str, Enum):
     medium = "medium"
     high = "high"
     critical = "critical"
+
+class PmtemplateFrequency(str,Enum):
+
+    weekly = "weekly"
+    monthly = "monthly"
+    quaterly = "quaterly"
+    annualy = "annualy"
+
+class PmtemplateStatus(str,Enum):
+
+    active = "active"
+    inactive = "inactive"
+    completed = "completed"
+
+class ServiceRequestStatus (str, Enum):
+
+    open = "open"
+    inprogress = "inprogress"
+    resolved = "resolved"
+    close = "close"
+
+class ServiceRequestCategory (str ,Enum):
+
+    security = "security"
+    utilities = "utilities"
+    housekeeping = "housekeeping"
+    maintenance = "maintenance"
+    electrical = "electrical"
+
+class ServiceRequestRequesterKind(str ,Enum):
+
+    tenant = "tenant"
+    employee ="employee"
+    vendor ="vendor"
+    visitor = "visitor"
+    other = "other"
+
+class ServiceRequestPriority(str , Enum):
+
+    low ="low"
+    medium = "medium"
+    high = "high"
+
+class ServiceRequestchannel (str,Enum):
+
+    phone ="phone"
+    portal = "portal"
+    email = "email"
+
+class AssetStatus (str , Enum):
+
+    active = "active"
+    inactive = "inactive"
+

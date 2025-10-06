@@ -95,4 +95,23 @@ def pm_templates_status_lookup_endpoint(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.pm_template_status_lookup(db, current_user.org_id)
+    return crud.pm_templates_status_lookup(db, current_user.org_id)
+
+# ----------------filter Frequency Lookup ----------------
+@router.get("/filter-frequency-lookup", response_model=List[Lookup])
+def pm_templates_filter_frequency_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.pm_templates_filter_frequency_lookup(db, current_user.org_id)
+
+
+# ----------------filter by  Status Lookup ------------------
+@router.get("/filter-status-lookup", response_model=List[Lookup])
+def pm_templates_filter_status_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.pm_templates_filter_status_lookup(db, current_user.org_id)
+
+

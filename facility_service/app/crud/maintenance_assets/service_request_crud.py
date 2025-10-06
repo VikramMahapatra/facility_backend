@@ -2,11 +2,11 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import Text, func, cast, Float ,or_
 
-from shared.schemas import UserToken
+from shared.schemas import Lookup, UserToken
 from ...models.maintenance_assets.service_request import ServiceRequest
 from uuid import UUID
 from ...schemas.maintenance_assets.service_requests_schemas import (ServiceRequestCreate, ServiceRequestListResponse, ServiceRequestOut, ServiceRequestRequest, ServiceRequestUpdate )
-
+from ...enum.maintenance_assets_enum import ServiceRequestStatus , ServiceRequestCategory , ServiceRequestRequesterKind , ServiceRequestPriority , ServiceRequestchannel
 
 
 def get_service_request_overview(db: Session, org_id: UUID):
@@ -90,7 +90,7 @@ def get_service_requests(db: Session, org_id: UUID, params: ServiceRequestReques
     return {"requests": results, "total": total}
 
 # ----------- Status Lookup -----------
-def service_request_status_lookup(db: Session, org_id: str) -> List[Dict]:
+def service_request_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
     # Query distinct service request statuses for the org
     query = (
         db.query(
@@ -104,9 +104,15 @@ def service_request_status_lookup(db: Session, org_id: str) -> List[Dict]:
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
 
+#--------------------ServiceRequestStatus filter by Enum -----------
+def service_request_status_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=status.value, name=status.name.capitalize())
+        for status in ServiceRequestStatus
+    ]
 
 # ----------- Category Lookup -----------
-def service_request_category_lookup(db: Session, org_id: str) -> List[Dict]:
+def service_request_filter_category_lookup(db: Session, org_id: str) -> List[Dict]:
     # Query distinct service request categories for the org
     query = (
         db.query(
@@ -120,7 +126,32 @@ def service_request_category_lookup(db: Session, org_id: str) -> List[Dict]:
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
 
+#--------------------ServiceRequestCategory filter by Enum -----------
+def service_request_category_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=category.value, name=category.name.capitalize())
+        for category in ServiceRequestCategory
+    ]
 
+#--------------------ServiceRequest_requester_kind filter by Enum -----------
+def service_request_requester_kind_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=requester_kind.value, name=requester_kind.name.capitalize())
+        for requester_kind in ServiceRequestRequesterKind
+    ]
+
+#--------------------ServiceRequest_priority filter by Enum -----------
+def service_request_priority_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=priority.value, name=priority.name.capitalize())
+        for priority in ServiceRequestPriority
+    ]
+#--------------------ServiceRequest_channle filter by Enum -----------
+def service_request_channel_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=channel.value, name=channel.name.capitalize())
+        for channel in ServiceRequestchannel
+    ]
 
 #--------------------------crud operation enpoints-----------------------------
 #update create change by using userid 

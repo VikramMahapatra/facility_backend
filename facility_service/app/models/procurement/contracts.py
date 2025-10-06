@@ -1,6 +1,6 @@
 # app/models/contracts.py
 import uuid
-from sqlalchemy import Column, String, Date, ForeignKey
+from sqlalchemy import Column, Numeric, String, Date, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from sqlalchemy.orm import relationship
@@ -19,5 +19,6 @@ class Contract(Base):
     end_date = Column(Date)
     terms = Column(JSONB)
     documents = Column(JSONB)
+    value = Column(Numeric, default=0)  # <--- Add this line
 
     vendor = relationship("Vendor", back_populates="contracts")

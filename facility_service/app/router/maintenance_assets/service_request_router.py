@@ -102,3 +102,27 @@ def service_request_filter_category_lookup_endpoint(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.service_request_filter_category_lookup(db, current_user.org_id)
+
+# ----------------  requester_kind Lookup ----------------
+@router.get("/requester-kind-lookup", response_model=List[Lookup])
+def service_request_requester_kind_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.service_request_requester_kind_lookup(db, current_user.org_id)
+
+# ----------------  channel Lookup ----------------
+@router.get("/channel-lookup", response_model=List[Lookup])
+def service_request_channel_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.service_request_channel_lookup(db, current_user.org_id)
+
+# ----------------  priority Lookup ----------------
+@router.get("/priority-lookup", response_model=List[Lookup])
+def service_request_priority_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.service_request_priority_lookup(db, current_user.org_id)

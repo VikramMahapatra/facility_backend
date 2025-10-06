@@ -6,7 +6,7 @@ from shared.schemas import Lookup, UserToken
 from ...models.maintenance_assets.service_request import ServiceRequest
 from uuid import UUID
 from ...schemas.maintenance_assets.service_requests_schemas import (ServiceRequestCreate, ServiceRequestListResponse, ServiceRequestOut, ServiceRequestRequest, ServiceRequestUpdate )
-from ...enum.maintenance_assets_enum import ServiceRequestStatus , ServiceRequestCategory
+from ...enum.maintenance_assets_enum import ServiceRequestStatus , ServiceRequestCategory , ServiceRequestRequesterKind , ServiceRequestPriority , ServiceRequestchannel
 
 
 def get_service_request_overview(db: Session, org_id: UUID):
@@ -133,6 +133,25 @@ def service_request_category_lookup(org_id: UUID, db: Session):
         for category in ServiceRequestCategory
     ]
 
+#--------------------ServiceRequest_requester_kind filter by Enum -----------
+def service_request_requester_kind_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=requester_kind.value, name=requester_kind.name.capitalize())
+        for requester_kind in ServiceRequestRequesterKind
+    ]
+
+#--------------------ServiceRequest_priority filter by Enum -----------
+def service_request_priority_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=priority.value, name=priority.name.capitalize())
+        for priority in ServiceRequestPriority
+    ]
+#--------------------ServiceRequest_channle filter by Enum -----------
+def service_request_channel_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=channel.value, name=channel.name.capitalize())
+        for channel in ServiceRequestchannel
+    ]
 
 #--------------------------crud operation enpoints-----------------------------
 #update create change by using userid 

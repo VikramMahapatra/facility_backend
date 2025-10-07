@@ -240,7 +240,7 @@ def service_request_lookup(db: Session, org_id: UUID):
         .join(Contact, and_(Contact.id == ServiceRequest.requester_id, Contact.kind == ServiceRequest.requester_kind))
         .filter(ServiceRequest.org_id == org_id)
         .distinct()
-        .order_by(Contact.full_name)
+        .order_by("name")
         .all()
     )
     return assets

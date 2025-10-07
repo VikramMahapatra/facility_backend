@@ -134,7 +134,10 @@ def service_request_filter_category_lookup(db: Session, org_id: str) -> List[Dic
             ServiceRequest.category.label("id"),
             ServiceRequest.category.label("name")
         )
-        .filter(ServiceRequest.org_id == org_id)
+        .filter(
+            ServiceRequest.org_id == org_id,
+            ServiceRequest.category.isnot(None)  # ignore nulls
+        )
         .distinct()
         .order_by("name")
     )

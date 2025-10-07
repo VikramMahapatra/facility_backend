@@ -1,12 +1,14 @@
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import Text, func, cast, Float ,or_
+from sqlalchemy import Text, and_, func, cast, Float, literal, or_
 
+from facility_service.app.models.crm.contacts import Contact
 from shared.schemas import Lookup, UserToken
 from ...models.maintenance_assets.service_request import ServiceRequest
 from uuid import UUID
-from ...schemas.maintenance_assets.service_requests_schemas import (ServiceRequestCreate, ServiceRequestListResponse, ServiceRequestOut, ServiceRequestRequest, ServiceRequestUpdate )
-from ...enum.maintenance_assets_enum import ServiceRequestStatus , ServiceRequestCategory , ServiceRequestRequesterKind , ServiceRequestPriority , ServiceRequestchannel
+from ...schemas.maintenance_assets.service_requests_schemas import (
+    ServiceRequestCreate, ServiceRequestListResponse, ServiceRequestOut, ServiceRequestRequest, ServiceRequestUpdate)
+from ...enum.maintenance_assets_enum import ServiceRequestStatus, ServiceRequestCategory, ServiceRequestRequesterKind, ServiceRequestPriority, ServiceRequestchannel
 
 
 def get_service_request_overview(db: Session, org_id: UUID):
@@ -27,7 +29,8 @@ def get_service_request_overview(db: Session, org_id: UUID):
         func.avg(
             cast(
                 func.regexp_replace(
-                    cast(ServiceRequest.sla["duration"], Text),  # cast JSON -> text
+                    # cast JSON -> text
+                    cast(ServiceRequest.sla["duration"], Text),
                     '[^0-9]',
                     '',
                     'g'
@@ -37,7 +40,6 @@ def get_service_request_overview(db: Session, org_id: UUID):
         )
     ).filter(ServiceRequest.org_id == org_id).scalar()
 
-
     return {
         "total_requests": total_requests or 0,
         "open_requests": open_requests or 0,
@@ -46,14 +48,18 @@ def get_service_request_overview(db: Session, org_id: UUID):
     }
 
 # ----------------- Build Filters -----------------
+
+
 def build_service_request_filters(org_id: UUID, params: ServiceRequestRequest):
     filters = [ServiceRequest.org_id == org_id]
 
     if params.category and params.category.lower() != "all":
-        filters.append(func.lower(ServiceRequest.category) == params.category.lower())
+        filters.append(func.lower(ServiceRequest.category)
+                       == params.category.lower())
 
     if params.status and params.status.lower() != "all":
-        filters.append(func.lower(ServiceRequest.status) == params.status.lower())
+        filters.append(func.lower(ServiceRequest.status)
+                       == params.status.lower())
 
     if params.search:
         search_term = f"%{params.search}%"
@@ -66,11 +72,14 @@ def build_service_request_filters(org_id: UUID, params: ServiceRequestRequest):
         )
     return filters
 
+
 def get_service_request_query(db: Session, org_id: UUID, params: ServiceRequestRequest):
     filters = build_service_request_filters(org_id, params)
     return db.query(ServiceRequest).filter(*filters)
 
 # ----------------- Get All Service Requests -----------------
+
+
 def get_service_requests(db: Session, org_id: UUID, params: ServiceRequestRequest) -> ServiceRequestListResponse:
     base_query = get_service_request_query(db, org_id, params)
     total = base_query.with_entities(func.count(ServiceRequest.id)).scalar()
@@ -90,6 +99,8 @@ def get_service_requests(db: Session, org_id: UUID, params: ServiceRequestReques
     return {"requests": results, "total": total}
 
 # ----------- Status Lookup -----------
+
+
 def service_request_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
     # Query distinct service request statuses for the org
     query = (
@@ -104,7 +115,9 @@ def service_request_filter_status_lookup(db: Session, org_id: str) -> List[Dict]
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
 
-#--------------------ServiceRequestStatus filter by Enum -----------
+# --------------------ServiceRequestStatus filter by Enum -----------
+
+
 def service_request_status_lookup(org_id: UUID, db: Session):
     return [
         Lookup(id=status.value, name=status.name.capitalize())
@@ -112,6 +125,8 @@ def service_request_status_lookup(org_id: UUID, db: Session):
     ]
 
 # ----------- Category Lookup -----------
+
+
 def service_request_filter_category_lookup(db: Session, org_id: str) -> List[Dict]:
     # Query distinct service request categories for the org
     query = (
@@ -126,37 +141,47 @@ def service_request_filter_category_lookup(db: Session, org_id: str) -> List[Dic
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
 
-#--------------------ServiceRequestCategory filter by Enum -----------
+# --------------------ServiceRequestCategory filter by Enum -----------
+
+
 def service_request_category_lookup(org_id: UUID, db: Session):
     return [
         Lookup(id=category.value, name=category.name.capitalize())
         for category in ServiceRequestCategory
     ]
 
-#--------------------ServiceRequest_requester_kind filter by Enum -----------
+# --------------------ServiceRequest_requester_kind filter by Enum -----------
+
+
 def service_request_requester_kind_lookup(org_id: UUID, db: Session):
     return [
         Lookup(id=requester_kind.value, name=requester_kind.name.capitalize())
         for requester_kind in ServiceRequestRequesterKind
     ]
 
-#--------------------ServiceRequest_priority filter by Enum -----------
+# --------------------ServiceRequest_priority filter by Enum -----------
+
+
 def service_request_priority_lookup(org_id: UUID, db: Session):
     return [
         Lookup(id=priority.value, name=priority.name.capitalize())
         for priority in ServiceRequestPriority
     ]
-#--------------------ServiceRequest_channle filter by Enum -----------
+# --------------------ServiceRequest_channle filter by Enum -----------
+
+
 def service_request_channel_lookup(org_id: UUID, db: Session):
     return [
         Lookup(id=channel.value, name=channel.name.capitalize())
         for channel in ServiceRequestchannel
     ]
 
-#--------------------------crud operation enpoints-----------------------------
-#update create change by using userid 
+# --------------------------crud operation enpoints-----------------------------
+# update create change by using userid
 
 # ----------------- Create Service Request -----------------
+
+
 def create_service_request(db: Session, org_id: UUID, user_id: UUID, request: ServiceRequestCreate) -> ServiceRequest:
     db_request = ServiceRequest(
         org_id=org_id,
@@ -175,14 +200,16 @@ def update_service_request(db: Session, request_update: ServiceRequestUpdate, cu
     db_request = db.query(ServiceRequest).filter(
         ServiceRequest.id == request_update.id,
         ServiceRequest.org_id == current_user.org_id,
-        or_(ServiceRequest.requester_id == current_user.user_id, ServiceRequest.requester_id.is_(None))
+        or_(ServiceRequest.requester_id == current_user.user_id,
+            ServiceRequest.requester_id.is_(None))
     ).first()
-    
+
     if not db_request:
         return None
 
     # Update only fields provided (handles SLA dict directly from payload)
-    [setattr(db_request, k, v) for k, v in request_update.dict(exclude_unset=True).items()]
+    [setattr(db_request, k, v)
+     for k, v in request_update.dict(exclude_unset=True).items()]
 
     db.commit()
     db.refresh(db_request)
@@ -191,11 +218,29 @@ def update_service_request(db: Session, request_update: ServiceRequestUpdate, cu
 
 # ----------------- Delete -----------------
 def delete_service_request(db: Session, request_id: UUID) -> bool:
-    db_request = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
+    db_request = db.query(ServiceRequest).filter(
+        ServiceRequest.id == request_id).first()
     if not db_request:
         return False
     db.delete(db_request)
     db.commit()
     return True
 
- 
+
+def service_request_lookup(db: Session, org_id: UUID):
+    assets = (
+        db.query(
+            ServiceRequest.id.label("id"),
+            func.concat(
+                Contact.full_name,
+                literal(" - "),
+                ServiceRequest.priority
+            ).label("name")
+        )
+        .join(Contact, and_(Contact.id == ServiceRequest.requester_id, Contact.kind == ServiceRequest.requester_kind))
+        .filter(ServiceRequest.org_id == org_id)
+        .distinct()
+        .order_by(func.lower(Contact.full_name))
+        .all()
+    )
+    return assets

@@ -59,11 +59,18 @@ def delete_space(asset_id: str, db: Session = Depends(get_db)):
     return db_asset
 
 
+@router.get("/asset-lookup", response_model=list[Lookup])
+def asset_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
+    return crud.asset_lookup(db, current_user.org_id)
+
+
 @router.get("/status-lookup", response_model=list[Lookup])
-def status_lookup(db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
+def status_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
     return crud.asset_status_lookup(db, current_user.org_id)
 
 # ---------------- Category Lookup ----------------
+
+
 @router.get("/category-lookup", response_model=List[Lookup])
 def category_lookup(
     db: Session = Depends(get_db),
@@ -73,5 +80,5 @@ def category_lookup(
 
 
 @router.get("/filter-status-lookup", response_model=list[Lookup])
-def asset_filter_status_lookup_endpoint(db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
+def asset_filter_status_lookup_endpoint(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
     return crud.asset_filter_status_lookup(db, current_user.org_id)

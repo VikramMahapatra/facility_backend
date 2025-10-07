@@ -15,18 +15,21 @@ class WorkOrderPriority(str, Enum):
     high = "high"
     critical = "critical"
 
-class PmtemplateFrequency(str,Enum):
+
+class PmtemplateFrequency(str, Enum):
 
     weekly = "weekly"
     monthly = "monthly"
     quaterly = "quaterly"
     annualy = "annualy"
 
-class PmtemplateStatus(str,Enum):
+
+class PmtemplateStatus(str, Enum):
 
     active = "active"
     inactive = "inactive"
     completed = "completed"
+
 
 class ServiceRequestStatus (str, Enum):
 
@@ -35,7 +38,8 @@ class ServiceRequestStatus (str, Enum):
     resolved = "resolved"
     close = "close"
 
-class ServiceRequestCategory (str ,Enum):
+
+class ServiceRequestCategory (str, Enum):
 
     security = "security"
     utilities = "utilities"
@@ -43,28 +47,31 @@ class ServiceRequestCategory (str ,Enum):
     maintenance = "maintenance"
     electrical = "electrical"
 
-class ServiceRequestRequesterKind(str ,Enum):
 
-    tenant = "tenant"
-    employee ="employee"
-    vendor ="vendor"
+class ServiceRequestRequesterKind(str, Enum):
+
+    resident = "resident"
+    merchant = "merchant"
+    guest = "guest"
+    staff = "staff"
     visitor = "visitor"
-    other = "other"
 
-class ServiceRequestPriority(str , Enum):
 
-    low ="low"
+class ServiceRequestPriority(str, Enum):
+
+    low = "low"
     medium = "medium"
     high = "high"
 
-class ServiceRequestchannel (str,Enum):
 
-    phone ="phone"
+class ServiceRequestchannel (str, Enum):
+
+    phone = "phone"
     portal = "portal"
     email = "email"
 
-class AssetStatus (str , Enum):
+
+class AssetStatus (str, Enum):
 
     active = "active"
     inactive = "inactive"
-

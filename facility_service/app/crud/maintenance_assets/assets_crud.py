@@ -1,10 +1,15 @@
 import uuid
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session,joinedload
-from sqlalchemy import func, cast, or_, case, literal, Numeric, and_ ,  distinct
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, cast, or_, case, literal, Numeric, and_,  distinct
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.dialects.postgresql import UUID
+
+from facility_service.app.models.space_sites.sites import Site
+
+from ...models.space_sites.buildings import Building
+from ...models.space_sites.spaces import Space
 
 from ...enum.maintenance_assets_enum import AssetStatus
 from shared.schemas import Lookup
@@ -15,6 +20,7 @@ from ...schemas.maintenance_assets.assets_schemas import AssetCreate, AssetOut, 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
 # ----------------------------------------------------------------------
+
 
 def build_asset_filters(org_id: UUID, params: AssetsRequest):
     filters = [Asset.org_id == org_id]
@@ -99,9 +105,25 @@ def get_assets(db: Session, org_id: UUID, params: AssetsRequest) -> AssetsRespon
             .filter(AssetCategory.id == asset.category_id)
             .scalar()
         )
+
+        location = (
+            (
+                db.query(
+                    func.concat(
+                        Space.name,
+                        literal(" - "),
+                        Site.name
+                    ).label("name")
+                )
+                .join(Site, Site.id == Space.site_id)
+                .filter(and_(asset.space_id == Space.id, asset.site_id == Site.id))
+                .scalar()
+            )
+        )
         assets.append(AssetOut.model_validate({
             **asset.__dict__,
-            "category_name": category_name
+            "category_name": category_name,
+            "location": location
         }))
 
     return {"assets": assets, "total": total}
@@ -139,14 +161,28 @@ def delete_asset(db: Session, asset_id: str):
     return True
 
 
+def asset_lookup(db: Session, org_id: UUID):
+    assets = (
+        db.query(
+            Asset.id.label("id"),
+            Asset.name.label("name"))
+        .filter(Asset.org_id == org_id)
+        .distinct()
+        .order_by(func.lower(Asset.name))
+        .all()
+    )
+    return assets
+
+
 def asset_filter_status_lookup(db: Session, org_id: UUID):
     """
-    Returns distinct statuses (case-insensitive) return name id 
+    Returns distinct statuses (case-insensitive) return name id
     """
     statuses = (
         db.query(
             func.lower(Asset.status).label("id"),
-            func.initcap(Asset.status).label("name") )
+            func.concat(Asset.tag, literal(" - "), Asset.name).label("name")
+        )
         .filter(Asset.org_id == org_id)
         .distinct()
         .order_by(func.lower(Asset.status))
@@ -154,7 +190,9 @@ def asset_filter_status_lookup(db: Session, org_id: UUID):
     )
     return statuses
 
-#--------------------AssetStatus filter by Enum -----------
+# --------------------AssetStatus filter by Enum -----------
+
+
 def asset_status_lookup(org_id: UUID, db: Session):
     return [
         Lookup(id=status.value, name=status.name.capitalize())
@@ -169,10 +207,9 @@ def assets_category_lookup(db: Session, org_id: UUID) -> List[Dict]:
             AssetCategory.id.label("id"),
             AssetCategory.name.label("name")
         )
-        .join(Asset, Asset.category_id == AssetCategory.id)
-        .filter(Asset.org_id == org_id)
+        .filter(AssetCategory.org_id == org_id)
         .distinct()
         .order_by(AssetCategory.name)
     )
     rows = query.all()
-    return [{"id": r.id, "name": r.name} for r in rows]
+    return [Lookup(id=r.id, name=r.name) for r in rows]

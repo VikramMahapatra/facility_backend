@@ -1,24 +1,26 @@
 # app/crud/contracts.py
-import uuid
+from sqlalchemy.dialects.postgresql import UUID
 from typing import List, Optional
+import uuid
 from sqlalchemy.orm import Session
 
 from facility_service.app.enum.procurement_enum import ContractType
 from shared.schemas import Lookup
 from ...schemas.procurement.contracts_schemas import ContractCreate, ContractListResponse, ContractOut, ContractRequest, ContractUpdate
-from sqlalchemy import UUID, func, or_
+from sqlalchemy import func, or_
 from datetime import date, timedelta
 from ...models.procurement.contracts import Contract
 from ...models.procurement.vendors import Vendor
 
 
 # ---------------- Overview ----------------
-def get_contracts_overview(db: Session, org_id: uuid.UUID):
+def get_contracts_overview(db: Session, org_id: UUID):
     today = date.today()
     next_week = today + timedelta(days=7)
 
     # Total contracts
-    total_contracts = db.query(func.count(Contract.id)).filter(Contract.org_id == org_id).scalar()
+    total_contracts = db.query(func.count(Contract.id)).filter(
+        Contract.org_id == org_id).scalar()
 
     # Active contracts (vendor.status == 'active')
     active_contracts = (
@@ -42,7 +44,8 @@ def get_contracts_overview(db: Session, org_id: uuid.UUID):
     )
 
     # Total value
-    total_value = db.query(func.coalesce(func.sum(Contract.value), 0)).filter(Contract.org_id == org_id).scalar()
+    total_value = db.query(func.coalesce(func.sum(Contract.value), 0)).filter(
+        Contract.org_id == org_id).scalar()
     total_value = float(total_value)
 
     return {
@@ -52,7 +55,9 @@ def get_contracts_overview(db: Session, org_id: uuid.UUID):
         "total_value": round(total_value, 2)
     }
 
-#-----status_lookup-----
+# -----status_lookup-----
+
+
 def contracts_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
     query = (
         db.query(
@@ -65,10 +70,12 @@ def contracts_status_lookup(db: Session, org_id: str, status: Optional[str] = No
     )
     if status:
         query = query.filter(Vendor.status == status)
-    
+
     return query.all()
 
-#-----type_lookup-----
+# -----type_lookup-----
+
+
 def contracts_filter_type_lookup(db: Session, org_id: str, contract_type: Optional[str] = None):
     query = (
         db.query(
@@ -80,15 +87,15 @@ def contracts_filter_type_lookup(db: Session, org_id: str, contract_type: Option
     )
     if contract_type:
         query = query.filter(Contract.type == contract_type)
-        
+
     return query.all()
 
-def contracts_type_lookup(org_id: uuid.UUID, db: Session):
+
+def contracts_type_lookup(org_id: UUID, db: Session):
     return [
         Lookup(id=type.value, name=type.name.capitalize())
-        for type in  ContractType
+        for type in ContractType
     ]
-
 
 
 # ----------------- Build Filters for Contracts -----------------
@@ -112,6 +119,8 @@ def build_contract_filters(org_id: UUID, params: ContractRequest):
     return filters
 
 # ----------------- Contract Query -----------------
+
+
 def get_contract_query(db: Session, org_id: UUID, params: ContractRequest):
     filters = build_contract_filters(org_id, params)
     return db.query(Contract).filter(*filters)
@@ -152,7 +161,6 @@ def create_contract(db: Session, contract: ContractCreate) -> Contract:
     return db_contract
 
 
-
 # -------- Update Contract --------
 def update_contract(db: Session, contract: ContractUpdate) -> Optional[Contract]:
     db_contract = db.query(Contract).filter(Contract.id == contract.id).first()
@@ -166,6 +174,7 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[Contract]
     db.refresh(db_contract)
     return db_contract
 
+
 def delete_contract(db: Session, contract_id: UUID, org_id: UUID) -> bool:
     db_contract = (
         db.query(Contract)
@@ -177,5 +186,3 @@ def delete_contract(db: Session, contract_id: UUID, org_id: UUID) -> bool:
     db.delete(db_contract)
     db.commit()
     return True
-
-

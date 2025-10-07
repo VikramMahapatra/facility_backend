@@ -29,7 +29,10 @@ class AssetCreate(AssetBase):
 
 
 class AssetUpdate(BaseModel):
-    id: UUID                 
+    id: UUID
+    site_id: UUID
+    space_id: Optional[UUID]
+    category_id: Optional[UUID]
     name: Optional[str]
     tag: Optional[str]
     serial_no: Optional[str]
@@ -62,6 +65,7 @@ class AssetOut(BaseModel):
     org_id: UUID
     site_id: UUID
     space_id: Optional[UUID]
+    location: Optional[str]
     category_id: Optional[UUID]
     category_name: str
     tag: str
@@ -78,9 +82,8 @@ class AssetOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-
 class AssetsResponse(BaseModel):
-    assets: List[AssetBase]
+    assets: List[AssetOut]
     total: int
 
     model_config = {"from_attributes": True}
@@ -95,10 +98,8 @@ class AssetOverview(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
 class AssetStatusOut(BaseModel):
     status: str
 
     model_config = {"from_attributes": True}
-
-
-

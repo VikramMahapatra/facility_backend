@@ -110,7 +110,7 @@ def service_request_filter_status_lookup(db: Session, org_id: str) -> List[Dict]
         )
         .filter(ServiceRequest.org_id == org_id)
         .distinct()
-        .order_by(ServiceRequest.status)
+        .order_by("name")
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
@@ -136,7 +136,7 @@ def service_request_filter_category_lookup(db: Session, org_id: str) -> List[Dic
         )
         .filter(ServiceRequest.org_id == org_id)
         .distinct()
-        .order_by(ServiceRequest.category)
+        .order_by("name")
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]

@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime
 from uuid import UUID
 
+
 class OrgBase(BaseModel):
     name: str
     legal_name: Optional[str] = None
@@ -15,12 +16,15 @@ class OrgBase(BaseModel):
     timezone: Optional[str] = "Asia/Kolkata"
     status: Optional[str] = "active"
 
+
 class OrgCreate(OrgBase):
     pass
 
+
 class OrgUpdate(OrgBase):
-    id: str  
+    id: str
     pass
+
 
 class OrgOut(OrgBase):
     id: UUID   # ✅ use UUID instead of str
@@ -28,5 +32,5 @@ class OrgOut(OrgBase):
     updated_at: Optional[datetime]
 
     model_config = {
-        "from_attributes": True   # ✅ for Pydantic v2 (replaces orm_mode=True)
+        "from_attributes": True
     }

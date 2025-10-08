@@ -25,7 +25,7 @@ from .router.crm import contact_router
 from .router.maintenance_assets import (
     asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, pm_template_router, service_request_router, work_order_router)
 from .router.parking_access import parking_zones_router, access_events_router, visitors_router
-
+from .router.energy_iot import meter_readings_router, meters_router
 from .models import (
     purchase_order_lines, purchase_orders
 )
@@ -88,3 +88,5 @@ app.include_router(access_events_router.router)
 app.include_router(visitors_router.router)
 app.include_router(pm_template_router.router)
 app.include_router(work_order_router.router)
+app.include_router(meters_router.router)
+app.include_router(meter_readings_router.router)

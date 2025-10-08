@@ -24,8 +24,8 @@ class MeterReadingUpdate(MeterReadingBase):
 
 class MeterReadingOut(MeterReadingBase):
     id: UUID
-    meterCode: Optional[str] = None
-    meterKind: Optional[str] = None
+    meter_code: Optional[str] = None
+    meter_kind: Optional[str] = None
     unit: Optional[str] = None
 
     class Config:
@@ -35,3 +35,10 @@ class MeterReadingOut(MeterReadingBase):
 class MeterReadingListResponse(BaseModel):
     readings: List[MeterReadingOut]
     total: int
+
+
+class MeterReadingOverview(BaseModel):
+    totalMeters: Optional[int] = None
+    activeMeters: Optional[int] = None
+    latestReadings: Optional[int] = None
+    iotConnected: Optional[int] = None

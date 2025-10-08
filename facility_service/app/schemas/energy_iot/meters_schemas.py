@@ -2,9 +2,11 @@ from pydantic import BaseModel
 from uuid import UUID
 from typing import Optional, List
 
+from shared.schemas import CommonQueryParams
+
 
 class MeterBase(BaseModel):
-    org_id: UUID
+    org_id: Optional[UUID] = None
     site_id: UUID
     kind: str
     code: str
@@ -24,12 +26,20 @@ class MeterUpdate(MeterBase):
 
 class MeterOut(MeterBase):
     id: UUID
-    siteName: Optional[str] = None
-    spaceName: Optional[str] = None
-    assetName: Optional[str] = None
+    org_id: UUID
+    site_id: UUID
+    space_id: Optional[UUID] = None
+    kind: str
+    code: str
+    asset_id: Optional[UUID] = None
+    site_name: Optional[str] = None
+    space_name: Optional[str] = None
+    asset_name: Optional[str] = None
     status: Optional[str] = "active"
-    lastReading: Optional[float] = None
-    lastReadingDate: Optional[str] = None
+    last_reading: Optional[float] = None
+    last_reading_date: Optional[str] = None
+    unit: Optional[str] = None
+    multiplier: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -38,3 +48,7 @@ class MeterOut(MeterBase):
 class MeterListResponse(BaseModel):
     meters: List[MeterOut]
     total: int
+
+
+class MeterRequest(CommonQueryParams):
+    pass

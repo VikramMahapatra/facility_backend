@@ -1,7 +1,9 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, distinct, func
+from sqlalchemy import and_, distinct, func, or_
 from uuid import UUID
+
+from ...schemas.energy_iot.meters_schemas import MeterRequest
 
 from ...models.energy_iot.meter_readings import MeterReading
 from ...models.energy_iot.meters import Meter
@@ -46,11 +48,7 @@ def get_meter_readings_overview(db: Session, org_id: UUID):
         .join(Meter, Meter.id == MeterReading.meter_id)
         .filter(
             Meter.org_id == org_id,
-            MeterReading.source == "iot",
-            MeterReading.ts.in_(
-                db.query(func.max(MeterReading.ts))
-                .filter(MeterReading.meter_id == Meter.id)
-            )
+            MeterReading.source == "iot"
         )
         .scalar()
         or 0
@@ -64,23 +62,37 @@ def get_meter_readings_overview(db: Session, org_id: UUID):
     }
 
 
-def get_list(db: Session, meter_id: Optional[UUID] = None) -> MeterReadingListResponse:
+def get_list(db: Session, org_id: UUID, params: MeterRequest) -> MeterReadingListResponse:
     """Return all readings, optionally filtered by meter."""
     q = db.query(MeterReading).join(Meter)
 
-    if meter_id:
-        q = q.filter(MeterReading.meter_id == meter_id)
+    if params.search:
+        search_term = f"%{params.search}%"
+        q.filter(
+            or_(
+                Meter.code.ilike(search_term),
+                Meter.kind.ilike(search_term)
+            )
+        )
 
-    q = q.order_by(MeterReading.ts.desc())
+    total = q.with_entities(func.count(MeterReading.id)).scalar()
+
+    meter_readings = (
+        q
+        .order_by(MeterReading.ts.desc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
 
     readings = []
-    for r in q.all():
+    for r in meter_readings:
         readings.append(
             MeterReadingOut.model_validate(
                 {
                     **r.__dict__,
-                    "meterCode": r.meter.code if r.meter else None,
-                    "meterKind": r.meter.kind if r.meter else None,
+                    "meter_code": r.meter.code if r.meter else None,
+                    "meter_kind": r.meter.kind if r.meter else None,
                     "unit": r.meter.unit if r.meter else None,
                 }
             )

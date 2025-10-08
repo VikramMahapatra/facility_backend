@@ -72,8 +72,9 @@ class WorkOrderOut(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 
 class WorkOrderListResponse(BaseModel):

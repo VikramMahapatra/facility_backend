@@ -32,8 +32,9 @@ class LeaseChargesOverview(BaseModel):
     this_month: int
     avg_charge: float
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 
 class LeaseChargeOut(BaseModel):

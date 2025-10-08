@@ -21,6 +21,7 @@ class Meter(Base):
         "spaces.id"), nullable=True)
     unit = Column(String(16), nullable=False)  # kWh, m3, L, CFM
     multiplier = Column(Numeric(10, 4), default=1)
+    status = Column(String(16), nullable=False, default='active')
 
     __table_args__ = (
         UniqueConstraint("org_id", "site_id", "code",
@@ -30,5 +31,6 @@ class Meter(Base):
     # Optional relationships (only if you have these models)
     site = relationship("Site", back_populates="meters")
     space = relationship("Space", back_populates="meters")
+    asset = relationship("Asset", back_populates="meters")
     readings = relationship(
         "MeterReading", back_populates="meter", cascade="all, delete-orphan")

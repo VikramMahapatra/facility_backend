@@ -1,7 +1,7 @@
 # app/crud/vendors.py
 import uuid
 from typing import Dict, List, Optional
-from sqlalchemy import case, func, lateral, literal, or_, select
+from sqlalchemy import case, func, lateral, literal, or_, select , String
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID
 from ...models.maintenance_assets.asset_category import AssetCategory
@@ -11,40 +11,37 @@ from ...enum.procurement_enum import VendorStatus, VendorCategories
 from shared.schemas import Lookup
 
 # ---------------- Overview ----------------
-
-
-def get_vendors_overview(db: Session, org_id: uuid.UUID):
+def get_vendors_overview(db: Session, org_id: uuid.UUID, params: VendorRequest):
+    filters = build_vendor_filters(org_id, params)
+    
     # Total vendors
-    total_vendors = db.query(func.count(Vendor.id)).filter(
-        Vendor.org_id == org_id).scalar()
+    total_vendors = db.query(func.count(Vendor.id)).filter(*filters).scalar()
 
     # Active vendors
     active_vendors = db.query(func.count(Vendor.id)).filter(
-        Vendor.org_id == org_id,
+        *filters,
         func.lower(Vendor.status) == "active"
     ).scalar()
 
     # Average rating
-    avg_rating = db.query(func.avg(Vendor.rating)).filter(
-        Vendor.org_id == org_id).scalar()
-    avg_rating = float(avg_rating) if avg_rating else 0.0
+    avg_rating = db.query(func.avg(Vendor.rating)).filter(*filters).scalar()
+    avg_rating = round(float(avg_rating or 0), 2)
 
+    # Categories - Your original working approach
     categories_lateral = lateral(
-        select(func.jsonb_array_elements_text(
-            Vendor.categories).label("category"))
+        select(func.jsonb_array_elements_text(Vendor.categories).label("category"))
     ).alias("categories_lateral")
 
-    distinct_categories = db.query(func.count(func.distinct(categories_lateral.c.category))).filter(
-        Vendor.org_id == org_id
-    ).scalar()
+    categories = db.query(
+        func.count(func.distinct(categories_lateral.c.category))
+    ).filter(*filters).scalar() or 0
 
     return {
-        "total_vendors": total_vendors,
-        "active_vendors": active_vendors,
-        "avg_rating": round(avg_rating, 2),
-        "distinct_categories": distinct_categories
+        "totalVendors": total_vendors,
+        "activeVendors": active_vendors,
+        "avgRating": avg_rating,
+        "Categories": categories
     }
-
 
 # -----status_lookup
 def vendors_filter_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
@@ -115,7 +112,7 @@ def build_vendor_filters(org_id: uuid.UUID, params: VendorRequest):
         filters.append(
             or_(
                 Vendor.name.ilike(search_term),
-                func.cast(Vendor.id, func.Text).ilike(search_term),
+                func.cast(Vendor.id, String).ilike(search_term),
                 Vendor.gst_vat_id.ilike(search_term)
             )
         )
@@ -139,7 +136,7 @@ def get_vendors(db: Session, org_id: uuid.UUID, params: VendorRequest) -> Vendor
     # Fetch vendors with offset & limit
     vendors = (
         base_query
-        .order_by(Vendor.name.asc())
+        .order_by(Vendor.created_at.desc()) 
         .offset(params.skip)
         .limit(params.limit)
         .all()

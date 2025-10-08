@@ -44,3 +44,6 @@ class Space(Base):
     leases = relationship("Lease", back_populates="space")
     work_orders = relationship("WorkOrder", back_populates="space")
 
+    # relationships
+    booking_rooms = relationship("BookingRoom", backref="space")
+    housekeeping_tasks = relationship("HousekeepingTask", back_populates="space", cascade="all, delete-orphan")

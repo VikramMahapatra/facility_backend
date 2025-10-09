@@ -132,12 +132,7 @@ def build_pm_template_filters(org_id: UUID, params: PMTemplateRequest):
 
     if params.search:
         search_term = f"%{params.search}%"
-        filters.append(
-            or_(
-                PMTemplate.name.ilike(search_term),
-                func.cast(PMTemplate.id, func.Text).ilike(search_term),
-            )
-        )
+        filters.append(or_(PMTemplate.pm_no.ilike(search_term), PMTemplate.name.ilike(search_term)))
 
     return filters
 
@@ -153,7 +148,7 @@ def get_pm_templates(db: Session, org_id: UUID, params: PMTemplateRequest) -> PM
     total = base_query.with_entities(func.count(PMTemplate.id)).scalar()
     templates = (
         base_query
-        .order_by(PMTemplate.name.asc())
+        .order_by(PMTemplate.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
         .all()

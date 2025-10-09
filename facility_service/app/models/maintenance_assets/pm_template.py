@@ -1,7 +1,7 @@
 # app/models/maintenance_assets/pm_template.py
 
 import uuid
-from sqlalchemy import Column, String, ForeignKey, JSON, Numeric, Date
+from sqlalchemy import Column, DateTime, String, ForeignKey, JSON, Numeric, Date, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from shared.database import Base
@@ -17,7 +17,11 @@ class PMTemplate(Base):
     frequency = Column(String(32), nullable=True)  
     meter_metric = Column(String(32), nullable=True)  
     threshold = Column(Numeric, nullable=True)
-    sla = Column(JSON, nullable=True)  
+    sla = Column(JSON, nullable=True) 
+    pm_no: str = Column(String(64), nullable=False) 
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 
     # New Columns
     next_due = Column(Date, nullable=True)  # stores next PM due date

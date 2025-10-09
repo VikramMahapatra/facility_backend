@@ -99,8 +99,7 @@ def build_work_orders_filters(org_id: UUID, params: WorkOrderRequest):
 
     if params.search:
         search_term = f"%{params.search}%"
-        filters.append(or_(WorkOrder.title.ilike(search_term),
-                       WorkOrder.type.ilike(search_term)))
+        filters.append(or_(WorkOrder.wo_no.ilike(search_term), WorkOrder.type.ilike(search_term)))
 
     return filters
 

@@ -20,6 +20,7 @@ class WorkOrder(Base):
     priority = Column(String(16), default="medium")
     type = Column(String(24), nullable=False)
     status = Column(String(24), default="open")
+    wo_no: str = Column(String(64), nullable=False) 
     due_at = Column(TIMESTAMP(timezone=True), nullable=True) 
     
     assigned_to = Column(UUID(as_uuid=True), nullable=True)  # plain UUID, no FK

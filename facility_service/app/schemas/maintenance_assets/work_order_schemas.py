@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from uuid import UUID
 
@@ -14,6 +14,9 @@ class WorkOrderBase(BaseModel):
     asset_name: Optional[str]
     assigned_to: Optional[UUID]
     due_at: Optional[datetime]
+    wo_no: Optional[str] = None
+
+    model_config = {"from_attributes": True} 
 # ---------------- Overview Response ----------------
 
 
@@ -42,9 +45,10 @@ class WorkOrderCreate(BaseModel):
     due_at: Optional[datetime] = None
     assigned_to: Optional[UUID] = None
     created_by: Optional[UUID] = None
-    sla: Optional[str] = None
+    sla: Optional[Dict[str, Any]] = None
     request_id: Optional[UUID]
 
+    model_config = {"from_attributes": True} 
 
 class WorkOrderUpdate(WorkOrderCreate):
     id: str
@@ -67,7 +71,8 @@ class WorkOrderOut(BaseModel):
     due_at: Optional[datetime] = None
     assigned_to: Optional[UUID] = None
     assigned_to_name: Optional[str] = None
-    sla: Optional[str] = None
+    sla: Optional[Dict[str, Any]] = None
+    wo_no: str
     created_by: Optional[UUID] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

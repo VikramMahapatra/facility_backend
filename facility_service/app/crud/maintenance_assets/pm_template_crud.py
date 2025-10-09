@@ -175,12 +175,12 @@ def get_pm_template_by_id(db: Session, template_id: str) -> Optional[PMTemplate]
 
 # ----------------- Create -----------------
 def create_pm_template(db: Session, template: PMTemplateCreate) -> PMTemplate:
-    db_template = PMTemplate(**template.model_dump(exclude="asset_category"))
+    # This excludes any fields that weren't explicitly set in the request
+    db_template = PMTemplate(**template.model_dump(exclude_unset=True, exclude="asset_category"))
     db.add(db_template)
     db.commit()
     db.refresh(db_template)
     return db_template
-
 
 # ----------------- Update -----------------
 def update_pm_template(db: Session, template: PMTemplateUpdate) -> Optional[PMTemplate]:

@@ -17,13 +17,27 @@ class PMTemplateBase(BaseModel):
     threshold: Optional[float] = None
     sla: Optional[Any] = None
     status: Optional[str] = "active"
-    pm_no: str
+    pm_no: Optional[str] = None
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True} 
 
 
-class PMTemplateCreate(PMTemplateBase):
-    pass
+class PMTemplateCreate(BaseModel):
+    org_id: Optional[UUID] = None
+    category_id: Optional[UUID] = None
+    name: str
+    asset_category: Optional[str] = None
+    frequency: Optional[str] = None
+    next_due: Optional[date] = None
+    checklist: Optional[Any] = None
+    meter_metric: Optional[str] = None
+    threshold: Optional[float] = None
+    sla: Optional[Any] = None
+    status: Optional[str] = "active"
+
+
+    model_config = {"from_attributes": True} 
+    
 
 
 class PMTemplateUpdate(PMTemplateBase):

@@ -298,10 +298,7 @@ def update_tenant(db: Session, update_data: TenantUpdate):
     elif update_data.tenant_type == "commercial":
         db_partner = (
             db.query(CommercialPartner)
-            .filter(
-                CommercialPartner.site_id == update_data.site_id,
-                CommercialPartner.legal_name == update_data.name,
-            )
+            .filter(CommercialPartner.id == update_data.id)
             .first()
         )
 

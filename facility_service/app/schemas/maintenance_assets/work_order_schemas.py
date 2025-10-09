@@ -12,9 +12,11 @@ class WorkOrderBase(BaseModel):
     priority: str
     status: str
     asset_name: Optional[str]
-    assigned_to: Optional[UUID] 
+    assigned_to: Optional[UUID]
     due_at: Optional[datetime]
 # ---------------- Overview Response ----------------
+
+
 class WorkOrderOverviewResponse(BaseModel):
     total: int
     open: int
@@ -40,11 +42,15 @@ class WorkOrderCreate(BaseModel):
     due_at: Optional[datetime] = None
     assigned_to: Optional[UUID] = None
     created_by: Optional[UUID] = None
+    sla: Optional[str] = None
+    request_id: Optional[UUID]
 
 
 class WorkOrderUpdate(WorkOrderCreate):
-    id:str
+    id: str
     pass
+
+
 class WorkOrderOut(BaseModel):
     id: UUID
     org_id: UUID
@@ -66,14 +72,13 @@ class WorkOrderOut(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
+
 
 class WorkOrderListResponse(BaseModel):
     work_orders: List[WorkOrderOut]
     total: int
-    
+
     model_config = {"from_attributes": True}
-
-
-

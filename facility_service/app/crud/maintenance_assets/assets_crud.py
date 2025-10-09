@@ -168,7 +168,7 @@ def asset_lookup(db: Session, org_id: UUID):
             Asset.name.label("name"))
         .filter(Asset.org_id == org_id)
         .distinct()
-        .order_by(func.lower(Asset.name))
+        .order_by(Asset.name)
         .all()
     )
     return assets

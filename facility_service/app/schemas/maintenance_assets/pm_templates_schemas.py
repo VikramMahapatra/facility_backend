@@ -48,11 +48,13 @@ class PMTemplateListResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
 class PMTemplateOverviewResponse(BaseModel):
     total_templates: int
     active_templates: int
     due_this_week: int
     completion_rate: float
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }

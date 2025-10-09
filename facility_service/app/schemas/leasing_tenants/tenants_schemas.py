@@ -62,5 +62,6 @@ class TenantOverviewResponse(BaseModel):
     commercialTenants: int
     individualTenants: int
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }

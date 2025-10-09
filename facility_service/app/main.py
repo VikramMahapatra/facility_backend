@@ -26,6 +26,7 @@ from .router.maintenance_assets import (
     asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, pm_template_router, service_request_router, work_order_router)
 from .router.parking_access import parking_zones_router, access_events_router, visitors_router
 from .router.hospitality import bookings_router , rate_plans_router , housekeeping_tasks_router
+from .router.energy_iot import meter_readings_router, meters_router
 from .models import (
     purchase_order_lines, purchase_orders
 )
@@ -34,6 +35,8 @@ from .models.leasing_tenants import commercial_partners, leases, lease_charges, 
 from .models.financials import invoices
 from .models.crm import contacts, companies
 from .models.parking_access import parking_zones, parking_pass, access_events, visitors
+from .models.energy_iot import meters, meter_readings
+
 app = FastAPI(title="Facility Service API")
 
 # Create all tables
@@ -89,3 +92,5 @@ app.include_router(work_order_router.router)
 app.include_router(bookings_router.router)
 app.include_router(rate_plans_router.router)
 app.include_router(housekeeping_tasks_router.router)
+app.include_router(meters_router.router)
+app.include_router(meter_readings_router.router)

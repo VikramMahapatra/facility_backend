@@ -110,7 +110,7 @@ def service_request_filter_status_lookup(db: Session, org_id: str) -> List[Dict]
         )
         .filter(ServiceRequest.org_id == org_id)
         .distinct()
-        .order_by(ServiceRequest.status)
+        .order_by("name")
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
@@ -134,9 +134,13 @@ def service_request_filter_category_lookup(db: Session, org_id: str) -> List[Dic
             ServiceRequest.category.label("id"),
             ServiceRequest.category.label("name")
         )
-        .filter(ServiceRequest.org_id == org_id)
+        .filter(
+            ServiceRequest.org_id == org_id,
+            ServiceRequest.category.isnot(None),
+            ServiceRequest.category != ""
+        )
         .distinct()
-        .order_by(ServiceRequest.category)
+        .order_by("name")
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
@@ -240,7 +244,7 @@ def service_request_lookup(db: Session, org_id: UUID):
         .join(Contact, and_(Contact.id == ServiceRequest.requester_id, Contact.kind == ServiceRequest.requester_kind))
         .filter(ServiceRequest.org_id == org_id)
         .distinct()
-        .order_by(func.lower(Contact.full_name))
+        .order_by("name")
         .all()
     )
     return assets

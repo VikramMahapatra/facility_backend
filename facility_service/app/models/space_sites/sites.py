@@ -47,3 +47,5 @@ class Site(Base):
     guests = relationship("Guest", back_populates="site")
     bookings = relationship("Booking", back_populates="site") 
     housekeeping_tasks = relationship("HousekeepingTask", back_populates="site")
+    meters = relationship("Meter", back_populates="site",
+                          cascade="all, delete-orphan")

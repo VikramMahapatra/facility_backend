@@ -20,3 +20,6 @@ class SpaceGroup(Base):
     org = relationship("Org")
     site = relationship("Site")
     members = relationship("SpaceGroupMember", back_populates="group", cascade="all, delete")
+
+        # relationships
+    rates = relationship("Rate", backref="space_group")

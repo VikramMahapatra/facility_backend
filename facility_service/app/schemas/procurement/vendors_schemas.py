@@ -16,10 +16,12 @@ class VendorBase(BaseModel):
 
 # ---------------- Overview Response ----------------
 class VendorOverviewResponse(BaseModel):
-    total_vendors: int
-    active_vendors: int
-    avg_rating: float
-    distinct_categories: int
+    totalVendors: int
+    activeVendors: int  
+    avgRating: float
+    Categories: int
+
+    model_config = {"from_attributes": True}
 
 
 # ---------------- Vendor Request ----------------
@@ -42,8 +44,8 @@ class VendorUpdate(VendorBase):
 class VendorOut(VendorBase):
     id: UUID
     org_id: UUID
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None  
+    updated_at: Optional[datetime] = None  
 
     model_config = {
         "from_attributes": True

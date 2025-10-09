@@ -23,15 +23,13 @@ def get_vendors(
     return crud.get_vendors(db, current_user.org_id, params)
 
 # -----overview----
-
-
-@router.get("/overview", response_model=VendorOverviewResponse)
+@router.get("/overview", response_model=VendorOverviewResponse)  # Make sure this matches
 def overview(
+    params: VendorRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_vendors_overview(db, current_user.org_id)
-
+    return crud.get_vendors_overview(db, current_user.org_id, params)
 # -----Update------------------------
 
 

@@ -32,3 +32,7 @@ class Org(Base):
     pm_templates = relationship("PMTemplate", back_populates="organization")
     work_orders = relationship("WorkOrder", back_populates="org")
 
+    rate_plans = relationship("RatePlan", backref="org")
+    guests = relationship("Guest", backref="org")
+    bookings = relationship("Booking", backref="org")
+    housekeeping_tasks = relationship("HousekeepingTask", back_populates="org", cascade="all, delete-orphan")

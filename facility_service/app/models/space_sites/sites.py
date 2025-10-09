@@ -1,10 +1,13 @@
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, String, Date, DateTime, func, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB , UUID
 from sqlalchemy.orm import relationship
+from ...models.hospitality.rate_plans import RatePlan
 import uuid
 from sqlalchemy import JSON
 from shared.database import Base
+
+
 
 
 class Site(Base):
@@ -38,5 +41,11 @@ class Site(Base):
                            cascade="all, delete-orphan")
     work_orders = relationship("WorkOrder", back_populates="site")
     leases = relationship("Lease", back_populates="site")
+
+     # FIXED: Use string references for hospitality models
+    rate_plans = relationship("RatePlan", back_populates="site")
+    guests = relationship("Guest", back_populates="site")
+    bookings = relationship("Booking", back_populates="site") 
+    housekeeping_tasks = relationship("HousekeepingTask", back_populates="site")
     meters = relationship("Meter", back_populates="site",
                           cascade="all, delete-orphan")

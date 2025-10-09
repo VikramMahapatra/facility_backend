@@ -17,6 +17,7 @@ class PMTemplateBase(BaseModel):
     threshold: Optional[float] = None
     sla: Optional[Any] = None
     status: Optional[str] = "active"
+    pm_no: str
 
     model_config = {"from_attributes": True}
 
@@ -32,6 +33,7 @@ class PMTemplateUpdate(PMTemplateBase):
 
 class PMTemplateOut(PMTemplateBase):
     id: UUID
+    pm_no: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

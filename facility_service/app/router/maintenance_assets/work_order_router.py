@@ -59,9 +59,10 @@ def update_work_order(
 def create_work_order_endpoint(
     work_order: WorkOrderCreate, 
     db: Session = Depends(get_db),
-    current_user : UserToken = Depends(validate_current_token)):
-    work_order.org_id = current_user.org_id
-    return create_work_order(db, work_order)
+    current_user: UserToken = Depends(validate_current_token)
+):
+    # Pass org_id to the function
+    return crud.create_work_order(db, work_order, current_user.org_id)
 
 @router.delete("/{work_order_id}", response_model=None)
 def delete_work_order(work_order_id: str, db: Session = Depends(get_db)):

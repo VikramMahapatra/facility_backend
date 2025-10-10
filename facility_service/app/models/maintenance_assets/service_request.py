@@ -14,8 +14,8 @@ class ServiceRequest(Base):
     space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True)
     
     requester_kind = Column(String(16), nullable=False)  # resident|guest|merchant|staff|visitor
-    requester_id = Column(UUID(as_uuid=True), nullable=True)  # optional link
-    
+    requester_id = Column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True)  # optional link
+    sr_no : str = Column(String(64), nullable=False)
     category = Column(String(64), nullable=True)  # plumbing, electrical, cleaning, security
     channel = Column(String(16), nullable=False, default='portal')  # portal|app|kiosk|phone|whatsapp
     description = Column(Text, nullable=True)
@@ -34,5 +34,5 @@ class ServiceRequest(Base):
     site = relationship("Site", backref="service_requests")
     space = relationship("Space", backref="service_requests")
     work_orders = relationship("WorkOrder", back_populates="service_requests")
-
-
+    
+    requester = relationship("Contact", back_populates="service_requests")

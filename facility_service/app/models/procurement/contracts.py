@@ -1,6 +1,6 @@
 # app/models/contracts.py
 import uuid
-from sqlalchemy import Column, Numeric, String, Date, ForeignKey
+from sqlalchemy import Column, DateTime, Numeric, String, Date, ForeignKey, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from sqlalchemy.orm import relationship
@@ -21,5 +21,9 @@ class Contract(Base):
     documents = Column(JSONB)
     status = Column(String(16), default="active")
     value = Column(Numeric, default=0)  # <--- Add this line
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 
     vendor = relationship("Vendor", back_populates="contracts")

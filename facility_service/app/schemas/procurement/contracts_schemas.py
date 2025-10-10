@@ -1,7 +1,7 @@
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, Any, List
-from datetime import date
+from datetime import date, datetime
 
 # -------------------- Base Schema --------------------
 class ContractBase(BaseModel):
@@ -18,22 +18,26 @@ class ContractBase(BaseModel):
     documents: Optional[Any] = None
 
 
+
 # -------------------- Output Schema --------------------
 class ContractOut(ContractBase):
     id: UUID
     vendor_name: Optional[str] = None
     site_name: Optional[str] = None
+    created_at: Optional[datetime] = None  
+    updated_at: Optional[datetime] = None  
+
+
 
     model_config = ConfigDict(from_attributes=True)
 
 
 # -------------------- Create / Update --------------------
 class ContractCreate(ContractBase):
-    pass
+    org_id: UUID
 
 class ContractUpdate(ContractBase):
-    id:UUID
-    pass
+    id: UUID
 
 
 # -------------------- Overview Response --------------------
@@ -57,3 +61,5 @@ class ContractRequest(BaseModel):
 class ContractListResponse(BaseModel):
     contracts: List[ContractOut]
     total: int
+
+    model_config = {"from_attributes": True}

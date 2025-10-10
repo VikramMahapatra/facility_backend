@@ -140,7 +140,7 @@ def get_contracts(db: Session, org_id: UUID, params: ContractRequest) -> Contrac
     # Fetch contracts with offset & limit
     contracts = (
         base_query
-        .order_by(Contract.title.asc())
+        .order_by(Contract.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
         .all()

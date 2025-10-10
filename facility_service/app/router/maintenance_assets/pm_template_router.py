@@ -18,7 +18,7 @@ from ...crud.maintenance_assets import pm_template_crud as crud
 router = APIRouter(prefix="/api/pm_templates", tags=["PM Templates"])
 
 
-# ---------------- List templates ----------------
+# ---------------- List templates -----------------
 @router.get("/all", response_model=PMTemplateListResponse)
 def get_pm_templates(
     params: PMTemplateRequest = Depends(),
@@ -30,10 +30,11 @@ def get_pm_templates(
 # ---------------- Overview ----------------
 @router.get("/overview", response_model=PMTemplateOverviewResponse)
 def overview(
+    params: PMTemplateRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_pm_templates_overview(db, current_user.org_id)
+    return crud.get_pm_templates_overview(db, current_user.org_id, params )
 
 # ---------------- Update template ----------------
 @router.put("/", response_model=None)

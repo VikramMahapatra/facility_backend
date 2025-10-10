@@ -4,48 +4,76 @@ from typing import List, Optional
 import uuid
 from sqlalchemy.orm import Session
 
-from facility_service.app.enum.procurement_enum import ContractType
+from ...enum.procurement_enum import ContractStatus, ContractType
 from shared.schemas import Lookup
 from ...schemas.procurement.contracts_schemas import ContractCreate, ContractListResponse, ContractOut, ContractRequest, ContractUpdate
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_ , String
 from datetime import date, timedelta
 from ...models.procurement.contracts import Contract
 from ...models.procurement.vendors import Vendor
 
 
+# ----------------- Build Filters for Contracts -----------------
+def build_contract_filters(org_id: UUID, params: ContractRequest):
+    filters = [Contract.org_id == org_id]
+
+    if params.type and params.type.lower() != "all":
+        filters.append(func.lower(Contract.type )== params.type.lower())
+
+    if params.status and params.status.lower() != "all":
+        filters.append(func.lower(Contract.status )== params.status.lower())
+
+    if params.search:
+        search_term = f"%{params.search}%"
+        filters.append(
+            or_(
+                Contract.title.ilike(search_term),
+                func.cast(Contract.id, String).ilike(search_term),
+            )
+        )
+    return filters
+
+# ----------------- Contract Query -----------------
+
+
+def get_contract_query(db: Session, org_id: UUID, params: ContractRequest):
+    filters = build_contract_filters(org_id, params)
+    return db.query(Contract).filter(*filters)
+
+
 # ---------------- Overview ----------------
-def get_contracts_overview(db: Session, org_id: UUID):
+def get_contracts_overview(db: Session, org_id: UUID, params: ContractRequest):
+    filters = build_contract_filters(org_id, params)
     today = date.today()
-    next_week = today + timedelta(days=7)
+    next_month = today + timedelta(days=30)  # Changed to 30 days for next month
 
-    # Total contracts
-    total_contracts = db.query(func.count(Contract.id)).filter(
-        Contract.org_id == org_id).scalar()
+    # Total contracts with filters
+    total_contracts = db.query(func.count(Contract.id)).filter(*filters).scalar()
 
-    # Active contracts (vendor.status == 'active')
+    # Active contracts (Contract.status == 'active') with filters
     active_contracts = (
         db.query(func.count(Contract.id))
-        .join(Vendor, Contract.vendor_id == Vendor.id)
         .filter(
-            Contract.org_id == org_id,
-            func.lower(Vendor.status) == "active"
+            *filters,
+            func.lower(Contract.status) == "active"
         )
         .scalar()
     )
 
-    # Expiring soon (end_date within next 7 days)
+    # Expiring soon AND status expired (within next month)
     expiring_soon = (
         db.query(func.count(Contract.id))
         .filter(
-            Contract.org_id == org_id,
-            Contract.end_date.between(today, next_week)
+            *filters,
+            func.lower(Contract.status) == "expired",  # Status must be expired
+            Contract.end_date != None,  # Ensure end_date is not null
+            Contract.end_date.between(today, next_month)  # Ending within next month
         )
         .scalar()
     )
 
-    # Total value
-    total_value = db.query(func.coalesce(func.sum(Contract.value), 0)).filter(
-        Contract.org_id == org_id).scalar()
+    # Total value with filters
+    total_value = db.query(func.coalesce(func.sum(Contract.value), 0)).filter(*filters).scalar()
     total_value = float(total_value)
 
     return {
@@ -54,25 +82,28 @@ def get_contracts_overview(db: Session, org_id: UUID):
         "expiring_soon": expiring_soon,
         "total_value": round(total_value, 2)
     }
-
 # -----status_lookup-----
 
 
-def contracts_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
+def contracts_filter_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
     query = (
         db.query(
-            Vendor.status.label("id"),
-            Vendor.status.label("name")
+            Contract.status.label("id"),
+            Contract.status.label("name")
         )
-        .join(Contract, Contract.vendor_id == Vendor.id)
         .filter(Contract.org_id == org_id)
         .distinct()
     )
     if status:
-        query = query.filter(Vendor.status == status)
+        query = query.filter(Contract.status == status)
 
     return query.all()
 
+def contracts_status_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=status.value, name=status.name.capitalize())
+        for status in ContractStatus
+    ]
 # -----type_lookup-----
 
 
@@ -97,33 +128,6 @@ def contracts_type_lookup(org_id: UUID, db: Session):
         for type in ContractType
     ]
 
-
-# ----------------- Build Filters for Contracts -----------------
-def build_contract_filters(org_id: UUID, params: ContractRequest):
-    filters = [Contract.org_id == org_id]
-
-    if params.type and params.type.lower() != "all":
-        filters.append(Contract.type == params.type)
-
-    if params.status and params.status.lower() != "all":
-        filters.append(Vendor.status == params.status)
-
-    if params.search:
-        search_term = f"%{params.search}%"
-        filters.append(
-            or_(
-                Contract.title.ilike(search_term),
-                func.cast(Contract.id, func.Text).ilike(search_term),
-            )
-        )
-    return filters
-
-# ----------------- Contract Query -----------------
-
-
-def get_contract_query(db: Session, org_id: UUID, params: ContractRequest):
-    filters = build_contract_filters(org_id, params)
-    return db.query(Contract).filter(*filters)
 
 
 # ----------------- Get All Contracts -----------------

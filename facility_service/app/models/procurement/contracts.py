@@ -19,6 +19,7 @@ class Contract(Base):
     end_date = Column(Date)
     terms = Column(JSONB)
     documents = Column(JSONB)
+    status = Column(String(16), default="active")
     value = Column(Numeric, default=0)  # <--- Add this line
 
     vendor = relationship("Vendor", back_populates="contracts")

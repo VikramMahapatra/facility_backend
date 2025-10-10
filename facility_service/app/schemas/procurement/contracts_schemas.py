@@ -10,7 +10,7 @@ class ContractBase(BaseModel):
     site_id: Optional[UUID] = None
     title: str
     type: Optional[str] = None
-    #status: Optional[str] = None
+    status: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     value: Optional[float] = None

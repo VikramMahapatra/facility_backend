@@ -55,3 +55,8 @@ class ContractType(str, Enum) :
     security = "security"
     rent_share = "rent share"
     
+class ContractStatus (str , Enum):
+
+    active = "active"
+    expired = "expired"
+    terminated = "terminated"

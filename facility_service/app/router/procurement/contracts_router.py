@@ -27,10 +27,11 @@ def get_contracts(
 
 @router.get("/overview", response_model=ContractOverviewResponse)
 def overview(
+    params: ContractRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_contracts_overview(db, current_user.org_id)
+    return crud.get_contracts_overview(db, current_user.org_id ,params)
 
 
 @router.put("/", response_model=None)
@@ -71,15 +72,20 @@ def delete_contract(
 
 
 # ----------status_lookup-------------
+@router.get("/filter-status-lookup", response_model=List[Lookup])
+def contracts_filter_status_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.contracts_filter_status_lookup(db, current_user.org_id)
+
 @router.get("/status-lookup", response_model=List[Lookup])
 def contracts_status_lookup_endpoint(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.contracts_status_lookup(db, current_user.org_id)
-
 # ----------filter type_lookup-------------
-
 
 @router.get("/filter-type-lookup", response_model=List[Lookup])
 def contracts_type_lookup_endpoint(

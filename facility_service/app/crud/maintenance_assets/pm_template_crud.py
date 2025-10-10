@@ -17,31 +17,37 @@ from ...schemas.maintenance_assets.pm_templates_schemas import (
 )
 
 
-def get_pm_templates_overview(db: Session, org_id: UUID):
-    # Total templates
-    total_templates = db.query(PMTemplate).filter(PMTemplate.org_id == org_id).count()
-
-    # Active templates
-    active_templates = db.query(PMTemplate).filter(
-        PMTemplate.org_id == org_id, PMTemplate.status == 'active'
-    ).count()
-
+def get_pm_templates_overview(db: Session, org_id: UUID, params: PMTemplateRequest):
+    filters = build_pm_template_filters(org_id, params)
+    
     # Dates for current week
     today = date.today()
     start_of_week = today - timedelta(days=today.weekday())
     end_of_week = start_of_week + timedelta(days=6)
 
+    # Total templates with filters
+    total_templates = db.query(PMTemplate).filter(*filters).count()
+
+    # Active templates with filters
+    active_templates = db.query(PMTemplate).filter(
+        *filters,
+        PMTemplate.status == 'active'
+    ).count()
+
+    # Due this week with filters
     due_this_week = db.query(PMTemplate).filter(
-        PMTemplate.org_id == org_id,
+        *filters,
         PMTemplate.next_due >= start_of_week,
         PMTemplate.next_due <= end_of_week
     ).count()
 
+    # Completed count with filters
     completed_count = db.query(PMTemplate).filter(
-        PMTemplate.org_id == org_id,
+        *filters,
         PMTemplate.status == 'completed'
     ).count()
 
+    # Completion rate with filters
     completion_rate = (completed_count / total_templates * 100) if total_templates else 0
 
     return {
@@ -50,7 +56,6 @@ def get_pm_templates_overview(db: Session, org_id: UUID):
         "due_this_week": due_this_week,
         "completion_rate": round(completion_rate, 2)
     }
-
 
 
 # ----------------- LOOKUP by Frequency -----------------
@@ -125,10 +130,10 @@ def build_pm_template_filters(org_id: UUID, params: PMTemplateRequest):
         filters.append(PMTemplate.category_id == params.category_id)
 
     if params.frequency and params.frequency.lower() != "all":
-        filters.append(PMTemplate.frequency == params.frequency)
+        filters.append(func.lower(PMTemplate.frequency) == params.frequency.lower())
 
     if params.status and params.status.lower() != "all":
-        filters.append(PMTemplate.status == params.status)
+        filters.append(func.lower(PMTemplate.status) == params.status.lower())
 
     if params.search:
         search_term = f"%{params.search}%"

@@ -9,8 +9,10 @@ from shared.schemas import CommonQueryParams
 class ServiceRequestBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
+    sr_no:Optional[str] = None
     space_id: UUID
     requester_kind: Optional[str] = None
+    requester_id: Optional[UUID] = None
     category: Optional[str] = None
     channel: Optional[str] = None
     description: Optional[str] = None
@@ -23,8 +25,23 @@ class ServiceRequestBase(BaseModel):
 
 
 # ----------------- Create -----------------
-class ServiceRequestCreate(ServiceRequestBase):
-    pass
+class ServiceRequestCreate(BaseModel):
+    org_id: Optional[UUID] = None
+    site_id: UUID
+   
+    space_id: UUID
+    requester_kind: Optional[str] = None
+    requester_id: Optional[UUID] = None
+    category: Optional[str] = None
+    channel: Optional[str] = None
+    description: Optional[str] = None
+    priority: Optional[str] = None
+    status: Optional[str] = "open"
+    sla: Optional[Any] = None
+    linked_work_order_id: Optional[UUID] = None
+
+    model_config = {"from_attributes": True}
+
 
 
 # ----------------- Update -----------------
@@ -37,9 +54,14 @@ class ServiceRequestUpdate(ServiceRequestBase):
 class ServiceRequestOut(ServiceRequestBase):
     id: UUID
     requester_id: Optional[UUID] = None
+    requester_name: Optional[str] = None
+    sr_no: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
+     
+    class Config:
+        from_attributes = True
+        arbitrary_types_allowed = True
 
 # ----------------- Request -----------------
 class ServiceRequestRequest(CommonQueryParams):

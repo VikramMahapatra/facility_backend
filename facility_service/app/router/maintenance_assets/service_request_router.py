@@ -15,10 +15,11 @@ router = APIRouter(prefix="/api/service-requests", tags=["Service Requests"])
 
 @router.get("/overview", response_model=ServiceRequestOverviewResponse)
 def service_request_overview(
+    params: ServiceRequestRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_service_request_overview(db, current_user.org_id)
+    return crud.get_service_request_overview(db, current_user.org_id,params)
 
 
 # ---------------- List Service Requests ----------------
@@ -55,7 +56,6 @@ def create_request_route(
     return crud.create_service_request(
         db=db,
         org_id=current_user.org_id,
-        user_id=current_user.user_id,   # requester_id always from token
         request=request
     )
 
@@ -149,3 +149,12 @@ def service_request_priority_lookup_endpoint(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.service_request_priority_lookup(db, current_user.org_id)
+
+# ----------------filter  workorder Lookup ----------------
+@router.get("/filter-workorderid-lookup", response_model=List[Lookup])
+def service_request_filter_workorder_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+   
+    return crud.service_request_filter_workorder_lookup(db, current_user.org_id)

@@ -13,28 +13,44 @@ from ...schemas.maintenance_assets.work_order_schemas import WorkOrderCreate, Wo
 from fastapi import HTTPException
 
 
-def get_work_orders_overview(db: Session, org_id: UUID):
-    # Total work orders
-    total = db.query(func.count(WorkOrder.id)).filter(
-        WorkOrder.org_id == org_id).scalar()
+def build_work_orders_filters(org_id: UUID, params: WorkOrderRequest):
+    filters = [WorkOrder.org_id == org_id]
 
-    # Open work orders (case-insensitive)
+    if params.status and params.status.lower() != "all":
+        filters.append(func.lower(WorkOrder.status) == params.status.lower())
+
+    if params.priority and params.priority.lower() != "all":
+        filters.append(func.lower(WorkOrder.priority) == params.priority.lower())
+
+    if params.search:
+        search_term = f"%{params.search}%"
+        filters.append(or_(WorkOrder.wo_no.ilike(search_term), WorkOrder.type.ilike(search_term)))
+
+    return filters
+
+def get_work_orders_overview(db: Session, org_id: UUID, params: WorkOrderRequest):
+    filters = build_work_orders_filters(org_id, params)
+    
+    # Total work orders with filters
+    total = db.query(func.count(WorkOrder.id)).filter(*filters).scalar()
+
+    # Open work orders (case-insensitive) with filters
     open_count = db.query(func.count(WorkOrder.id))\
         .filter(
-            WorkOrder.org_id == org_id,
+            *filters,
             func.lower(WorkOrder.status) == 'open'
     ).scalar()
 
-    # In Progress work orders (case-insensitive)
+    # In Progress work orders (case-insensitive) with filters
     in_progress_count = db.query(func.count(WorkOrder.id))\
         .filter(
-            WorkOrder.org_id == org_id,
+            *filters,
             func.lower(WorkOrder.status) == 'in progress'
     ).scalar()
 
-    # Overdue work orders (due_at < now)
+    # Overdue work orders (due_at < now) with filters
     overdue_count = db.query(func.count(WorkOrder.id))\
-        .filter(WorkOrder.org_id == org_id)\
+        .filter(*filters)\
         .filter(WorkOrder.status != "closed")\
         .filter(WorkOrder.due_at != None)\
         .filter(WorkOrder.due_at < datetime.utcnow())\
@@ -48,6 +64,18 @@ def get_work_orders_overview(db: Session, org_id: UUID):
     }
 
 # ---------------- Filter Work Orders by Status ----------------
+def work_orders_filter_status_lookup(db: Session, org_id: str):
+    rows = (
+        db.query(
+            func.lower(WorkOrder.status).label("id"),
+            func.initcap(WorkOrder.status).label("name")
+        )
+        .filter(WorkOrder.org_id == org_id)
+        .distinct()
+        .order_by(func.lower(WorkOrder.status))
+        .all()
+    )
+    return [{"id": r.id, "name": r.name} for r in rows]
 
 
 def work_orders_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
@@ -67,6 +95,18 @@ def work_orders_status_lookup(db: Session, org_id: str, status: Optional[str] = 
 
 
 # ---------------- Filter Work Orders by Priority ----------------
+def work_orders_filter_priority_lookup(db: Session, org_id: str):
+    rows = (
+        db.query(
+            func.lower(WorkOrder.priority).label("id"),
+            func.initcap(WorkOrder.priority).label("name")
+        )
+        .filter(WorkOrder.org_id == org_id)
+        .distinct()
+        .order_by(func.lower(WorkOrder.priority))
+        .all()
+    )
+    return [{"id": r.id, "name": r.name} for r in rows]
 
 
 def work_orders_priority_lookup(db: Session, org_id: UUID):
@@ -91,11 +131,10 @@ def build_work_orders_filters(org_id: UUID, params: WorkOrderRequest):
     filters = [WorkOrder.org_id == org_id]
 
     if params.status and params.status.lower() != "all":
-        filters.append(WorkOrder.status.lower() == params.status.lower())
+        filters.append(func.lower(WorkOrder.status) == params.status.lower())
 
     if params.priority and params.priority.lower() != "all":
-        filters.append(func.lower(WorkOrder.priority)
-                       == params.priority.lower())
+        filters.append(func.lower(WorkOrder.priority) == params.priority.lower())
 
     if params.search:
         search_term = f"%{params.search}%"

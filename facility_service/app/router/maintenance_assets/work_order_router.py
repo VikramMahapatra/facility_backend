@@ -38,10 +38,11 @@ def get_work_orders(
 # ---------------- Work Orders Overview ----------------
 @router.get("/overview", response_model=WorkOrderOverviewResponse)
 def overview(
+    params: WorkOrderRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return get_work_orders_overview(db, current_user.org_id)
+    return get_work_orders_overview(db, current_user.org_id, params)
 
 
 @router.put("/{work_order_id}", response_model=None)
@@ -70,6 +71,14 @@ def delete_work_order(work_order_id: str, db: Session = Depends(get_db)):
     return db_work_order
 
 # ---------------- Filter Work Orders by Status ----------------
+@router.get("/filter-status-lookup", response_model=List[Lookup])
+def work_orders_filter_status_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.work_orders_filter_status_lookup(db, current_user.org_id)
+
+
 @router.get("/status-lookup", response_model=List[Lookup])
 def work_orders_status_lookup(
     db: Session = Depends(get_db),
@@ -78,6 +87,14 @@ def work_orders_status_lookup(
     return crud.work_orders_status_lookup(db, current_user.org_id)
 
 # ---------------- Filter Work Orders by Priority ----------------
+@router.get("/filter-priority-lookup", response_model=List[Lookup])
+def work_order_filter_priority_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.work_orders_filter_priority_lookup(db, current_user.org_id)
+
+
 @router.get("/priority-lookup", response_model=List[Lookup])
 def work_order_priority_lookup(
     db: Session = Depends(get_db),

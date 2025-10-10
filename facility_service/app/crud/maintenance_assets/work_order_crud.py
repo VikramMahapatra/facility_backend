@@ -2,6 +2,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, literal, or_, select
 from datetime import datetime
 
+from ...models.procurement.vendors import Vendor
+
 from ...enum.maintenance_assets_enum import WorkOrderPriority, WorkOrderStatus
 from ...models.space_sites.spaces import Space
 from shared.schemas import Lookup, UserToken
@@ -149,8 +151,20 @@ def get_work_orders_query(db: Session, org_id: UUID, params: WorkOrderRequest):
 
 
 def get_work_orders(db: Session, org_id: UUID, params: WorkOrderRequest) -> WorkOrderListResponse:
-    base_query = get_work_orders_query(db, org_id, params)
-    total = base_query.with_entities(func.count(WorkOrder.id)).scalar()
+    base_query = (
+        db.query(WorkOrder, Asset.name.label('asset_name'), Space.name.label('space_name'), Vendor.name.label('vendor_name'))
+        .outerjoin(Asset, WorkOrder.asset_id == Asset.id)
+        .outerjoin(Space, WorkOrder.space_id == Space.id)
+        .outerjoin(Vendor, WorkOrder.assigned_to == Vendor.id)  # Add this join
+        .filter(WorkOrder.org_id == org_id)
+    )
+    
+    # Apply your existing filters
+    filters = build_work_orders_filters(org_id, params)
+    base_query = base_query.filter(*filters)
+    
+    total = base_query.count()
+    
     work_orders = (
         base_query
         .order_by(WorkOrder.updated_at.desc())
@@ -158,24 +172,15 @@ def get_work_orders(db: Session, org_id: UUID, params: WorkOrderRequest) -> Work
         .limit(params.limit)
         .all()
     )
-    print(total)
+    
     results = []
-    for wo in work_orders:
-        asset_name = (
-            db.query(Asset.name)
-            .filter(Asset.id == wo.asset_id)
-            .scalar()
-        )
-        space_name = (
-            db.query(Space.name)
-            .filter(Space.id == wo.space_id)
-            .scalar()
-        )
+    for wo, asset_name, space_name, vendor_name in work_orders:
         results.append(
             WorkOrderOut.model_validate({
                 **wo.__dict__,
                 "asset_name": asset_name,
-                "space_name": space_name
+                "space_name": space_name,
+                "assigned_to_name": vendor_name  # This will now work
             })
         )
 
@@ -187,23 +192,36 @@ def get_work_order_by_id(db: Session, work_order_id: str) -> Optional[WorkOrder]
 # ---------------- Create ----------------
 
 
-def create_work_order(db: Session, work_order: WorkOrderCreate):
-    db_work_order = WorkOrder(**work_order.model_dump())
+def create_work_order(db: Session, work_order: WorkOrderCreate, org_id: UUID) -> WorkOrderOut:
+    # Add org_id to the work order data
+    work_order_data = work_order.model_dump()
+    work_order_data['org_id'] = org_id
+    
+    db_work_order = WorkOrder(**work_order_data)
     db.add(db_work_order)
     db.commit()
     db.refresh(db_work_order)
-    return db_work_order
+    
+    # Automatically include vendor name if assigned_to exists
+    return WorkOrderOut(
+        **db_work_order.__dict__,
+        assigned_to_name=db_work_order.vendor.name if db_work_order.vendor else None
+    )
 
 
-def update_work_order(db: Session, work_order: WorkOrderUpdate) -> Optional[WorkOrder]:
+def update_work_order(db: Session, work_order: WorkOrderUpdate) -> Optional[WorkOrderOut]:
     db_work_order = get_work_order_by_id(db, work_order.id)
     if not db_work_order:
         return None
-    for key, value in work_order.dict(exclude_unset=True).items():
+    for key, value in work_order.model_dump(exclude_unset=True).items():
         setattr(db_work_order, key, value)
     db.commit()
     db.refresh(db_work_order)
-    return db_work_order
+    # Return WorkOrderOut with vendor name
+    return WorkOrderOut(
+        **db_work_order.__dict__,
+        assigned_to_name=db_work_order.vendor.name if db_work_order.vendor else None
+    )
 
 
 def delete_work_order(db: Session, work_order_id: str) -> Optional[WorkOrder]:

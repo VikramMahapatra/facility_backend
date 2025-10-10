@@ -23,7 +23,7 @@ class WorkOrder(Base):
     wo_no: str = Column(String(64), nullable=False) 
     due_at = Column(TIMESTAMP(timezone=True), nullable=True) 
     
-    assigned_to = Column(UUID(as_uuid=True), nullable=True)  # plain UUID, no FK
+    assigned_to = Column(UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="SET NULL"), nullable=True)
     sla = Column(JSON, nullable=True)
     created_by = Column(UUID(as_uuid=True), nullable=True)  # plain UUID, no FK
 
@@ -37,3 +37,4 @@ class WorkOrder(Base):
     space = relationship("Space", back_populates="work_orders")
     service_requests = relationship("ServiceRequest", back_populates="work_orders")
 
+    vendor = relationship("Vendor", back_populates="work_orders") 

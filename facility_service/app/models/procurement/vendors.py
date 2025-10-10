@@ -22,3 +22,5 @@ class Vendor(Base):
 
 
     contracts = relationship("Contract", back_populates="vendor")
+
+    work_orders = relationship("WorkOrder", back_populates="vendor")

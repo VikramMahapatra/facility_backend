@@ -387,17 +387,19 @@ def get_financial_summary(db: Session, org_id: UUID):
 
 def monthly_revenue_trend():
     return [
-        {"month": "Oct", "revenue": 520000},
-        {"month": "Nov", "revenue": 540000},
-        {"month": "Dec", "revenue": 560000},
-        {"month": "Jan", "revenue": 580000},
+            {"month": "Oct", "rental": 465000, "cam": 72000, "total": 537000 },
+             { "month": "Nov", "rental": 478000, "cam": 75500, "total": 553500 },
+            { "month": "Dec", "rental": 483000, "cam": 76800, "total": 559800 },
+            { "month": "Jan", "rental": 487500, "cam": 78900, "total": 566400 },
     ]
 
 def space_occupancy():
     return {
-        "occupied": 65,
-        "available": 25,
-        "out_of_service": 10,
+        "total": 248,
+        "occupied": 187,
+        "available": 45,
+        "outOfService": 16,
+        "occupancyRate": 75.4,
     }
     
 def work_orders_priority():
@@ -409,8 +411,26 @@ def work_orders_priority():
     }
 def get_energy_consumption_trend():
     return [
-        {"month": "Sep", "consumption": 44000},
-        {"month": "Oct", "consumption": 45000},
-        {"month": "Nov", "consumption": 47000},
-        {"month": "Dec", "consumption": 46000},
+       { "month": "Sep", "electricity": 42500, "water": 1250, "gas": 890 },
+    { "month": "Oct", "electricity": 44200, "water": 1180, "gas": 920 },
+    { "month": "Nov", "electricity": 46800, "water": 1320, "gas": 850 },
+    { "month": "Dec", "electricity": 45680, "water": 1280, "gas": 880 },
     ]
+def get_occupancy_by_floor():
+    return [
+     
+    { "floor": "Ground", "total": 65, "occupied": 52, "available": 10, "outOfService": 3 },
+    { "floor": "1st Floor", "total": 58, "occupied": 43, "available": 12, "outOfService": 3 },
+    { "floor": "2nd Floor", "total": 55, "occupied": 42, "available": 11, "outOfService": 2 },
+    { "floor": "3rd Floor", "total": 52, "occupied": 38, "available": 9, "outOfService": 5 },
+    { "floor": "Basement", "total": 18, "occupied": 12, "available": 3, "outOfService": 3 }
+    ]
+
+def get_energy_status():
+    return {
+        "totalConsumption": 45680,
+        "alerts": [
+            {"type": "High Usage", "message": "Building A electricity usage 15% above normal"},
+            {"type": "Meter Issue", "message": "Water meter B-3 needs maintenance"}
+        ]
+    }

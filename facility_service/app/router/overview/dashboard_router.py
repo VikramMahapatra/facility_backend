@@ -1,41 +1,74 @@
-from fastapi import APIRouter, Depends
-from ...crud.overview import dashboard_crud
+from typing import Any
+from fastapi import APIRouter, Depends, HTTPException
+from ...crud.overview import dashboard_crud 
+from sqlalchemy.orm import Session
+from uuid import UUID
+from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
+from ...schemas.overview.dasboard_schema import ( OverviewResponse, LeasingOverviewResponse , MaintenanceStatusResponse , AccessAndParkingResponse , FinancialSummaryResponse )
+from shared.schemas import  UserToken
+
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"], dependencies=[Depends(validate_current_token)])
 
-@router.get("/Overview")
-def overview():
-    return dashboard_crud.overview()
 
-@router.get("/leaseoverview")
-def lease_overview():
-    return dashboard_crud.lease_overview()
 
-@router.get("/MaintenanceStatus")
-def maintenance_status():
-    return dashboard_crud.maintenance_status()
-    
-@router.get("/AccessAndParking")
-def access_and_parking():
-    return dashboard_crud.access_and_parking()
+# ----------------------------- Overview -----------------------------
+@router.get("/overview", response_model=OverviewResponse)
+def get_overview(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    try:
+        data = dashboard_crud.get_overview_data(db, current_user.org_id)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching overview: {e}")
 
-@router.get("/FinancialSummary")
-def financial_summary():
-    return dashboard_crud.financial_summary()
 
-# @router.get("/monthly-revenue-trend")
-# def monthly_revenue_trend():
-#     return analytics_crud.monthly_revenue_trend()
+@router.get("/leasing-overview", response_model=LeasingOverviewResponse)
+def leasing_overview(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return dashboard_crud.get_leasing_overview(db, current_user.org_id)
 
-# @router.get("/space-occupancy")
-# def space_occupancy():
-#     return analytics_crud.space_occupancy()
 
-# @router.get("/work-orders-priority")
-# def work_orders_priority():
-#     return analytics_crud.work_orders_priority()
+@router.get("/maintenance-status", response_model=MaintenanceStatusResponse)
+def maintenance_status(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return dashboard_crud.get_maintenance_status(db, current_user.org_id)
 
-# @router.get("/energy-consumption-trend")
-# def get_energy_consumption_trend():
-#     return analytics_crud.get_energy_consumption_trend()
+@router.get("/access-and-parking", response_model=AccessAndParkingResponse)
+def access_and_parking(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return dashboard_crud.get_access_and_parking(db, current_user.org_id)
+
+
+@router.get("/financial-summary", response_model= FinancialSummaryResponse)
+def financial_summary(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return dashboard_crud.get_financial_summary(db, current_user.org_id)
+
+
+@router.get("/monthly-revenue-trend")
+def monthly_revenue_trend():
+    return dashboard_crud.monthly_revenue_trend()
+
+@router.get("/space-occupancy")
+def space_occupancy():
+    return dashboard_crud.space_occupancy()
+
+@router.get("/work-orders-priority")
+def work_orders_priority():
+    return dashboard_crud.work_orders_priority()
+
+@router.get("/energy-consumption-trend")
+def get_energy_consumption_trend():
+     return dashboard_crud.get_energy_consumption_trend()

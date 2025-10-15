@@ -403,12 +403,13 @@ def space_occupancy():
     }
     
 def work_orders_priority():
-    return {
-        "critical": 3,
-        "high": 8,
-        "medium": 12,
-        "low": 5,
-    }
+    return [ 
+    { "priority": "Critical", "count": 3 },
+    { "priority": "High",     "count": 8 },
+    { "priority": "Medium",   "count": 12 },
+    { "priority": "Low",      "count": 5 }
+    ]
+
 def get_energy_consumption_trend():
     return [
        { "month": "Sep", "electricity": 42500, "water": 1250, "gas": 890 },

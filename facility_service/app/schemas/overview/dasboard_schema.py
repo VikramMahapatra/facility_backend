@@ -1,16 +1,19 @@
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 
-class OverviewResponse(BaseModel):
-    total_properties: int
-    occupancy_rate: float
-    monthly_revenue: float
-    work_orders: int
-    rent_collections: float
-    energy_usage: float
 
-    class Config:
-        orm_mode = True
+
+class StatItem(BaseModel):
+    title: str
+    value: str
+    icon: str
+    trend: str
+    change: str
+    description: str
+
+class OverviewResponse(BaseModel):
+    stats: List[StatItem]
+    
 
 class LeasingOverviewResponse(BaseModel):
     renewals_30_days: int

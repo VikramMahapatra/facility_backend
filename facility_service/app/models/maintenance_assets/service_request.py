@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Text, ForeignKey, JSON, TIMESTAMP
+from sqlalchemy import Column, Float, String, Text, ForeignKey, JSON, TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -22,7 +22,7 @@ class ServiceRequest(Base):
     
     priority = Column(String(16), nullable=False, default='medium')
     status = Column(String(24), nullable=False, default='open')
-    
+    ratings = Column(Float, nullable=True)
     sla = Column(JSON, nullable=True)
     linked_work_order_id = Column(UUID(as_uuid=True), nullable=True)
     

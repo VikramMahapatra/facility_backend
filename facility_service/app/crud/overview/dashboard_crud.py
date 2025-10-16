@@ -1,3 +1,4 @@
+from typing import Any, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import extract, func, case , literal_column, or_
 from datetime import date, timedelta
@@ -27,9 +28,8 @@ from ...models.energy_iot.meters import Meter
 from ...models.financials.invoices import Invoice, PaymentAR
 from sqlalchemy.dialects.postgresql import UUID
 
-# ----------------------------- Overview -----------------------------
 
-def get_overview_data(db: Session, org_id: UUID):
+def get_overview_data(db: Session, org_id: UUID) -> Dict[str, Any]:
     today = date.today()
 
     # ------------------- Total Properties -------------------
@@ -43,11 +43,10 @@ def get_overview_data(db: Session, org_id: UUID):
         .scalar() or 0
     total_spaces = db.query(func.count(Space.id))\
         .filter(Space.org_id == org_id)\
-        .scalar() or 1  # avoid division by zero
+        .scalar() or 1
     occupancy_rate = round((occupied_count / total_spaces) * 100, 2)
 
     # ------------------- Monthly Revenue -------------------
-    # Total room charges including taxes
     total_charges = (
         db.query(func.coalesce(func.sum(FolioCharge.amount + (FolioCharge.amount * FolioCharge.tax_pct / 100)), 0))
         .join(Folio, Folio.id == FolioCharge.folio_id)
@@ -60,7 +59,6 @@ def get_overview_data(db: Session, org_id: UUID):
         .scalar()
     ) or 0.0
 
-    # Refunds from booking cancellations
     total_refunds = (
         db.query(func.coalesce(func.sum(BookingCancellation.refund_amount), 0))
         .join(Booking, Booking.id == BookingCancellation.booking_id)
@@ -75,7 +73,6 @@ def get_overview_data(db: Session, org_id: UUID):
 
     monthly_revenue = total_charges - total_refunds
 
-    
     # ------------------- Work Orders -------------------
     total_work_orders = (
         db.query(func.count(WorkOrder.id))
@@ -83,7 +80,6 @@ def get_overview_data(db: Session, org_id: UUID):
         .scalar()
         or 0
     )
-
 
     # ------------------- Rent Collections -------------------
     rent_collections = (
@@ -112,14 +108,60 @@ def get_overview_data(db: Session, org_id: UUID):
         or 0.0
     )
 
-    return {
-        "total_properties": total_properties,
-        "occupancy_rate": occupancy_rate,
-        "monthly_revenue": float(monthly_revenue),
-        "work_orders": int(total_work_orders),
-        "rent_collections": float(rent_collections),
-        "energy_usage": float(energy_usage),
-    }
+    # Format values as strings for consistent frontend display
+    stats_list = [
+        {
+            "title": "Total Properties",
+            "value": str(int(total_properties)),
+            "icon": "Building2",
+            "trend": "up",
+            "change": "+0%",
+            "description": "Active properties",
+        },
+        {
+            "title": "Occupancy Rate",
+            "value": f"{occupancy_rate}%",
+            "icon": "Users",
+            "trend": "up",
+            "change": "+0%",
+            "description": "Current occupancy",
+        },
+        {
+            "title": "Monthly Revenue",
+            "value": f"₹{monthly_revenue:,.0f}",
+            "icon": "CreditCard",
+            "trend": "up",
+            "change": "+0%",
+            "description": "This month's income",
+        },
+        {
+            "title": "Work Orders",
+            "value": str(int(total_work_orders)),
+            "icon": "Wrench",
+            "trend": "up",
+            "change": "+0%",
+            "description": "Open tickets",
+        },
+        {
+            "title": "Rent Collections",
+            "value": f"₹{rent_collections:,.0f}",
+            "icon": "BarChart3",
+            "trend": "up",
+            "change": "+0%",
+            "description": "Collection rate",
+        },
+        {
+            "title": "Energy Usage",
+            "value": f"{energy_usage:.1f} kWh",
+            "icon": "Zap",
+            "trend": "up",
+            "change": "+0%",
+            "description": "Monthly consumption",
+        },
+    ]
+    
+    return {"stats": stats_list}
+
 
 
 def get_leasing_overview(db: Session, org_id: UUID):
@@ -403,12 +445,13 @@ def space_occupancy():
     }
     
 def work_orders_priority():
-    return {
-        "critical": 3,
-        "high": 8,
-        "medium": 12,
-        "low": 5,
-    }
+    return [ 
+    { "priority": "Critical", "count": 3 },
+    { "priority": "High",     "count": 8 },
+    { "priority": "Medium",   "count": 12 },
+    { "priority": "Low",      "count": 5 }
+    ]
+
 def get_energy_consumption_trend():
     return [
        { "month": "Sep", "electricity": 42500, "water": 1250, "gas": 890 },

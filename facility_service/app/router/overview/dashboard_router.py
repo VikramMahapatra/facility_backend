@@ -71,3 +71,11 @@ def work_orders_priority():
 @router.get("/energy-consumption-trend")
 def get_energy_consumption_trend():
      return dashboard_crud.get_energy_consumption_trend()
+
+@router.get("/occupancy-by-floor")
+def get_occupancy_by_floor():
+    return dashboard_crud.get_occupancy_by_floor()
+
+@router.get("/energy-status")
+def get_energy_status():
+    return dashboard_crud.get_energy_status()

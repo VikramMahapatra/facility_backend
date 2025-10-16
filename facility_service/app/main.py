@@ -26,6 +26,7 @@ from .router.maintenance_assets import (
     asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, pm_template_router, service_request_router, work_order_router)
 from .router.parking_access import parking_zones_router, access_events_router, visitors_router
 from .router.hospitality import bookings_router , rate_plans_router , housekeeping_tasks_router
+from.router.overview import analytics_router, dashboard_router
 from .router.energy_iot import meter_readings_router, meters_router
 from .models import (
     purchase_order_lines, purchase_orders
@@ -94,3 +95,4 @@ app.include_router(rate_plans_router.router)
 app.include_router(housekeeping_tasks_router.router)
 app.include_router(meters_router.router)
 app.include_router(meter_readings_router.router)
+app.include_router(dashboard_router.router)

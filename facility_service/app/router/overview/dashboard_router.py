@@ -13,7 +13,6 @@ router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"], dependencies=[De
 
 
 
-# ----------------------------- Overview -----------------------------
 @router.get("/overview", response_model=OverviewResponse)
 def get_overview(
     db: Session = Depends(get_db),

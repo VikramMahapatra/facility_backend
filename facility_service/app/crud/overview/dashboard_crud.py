@@ -454,13 +454,6 @@ def work_orders_priority():
 
 def get_energy_consumption_trend():
     return [
-<<<<<<< HEAD
-        {"month": "Sep", "consumption": 44000},
-        {"month": "Oct", "consumption": 45000},
-        {"month": "Nov", "consumption": 47000},
-        {"month": "Dec", "consumption": 46000},
-    ]
-=======
        { "month": "Sep", "electricity": 42500, "water": 1250, "gas": 890 },
     { "month": "Oct", "electricity": 44200, "water": 1180, "gas": 920 },
     { "month": "Nov", "electricity": 46800, "water": 1320, "gas": 850 },
@@ -484,4 +477,3 @@ def get_energy_status():
             {"type": "Meter Issue", "message": "Water meter B-3 needs maintenance"}
         ]
     }
->>>>>>> origin/rohit

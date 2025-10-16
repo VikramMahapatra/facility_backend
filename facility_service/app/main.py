@@ -20,17 +20,18 @@ from .router.space_sites import (
     building_block_router,
     space_filter_router)
 from .router.overview import (dashboard_router, analytics_router)
-from .router.financials import (invoice_router, tax_codes_router)
+from .router.financials import (invoice_router, tax_codes_router,revenue_router)
 from .router.crm import contact_router
 from .router.maintenance_assets import (
     asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, pm_template_router, service_request_router, work_order_router)
 from .router.parking_access import parking_zones_router, access_events_router, visitors_router
 from .router.hospitality import bookings_router , rate_plans_router , housekeeping_tasks_router
 from.router.overview import analytics_router, dashboard_router
-from .router.energy_iot import meter_readings_router, meters_router
+from .router.energy_iot import meter_readings_router, meters_router , consumption_report_router
 from .models import (
     purchase_order_lines, purchase_orders
 )
+
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.leasing_tenants import commercial_partners, leases, lease_charges, tenants
 from .models.financials import invoices
@@ -96,3 +97,5 @@ app.include_router(housekeeping_tasks_router.router)
 app.include_router(meters_router.router)
 app.include_router(meter_readings_router.router)
 app.include_router(dashboard_router.router)
+app.include_router(revenue_router.router)
+app.include_router(consumption_report_router.router)

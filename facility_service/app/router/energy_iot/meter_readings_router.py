@@ -58,3 +58,11 @@ def delete_meter_reading(id: str, db: Session = Depends(get_db)):
     if not model:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return model
+
+
+@router.get("/meter-reading-lookup", response_model=List[Lookup])
+def meter_reading_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.meter_reading_lookup(db, current_user.org_id)

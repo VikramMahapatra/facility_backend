@@ -10,6 +10,8 @@ from ...models.energy_iot.meters import Meter
 from ...schemas.energy_iot.meter_readings_schemas import (
     MeterReadingCreate, MeterReadingOut, MeterReadingListResponse, MeterReadingUpdate
 )
+from ...models.space_sites.sites import Site
+from ...models.space_sites.spaces import Space
 
 
 def get_meter_readings_overview(db: Session, org_id: UUID):
@@ -131,3 +133,18 @@ def delete(db: Session, meter_reading_id: UUID) -> Optional[Meter]:
     db.delete(obj)
     db.commit()
     return obj
+
+def meter_reading_lookup(db: Session, org_id: str):
+    rows = (
+        db.query(
+            Meter.id.label("id"),
+            # Format: "CODE - Site Name" (matches your screenshot)
+            func.concat(Meter.code, ' - ', Site.name).label("name")
+        )
+        .join(Site, Site.id == Meter.site_id)
+        .filter(Meter.org_id == org_id)
+        .filter(Meter.status == 'active')
+        .order_by(func.lower(Meter.code))
+        .all()
+    )
+    return [{"id": str(r.id), "name": r.name} for r in rows]

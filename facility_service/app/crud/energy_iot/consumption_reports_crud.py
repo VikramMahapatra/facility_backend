@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 
 
 def overview_consumption_reports():
-    return[ {
+    return[{
         "Totalcost": "1,40,682",
         "Electricity": "12500.8",
         "Water": "420.8",

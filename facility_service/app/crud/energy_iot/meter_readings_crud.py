@@ -1,14 +1,14 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, distinct, func, or_
+from sqlalchemy import and_, distinct, func, or_, cast, Date
 from uuid import UUID
 
-from ...schemas.energy_iot.meters_schemas import MeterRequest
+from ...schemas.energy_iot.meters_schemas import BulkUploadError, MeterRequest
 
 from ...models.energy_iot.meter_readings import MeterReading
 from ...models.energy_iot.meters import Meter
 from ...schemas.energy_iot.meter_readings_schemas import (
-    MeterReadingCreate, MeterReadingOut, MeterReadingListResponse, MeterReadingUpdate
+    BulkMeterReadingRequest, MeterReadingCreate, MeterReadingOut, MeterReadingListResponse, MeterReadingUpdate
 )
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
@@ -134,6 +134,7 @@ def delete(db: Session, meter_reading_id: UUID) -> Optional[Meter]:
     db.commit()
     return obj
 
+
 def meter_reading_lookup(db: Session, org_id: str):
     rows = (
         db.query(
@@ -148,3 +149,51 @@ def meter_reading_lookup(db: Session, org_id: str):
         .all()
     )
     return [{"id": str(r.id), "name": r.name} for r in rows]
+
+
+def bulk_update_readings(db: Session, request: BulkMeterReadingRequest):
+    inserted, updated = 0, 0
+    rowHeaderIndex = 2
+    bulk_error_list = []
+    for m in request.readings:
+        errors = []
+        meter_id = db.query(Meter.id).filter(
+            Meter.code == m.meterCode).scalar()
+
+        if not meter_id:
+            errors.append("Meter code doesn't exist in the system")
+
+        if not errors:
+
+            obj = (
+                db.query(MeterReading)
+                .filter(
+                    MeterReading.meter_id == meter_id,
+                    cast(MeterReading.ts, Date) == m.timestamp.date()
+                ).first()
+            )
+
+            if not obj:
+                # insert reading
+                data = m.model_dump(exclude={"meterCode"})
+                data["ts"] = data.pop("timestamp")  # ✅ rename key
+                data.pop("meter_id", None)
+
+                reading_data = MeterReading(**data, meter_id=meter_id)
+                db.add(reading_data)
+                inserted += 1
+
+            else:
+                # update reading
+                data = m.model_dump(exclude_unset=True, exclude={"meterCode"})
+                for k, v in data.items():
+                    setattr(obj, k, v)
+                updated += 1
+        else:
+            row_error = BulkUploadError(row=rowHeaderIndex, errors=errors)
+            bulk_error_list.append(row_error)
+
+        rowHeaderIndex += 1
+
+    db.commit()
+    return {"inserted": inserted, "validations": bulk_error_list}

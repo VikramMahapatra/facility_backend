@@ -52,3 +52,29 @@ class MeterListResponse(BaseModel):
 
 class MeterRequest(CommonQueryParams):
     pass
+
+
+class MeterImport(BaseModel):
+    org_id: Optional[UUID] = None
+    site_id: Optional[UUID] = None
+    siteName: str
+    kind: str
+    code: str
+    space_id: Optional[UUID] = None
+    spaceName: str
+    unit: str
+    multiplier: float = 1.0
+
+
+class BulkMeterRequest(BaseModel):
+    meters: List[MeterImport]
+
+
+class BulkUploadError(BaseModel):
+    row: int
+    errors: List[str]
+
+
+class BulkMeterResponse(BaseModel):
+    inserted: Optional[int] = None
+    validations: List[BulkUploadError] = None

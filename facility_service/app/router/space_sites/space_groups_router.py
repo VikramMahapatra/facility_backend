@@ -1,5 +1,5 @@
 # app/routers/space_groups.py
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
@@ -32,11 +32,16 @@ def update_space_group(group: SpaceGroupUpdate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="SpaceGroup not found")
     return db_group
 
-@router.delete("/{group_id}")
+@router.delete("/{group_id}", response_model=Dict[str, Any])
 def delete_space_group(group_id: str, db: Session = Depends(get_db)):
-    db_group = crud.delete_space_group(db, group_id)
-    if not db_group:
-        raise HTTPException(status_code=404, detail="SpaceGroup not found")
+    result = crud.delete_space_group(db, group_id)
+    
+    # Always return 200, but with success=false for errors
+    if not result["success"]:
+        # Return 200 with error message, not 400
+        return result
+    
+    return result
     
 @router.get("/lookup", response_model=List[Lookup])
 def space_group_lookup(
@@ -45,4 +50,3 @@ def space_group_lookup(
     db: Session = Depends(get_db), 
     current_user : UserToken = Depends(validate_current_token)):
     return crud.get_space_group_lookup(db, site_id, space_id, current_user.org_id)
-

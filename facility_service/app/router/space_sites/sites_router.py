@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
@@ -38,9 +38,13 @@ def update_site(site: SiteUpdate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Site not found")
     return db_site
 
-@router.delete("/{site_id}", response_model=SiteOut)
+@router.delete("/{site_id}", response_model=Dict[str, Any])
 def delete_site(site_id: str, db: Session = Depends(get_db)):
-    db_site = crud.delete_site(db, site_id)
-    if not db_site:
-        raise HTTPException(status_code=404, detail="Site not found")
-    return db_site
+    result = crud.delete_site(db, site_id)
+    
+    # Always return 200, but with success=false for errors
+    if not result["success"]:
+        # Return 200 with error message, not 400
+        return result
+    
+    return result

@@ -2,7 +2,7 @@
 import uuid
 from typing import List, Optional
 from fastapi import HTTPException
-from sqlalchemy import func, cast, or_, case
+from sqlalchemy import func, cast, or_
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID
 from ...schemas.space_sites.space_groups_schemas import SpaceGroupOut
@@ -19,14 +19,22 @@ def build_filters(org_id: UUID, params: SpaceGroupMemberRequest):
 
     # org_id comes from SpaceGroup
     filters.append(Space.org_id == org_id)
+    
+    # Add soft-delete filters for all related models
+    filters.append(Space.is_deleted == False)
+    filters.append(Site.is_deleted == False)
+    filters.append(SpaceGroup.is_deleted == False)
 
     if params.site_id and params.site_id.lower() != "all":
         filters.append(Space.site_id == params.site_id)
 
     if params.search:
         search_term = f"%{params.search}%"
-        filters.append(or_(Space.name.ilike(search_term),
-                       SpaceGroup.name.ilike(search_term)))
+        filters.append(or_(
+            Space.name.ilike(search_term),
+            SpaceGroup.name.ilike(search_term),
+            Site.name.ilike(search_term)
+        ))
 
     return filters
 
@@ -42,24 +50,26 @@ def get_members_overview(db: Session, org_id: UUID, params: SpaceGroupMemberRequ
     counts = (
         db.query(
             func.count('*').label("total_assignments"),
-            func.count(func.distinct(SpaceGroupMember.space_id)
-                       ).label("total_spaces"),
-            func.count(func.distinct(SpaceGroupMember.group_id)
-                       ).label("total_groups"),
+            func.count(func.distinct(SpaceGroupMember.space_id)).label("total_spaces"),
+            func.count(func.distinct(SpaceGroupMember.group_id)).label("total_groups"),
         )
         .select_from(SpaceGroupMember)
         .join(Space, Space.id == SpaceGroupMember.space_id)
         .join(SpaceGroup, SpaceGroup.id == SpaceGroupMember.group_id)
+        .join(Site, Site.id == Space.site_id)
         .filter(*filters)
         .one()
     )
 
+    # Only count non-deleted spaces for assignment rate calculation
     overall_spaces = db.query(
         func.count('*')
-    ).filter(Space.org_id == org_id).scalar()
+    ).filter(
+        Space.org_id == org_id,
+        Space.is_deleted == False
+    ).scalar()
 
-    assignment_rate = (counts.total_spaces /
-                       overall_spaces * 100) if overall_spaces else 0
+    assignment_rate = (counts.total_spaces / overall_spaces * 100) if overall_spaces else 0
     assignment_rate = round(assignment_rate, 2)
 
     return {
@@ -71,6 +81,8 @@ def get_members_overview(db: Session, org_id: UUID, params: SpaceGroupMemberRequ
 
 
 def get_assignment_preview(db: Session, org_id: UUID, params: SpaceGroupMemberRequest):
+    filters = build_filters(org_id, params)
+    
     assignment_preview_query = (
         db.query(
             Site.name.label("site_name"),
@@ -83,14 +95,15 @@ def get_assignment_preview(db: Session, org_id: UUID, params: SpaceGroupMemberRe
         .select_from(Space)
         .join(Site, Site.id == Space.site_id)
         .join(SpaceGroup, Space.kind == SpaceGroup.kind)
+        .filter(*filters)
     )
 
     if params.space_id:
         assignment_preview_query = assignment_preview_query.filter(
-            SpaceGroupMember.space_id == params.space_id)
+            Space.id == params.space_id)
     if params.group_id:
         assignment_preview_query = assignment_preview_query.filter(
-            SpaceGroupMember.group_id == params.group_id)
+            SpaceGroup.id == params.group_id)
 
     result = assignment_preview_query.first()
     if not result:
@@ -158,6 +171,21 @@ def get_space_group_member_by_id(db: Session, group_id: str, space_id: str) -> O
 
 
 def add_member(db: Session, data: SpaceGroupMemberCreate) -> SpaceGroupMemberBase:
+    # Check if space and group exist and are not deleted
+    space = db.query(Space).filter(
+        Space.id == data.space_id,
+        Space.is_deleted == False
+    ).first()
+    if not space:
+        raise ValueError("Space not found or has been deleted")
+
+    group = db.query(SpaceGroup).filter(
+        SpaceGroup.id == data.group_id,
+        SpaceGroup.is_deleted == False
+    ).first()
+    if not group:
+        raise ValueError("Space group not found or has been deleted")
+
     # check if already exists
     existing = db.query(SpaceGroupMember).filter_by(
         group_id=data.group_id, space_id=data.space_id

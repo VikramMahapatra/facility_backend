@@ -1,18 +1,18 @@
+# site_crud.py
 from operator import or_
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, and_, distinct, case
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
+from typing import Dict
 
 from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
-from ...models.space_sites.spaces import Space   # ✅ import Space model
-from ...models.leasing_tenants.leases import Lease   # ✅ import Lease model
+from ...models.space_sites.spaces import Space
+from ...models.leasing_tenants.leases import Lease
 from ...schemas.space_sites.sites_schemas import SiteCreate, SiteOut, SiteRequest, SiteUpdate
 import uuid
 
-
-# def get_sites(db: Session, org_id:str, skip: int = 0, limit: int = 100):
 
 def get_sites(db: Session, org_id: str, params: SiteRequest):
     now = datetime.utcnow()
@@ -44,7 +44,12 @@ def get_sites(db: Session, org_id: str, params: SiteRequest):
         .outerjoin(Building, Site.id == Building.site_id)
         .outerjoin(Space, Site.id == Space.site_id)
         .outerjoin(Lease, Space.id == Lease.space_id)
-        .filter(Site.org_id == org_id)
+        .filter(
+            Site.org_id == org_id,
+            Site.is_deleted == False,      # Add this filter
+            Building.is_deleted == False,  # Add this filter (for count)
+            Space.is_deleted == False      # Add this filter (for count)
+        )
     )
 
     if params.kind and params.kind.lower() != "all":
@@ -65,33 +70,50 @@ def get_sites(db: Session, org_id: str, params: SiteRequest):
 
 def get_site_lookup(db: Session, org_id: str):
     site = db.query(Site.id, Site.name).filter(
-        Site.org_id == org_id).all()
+        Site.org_id == org_id,
+        Site.is_deleted == False  # Add this filter
+    ).all()
     return site
 
 
+def get_site_by_id(db: Session, site_id: str):
+    return db.query(Site).filter(
+        Site.id == site_id,
+        Site.is_deleted == False  # Add this filter
+    ).first()
+
+
 def get_site(db: Session, site_id: str):
-    site = db.query(Site).filter(Site.id == site_id).first()
+    site = get_site_by_id(db, site_id)
     if not site:
         return None
 
     now = datetime.utcnow()
 
-    total_spaces = len(site.spaces or []) if site.spaces else 0
-    total_buildings = len(site.buildings or []) if site.buildings else 0
+    # Filter only non-deleted spaces and buildings
+    total_spaces = db.query(Space).filter(
+        Space.site_id == site_id,
+        Space.is_deleted == False
+    ).count()
+    
+    total_buildings = db.query(Building).filter(
+        Building.site_id == site_id,
+        Building.is_deleted == False
+    ).count()
 
-    # occupied spaces based on Lease
+    # occupied spaces based on Lease (only non-deleted spaces)
     occupied = (
         db.query(func.count(Space.id))
         .join(Lease, Space.id == Lease.space_id)
         .filter(
             Space.site_id == site.id,
+            Space.is_deleted == False,  # Add this filter
             Lease.start_date <= now,
             Lease.end_date >= now
         )
         .scalar()
     ) or 0
 
-    # ✅ Explicit logic for occupied_percent
     occupied_percent = max(
         0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0))
 
@@ -122,7 +144,7 @@ def create_site(db: Session, site: SiteCreate):
 
 
 def update_site(db: Session, site: SiteUpdate):
-    db_site = db.query(Site).filter(Site.id == site.id).first()
+    db_site = get_site_by_id(db, site.id)
     if not db_site:
         return None
     for key, value in site.dict(exclude_unset=True).items():
@@ -132,10 +154,42 @@ def update_site(db: Session, site: SiteUpdate):
     return get_site(db, site.id)
 
 
-def delete_site(db: Session, site_id: str):
-    db_site = get_site(db, site_id)
-    if not db_site:
-        return None
-    db.delete(db_site)
+# In site_crud.py - update the delete_site function
+def delete_site(db: Session, site_id: str) -> Dict:
+    """Delete site with protection - check for active buildings first"""
+    site = get_site_by_id(db, site_id)
+    if not site:
+        return {"success": False, "message": "Site not found"}
+    
+    # Check if site has any active buildings
+    active_buildings_count = db.query(Building).filter(
+        Building.site_id == site_id,
+        Building.is_deleted == False
+    ).count()
+    
+    if active_buildings_count > 0:
+        return {
+            "success": False,
+            "message": f"It contains {active_buildings_count} active building(s). Please contact administrator to delete this site.",
+            "active_buildings_count": active_buildings_count
+        }
+    
+    # Also check for spaces directly under site (without building)
+    direct_spaces_count = db.query(Space).filter(
+        Space.site_id == site_id,
+        Space.building_block_id == None,
+        Space.is_deleted == False
+    ).count()
+    
+    if direct_spaces_count > 0:
+        return {
+            "success": False,
+            "message": f"It contains {direct_spaces_count} space(s) not assigned to any building. Please contact administrator to delete this site.",
+            "direct_spaces_count": direct_spaces_count
+        }
+    
+    # Soft delete the site
+    site.is_deleted = True
     db.commit()
-    return db_site
+    
+    return {"success": True, "message": "Site deleted successfully"}

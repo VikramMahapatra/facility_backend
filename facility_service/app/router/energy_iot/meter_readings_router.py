@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ...schemas.energy_iot.meters_schemas import MeterRequest
-from ...schemas.energy_iot.meter_readings_schemas import MeterReadingCreate, MeterReadingListResponse, MeterReadingOverview, MeterReadingUpdate
+from ...schemas.energy_iot.meter_readings_schemas import BulkMeterReadingRequest, MeterReadingCreate, MeterReadingListResponse, MeterReadingOverview, MeterReadingUpdate
 from ...crud.energy_iot import meter_readings_crud as crud
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token  # for dependicies
@@ -66,3 +66,11 @@ def meter_reading_lookup_endpoint(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.meter_reading_lookup(db, current_user.org_id)
+
+
+@router.post("/bulk-upload")
+async def bulk_update_meters(
+        request: BulkMeterReadingRequest,
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.bulk_update_readings(db, request)

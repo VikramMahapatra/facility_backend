@@ -11,7 +11,7 @@ from ...models.energy_iot.meter_readings import MeterReading
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 
-from ...schemas.energy_iot.meters_schemas import MeterCreate, MeterRequest, MeterUpdate, MeterOut, MeterListResponse
+from ...schemas.energy_iot.meters_schemas import BulkMeterRequest, BulkUploadError, MeterCreate, MeterImport, MeterRequest, MeterUpdate, MeterOut, MeterListResponse
 
 
 def get_list(db: Session, org_id: UUID, params: MeterRequest) -> MeterListResponse:
@@ -70,7 +70,7 @@ def get_list(db: Session, org_id: UUID, params: MeterRequest) -> MeterListRespon
             )
         )
 
-    return {"meters": result, "total": len(result)}
+    return {"meters": result, "total": total}
 
 
 def get_by_id(db: Session, meter_id: UUID) -> Optional[MeterOut]:
@@ -105,6 +105,54 @@ def get_by_id(db: Session, meter_id: UUID) -> Optional[MeterOut]:
             "lastReadingDate": last_read.ts.isoformat() if last_read else None,
         }
     )
+
+
+def bulk_update_meters(db: Session, request: BulkMeterRequest):
+    inserted, updated = 0, 0
+    rowHeaderIndex = 2
+    bulk_error_list = []
+    for m in request.meters:
+        errors = []
+        obj = db.query(Meter).filter(Meter.code == m.code).first()
+
+        site_id = db.query(Site.id).filter(
+            Site.name == m.siteName).scalar()
+        space_id = db.query(Space.id).filter(
+            Space.name == m.spaceName).scalar()
+
+        if not site_id:
+            errors.append("Site doesn't exist in the system")
+
+        if not space_id:
+            errors.append("Space doesn't exist in the system")
+
+        if not errors:
+            m.site_id = site_id
+            m.space_id = space_id
+
+            if not obj:
+                # create meter
+                meter_data = Meter(
+                    **m.model_dump(exclude={"siteName", "spaceName"}))
+                db.add(obj)
+                inserted += 1
+
+            else:
+                # update meter
+                data = m.model_dump(exclude_unset=True, exclude={
+                                    "siteName", "spaceName"})
+                for k, v in data.items():
+                    setattr(obj, k, v)
+
+                updated += 1
+        else:
+            row_error = BulkUploadError(row=rowHeaderIndex, errors=errors)
+            bulk_error_list.append(row_error)
+
+        rowHeaderIndex += 1
+
+    db.commit()
+    return {"inserted": inserted, "validations": bulk_error_list}
 
 
 def create(db: Session, payload: MeterCreate) -> Meter:

@@ -1,6 +1,6 @@
 # building.py
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Column, String, Integer, JSON, ForeignKey, func, DateTime
+from sqlalchemy import Boolean, Column, String, Integer, JSON, ForeignKey, func, DateTime
 from sqlalchemy.orm import relationship
 import uuid
 from shared.database import Base
@@ -15,6 +15,7 @@ class Building(Base):
     status = Column(String(16), default="active")
     attributes = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_deleted = Column(Boolean, default=False, nullable=False) 
 
     # Relationships
     site = relationship("Site", back_populates="buildings")

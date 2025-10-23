@@ -42,3 +42,15 @@ class MeterReadingOverview(BaseModel):
     activeMeters: Optional[int] = None
     latestReadings: Optional[int] = None
     iotConnected: Optional[int] = None
+
+
+class MeterReadingImport(BaseModel):
+    meter_id: Optional[UUID] = None
+    meterCode: str
+    timestamp: datetime
+    reading: float
+    source: Optional[str] = "manual"
+
+
+class BulkMeterReadingRequest(BaseModel):
+    readings: List[MeterReadingImport]

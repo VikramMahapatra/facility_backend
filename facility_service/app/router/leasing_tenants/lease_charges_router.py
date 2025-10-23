@@ -49,11 +49,15 @@ def update_lease_charge(data: LeaseChargeUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{id}", response_model=None)
-def delete_lease_charge(id: str, db: Session = Depends(get_db)):
-    model = crud.delete_lease_charge(db, id)
+def delete_lease_charge(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    model = crud.delete_lease_charge(db, id, current_user.org_id)
     if not model:
-        raise HTTPException(status_code=404, detail="Lease charge not found")
-    return model
+        raise HTTPException(status_code=404, detail="Lease charge not found or unauthorized")
+    return {"detail": "Lease charge deleted successfully"}
 
 
 @router.get("/month-lookup", response_model=List[Lookup])

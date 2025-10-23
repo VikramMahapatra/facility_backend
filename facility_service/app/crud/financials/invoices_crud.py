@@ -40,18 +40,18 @@ def get_invoices_overview(db: Session, org_id: UUID, params: InvoicesRequest):
     grand_amount = cast(func.jsonb_extract_path_text(Invoice.totals, "grand"), Numeric)
         
     counts = db.query(
-        func.count(Invoice.id).label("total_invoices"),
-        func.coalesce(func.sum(grand_amount), 0).label("total_amount"),
-        func.coalesce(
-            func.sum(
-                case([(Invoice.status == "paid", grand_amount)], else_=0)
-            ), 0
-        ).label("paid_amount"),
-        func.coalesce(
-            func.sum(
-                case([(Invoice.status.in_(["issued", "partial"]), grand_amount)], else_=0)
-            ), 0
-        ).label("outstanding_amount"),
+    func.count(Invoice.id).label("total_invoices"),
+    func.coalesce(func.sum(grand_amount), 0).label("total_amount"),
+    func.coalesce(
+        func.sum(
+            case((Invoice.status == "paid", grand_amount), else_=0)
+        ), 0
+    ).label("paid_amount"),
+    func.coalesce(
+        func.sum(
+            case((Invoice.status.in_(["issued", "partial"]), grand_amount), else_=0)
+        ), 0
+    ).label("outstanding_amount"),
     ).filter(*filters).one()
 
     return {

@@ -1,5 +1,5 @@
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Column, String, Date, DateTime, func, ForeignKey
+from sqlalchemy import Boolean, Column, String, Date, DateTime, func, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB , UUID
 from sqlalchemy.orm import relationship
 from ...models.hospitality.rate_plans import RatePlan
@@ -27,6 +27,7 @@ class Site(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True),
                         server_default=func.now(), onupdate=func.now())
+    is_deleted = Column(Boolean, default=False, nullable=False) 
 
     # Relationships
     org = relationship("Org", back_populates="sites", cascade="all, delete")

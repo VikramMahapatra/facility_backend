@@ -1,4 +1,5 @@
-from typing import Optional
+# building_crud.py
+from typing import Optional, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, or_
 from datetime import datetime
@@ -24,6 +25,7 @@ def get_buildings(db: Session, org_id: UUID, params: BuildingRequest):
                 )
             ).label("occupied_spaces")
         )
+        .filter(Space.is_deleted == False)  # Add this filter
         .outerjoin(Lease, Space.id == Lease.space_id)
         .group_by(Space.site_id)
     ).subquery()
@@ -43,7 +45,11 @@ def get_buildings(db: Session, org_id: UUID, params: BuildingRequest):
         )
         .join(Site, Building.site_id == Site.id)
         .outerjoin(space_subq, Site.id == space_subq.c.site_id)
-        .filter(Site.org_id == org_id)
+        .filter(
+            Site.org_id == org_id,
+            Building.is_deleted == False,  # Add this filter
+            Site.is_deleted == False      # Add this filter
+        )
     )
 
     if params.site_id and params.site_id.lower() != "all":
@@ -72,8 +78,8 @@ def create_building(db: Session, building: BuildingCreate):
     return get_building(db, db_building.id)
 
 
-def update_site(db: Session, building: BuildingUpdate):
-    db_building = db.query(Building).filter(Building.id == building.id).first()
+def update_building(db: Session, building: BuildingUpdate):
+    db_building = get_building_by_id(db, building.id)
     if not db_building:
         return None
     for key, value in building.dict(exclude_unset=True).items():
@@ -81,6 +87,13 @@ def update_site(db: Session, building: BuildingUpdate):
     db.commit()
     db.refresh(db_building)
     return get_building(db, db_building.id)
+
+
+def get_building_by_id(db: Session, building_id: str):
+    return db.query(Building).filter(
+        Building.id == building_id,
+        Building.is_deleted == False  # Add this filter
+    ).first()
 
 
 def get_building(db: Session, id: str):
@@ -97,6 +110,7 @@ def get_building(db: Session, id: str):
                 )
             ).label("occupied_spaces")
         )
+        .filter(Space.is_deleted == False)  # Add this filter
         .outerjoin(Lease, Space.id == Lease.space_id)
         .group_by(Space.site_id)
     ).subquery()
@@ -116,7 +130,11 @@ def get_building(db: Session, id: str):
         )
         .join(Site, Building.site_id == Site.id)
         .outerjoin(space_subq, Site.id == space_subq.c.site_id)
-        .filter(Building.id == id)
+        .filter(
+            Building.id == id,
+            Building.is_deleted == False,  # Add this filter
+            Site.is_deleted == False      # Add this filter
+        )
     )
     return building_query.first()
 
@@ -125,9 +143,40 @@ def get_building_lookup(db: Session, site_id: str, org_id: str):
     building_query = (
         db.query(Building.id, Building.name)
         .join(Site, Site.id == Building.site_id)
-        .filter(Site.org_id == org_id)
+        .filter(
+            Site.org_id == org_id,
+            Building.is_deleted == False,  # Add this filter
+            Site.is_deleted == False      # Add this filter
+        )
     )
-    if site_id and site_id.lower() != "all":  # only add filter if site_id is provided
+    if site_id and site_id.lower() != "all":
         building_query = building_query.filter(Site.id == site_id)
 
     return building_query.all()
+
+
+# In building_crud.py - update the delete_building function
+def delete_building(db: Session, building_id: str) -> Dict:
+    """Delete building with protection - check for active spaces first"""
+    building = get_building_by_id(db, building_id)
+    if not building:
+        return {"success": False, "message": "Building not found"}
+    
+    # Check if building has any active (non-deleted) spaces
+    active_spaces_count = db.query(Space).filter(
+        Space.building_block_id == building_id,
+        Space.is_deleted == False
+    ).count()
+    
+    if active_spaces_count > 0:
+        return {
+            "success": False,
+            "message": f"It contains {active_spaces_count} active space(s). Please contact administrator to delete this building.",
+            "active_spaces_count": active_spaces_count
+        }
+    
+    # Soft delete the building
+    building.is_deleted = True
+    db.commit()
+    
+    return {"success": True, "message": "Building deleted successfully"}

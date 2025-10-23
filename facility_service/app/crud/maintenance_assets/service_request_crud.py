@@ -196,27 +196,70 @@ def service_request_channel_lookup(org_id: UUID, db: Session):
 
 # --------------------------crud operation enpoints-----------------------------
 # update create change by using userid
+def create_service_request(
+    db: Session, org_id: UUID, request: ServiceRequestCreate, current_user: UserToken
+) -> ServiceRequestOut:
+    """
+    Creates a service request:
+    - Ensures requester contact exists
+    - Uses token user if requester_id is not provided
+    - Avoids inserting null full_name
+    """
+    
+    # Determine requester info
+    if request.requester_id:
+        contact = db.query(Contact).filter(Contact.id == request.requester_id).first()
+        if contact:
+            requester_id = contact.id
+            requester_name = contact.full_name
+        else:
+            # Create new contact with fallback full_name
+            requester_name = getattr(request, "requester_name", None) or "Unknown"
+            new_contact = Contact(
+                id=request.requester_id,
+                org_id=org_id,
+                kind="resident",
+                full_name=requester_name,
+                email=getattr(request, "email", None),
+                phone_e164=getattr(request, "phone", None),
+            )
+            db.add(new_contact)
+            db.commit()
+            db.refresh(new_contact)
+            requester_id = new_contact.id
+    else:
+        # Use current user as requester
+        contact = db.query(Contact).filter(Contact.id == current_user.user_id).first()
+        if not contact:
+            requester_name = current_user.name or "Unknown"
+            new_contact = Contact(
+                id=current_user.user_id,
+                org_id=org_id,
+                kind="resident",
+                full_name=requester_name,
+                email=getattr(current_user, "email", None),
+                phone_e164=getattr(current_user, "phone", None),
+            )
+            db.add(new_contact)
+            db.commit()
+            db.refresh(new_contact)
+        requester_id = current_user.user_id
+        requester_name = current_user.name or "Unknown"
 
-# ----------------- Create Service Request -----------------
-
-# ----------------- Create Service Request -----------------
-def create_service_request(db: Session, org_id: UUID, request: ServiceRequestCreate) -> ServiceRequest:
+    # Create service request
     db_request = ServiceRequest(
         org_id=org_id,
-        **request.model_dump(exclude={"org_id", "requester_name"})
+        requester_id=requester_id,
+        **request.model_dump(exclude={"requester_id", "requester_name", "org_id"})
     )
     db.add(db_request)
     db.commit()
     db.refresh(db_request)
 
-    # 🔗 Link WorkOrder if provided
-    if getattr(request, "linked_work_order_id", None):
-        db.query(WorkOrder).filter(WorkOrder.id == request.linked_work_order_id).update(
-            {"request_id": db_request.id}
-        )
-        db.commit()
-
-    return db_request
+    # Prepare output with requester_name
+    db_request_out = ServiceRequestOut.from_orm(db_request)
+    db_request_out.requester_name = requester_name
+    return db_request_out
 
 
 def update_service_request(db: Session, request_update: ServiceRequestUpdate, current_user: UserToken) -> Optional[ServiceRequest]:
@@ -269,22 +312,35 @@ def delete_service_request(db: Session, request_id: UUID) -> bool:
 
 
 def service_request_lookup(db: Session, org_id: UUID):
+    """
+    Returns service requests for Work Order dropdown.
+    Each item shows: Requester Name - Category
+    """
     requests = (
         db.query(
             ServiceRequest.id.label("id"),
             func.concat(
                 Contact.full_name,
                 literal(" - "),
-                ServiceRequest.priority
+                ServiceRequest.category
             ).label("name")
         )
-        .join(Contact, and_(Contact.id == ServiceRequest.requester_id, Contact.kind == ServiceRequest.requester_kind))
+        .join(
+            Contact,
+            and_(
+                Contact.id == ServiceRequest.requester_id,
+                Contact.kind == ServiceRequest.requester_kind
+            )
+        )
         .filter(ServiceRequest.org_id == org_id)
         .distinct()
         .order_by("name")
         .all()
     )
-    return requests
+
+    # Convert id to string for frontend JSON serialization
+    return [{"id": str(r.id), "name": r.name} for r in requests]
+
 
 
 def service_request_filter_workorder_lookup(db: Session, org_id: str) -> List[Dict]:

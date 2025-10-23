@@ -1,3 +1,4 @@
+from .router.access_control import user_management_router
 from .models.energy_iot import meters, meter_readings
 from .models.parking_access import parking_zones, parking_pass, access_events, visitors
 from .models.crm import contacts, companies
@@ -101,4 +102,5 @@ app.include_router(meter_readings_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(revenue_router.router)
 app.include_router(consumption_report_router.router)
+app.include_router(user_management_router.router)
 app.include_router(export_router.router)

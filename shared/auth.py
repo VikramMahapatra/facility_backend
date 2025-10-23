@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
+from auth_service.app.models import users
 from shared.config import settings
 from shared.schemas import UserToken
 
@@ -11,6 +12,9 @@ security = HTTPBearer()
 def create_access_token(data:dict):
     expires = datetime.datetime.utcnow() + datetime.timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
     data.update({'exp' : expires})
+        # ✅ Ensure "name" exists if user is passed added it for service request requester id 
+    if users and 'name' not in data and hasattr(users, 'full_name'):
+        data['name'] = users.full_name
     return jwt.encode(data, settings.JWT_SECRET, algorithm= settings.JWT_ALGORITHM)
 
 def verify_token(token:str) -> Optional[dict]:

@@ -31,6 +31,7 @@ from .router.energy_iot import meter_readings_router, meters_router , consumptio
 from .models import (
     purchase_order_lines, purchase_orders
 )
+from .router.access_control import user_management_router
 
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.leasing_tenants import commercial_partners, leases, lease_charges, tenants
@@ -99,3 +100,4 @@ app.include_router(meter_readings_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(revenue_router.router)
 app.include_router(consumption_report_router.router)
+app.include_router(user_management_router.router)

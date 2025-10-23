@@ -1,0 +1,181 @@
+from operator import or_
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from typing import Dict, List, Optional
+
+from auth_service.app.models.roles import Roles
+from auth_service.app.models.users import Users
+from auth_service.app.models.userroles import UserRoles
+from shared.schemas import Lookup
+from ...enum.access_control_enum import UserRoleEnum, UserStatusEnum
+
+from ...schemas.access_control.user_management_schemas import (
+    UserCreate, UserOut, UserRequest, UserUpdate
+)
+
+def get_users(db: Session, org_id: str, params: UserRequest):
+    user_query = db.query(Users).filter(
+        Users.org_id == org_id,
+        Users.is_deleted == False
+    )
+
+    if params.status and params.status.lower() != "all":
+        user_query = user_query.filter(
+            func.lower(Users.status) == params.status.lower()
+        )
+
+    if params.account_type and params.account_type.lower() != "all":
+        user_query = user_query.filter(
+            func.lower(Users.account_type) == params.account_type.lower()
+        )
+
+    if params.search:
+        search_term = f"%{params.search}%"
+        user_query = user_query.filter(
+            or_(
+                Users.full_name.ilike(search_term),
+                Users.email.ilike(search_term)
+            )
+        )
+
+    total = user_query.count()
+    users = user_query.offset(params.skip).limit(params.limit).all()
+    
+    # Get roles for each user
+    users_with_roles = []
+    for user in users:
+        # Create UserOut manually instead of using from_orm
+        user_out = UserOut(
+            id=user.id,
+            org_id=user.org_id,
+            full_name=user.full_name,
+            email=user.email,
+            phone=user.phone,
+            picture_url=user.picture_url,
+            account_type=user.account_type,
+            status=user.status,
+            roles=get_user_roles(db, user.id),
+            created_at=user.created_at,
+            updated_at=user.updated_at
+        )
+        users_with_roles.append(user_out)
+    
+    return {"users": users_with_roles, "total": total}
+
+
+def get_user_by_id(db: Session, user_id: str):
+    return db.query(Users).filter(
+        Users.id == user_id,
+        Users.is_deleted == False
+    ).first()
+
+
+def get_user(db: Session, user_id: str):
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+
+    # Create UserOut manually instead of using from_orm
+    return UserOut(
+        id=user.id,
+        org_id=user.org_id,
+        full_name=user.full_name,
+        email=user.email,
+        phone=user.phone,
+        picture_url=user.picture_url,
+        account_type=user.account_type,
+        status=user.status,
+        roles=get_user_roles(db, user.id),
+        created_at=user.created_at,
+        updated_at=user.updated_at
+    )
+
+
+def get_user_roles(db: Session, user_id: str) -> List[str]:
+    roles = db.query(Roles.name).join(
+        UserRoles, UserRoles.role_id == Roles.id
+    ).filter(
+        UserRoles.user_id == user_id
+    ).all()
+    return [role.name for role in roles]
+
+
+def get_role_by_name(db: Session, role_name: str, org_id: str = None):
+    # Remove org_id filter - get role by name only
+    return db.query(Roles).filter(Roles.name == role_name).first()
+
+def create_user(db: Session, user: UserCreate):
+    # Check if email already exists
+    if user.email:
+        existing_user = db.query(Users).filter(
+            Users.email == user.email,
+            Users.is_deleted == False
+        ).first()
+        
+        if existing_user:
+            raise ValueError("User with this email already exists")
+
+    user_data = user.model_dump(exclude={'roles'})
+    
+    db_user = Users(**user_data)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    
+    # Add roles if provided - NO org_id filter
+    if user.roles:
+        for role_name in user.roles:
+            role = db.query(Roles).filter(Roles.name == role_name).first()  # ✅ No org_id filter
+            
+            if role:
+                user_role = UserRoles(
+                    user_id=db_user.id,
+                    role_id=role.id
+                )
+                db.add(user_role)
+        db.commit()
+    
+    return get_user(db, db_user.id)
+
+def update_user(db: Session, user: UserUpdate):
+    db_user = get_user_by_id(db, user.id)
+    if not db_user:
+        return None
+    
+    update_data = user.model_dump(exclude_unset=True, exclude={'id', 'roles'})
+    
+    for key, value in update_data.items():
+        setattr(db_user, key, value)
+    
+    db.commit()
+    db.refresh(db_user)
+    return get_user(db, user.id)
+
+
+def delete_user(db: Session, user_id: str) -> Dict:
+    """Soft delete user"""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return {"success": False, "message": "User not found"}
+    
+    # Soft delete the user
+    user.is_deleted = True
+    user.status = "inactive"
+    
+    db.commit()
+    
+    return {"success": True, "message": "User deleted successfully"}
+
+
+def user_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
+    return [
+        Lookup(id=status.value, name=status.name.capitalize())
+        for status in UserStatusEnum
+    ]
+
+
+def user_roles_lookup(db: Session, org_id: str, role: Optional[str] = None):
+    return [
+        Lookup(id=role.value, name=role.name.capitalize())
+        for role in UserRoleEnum
+    ]

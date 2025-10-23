@@ -56,7 +56,8 @@ def create_request_route(
     return crud.create_service_request(
         db=db,
         org_id=current_user.org_id,
-        request=request
+        request=request,
+        current_user=current_user  # Pass current_user to service function
     )
 
 # ---------------- Delete service request ----------------

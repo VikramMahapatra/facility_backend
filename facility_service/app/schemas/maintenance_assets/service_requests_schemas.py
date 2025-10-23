@@ -42,13 +42,10 @@ class ServiceRequestCreate(BaseModel):
 
     model_config = {"from_attributes": True}
 
-
-
 # ----------------- Update -----------------
 class ServiceRequestUpdate(ServiceRequestBase):
     id: UUID
     pass
-
 
 # ----------------- Out -----------------
 class ServiceRequestOut(ServiceRequestBase):

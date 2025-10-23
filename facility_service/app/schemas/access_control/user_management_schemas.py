@@ -1,0 +1,61 @@
+from pydantic import BaseModel, EmailStr
+from typing import List, Optional, Any, Dict
+from datetime import datetime
+from uuid import UUID
+
+from shared.schemas import CommonQueryParams
+
+
+class UserBase(BaseModel):
+    org_id: Optional[UUID] = None
+    full_name: str
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    picture_url: Optional[str] = None
+    account_type: Optional[str] = "regular"
+    status: Optional[str] = "active"
+    roles: Optional[List[str]] = []
+
+
+class UserCreate(UserBase):
+    pass
+
+
+class UserUpdate(BaseModel):
+    id: str
+    org_id: Optional[UUID] = None
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    picture_url: Optional[str] = None
+    account_type: Optional[str] = None
+    status: Optional[str] = None
+    roles: Optional[List[str]] = None
+
+
+class UserOut(BaseModel):
+    id: UUID
+    org_id: Optional[UUID] = None
+    full_name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    picture_url: Optional[str] = None
+    account_type: Optional[str] = None
+    status: Optional[str] = None
+    roles: Optional[List[str]] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {
+        "from_attributes": True
+    }
+
+
+class UserRequest(CommonQueryParams):
+    status: Optional[str] = None
+    account_type: Optional[str] = None
+
+
+class UserListResponse(BaseModel):
+    users: List[UserOut]
+    total: int

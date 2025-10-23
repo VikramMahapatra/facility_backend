@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 # Use relative imports
@@ -12,6 +12,7 @@ from typing import List, Optional
 from ...crud.space_sites import building_block_crud as crud
 from ...schemas.space_sites.building_schemas import BuildingCreate, BuildingListResponse, BuildingOut, BuildingRequest, BuildingUpdate
 from uuid import UUID
+
 router = APIRouter(
     prefix="/api/buildings",
     tags=["Buildings"] ,dependencies=[Depends(validate_current_token)],
@@ -37,11 +38,18 @@ def create_building(building: BuildingCreate, db: Session = Depends(get_db), cur
 
 @router.put("/", response_model=BuildingOut)
 def update_building(building: BuildingUpdate, db: Session = Depends(get_db)):
-    db_site = crud.update_site(db, building)
+    db_site = crud.update_building(db, building)  # Fixed: changed update_site to update_building
     if not db_site:
-        raise HTTPException(status_code=404, detail="Site not found")
+        raise HTTPException(status_code=404, detail="Building not found")
     return db_site
 
-@router.delete("/{id}")
+@router.delete("/{id}", response_model=Dict[str, Any])
 def delete_building(id: str, db: Session = Depends(get_db)):
-    crud.delete_building(db, id)
+    result = crud.delete_building(db, id)
+    
+    # Always return 200, but with success=false for errors
+    if not result["success"]:
+        # Return 200 with error message, not 400
+        return result
+    
+    return result

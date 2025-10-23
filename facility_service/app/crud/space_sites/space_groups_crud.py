@@ -1,6 +1,6 @@
 # app/crud/space_groups.py
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Dict
 from sqlalchemy import or_, func, literal
 from sqlalchemy.orm import Session
 from ...models.space_sites.sites import Site
@@ -11,7 +11,9 @@ from ...schemas.space_sites.space_groups_schemas import SpaceGroupCreate, SpaceG
 
 def get_space_groups(db: Session, org_id: uuid.UUID, params: SpaceGroupRequest) -> SpaceGroupResponse:
     space_group_query = db.query(SpaceGroup).filter(
-        SpaceGroup.org_id == org_id)
+        SpaceGroup.org_id == org_id,
+        SpaceGroup.is_deleted == False  # Add this filter
+    )
 
     if params.site_id and params.site_id.lower() != "all":
         space_group_query = space_group_query.filter(
@@ -43,9 +45,11 @@ def get_space_groups(db: Session, org_id: uuid.UUID, params: SpaceGroupRequest) 
     return {"spaceGroups": space_groups_with_members, "total": total}
 
 
-def get_space_group_by_id(db: Session, group_id: str) -> SpaceGroupOut:
-    sg = db.query(SpaceGroup).filter(SpaceGroup.id == group_id).first()
-    return get_space_response(sg)
+def get_space_group_by_id(db: Session, group_id: str) -> Optional[SpaceGroup]:
+    return db.query(SpaceGroup).filter(
+        SpaceGroup.id == group_id,
+        SpaceGroup.is_deleted == False  # Add this filter
+    ).first()
 
 
 def get_space_response(sg: SpaceGroup) -> SpaceGroupOut:
@@ -68,8 +72,8 @@ def create_space_group(db: Session, group: SpaceGroupCreate) -> SpaceGroupOut:
     return get_space_response(sg)
 
 
-def update_space_group(db: Session, group: SpaceGroupUpdate) -> SpaceGroupOut:
-    sg = db.query(SpaceGroup).filter(SpaceGroup.id == group.id).first()
+def update_space_group(db: Session, group: SpaceGroupUpdate) -> Optional[SpaceGroupOut]:
+    sg = get_space_group_by_id(db, group.id)
     if not sg:
         return None
     for k, v in group.dict(exclude_unset=True).items():
@@ -79,12 +83,17 @@ def update_space_group(db: Session, group: SpaceGroupUpdate) -> SpaceGroupOut:
     return get_space_response(sg)
 
 
-def delete_space_group(db: Session, group_id: str) -> Optional[SpaceGroupOut]:
-    db_group = get_space_group_by_id(db, group_id)
-    if not db_group:
-        return None
-    db.delete(db_group)
+def delete_space_group(db: Session, group_id: str) -> Dict:
+    """Space groups can always be deleted (lowest hierarchy)"""
+    sg = get_space_group_by_id(db, group_id)
+    if not sg:
+        return {"success": False, "message": "Space group not found"}
+    
+    # Soft delete
+    sg.is_deleted = True
     db.commit()
+    
+    return {"success": True, "message": "Space group deleted successfully"}
 
 
 def get_space_group_lookup(db: Session, site_id: str, space_id: str, org_id: str):
@@ -100,11 +109,14 @@ def get_space_group_lookup(db: Session, site_id: str, space_id: str, org_id: str
             ).label("name")
         )
         .join(Site, SpaceGroup.site_id == Site.id)
-        .filter(SpaceGroup.org_id == org_id)
+        .filter(
+            SpaceGroup.org_id == org_id,
+            SpaceGroup.is_deleted == False  # Add this filter
+        )
         .distinct(SpaceGroup.id)
     )
 
-    if site_id and site_id.lower() != "all":  # only add filter if site_id is provided
+    if site_id and site_id.lower() != "all":
         space_group_query = space_group_query.filter(
             SpaceGroup.site_id == site_id)
 

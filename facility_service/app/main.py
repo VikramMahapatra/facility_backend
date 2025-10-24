@@ -1,4 +1,3 @@
-from .router.access_control import user_management_router
 from .models.energy_iot import meters, meter_readings
 from .models.parking_access import parking_zones, parking_pass, access_events, visitors
 from .models.crm import contacts, companies
@@ -16,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shared.database import facility_engine, Base
 
+from .router.access_control import user_management_router, role_management_router
 from .router import (
     purchase_orders_router,
     purchase_order_lines_router,
@@ -104,3 +104,4 @@ app.include_router(revenue_router.router)
 app.include_router(consumption_report_router.router)
 app.include_router(user_management_router.router)
 app.include_router(export_router.router)
+app.include_router(role_management_router.router)

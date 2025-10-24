@@ -29,8 +29,14 @@ def get_users(db: Session, org_id: str, params: UserRequest):
             )
         )
 
-    total = user_query.count()
-    users = user_query.offset(params.skip).limit(params.limit).all()
+    total = user_query.with_entities(func.count(Users.id.distinct())).scalar()
+    users = (
+        user_query
+        .order_by(Users.updated_at.desc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
 
     # Get roles for each user
     users_with_roles = []
@@ -98,13 +104,13 @@ def create_user(db: Session, user: UserCreate):
     db_user = Users(**user_data)
     db.add(db_user)
     db.commit()
-    db.refresh(db_user)
+    db.flush(db_user)
 
     # Add roles if provided - NO org_id filter
-    if user.roles:
-        for role_name in user.roles:
+    if user.role_ids:
+        for role_id in user.role_ids:
             role = db.query(Roles).filter(
-                Roles.name == role_name).first()  # ✅ No org_id filter
+                Roles.id == role_id).first()  # ✅ No org_id filter
 
             if role:
                 user_role = UserRoles(
@@ -126,6 +132,18 @@ def update_user(db: Session, user: UserUpdate):
 
     for key, value in update_data.items():
         setattr(db_user, key, value)
+
+    if user.role_ids:
+        for role_id in user.role_ids:
+            role = db.query(Roles).filter(
+                Roles.id == role_id).first()  # ✅ No org_id filter
+
+            if role:
+                user_role = UserRoles(
+                    user_id=db_user.id,
+                    role_id=role.id
+                )
+                db.add(user_role)
 
     db.commit()
     db.refresh(db_user)

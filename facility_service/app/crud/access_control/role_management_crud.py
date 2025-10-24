@@ -15,15 +15,15 @@ from ...schemas.access_control.role_management_schemas import (
 
 def get_roles(db: Session, org_id: str, params: RoleRequest):
     role_query = db.query(Roles).filter(
-        Users.org_id == org_id,
-        Users.is_deleted == False
+        Roles.org_id == org_id,
+        Roles.is_deleted == False
     )
 
     if params.search:
         search_term = f"%{params.search}%"
         role_query = role_query.filter(Roles.name.ilike(search_term))
 
-    total = role_query.count()
+    total = role_query.with_entities(func.count(Roles.id.distinct())).scalar()
     roles = role_query.offset(params.skip).limit(params.limit).all()
 
     result = [RoleOut.model_validate(role) for role in roles]

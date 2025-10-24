@@ -15,7 +15,7 @@ class UserBase(BaseModel):
     picture_url: Optional[str] = None
     account_type: Optional[str] = "regular"
     status: Optional[str] = "active"
-    roles: Optional[List[str]] = []
+    role_ids: Optional[List[str]] = []
 
 
 class UserCreate(UserBase):
@@ -31,7 +31,7 @@ class UserUpdate(BaseModel):
     picture_url: Optional[str] = None
     account_type: Optional[str] = None
     status: Optional[str] = None
-    roles: Optional[List[str]] = None
+    role_ids: Optional[List[str]] = None
 
 
 class UserOut(BaseModel):

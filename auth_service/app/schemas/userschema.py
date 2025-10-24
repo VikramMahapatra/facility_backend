@@ -1,11 +1,13 @@
 
 from fastapi import Form
 from pydantic import BaseModel, EmailStr,  HttpUrl
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 from datetime import datetime
 
 # Shared properties
+
+
 class UserBase(BaseModel):
     full_name: str
     email: Optional[EmailStr] = None
@@ -14,6 +16,8 @@ class UserBase(BaseModel):
     status: Optional[str] = "active"
 
 # For reading a user (response model)
+
+
 class UserRead(UserBase):
     id: UUID
     org_id: UUID
@@ -22,7 +26,8 @@ class UserRead(UserBase):
 
     class Config:
         from_attributes = True  # allows Pydantic to work with SQLAlchemy objects
-        
+
+
 class UserCreate(BaseModel):
     name: str
     email: str
@@ -30,18 +35,32 @@ class UserCreate(BaseModel):
     accountType: Literal["Organization", "Vendor", "Tenant"]
     organizationName: Optional[str] = None
     pictureUrl: Optional[HttpUrl] = None
-    
+
     class Config:
         from_attributes = True  # allows Pydantic to work with SQLAlchemy objects
-        
+
+
+class RoleOut(BaseModel):
+    id: UUID
+    name: str
+    description: str
+
+    model_config = {
+        "from_attributes": True
+    }
+
+
 class UserResponse(BaseModel):
-    id:str
+    id: str
     name: str
     email: str
     accountType: str
     organizationName: str
-        
-        # dependency to convert Form fields → Pydantic model
+    roles: List[RoleOut]
+
+    # dependency to convert Form fields → Pydantic model
+
+
 def as_form(
     name: str = Form(...),
     email: str = Form(...),
@@ -51,6 +70,6 @@ def as_form(
     return UserCreate(
         name=name,
         email=email,
-        phone = phone,
-        role= role,
+        phone=phone,
+        role=role,
     )

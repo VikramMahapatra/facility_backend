@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from shared.database import AuthBase, auth_engine
 from fastapi.middleware.cors import CORSMiddleware
 from .routers import authrouter, userrouter
-from .models import users, roles, userroles, rolepolicy
+from .models import users, roles, userroles, rolepolicy, user_otps
 
 # Create tables
 AuthBase.metadata.create_all(bind=auth_engine)
@@ -20,7 +20,8 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # or ["*"] to allow all origins (not recommended for production)
+    # or ["*"] to allow all origins (not recommended for production)
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

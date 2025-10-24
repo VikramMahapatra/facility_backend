@@ -22,7 +22,7 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
-    id: str
+    id: UUID
     org_id: Optional[UUID] = None
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None

@@ -66,7 +66,9 @@ def update_role(db: Session, role: RoleUpdate):
     if not db_role:
         return None
 
-    for key, value in role.items():
+    update_data = role.model_dump(exclude_unset=True)
+
+    for key, value in update_data.items():
         setattr(db_role, key, value)
 
     db.commit()

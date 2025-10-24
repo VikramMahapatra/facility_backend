@@ -3,6 +3,7 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime
 from uuid import UUID
 
+from ...schemas.access_control.role_management_schemas import RoleOut
 from shared.schemas import CommonQueryParams
 
 
@@ -42,7 +43,7 @@ class UserOut(BaseModel):
     picture_url: Optional[str] = None
     account_type: Optional[str] = None
     status: Optional[str] = None
-    roles: Optional[List[str]] = None
+    roles: Optional[List[RoleOut]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

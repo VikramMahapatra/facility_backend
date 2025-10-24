@@ -6,13 +6,16 @@ from shared.config import AUTH_DATABASE_URL, FACILITY_DATABASE_URL
 AuthBase = declarative_base()
 Base = declarative_base()
 
+POOL_SIZE = 2
+MAX_OVERFLOW = 2
+
 # Auth DB
 auth_engine = create_engine(
     AUTH_DATABASE_URL,
     pool_pre_ping=True,
     pool_recycle=300,
-    pool_size=5,          # max idle connections
-    max_overflow=10,      # max temporary extra connections
+    pool_size=POOL_SIZE,          # max idle connections
+    max_overflow=MAX_OVERFLOW,      # max temporary extra connections
     pool_timeout=30       # wait time before failing
 )
 AuthSessionLocal = sessionmaker(
@@ -23,8 +26,8 @@ facility_engine = create_engine(
     FACILITY_DATABASE_URL,
     pool_pre_ping=True,
     pool_recycle=300,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=POOL_SIZE,
+    max_overflow=MAX_OVERFLOW,
     pool_timeout=30
 )
 FacilitySessionLocal = sessionmaker(

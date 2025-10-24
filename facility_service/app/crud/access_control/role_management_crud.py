@@ -52,6 +52,16 @@ def get_role_by_name(db: Session, role_name: str, org_id: str = None):
 
 
 def create_role(db: Session, role: RoleCreate):
+    # Check if role with same name (case-insensitive) already exists in this organization
+    existing_role = db.query(Roles).filter(
+        func.lower(Roles.name) == func.lower(role.name),
+        Roles.org_id == role.org_id,
+        Roles.is_deleted == False
+    ).first()
+    
+    if existing_role:
+        raise ValueError(f"Role with name '{role.name}' already exists in this organization")
+
     role_data = role.model_dump()
     db_role = Roles(**role_data)
     db.add(db_role)
@@ -67,6 +77,18 @@ def update_role(db: Session, role: RoleUpdate):
         return None
 
     update_data = role.model_dump(exclude_unset=True)
+    
+    # Check if name is being updated and if it would create a duplicate (case-insensitive)
+    if 'name' in update_data and update_data['name'] != db_role.name:
+        existing_role = db.query(Roles).filter(
+            func.lower(Roles.name) == func.lower(update_data['name']),
+            Roles.org_id == db_role.org_id,  # Use existing org_id from db_role
+            Roles.id != role.id,  # Exclude current role from check
+            Roles.is_deleted == False
+        ).first()
+        
+        if existing_role:
+            raise ValueError(f"Role with name '{update_data['name']}' already exists in this organization")
 
     for key, value in update_data.items():
         setattr(db_role, key, value)

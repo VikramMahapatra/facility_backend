@@ -57,3 +57,10 @@ def delete_role(role_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=result["message"])
 
     return result
+
+
+@router.get("/role-lookup", response_model=List[Lookup])
+def role_lookup(
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_role_lookup(db, current_user.org_id)

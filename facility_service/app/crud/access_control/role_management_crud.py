@@ -50,15 +50,6 @@ def get_role(db: Session, role_id: str):
     return RoleOut(role)
 
 
-def get_user_roles(db: Session, user_id: str) -> List[str]:
-    roles = db.query(Roles.name).join(
-        UserRoles, UserRoles.role_id == Roles.id
-    ).filter(
-        UserRoles.user_id == user_id
-    ).all()
-    return [role.name for role in roles]
-
-
 def get_role_by_name(db: Session, role_name: str, org_id: str = None):
     # Remove org_id filter - get role by name only
     return db.query(Roles).filter(Roles.name == role_name).first()
@@ -89,7 +80,7 @@ def update_role(db: Session, role: RoleUpdate):
     return RoleOut(db_role)
 
 
-def delete_user(db: Session, role_id: str) -> Dict:
+def delete_role(db: Session, role_id: str) -> Dict:
     """Soft delete user"""
     role = get_role_by_id(db, role_id)
     if not role:
@@ -100,3 +91,15 @@ def delete_user(db: Session, role_id: str) -> Dict:
     db.commit()
 
     return {"success": True, "message": "Role deleted successfully"}
+
+
+def get_role_lookup(db: Session, org_id: str):
+    role_query = (
+        db.query(
+            Roles.id,
+            Roles.name
+        )
+        .filter(Roles.org_id == org_id, Roles.is_deleted == False)
+    )
+
+    return role_query.all()

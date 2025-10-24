@@ -21,11 +21,7 @@ def get_roles(db: Session, org_id: str, params: RoleRequest):
 
     if params.search:
         search_term = f"%{params.search}%"
-        role_query = role_query.filter(
-            or_(
-                Roles.name.ilike(search_term)
-            )
-        )
+        role_query = role_query.filter(Roles.name.ilike(search_term))
 
     total = role_query.count()
     roles = role_query.offset(params.skip).limit(params.limit).all()

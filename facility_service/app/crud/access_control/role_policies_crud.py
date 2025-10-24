@@ -15,17 +15,17 @@ from ...schemas.access_control.role_policies_schemas import (
 )
 
 
-def get_role_policies(db: Session, org_id: str, params: RolePolicyRequest):
-    role_policy_query = db.query(RolePolicy).filter(
-        RolePolicy.org_id == org_id,
-        RolePolicy.role_id == params.role_id
+def get_role_policies(db: Session, org_id: str, role_id: UUID):
+    policies = (
+        db.query(RolePolicy).filter(
+            RolePolicy.org_id == org_id,
+            RolePolicy.role_id == role_id
+        )
+        .all()
     )
 
-    total = role_policy_query.count()
-    policies = role_policy_query.offset(params.skip).limit(params.limit).all()
-
     result = [RolePolicyOut.model_validate(p) for p in policies]
-    return {"policies": result, "total": total}
+    return {"policies": result}
 
 
 def get_role_policy_by_id(db: Session, id: str):

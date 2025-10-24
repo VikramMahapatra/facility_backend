@@ -5,7 +5,7 @@ from shared.database import get_auth_db as get_db
 from shared.schemas import Lookup, UserToken
 
 from ...schemas.access_control.role_management_schemas import (
-    RoleListResponse, RoleOut, RoleCreate, RoleRequest,
+    RoleListResponse, RoleLookup, RoleOut, RoleCreate, RoleRequest,
     RoleUpdate
 )
 from ...crud.access_control import role_management_crud as crud
@@ -40,13 +40,8 @@ def create_role(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    try:
-        role.org_id = current_user.org_id
-        return crud.create_role(db, role)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to create role")
+    role.org_id = current_user.org_id
+    return crud.create_role(db, role)
 
 
 @router.delete("/{role_id}", response_model=Dict[str, Any])
@@ -59,7 +54,7 @@ def delete_role(role_id: str, db: Session = Depends(get_db)):
     return result
 
 
-@router.get("/role-lookup", response_model=List[Lookup])
+@router.get("/role-lookup", response_model=List[RoleLookup])
 def role_lookup(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):

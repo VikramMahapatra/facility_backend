@@ -47,7 +47,7 @@ def get_role(db: Session, role_id: str):
         return None
 
     # Create UserOut manually instead of using from_orm
-    return RoleOut(role)
+    return RoleOut.model_validate(role)
 
 
 def get_role_by_name(db: Session, role_name: str, org_id: str = None):
@@ -56,15 +56,13 @@ def get_role_by_name(db: Session, role_name: str, org_id: str = None):
 
 
 def create_role(db: Session, role: RoleCreate):
-
     role_data = role.model_dump()
-
-    db_role = Users(**role_data)
+    db_role = Roles(**role_data)
     db.add(db_role)
     db.commit()
     db.refresh(db_role)
 
-    return RoleOut(db_role)
+    return RoleOut.model_validate(db_role)
 
 
 def update_role(db: Session, role: RoleUpdate):
@@ -77,7 +75,7 @@ def update_role(db: Session, role: RoleUpdate):
 
     db.commit()
     db.refresh(db_role)
-    return RoleOut(db_role)
+    return RoleOut.model_validate(db_role)
 
 
 def delete_role(db: Session, role_id: str) -> Dict:
@@ -97,7 +95,8 @@ def get_role_lookup(db: Session, org_id: str):
     role_query = (
         db.query(
             Roles.id,
-            Roles.name
+            Roles.name,
+            Roles.description
         )
         .filter(Roles.org_id == org_id, Roles.is_deleted == False)
     )

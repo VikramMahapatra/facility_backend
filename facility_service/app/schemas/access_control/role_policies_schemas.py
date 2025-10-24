@@ -29,10 +29,10 @@ class RolePolicyOut(RolePolicyBase):
     }
 
 
-class RolePolicyRequest(CommonQueryParams):
-    pass
+class RolePolicyRequest(BaseModel):
+    role_id: UUID
+    policies: List[RolePolicyCreate]
 
 
 class RolePolicyListResponse(BaseModel):
-    roles: List[RolePolicyOut]
-    total: int
+    policies: List[RolePolicyOut]

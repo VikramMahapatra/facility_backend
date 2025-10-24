@@ -17,24 +17,23 @@ router = APIRouter(prefix="/api/role-policies",
 
 @router.get("/all", response_model=RolePolicyListResponse)
 def get_all_role_policies(
-    params: RolePolicyRequest = Depends(),
+    role_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_roles(db, current_user.org_id, params)
+    return crud.get_role_policies(db, current_user.org_id, role_id)
 
 
 @router.post("/", response_model=None)
 def save_policies(
-    role_id: UUID,
-    policies: List[RolePolicyCreate],
+    request: RolePolicyRequest,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     try:
-        for p in policies:
+        for p in request.policies:
             p.org_id = current_user.org_id
-        return crud.save_policies(db, role_id, policies)
+        return crud.save_policies(db, request.role_id, request.policies)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

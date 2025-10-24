@@ -3,7 +3,7 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime
 from uuid import UUID
 
-from shared.schemas import CommonQueryParams
+from shared.schemas import CommonQueryParams, Lookup
 
 
 class RoleBase(BaseModel):
@@ -35,3 +35,10 @@ class RoleRequest(CommonQueryParams):
 class RoleListResponse(BaseModel):
     roles: List[RoleOut]
     total: int
+
+
+class RoleLookup(Lookup):
+    description: str
+
+    class Config:
+        from_attributes = True

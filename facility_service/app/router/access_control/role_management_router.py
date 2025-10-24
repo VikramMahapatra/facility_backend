@@ -26,14 +26,6 @@ def get_all_roles(
     return crud.get_roles(db, current_user.org_id, params)
 
 
-@router.put("/", response_model=RoleOut)
-def update_role(role: RoleUpdate, db: Session = Depends(get_db)):
-    db_role = crud.update_role(db, role)
-    if not db_role:
-        raise HTTPException(status_code=404, detail="Role not found")
-    return db_role
-
-
 @router.post("/", response_model=RoleOut)
 def create_role(
     role: RoleCreate,
@@ -41,7 +33,20 @@ def create_role(
     current_user: UserToken = Depends(validate_current_token)
 ):
     role.org_id = current_user.org_id
-    return crud.create_role(db, role)
+    try:
+        return crud.create_role(db, role)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/", response_model=RoleOut)
+def update_role(role: RoleUpdate, db: Session = Depends(get_db)):
+    try:
+        db_role = crud.update_role(db, role)
+        if not db_role:
+            raise HTTPException(status_code=404, detail="Role not found")
+        return db_role
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{role_id}", response_model=Dict[str, Any])

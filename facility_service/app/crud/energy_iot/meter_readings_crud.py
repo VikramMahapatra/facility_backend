@@ -64,7 +64,7 @@ def get_meter_readings_overview(db: Session, org_id: UUID):
     }
 
 
-def get_list(db: Session, org_id: UUID, params: MeterRequest) -> MeterReadingListResponse:
+def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = False) -> MeterReadingListResponse:
     """Return all readings, optionally filtered by meter."""
     q = db.query(MeterReading).join(Meter)
 
@@ -77,15 +77,22 @@ def get_list(db: Session, org_id: UUID, params: MeterRequest) -> MeterReadingLis
             )
         )
 
-    total = q.with_entities(func.count(MeterReading.id)).scalar()
+    total = None
+    if not is_export:
+        total = q.with_entities(func.count(MeterReading.id)).scalar()
 
-    meter_readings = (
-        q
-        .order_by(MeterReading.ts.desc())
-        .offset(params.skip)
-        .limit(params.limit)
-        .all()
-    )
+    if not is_export:
+        query = (
+            q
+            .order_by(MeterReading.ts.desc())
+            .offset(params.skip)
+            .limit(params.limit)
+            .all()
+        )
+    else:
+        query = q.order_by(MeterReading.ts.desc())
+
+    meter_readings = query.all()
 
     readings = []
     for r in meter_readings:
@@ -99,6 +106,9 @@ def get_list(db: Session, org_id: UUID, params: MeterRequest) -> MeterReadingLis
                 }
             )
         )
+
+    if is_export:
+        return {"readings": readings}
 
     return {"readings": readings, "total": len(readings)}
 

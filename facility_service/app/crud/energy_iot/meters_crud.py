@@ -14,7 +14,7 @@ from ...models.space_sites.spaces import Space
 from ...schemas.energy_iot.meters_schemas import BulkMeterRequest, BulkUploadError, MeterCreate, MeterImport, MeterRequest, MeterUpdate, MeterOut, MeterListResponse
 
 
-def get_list(db: Session, org_id: UUID, params: MeterRequest) -> MeterListResponse:
+def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = False) -> MeterListResponse:
     query = (
         db.query(Meter)
         .options(
@@ -35,18 +35,23 @@ def get_list(db: Session, org_id: UUID, params: MeterRequest) -> MeterListRespon
             )
         )
 
-    total = query.with_entities(func.count(Meter.id)).scalar()
+    total = None
+    if not is_export:
+        total = query.with_entities(func.count(Meter.id)).scalar()
 
-    meters = (
-        query
-        .order_by(Meter.code.asc())
-        .offset(params.skip)
-        .limit(params.limit)
-        .all()
-    )
+    if not is_export:
+        query = (
+            query
+            .order_by(Meter.code.asc())
+            .offset(params.skip)
+            .limit(params.limit)
+        )
+    else:
+        query = query.order_by(Meter.code.asc())
+
+    meters = query.all()
 
     result = []
-
     for m in meters:
         # fetch last reading
         last_read = (
@@ -69,6 +74,9 @@ def get_list(db: Session, org_id: UUID, params: MeterRequest) -> MeterListRespon
                 }
             )
         )
+
+    if is_export:
+        return {"meters": result}
 
     return {"meters": result, "total": total}
 

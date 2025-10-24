@@ -47,7 +47,7 @@ class MeterOut(MeterBase):
 
 class MeterListResponse(BaseModel):
     meters: List[MeterOut]
-    total: int
+    total: Optional[int] = None
 
 
 class MeterRequest(CommonQueryParams):

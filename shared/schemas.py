@@ -1,7 +1,7 @@
 
 from fastapi import Form
 from pydantic import BaseModel, EmailStr,  HttpUrl, field_serializer
-from typing import Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 from datetime import datetime
 
@@ -30,3 +30,17 @@ class Lookup(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ExportResponse(BaseModel):
+    filename: str
+    data: List[Dict[str, Any]]
+
+    class Config:
+        from_attributes = True
+
+
+class ExportRequestParams(BaseModel):
+    search: Optional[str] = None
+    skip: Optional[int] = 0
+    limit: Optional[int] = 100

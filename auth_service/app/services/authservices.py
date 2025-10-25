@@ -18,7 +18,9 @@ ALLOWED_ROLES = {"manager", "admin", "superadmin", "user"}
 security = HTTPBearer()
 
 # Dependency to get current user
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db:Session=Depends(get_db)):
+
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
     token = credentials.credentials
     payload = auth.verify_token(token)
     if payload is None:
@@ -26,7 +28,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired"
         )
-    
+
     user = userservices.get_user_by_id(db, payload.get("id"))
     if user is None:
         raise HTTPException(
@@ -37,11 +39,12 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 #### GOOGLE AUTHENTICATION ###
 
+
 def google_login(db: Session, facility_db: Session, req: authchemas.GoogleAuthRequest):
     try:
         if not req.access_token:
             raise HTTPException(status_code=400, detail="Missing access token")
-        
+
         # Call Google API to get user info
         response = requests.get(
             settings.GOOGLE_USERINFO_URL,
@@ -50,32 +53,32 @@ def google_login(db: Session, facility_db: Session, req: authchemas.GoogleAuthRe
 
         if response.status_code != 200:
             raise HTTPException(status_code=400, detail="Invalid access token")
-        
+
         id_info = response.json()
-        
+
         email = id_info.get("email")
         if not email or id_info.get("verified_email") not in (True, "true", "True", "1", 1):
-            raise HTTPException(status_code=400, detail="Google email not verified")
-        
+            raise HTTPException(
+                status_code=400, detail="Google email not verified")
+
         user = db.query(Users).filter(Users.email == email).first()
-                 
+
         if not user:
             return {
                 "needs_registration": True,
                 "email": email,
                 "name": id_info.get("name"),
-                "picture" : id_info.get("picture")
+                "picture": id_info.get("picture")
             }
-            
+
         return get_user_token(facility_db, user)
-    
+
     except ValueError as e:
         raise HTTPException(status_code=401, detail="Invalid token")
-    
 
-    
-#### MOBILE AUTHENTICATION ###  
-    
+
+#### MOBILE AUTHENTICATION ###
+
 def send_otp(request: authchemas.MobileRequest):
     try:
         verification = twilio_client.verify.v2.services(settings.TWILIO_VERIFY_SID).verifications.create(
@@ -85,6 +88,7 @@ def send_otp(request: authchemas.MobileRequest):
         return {"message": "OTP sent", "status": verification.status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Twilio error: {str(e)}")
+
 
 def verify_otp(db: Session, facility_db: Session, request: authchemas.OTPVerify):
     try:
@@ -99,28 +103,29 @@ def verify_otp(db: Session, facility_db: Session, request: authchemas.OTPVerify)
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
     user = db.query(Users).filter(Users.phone == request.mobile).first()
-    
+
     if not user:
         return authchemas.NotRegisteredResponse(
-                needs_registration = True,
-                mobile = request.mobile,
-                allowed_roles = {"default"},
-            )
-    
+            needs_registration=True,
+            mobile=request.mobile,
+        )
+
     return get_user_token(facility_db, user)
-        
-def get_user_token(facility_db:Session, user:Users):
+
+
+def get_user_token(facility_db: Session, user: Users):
     roles = [r.name for r in user.roles]
-    token = auth.create_access_token({"user_id": str(user.id),"org_id": str(user.org_id), "mobile": user.phone, "email": user.email, "role": roles})
+    token = auth.create_access_token({"user_id": str(user.id), "org_id": str(
+        user.org_id), "mobile": user.phone, "email": user.email, "role": roles})
     user_data = userservices.get_user_by_id(facility_db, user)
-    
+
     return authchemas.LoginSuccessResponse(
-        needs_registration = False,
-        access_token = token,
-        token_type = "bearer",
-        user = user_data
+        needs_registration=False,
+        access_token=token,
+        token_type="bearer",
+        user=user_data
     )
-    
+
+
 def role_redirect(role: str) -> str:
     return f"/dashboard/{role}"
-    

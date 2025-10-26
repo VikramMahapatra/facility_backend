@@ -14,6 +14,8 @@ class Tenant(Base):
     user_id = Column(UUID(as_uuid=True))
     site_id = Column(UUID(as_uuid=True), ForeignKey(
         "sites.id", ondelete="CASCADE"))
+    space_id = Column(UUID(as_uuid=True), ForeignKey(
+        "spaces.id", ondelete="CASCADE"))
     name = Column(String)
     email = Column(String)
     phone = Column(String)
@@ -28,3 +30,4 @@ class Tenant(Base):
     leases = relationship(
         "Lease", back_populates="tenant", cascade="all, delete")
     site = relationship("Site", back_populates="tenants")
+    space = relationship("Space", back_populates="tenants")

@@ -14,9 +14,11 @@ from ...schemas.space_sites.spaces_schemas import SpaceCreate, SpaceListResponse
 # CRUD OPERATIONS
 # ----------------------------------------------------------------------
 
+
 def build_space_filters(org_id: UUID, params: SpaceRequest):
     # Always filter out deleted spaces
-    filters = [Space.org_id == org_id, Space.is_deleted == False]  # Updated filter
+    filters = [Space.org_id == org_id,
+               Space.is_deleted == False]  # Updated filter
 
     if params.site_id and params.site_id.lower() != "all":
         filters.append(Space.site_id == params.site_id)
@@ -34,9 +36,11 @@ def build_space_filters(org_id: UUID, params: SpaceRequest):
 
     return filters
 
+
 def get_space_query(db: Session, org_id: UUID, params: SpaceRequest):
     filters = build_space_filters(org_id, params)
     return db.query(Space).filter(*filters)
+
 
 def get_spaces_overview(db: Session, org_id: UUID, params: SpaceRequest):
     filters = build_space_filters(org_id, params)
@@ -62,6 +66,7 @@ def get_spaces_overview(db: Session, org_id: UUID, params: SpaceRequest):
         "outOfServices": counts.out_of_service
     }
 
+
 def get_spaces(db: Session, org_id: UUID, params: SpaceRequest) -> SpaceListResponse:
     base_query = get_space_query(db, org_id, params)
     total = base_query.with_entities(func.count(Space.id)).scalar()
@@ -85,8 +90,11 @@ def get_spaces(db: Session, org_id: UUID, params: SpaceRequest) -> SpaceListResp
             {**space.__dict__, "building_block": building_block_name}))
     return {"spaces": results, "total": total}
 
+
 def get_space_by_id(db: Session, space_id: str) -> Optional[Space]:
-    return db.query(Space).filter(Space.id == space_id, Space.is_deleted == False).first()  # Updated filter
+    # Updated filter
+    return db.query(Space).filter(Space.id == space_id, Space.is_deleted == False).first()
+
 
 def create_space(db: Session, space: SpaceCreate) -> Space:
     db_space = Space(**space.model_dump(exclude="building_block"))
@@ -94,6 +102,7 @@ def create_space(db: Session, space: SpaceCreate) -> Space:
     db.commit()
     db.refresh(db_space)
     return db_space
+
 
 def update_space(db: Session, space: SpaceUpdate) -> Optional[Space]:
     db_space = get_space_by_id(db, space.id)
@@ -105,11 +114,12 @@ def update_space(db: Session, space: SpaceUpdate) -> Optional[Space]:
     db.refresh(db_space)
     return db_space
 
+
 def delete_space(db: Session, space_id: str) -> Optional[Space]:
     db_space = get_space_by_id(db, space_id)
     if not db_space:
         return None
-    
+
     # Soft delete - set is_deleted to True instead of actually deleting
     db_space.is_deleted = True  # Updated column name
     db_space.updated_at = func.now()
@@ -117,20 +127,30 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
     db.refresh(db_space)
     return db_space
 
-def get_space_lookup(db: Session, site_id: str, org_id: str):
+
+def get_space_lookup(db: Session, site_id: str, building_id: str, org_id: str):
     space_query = (
         db.query(
             Space.id,
-            func.concat(Space.name, literal(" - "), Site.name).label("name")
+            Space.name
         )
         .join(Site, Space.site_id == Site.id)
-        .filter(Space.org_id == org_id, Space.is_deleted == False)  # Updated filter
+        .join(Building, Space.building_block_id == Building.id)
+        .filter(Space.is_deleted == False)
     )
+
+    if org_id:
+        space_query = space_query.filter(Space.org_id == org_id)
 
     if site_id and site_id.lower() != "all":
         space_query = space_query.filter(Space.site_id == site_id)
 
+    if building_id and building_id.lower() != "all":
+        space_query = space_query.filter(
+            Space.building_block_id == building_id)
+
     return space_query.all()
+
 
 def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
     space_query = (
@@ -140,11 +160,11 @@ def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
                 " - "), Space.name).label("name")
         )
         .join(Building, Space.building_block_id == Building.id)
-        .filter(Space.org_id == org_id, Space.is_deleted == False)  # Updated filter
+        # Updated filter
+        .filter(Space.org_id == org_id, Space.is_deleted == False)
     )
 
     if site_id and site_id.lower() != "all":
         space_query = space_query.filter(Space.site_id == site_id)
 
     return space_query.all()
-

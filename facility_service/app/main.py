@@ -1,3 +1,5 @@
+from shared.exception_handler import setup_exception_handlers
+from shared.response_wrapper import JsonResponseMiddleware
 from .models.energy_iot import meters, meter_readings
 from .models.parking_access import parking_zones, parking_pass, access_events, visitors
 from .models.crm import contacts, companies
@@ -7,7 +9,7 @@ from .models.space_sites import buildings, orgs, sites, space_filter_models, spa
 from .models import (
     purchase_order_lines, purchase_orders
 )
-from .router.common import export_router
+from .router.common import export_router, master_router
 from .router.procurement import contracts_router, vendor_router
 from .models.procurement import contracts, vendors
 from .models.maintenance_assets import asset_category, assets, inventory_items, inventory_stocks
@@ -57,11 +59,17 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     # or ["*"] to allow all origins (not recommended for production)
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 2️⃣ Custom JSON response wrapper middleware
+app.add_middleware(JsonResponseMiddleware)
+
+# Register exception handlers
+setup_exception_handlers(app)
 
 # Include routers
 app.include_router(orgs_router.router)
@@ -99,10 +107,10 @@ app.include_router(rate_plans_router.router)
 app.include_router(housekeeping_tasks_router.router)
 app.include_router(meters_router.router)
 app.include_router(meter_readings_router.router)
-app.include_router(dashboard_router.router)
 app.include_router(revenue_router.router)
 app.include_router(consumption_report_router.router)
 app.include_router(user_management_router.router)
 app.include_router(export_router.router)
 app.include_router(role_management_router.router)
 app.include_router(role_policies_router.router)
+app.include_router(master_router.router)

@@ -3,10 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 import requests
+from auth_service.app.schemas.userschema import UserCreate
 from shared.config import settings
 from google.oauth2 import id_token
 from shared.database import get_auth_db as get_db
 from shared import auth
+from shared.json_response_helper import error_response
 from ..models.users import Users
 from ..schemas import authchemas
 from ..services import userservices
@@ -31,9 +33,10 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
     user = userservices.get_user_by_id(db, payload.get("id"))
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found"
+        error_response(
+            message="User not found",
+            status_code=MobileAppStatusCode.AUTHENTICATION_USER_INVALID,
+            http_status=400
         )
     return user
 
@@ -105,7 +108,7 @@ def verify_otp(db: Session, facility_db: Session, request: authchemas.OTPVerify)
     user = db.query(Users).filter(Users.phone == request.mobile).first()
 
     if not user:
-        return authchemas.NotRegisteredResponse(
+        return authchemas.AuthenticationResponse(
             needs_registration=True,
             mobile=request.mobile,
         )
@@ -119,13 +122,9 @@ def get_user_token(facility_db: Session, user: Users):
         user.org_id), "mobile": user.phone, "email": user.email, "role": roles})
     user_data = userservices.get_user_by_id(facility_db, user)
 
-    return authchemas.LoginSuccessResponse(
+    return authchemas.AuthenticationResponse(
         needs_registration=False,
         access_token=token,
         token_type="bearer",
         user=user_data
     )
-
-
-def role_redirect(role: str) -> str:
-    return f"/dashboard/{role}"

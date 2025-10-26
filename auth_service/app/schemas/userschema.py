@@ -1,7 +1,7 @@
 
 from fastapi import Form
 from pydantic import BaseModel, EmailStr,  HttpUrl
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from uuid import UUID
 from datetime import datetime
 
@@ -29,12 +29,17 @@ class UserRead(UserBase):
 
 
 class UserCreate(BaseModel):
-    name: str
+    name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: str
-    phone: Optional[str] = None
-    accountType: Literal["Organization", "Vendor", "Tenant"]
+    phone: str
+    accountType: Literal["Organization", "Vendor", "Tenant", "FlatOwner"]
     organizationName: Optional[str] = None
+    site_id: Optional[UUID] = None
+    space_id: Optional[UUID] = None
     pictureUrl: Optional[HttpUrl] = None
+    tenant_type: Optional[str] = None
 
     class Config:
         from_attributes = True  # allows Pydantic to work with SQLAlchemy objects

@@ -144,11 +144,14 @@ def get_building_lookup(db: Session, site_id: str, org_id: str):
         db.query(Building.id, Building.name)
         .join(Site, Site.id == Building.site_id)
         .filter(
-            Site.org_id == org_id,
             Building.is_deleted == False,  # Add this filter
             Site.is_deleted == False      # Add this filter
         )
     )
+
+    if org_id:
+        building_query = building_query.filter(Site.org_id == org_id)
+
     if site_id and site_id.lower() != "all":
         building_query = building_query.filter(Site.id == site_id)
 
@@ -161,22 +164,22 @@ def delete_building(db: Session, building_id: str) -> Dict:
     building = get_building_by_id(db, building_id)
     if not building:
         return {"success": False, "message": "Building not found"}
-    
+
     # Check if building has any active (non-deleted) spaces
     active_spaces_count = db.query(Space).filter(
         Space.building_block_id == building_id,
         Space.is_deleted == False
     ).count()
-    
+
     if active_spaces_count > 0:
         return {
             "success": False,
             "message": f"It contains {active_spaces_count} active space(s). Please contact administrator to delete this building.",
             "active_spaces_count": active_spaces_count
         }
-    
+
     # Soft delete the building
     building.is_deleted = True
     db.commit()
-    
+
     return {"success": True, "message": "Building deleted successfully"}

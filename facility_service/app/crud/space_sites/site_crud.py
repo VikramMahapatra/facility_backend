@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, and_, distinct, case
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 
 from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
@@ -68,12 +68,26 @@ def get_sites(db: Session, org_id: str, params: SiteRequest):
     return {"sites": sites, "total": total}
 
 
-def get_site_lookup(db: Session, org_id: str):
-    site = db.query(Site.id, Site.name).filter(
-        Site.org_id == org_id,
-        Site.is_deleted == False  # Add this filter
-    ).all()
-    return site
+def get_site_lookup(db: Session, org_id: str, params: Optional[SiteRequest] = None):
+    site_query = db.query(Site.id, Site.name).filter(Site.is_deleted == False)
+
+    if org_id:
+        site_query = site_query.filter(Site.org_id == org_id)
+
+    if params and params.search:
+        search_term = f"%{params.search}%"
+        site_query = site_query.filter(
+            or_(Site.name.ilike(search_term), Site.code.ilike(search_term))
+        )
+
+    if params:
+        site_query = site_query.group_by(Site.id)
+        if params.skip:
+            site_query = site_query.offset(params.skip)
+        if params.limit:
+            site_query = site_query.limit(params.limit)
+
+    return site_query.all()
 
 
 def get_site_by_id(db: Session, site_id: str):
@@ -95,7 +109,7 @@ def get_site(db: Session, site_id: str):
         Space.site_id == site_id,
         Space.is_deleted == False
     ).count()
-    
+
     total_buildings = db.query(Building).filter(
         Building.site_id == site_id,
         Building.is_deleted == False
@@ -160,36 +174,36 @@ def delete_site(db: Session, site_id: str) -> Dict:
     site = get_site_by_id(db, site_id)
     if not site:
         return {"success": False, "message": "Site not found"}
-    
+
     # Check if site has any active buildings
     active_buildings_count = db.query(Building).filter(
         Building.site_id == site_id,
         Building.is_deleted == False
     ).count()
-    
+
     if active_buildings_count > 0:
         return {
             "success": False,
             "message": f"It contains {active_buildings_count} active building(s). Please contact administrator to delete this site.",
             "active_buildings_count": active_buildings_count
         }
-    
+
     # Also check for spaces directly under site (without building)
     direct_spaces_count = db.query(Space).filter(
         Space.site_id == site_id,
         Space.building_block_id == None,
         Space.is_deleted == False
     ).count()
-    
+
     if direct_spaces_count > 0:
         return {
             "success": False,
             "message": f"It contains {direct_spaces_count} space(s) not assigned to any building. Please contact administrator to delete this site.",
             "direct_spaces_count": direct_spaces_count
         }
-    
+
     # Soft delete the site
     site.is_deleted = True
     db.commit()
-    
+
     return {"success": True, "message": "Site deleted successfully"}

@@ -29,25 +29,34 @@ from ...schemas.leasing_tenants.tenants_schemas import (
 def get_tenants_overview(db: Session, org_id) -> dict:
     # Total tenants
     total_individual = (
-        db.query(func.count(func.distinct(Tenant.id)))
-        .filter(Tenant.site_id.in_(
-            db.query(Lease.site_id).filter(Lease.org_id == org_id).distinct()
-        ))
-        .scalar() or 0
+        db.query(func.count(func.distinct(Tenant.id))
+                 .join(Site, Tenant.site_id == Site.id)
+                 .filter(Site.org_id == org_id)).scalar() or 0
     )
 
     total_partners = (
         db.query(func.count(func.distinct(CommercialPartner.id))
-                 .filter(CommercialPartner.org_id == org_id)).scalar() or 0
+                 .join(Site, CommercialPartner.site_id == Site.id)
+                 .filter(Site.org_id == org_id)).scalar() or 0
     )
 
     total_tenants = total_individual + total_partners
 
     # Active tenants
-    active_tenants = total_individual + (
-        db.query(func.count(func.distinct(CommercialPartner.id)))
+    active_tenants = (
+        db.query(func.count(func.distinct(Tenant.id)))
+        .join(Site, Tenant.site_id == Site.id)
         .filter(
-            CommercialPartner.org_id == org_id,
+            Site.org_id == org_id,
+            Tenant.status == "active"
+        )
+        .scalar() or 0
+    )
+    + (
+        db.query(func.count(func.distinct(CommercialPartner.id)))
+        .join(Site, CommercialPartner.site_id == Site.id)
+        .filter(
+            Site.org_id == org_id,
             CommercialPartner.status == "active"
         )
         .scalar() or 0
@@ -78,7 +87,7 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
             literal("individual").label("tenant_type"),
             literal(None).label("legal_name"),
             literal(None).label("type"),
-            literal("active").label("status"),
+            Tenant.status.label("status"),
             Tenant.address.label("address"),
             literal(None).label("contact"),
         ).join(Site, Site.id == Tenant.site_id).filter(Site.org_id == org_id)
@@ -102,7 +111,6 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
     # commercial query
     partner_query = db.query(
         CommercialPartner.id.label("id"),
-        CommercialPartner.org_id.label("org_id"),
         CommercialPartner.site_id.label("site_id"),
         CommercialPartner.legal_name.label("name"),
         (CommercialPartner.contact["email"].astext).label("email"),
@@ -113,7 +121,7 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
         CommercialPartner.status.label("status"),
         literal(None).label("address"),
         CommercialPartner.contact.label("contact"),
-    ).filter(CommercialPartner.org_id == org_id)
+    ).join(Site, Site.id == CommercialPartner.site_id).filter(Site.org_id == org_id)
 
     if params.status and params.status.lower() != "all":
         partner_query = partner_query.filter(func.lower(
@@ -239,6 +247,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
             "email": tenant.email,
             "phone": tenant.phone,
             "address": tenant.contact_info.address if tenant.contact_info else None,
+            "status": tenant.status or "active",
             "created_at": now,
             "updated_at": now,
         }
@@ -251,7 +260,6 @@ def create_tenant(db: Session, tenant: TenantCreate):
     elif tenant.tenant_type == "commercial":
         # Only create CommercialPartner
         partner_data = {
-            "org_id": tenant.org_id,
             "site_id": tenant.site_id,
             "type": tenant.type or "merchant",
             "legal_name": tenant.legal_name or tenant.name,

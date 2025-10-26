@@ -2,6 +2,9 @@
 from fastapi import FastAPI
 from shared.database import AuthBase, auth_engine
 from fastapi.middleware.cors import CORSMiddleware
+
+from shared.exception_handler import setup_exception_handlers
+from shared.response_wrapper import JsonResponseMiddleware
 from .routers import authrouter, userrouter
 from .models import users, roles, userroles, rolepolicy, user_otps
 
@@ -18,16 +21,21 @@ origins = [
     # Add other origins if deploying later
 ]
 
+# 1️⃣ CORS middleware
 app.add_middleware(
     CORSMiddleware,
     # or ["*"] to allow all origins (not recommended for production)
-    allow_origins=["*"],
-    # allow_origins=origins,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# 2️⃣ Custom JSON response wrapper middleware
+app.add_middleware(JsonResponseMiddleware)
+
+# Register exception handlers
+setup_exception_handlers(app)
 
 # Routers
 app.include_router(authrouter.router)

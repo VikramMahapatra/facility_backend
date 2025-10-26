@@ -1,8 +1,12 @@
 import os
 import shutil
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile, status
 from requests import Session
 from sqlalchemy import func
+
+from ..models.sites_safe import SiteSafe
+from ..models.commercial_partner_safe import CommercialPartnerSafe
+from ..models.tenants_safe import TenantSafe
 from shared import auth
 from ..models.orgs_safe import OrgSafe
 from ..models.roles import Roles
@@ -10,6 +14,7 @@ from ..models.userroles import UserRoles
 from ..models.users import Users
 from ..schemas.userschema import RoleOut, UserCreate
 from shared.config import settings
+from datetime import datetime
 
 
 def create_user(db: Session, facility_db: Session, user: UserCreate):
@@ -20,14 +25,49 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
     #     with open(file_location, "wb") as buffer:
     #         shutil.copyfileobj(file.file, buffer)
     #     profile_pic_path = file_location
+    now = datetime.utcnow()
+
+    if user.name and user.name.strip():
+        full_name = user.name
+    else:
+        # Combine first_name + last_name (handling missing parts)
+        first = user.first_name or ""
+        last = user.last_name or ""
+        full_name = f"{first} {last}".strip() or None
+
+    if not full_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="full_name is required. Provide user.name or user.first_name/user.last_name."
+        )
+
+    # ✅ Email duplicate check
+    if user.email:
+        existing_email = db.query(Users).filter(
+            Users.email == user.email).first()
+        if existing_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Email '{user.email}' is already registered."
+            )
+
+    # ✅ Phone duplicate check
+    if user.phone:
+        existing_phone = db.query(Users).filter(
+            Users.phone == user.phone).first()
+        if existing_phone:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Phone number '{user.phone}' is already registered."
+            )
 
     new_user = {
-        "full_name": user.name,
+        "full_name": full_name,
         "email": user.email,
         "phone": user.phone,
         "picture_url": str(user.pictureUrl) if user.pictureUrl else None,
         "account_type": user.accountType,
-        "status": "active"
+        "status": "inactive"
     }
 
     user_instance = Users(**new_user)
@@ -45,7 +85,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
         raise ValueError(f"Role '{user.role}' not found")
 
     # Add role based on account type
-    if user.organizationName:
+    if user.accountType == "Organization" and user.organizationName:
         new_org = {
             "name": user.organizationName
         }
@@ -55,6 +95,46 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
         facility_db.refresh(org_instance)
 
         user_instance.org_id = org_instance.id
+    elif user.accountType == "Tenant":
+        user_instance.org_id = facility_db.query(
+            SiteSafe.org_id).filter(SiteSafe.id == user.site_id).scalar()
+
+        if not user_instance.org_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid site."
+            )
+
+        if user.tenant_type == "individual":
+            tenant_data = {
+                "site_id": user.site_id,
+                "space_id": user.space_id,
+                "name": full_name,
+                "email": user.email,
+                "phone": user.phone,
+                "status": "inactive",
+                "user_id": user_instance.id
+            }
+            db_tenant = TenantSafe(**tenant_data)
+            facility_db.add(db_tenant)
+        elif user.tenant_type == "commercial":
+            # Only create CommercialPartner
+            partner_data = {
+                "site_id": user.site_id,
+                "type": "merchant",
+                "legal_name": full_name,
+                "contact": {
+                    "name": full_name,
+                    "phone": user.phone,
+                    "email": user.email
+                },
+                "status": "inactive",
+                "user_id": user_instance.id
+            }
+            db_partner = CommercialPartnerSafe(**partner_data)
+            facility_db.add(db_partner)
+
+        facility_db.commit()
 
     db.commit()
     db.refresh(user_instance)
@@ -79,8 +159,10 @@ def get_user_by_id(facility_db: Session, user_data: Users):
         "id": str(user_data.id),
         "name": user_data.full_name,
         "email": user_data.email,
+        "phone": user_data.phone,
         "accountType": user_data.account_type,
         "organizationName": user_org_data.name,
+        "status": user_data.status,
         "roles": [RoleOut.model_validate(role) for role in user_data.roles],
     }
 

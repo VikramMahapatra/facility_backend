@@ -10,12 +10,18 @@ def setup_exception_handlers(app: FastAPI):
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        wrapped = JsonOutResult(
-            data=None,
-            status="Failure",
-            status_code=exc.status_code or AppStatusCode.OPERATION_FAILED,
-            message=str(exc.detail)
-        ).dict()
+        detail = exc.detail
+        # If detail is a JsonOutResult dict, use it directly
+        if isinstance(detail, dict):
+            wrapped = detail
+        else:
+            wrapped = JsonOutResult(
+                data=None,
+                status="Failure",
+                status_code=str(
+                    exc.status_code or AppStatusCode.OPERATION_FAILED),
+                message=str(exc.detail)
+            ).dict()
         return JSONResponse(content=wrapped, status_code=exc.status_code or 400)
 
     @app.exception_handler(RequestValidationError)

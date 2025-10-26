@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 import requests
-from auth_service.app.schemas.userschema import UserCreate
+from ..schemas.userschema import UserCreate
+from shared.app_status_code import AppStatusCode
 from shared.config import settings
 from google.oauth2 import id_token
 from shared.database import get_auth_db as get_db
@@ -35,7 +36,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     if user is None:
         error_response(
             message="User not found",
-            status_code=MobileAppStatusCode.AUTHENTICATION_USER_INVALID,
+            status_code=str(AppStatusCode.AUTHENTICATION_USER_INVALID),
             http_status=400
         )
     return user
@@ -74,7 +75,7 @@ def google_login(db: Session, facility_db: Session, req: authchemas.GoogleAuthRe
                 "picture": id_info.get("picture")
             }
 
-        return get_user_token(facility_db, user)
+        return userservices.get_user_token(facility_db, user)
 
     except ValueError as e:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -113,18 +114,4 @@ def verify_otp(db: Session, facility_db: Session, request: authchemas.OTPVerify)
             mobile=request.mobile,
         )
 
-    return get_user_token(facility_db, user)
-
-
-def get_user_token(facility_db: Session, user: Users):
-    roles = [r.name for r in user.roles]
-    token = auth.create_access_token({"user_id": str(user.id), "org_id": str(
-        user.org_id), "mobile": user.phone, "email": user.email, "role": roles})
-    user_data = userservices.get_user_by_id(facility_db, user)
-
-    return authchemas.AuthenticationResponse(
-        needs_registration=False,
-        access_token=token,
-        token_type="bearer",
-        user=user_data
-    )
+    return userservices.get_user_token(facility_db, user)

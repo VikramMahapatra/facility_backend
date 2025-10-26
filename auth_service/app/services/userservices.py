@@ -4,6 +4,8 @@ from fastapi import HTTPException, UploadFile, status
 from requests import Session
 from sqlalchemy import func
 
+from auth_service.app.schemas import authchemas
+
 from ..models.sites_safe import SiteSafe
 from ..models.commercial_partner_safe import CommercialPartnerSafe
 from ..models.tenants_safe import TenantSafe
@@ -139,16 +141,25 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
     db.commit()
     db.refresh(user_instance)
 
-    roles = [r.name for r in user_instance.roles]
-    token = auth.create_access_token({"user_id": str(user_instance.id), "org_id": str(
-        user_instance.org_id),  "email": user_instance.email, "role": roles})
-    user_data = get_user_by_id(facility_db, user_instance)
+    return get_user_token(facility_db, user_instance)
 
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user": user_data
-    }
+
+def get_user_token(facility_db: Session, user: Users):
+    roles = [r.name for r in user.roles]
+    token = auth.create_access_token({
+        "user_id": str(user.id),
+        "org_id": str(user.org_id),
+        "account_type": user.account_type,
+        "status": user.status,
+        "role": roles})
+    user_data = get_user_by_id(facility_db, user)
+
+    return authchemas.AuthenticationResponse(
+        needs_registration=False,
+        access_token=token,
+        token_type="bearer",
+        user=user_data
+    )
 
 
 def get_user_by_id(facility_db: Session, user_data: Users):

@@ -13,8 +13,8 @@ class UserToken(BaseModel):
     user_id: str
     org_id: UUID
     name: Optional[str] = None  # added for service request requester id
-    mobile: Optional[str]
-    email: EmailStr
+    account_type: str
+    status: str
     role: list[str]
     exp: int
 

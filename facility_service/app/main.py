@@ -1,5 +1,9 @@
 from shared.exception_handler import setup_exception_handlers
 from shared.response_wrapper import JsonResponseMiddleware
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from shared.database import facility_engine, Base
+
 from .models.energy_iot import meters, meter_readings
 from .models.parking_access import parking_zones, parking_pass, access_events, visitors
 from .models.crm import contacts, companies
@@ -9,14 +13,9 @@ from .models.space_sites import buildings, orgs, sites, space_filter_models, spa
 from .models import (
     purchase_order_lines, purchase_orders
 )
-from .router.common import export_router, master_router
+from .router.common import export_router
+from .router.mobile_app import master_router, home_router
 from .router.procurement import contracts_router, vendor_router
-from .models.procurement import contracts, vendors
-from .models.maintenance_assets import asset_category, assets, inventory_items, inventory_stocks
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from shared.database import facility_engine, Base
-
 from .router.access_control import user_management_router, role_management_router, role_policies_router
 from .router import (
     purchase_orders_router,
@@ -114,3 +113,4 @@ app.include_router(export_router.router)
 app.include_router(role_management_router.router)
 app.include_router(role_policies_router.router)
 app.include_router(master_router.router)
+app.include_router(home_router.router)

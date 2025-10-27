@@ -9,6 +9,7 @@ from shared.schemas import CommonQueryParams
 
 class TenantBase(BaseModel):
     site_id: UUID
+    space_id: UUID
     name: str
     email: Optional[str] = None   # <- make optional
     phone: Optional[str] = None
@@ -39,6 +40,8 @@ class TenantOut(BaseModel):
     id: UUID
     org_id: UUID
     site_id: UUID
+    building_block_id: UUID
+    space_id: UUID
     name: str
     email: Optional[str] = None   # <- make optional
     phone: Optional[str] = None

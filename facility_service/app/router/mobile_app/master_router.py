@@ -16,16 +16,16 @@ router = APIRouter(
 )
 
 
-@router.get("/site-lookup", response_model=List[Lookup])
-def site_lookup(params: SiteRequest = Depends(), db: Session = Depends(get_db)):
+@router.post("/site-lookup", response_model=List[Lookup])
+def site_lookup(params: SiteRequest = None, db: Session = Depends(get_db)):
     return site_crud.get_site_lookup(db, None, params)
 
 
-@router.get("/building-lookup", response_model=List[Lookup])
-def building_lookup(site_id: Optional[str] = Query(None), db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
+@router.post("/building-lookup", response_model=List[Lookup])
+def building_lookup(site_id: Optional[str] = None, db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
     return building_block_crud.get_building_lookup(db, site_id, current_user.org_id)
 
 
-@router.get("/space-lookup", response_model=List[Lookup])
-def space_lookup(site_id: Optional[str] = Query(None), building_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
+@router.post("/space-lookup", response_model=List[Lookup])
+def space_lookup(site_id: Optional[str] = None, building_id: Optional[str] = None, db: Session = Depends(get_db)):
     return spaces_crud.get_space_lookup(db, site_id, building_id, None)

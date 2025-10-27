@@ -50,3 +50,5 @@ class Site(Base):
     housekeeping_tasks = relationship("HousekeepingTask", back_populates="site")
     meters = relationship("Meter", back_populates="site",
                           cascade="all, delete-orphan")
+
+    contracts = relationship("Contract", back_populates="site")

@@ -3,17 +3,18 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
+from shared.json_response_helper import success_response
 from shared.schemas import Lookup, UserToken
 from ...schemas.procurement.contracts_schemas import ContractListResponse, ContractOut, ContractCreate, ContractOverviewResponse, ContractRequest, ContractUpdate
 from ...crud.procurement import contracts_crud as crud
 from shared.auth import validate_current_token
 from uuid import UUID
+
+
 router = APIRouter(prefix="/api/contracts",
                    tags=["contracts"], dependencies=[Depends(validate_current_token)])
 
 # ---------------- List all contracts ----------------
-
-
 @router.get("/all", response_model=ContractListResponse)
 def get_contracts(
     params: ContractRequest = Depends(),
@@ -23,16 +24,13 @@ def get_contracts(
     return crud.get_contracts(db, current_user.org_id, params)
 
 # -----overview----
-
-
 @router.get("/overview", response_model=ContractOverviewResponse)
 def overview(
     params: ContractRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_contracts_overview(db, current_user.org_id ,params)
-
+    return crud.get_contracts_overview(db, current_user.org_id, params)
 
 @router.put("/", response_model=None)
 def update_contract_endpoint(
@@ -46,8 +44,6 @@ def update_contract_endpoint(
     return {"message": "Contract updated successfully"}
 
 # --------- Create Contract ---------
-
-
 @router.post("/", response_model=ContractOut)
 def create_contract(
     contract: ContractCreate,
@@ -58,18 +54,21 @@ def create_contract(
     contract.org_id = current_user.org_id
     return crud.create_contract(db, contract)
 
-
-@router.delete("/{contract_id}", response_model=None)
+@router.delete("/{contract_id}")
 def delete_contract(
-    contract_id: UUID,  # use Python UUID, NOT SQLAlchemy UUID
+    contract_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     success = crud.delete_contract(db, contract_id, current_user.org_id)
     if not success:
         raise HTTPException(status_code=404, detail="Contract not found")
-    return {"message": "Contract deleted successfully"}
-
+    
+    return success_response(
+        data=None,
+        message="Contract deleted successfully",
+        status_code="200"  # Use the appropriate status code from AppStatusCode
+    )
 
 # ----------status_lookup-------------
 @router.get("/filter-status-lookup", response_model=List[Lookup])
@@ -85,8 +84,8 @@ def contracts_status_lookup_endpoint(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.contracts_status_lookup(db, current_user.org_id)
-# ----------filter type_lookup-------------
 
+# ----------filter type_lookup-------------
 @router.get("/filter-type-lookup", response_model=List[Lookup])
 def contracts_type_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -95,8 +94,6 @@ def contracts_type_lookup_endpoint(
     return crud.contracts_filter_type_lookup(db, current_user.org_id)
 
 # ----------type_lookup-------------
-
-
 @router.get("/type-lookup", response_model=List[Lookup])
 def contracts_type_lookup_endpoint(
     db: Session = Depends(get_db),

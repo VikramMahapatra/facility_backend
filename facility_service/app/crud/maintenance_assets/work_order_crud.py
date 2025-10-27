@@ -43,11 +43,12 @@ def get_work_orders_overview(db: Session, org_id: UUID, params: WorkOrderRequest
             func.lower(WorkOrder.status) == 'open'
     ).scalar()
 
-    # In Progress work orders (case-insensitive) with filters
+    # ✅ FIXED: In Progress work orders - handle both "in_progress" and "in progress"
     in_progress_count = db.query(func.count(WorkOrder.id))\
         .filter(
             *filters,
             func.lower(WorkOrder.status) == 'in progress'
+       
     ).scalar()
 
     # Overdue work orders (due_at < now) with filters
@@ -72,7 +73,7 @@ def work_orders_filter_status_lookup(db: Session, org_id: str):
             func.lower(WorkOrder.status).label("id"),
             func.initcap(WorkOrder.status).label("name")
         )
-        .filter(WorkOrder.org_id == org_id)
+        .filter(WorkOrder.org_id == org_id, WorkOrder.is_deleted == False)  # ✅ Add soft delete filter
         .distinct()
         .order_by(func.lower(WorkOrder.status))
         .all()
@@ -103,7 +104,7 @@ def work_orders_filter_priority_lookup(db: Session, org_id: str):
             func.lower(WorkOrder.priority).label("id"),
             func.initcap(WorkOrder.priority).label("name")
         )
-        .filter(WorkOrder.org_id == org_id)
+        .filter(WorkOrder.org_id == org_id, WorkOrder.is_deleted == False)  # ✅ Add soft delete filter
         .distinct()
         .order_by(func.lower(WorkOrder.priority))
         .all()
@@ -130,7 +131,9 @@ def work_orders_priority_lookup(db: Session, org_id: UUID):
 
 
 def build_work_orders_filters(org_id: UUID, params: WorkOrderRequest):
-    filters = [WorkOrder.org_id == org_id]
+    filters = [WorkOrder.org_id == org_id ,
+                WorkOrder.is_deleted == False  # ✅ Add soft delete filte
+                ]
 
     if params.status and params.status.lower() != "all":
         filters.append(func.lower(WorkOrder.status) == params.status.lower())
@@ -156,7 +159,7 @@ def get_work_orders(db: Session, org_id: UUID, params: WorkOrderRequest) -> Work
         .outerjoin(Asset, WorkOrder.asset_id == Asset.id)
         .outerjoin(Space, WorkOrder.space_id == Space.id)
         .outerjoin(Vendor, WorkOrder.assigned_to == Vendor.id)  # Add this join
-        .filter(WorkOrder.org_id == org_id)
+        .filter(WorkOrder.org_id == org_id, WorkOrder.is_deleted == False)  # ✅ Add soft delete filter
     )
     
     # Apply your existing filters
@@ -188,7 +191,10 @@ def get_work_orders(db: Session, org_id: UUID, params: WorkOrderRequest) -> Work
 
 
 def get_work_order_by_id(db: Session, work_order_id: str) -> Optional[WorkOrder]:
-    return db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+    return db.query(WorkOrder).filter(
+        WorkOrder.id == work_order_id,
+        WorkOrder.is_deleted == False  # ✅ Add soft delete filter
+    ).first()
 # ---------------- Create ----------------
 
 
@@ -202,10 +208,12 @@ def create_work_order(db: Session, work_order: WorkOrderCreate, org_id: UUID) ->
     db.commit()
     db.refresh(db_work_order)
     
-    # Automatically include vendor name if assigned_to exists
+    # ✅ FIXED: Include all related names
     return WorkOrderOut(
         **db_work_order.__dict__,
-        assigned_to_name=db_work_order.vendor.name if db_work_order.vendor else None
+        assigned_to_name=db_work_order.vendor.name if db_work_order.vendor else None,
+        asset_name=db_work_order.asset.name if db_work_order.asset else None,  # ✅ Add asset name
+        space_name=db_work_order.space.name if db_work_order.space else None   # ✅ Add space name
     )
 
 
@@ -213,21 +221,37 @@ def update_work_order(db: Session, work_order: WorkOrderUpdate) -> Optional[Work
     db_work_order = get_work_order_by_id(db, work_order.id)
     if not db_work_order:
         return None
+    
     for key, value in work_order.model_dump(exclude_unset=True).items():
         setattr(db_work_order, key, value)
+    
     db.commit()
     db.refresh(db_work_order)
-    # Return WorkOrderOut with vendor name
+    
+    # ✅ FIXED: Load all related data for the response
     return WorkOrderOut(
         **db_work_order.__dict__,
-        assigned_to_name=db_work_order.vendor.name if db_work_order.vendor else None
+        assigned_to_name=db_work_order.vendor.name if db_work_order.vendor else None,
+        asset_name=db_work_order.asset.name if db_work_order.asset else None,  # ✅ Add asset name
+        space_name=db_work_order.space.name if db_work_order.space else None   # ✅ Add space name
     )
-
-
-def delete_work_order(db: Session, work_order_id: str) -> Optional[WorkOrder]:
-    db_work_order = get_work_order_by_id(db, work_order_id)
+# ----------------- Soft Delete Work Order -----------------
+def delete_work_order_soft(db: Session, work_order_id: str, org_id: UUID) -> bool:
+    """
+    Soft delete work order - set is_deleted to True
+    Returns: True if deleted, False if not found
+    """
+    db_work_order = db.query(WorkOrder).filter(
+        WorkOrder.id == work_order_id,
+        WorkOrder.org_id == org_id,
+        WorkOrder.is_deleted == False
+    ).first()
+    
     if not db_work_order:
-        return None
-    db.delete(db_work_order)
+        return False
+    
+    # ✅ Soft delete
+    db_work_order.is_deleted = True
+    db_work_order.deleted_at = func.now()
     db.commit()
     return True

@@ -16,7 +16,7 @@ from .models import (
 from .router.common import export_router
 from .router.mobile_app import master_router, home_router
 from .router.procurement import contracts_router, vendor_router
-from .router.access_control import user_management_router, role_management_router, role_policies_router
+from .router.access_control import user_management_router, role_management_router, role_policies_router , role_approval_rules_router
 from .router import (
     purchase_orders_router,
     purchase_order_lines_router,
@@ -114,3 +114,4 @@ app.include_router(role_management_router.router)
 app.include_router(role_policies_router.router)
 app.include_router(master_router.router)
 app.include_router(home_router.router)
+app.include_router(role_approval_rules_router.router)

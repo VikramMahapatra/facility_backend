@@ -1,10 +1,13 @@
+# app/routers/maintenance_assets/assets_router.py
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from ...schemas.maintenance_assets.assets_schemas import AssetCreate, AssetOverview, AssetUpdate, AssetsRequest, AssetsResponse
+
+from shared.json_response_helper import success_response
+from ...schemas.maintenance_assets.assets_schemas import AssetCreate, AssetOverview, AssetUpdate, AssetsRequest, AssetsResponse, AssetOut
 from ...crud.maintenance_assets import assets_crud as crud
 from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token  # for dependicies
+from shared.auth import validate_current_token
 from shared.schemas import Lookup, UserToken
 from uuid import UUID
 from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryOutFilter
@@ -17,8 +20,6 @@ router = APIRouter(
 )
 
 # -----------------------------------------------------------------
-
-
 @router.get("/all", response_model=AssetsResponse)
 def get_assets(
         params: AssetsRequest = Depends(),
@@ -28,11 +29,12 @@ def get_assets(
 
 
 @router.get("/overview", response_model=AssetOverview)
-def get_asset_overview(
-        db: Session = Depends(get_db),
-        current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_asset_overview(db, current_user.org_id)
-
+def get_assets_overview(
+    params: AssetsRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_asset_overview(db, current_user.org_id, params)
 
 @router.post("/", response_model=None)
 def create_asset(
@@ -42,7 +44,6 @@ def create_asset(
     asset.org_id = current_user.org_id
     return crud.create_asset(db, asset)
 
-
 @router.put("/", response_model=None)
 def update_asset(asset: AssetUpdate, db: Session = Depends(get_db)):
     db_asset = crud.update_asset(db, asset)
@@ -50,26 +51,29 @@ def update_asset(asset: AssetUpdate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Asset not found")
     return db_asset
 
-
-@router.delete("/{asset_id}", response_model=None)
-def delete_space(asset_id: str, db: Session = Depends(get_db)):
-    db_asset = crud.delete_asset(db, asset_id)
-    if not db_asset:
+# ---------------- Delete Asset (Soft Delete) ----------------
+@router.delete("/{asset_id}")  # REMOVE response_model=AssetOut
+def delete_asset(
+        asset_id: str, 
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    success = crud.delete_asset(db, asset_id, current_user.org_id)  # Change to return boolean
+    if not success:
         raise HTTPException(status_code=404, detail="Asset not found")
-    return db_asset
-
+    
+    return success_response(
+        data="Asset deleted successfully",  #  Add your message here in data field
+        message="Asset deleted successfully",
+        status_code="200"
+    )
 
 @router.get("/asset-lookup", response_model=list[Lookup])
 def asset_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
     return crud.asset_lookup(db, current_user.org_id)
 
-
 @router.get("/status-lookup", response_model=list[Lookup])
 def status_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
     return crud.asset_status_lookup(db, current_user.org_id)
-
-# ---------------- Category Lookup ----------------
-
 
 @router.get("/category-lookup", response_model=List[Lookup])
 def category_lookup(
@@ -77,7 +81,6 @@ def category_lookup(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.assets_category_lookup(db, current_user.org_id)
-
 
 @router.get("/filter-status-lookup", response_model=list[Lookup])
 def asset_filter_status_lookup_endpoint(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):

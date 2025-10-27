@@ -4,6 +4,8 @@ from typing import List, Optional
 import uuid
 from sqlalchemy.orm import Session
 
+from facility_service.app.models.space_sites.sites import Site
+
 from ...enum.procurement_enum import ContractStatus, ContractType
 from shared.schemas import Lookup
 from ...schemas.procurement.contracts_schemas import ContractCreate, ContractListResponse, ContractOut, ContractRequest, ContractUpdate
@@ -15,13 +17,14 @@ from ...models.procurement.vendors import Vendor
 
 # ----------------- Build Filters for Contracts -----------------
 def build_contract_filters(org_id: UUID, params: ContractRequest):
-    filters = [Contract.org_id == org_id]
+    # Always filter out deleted contracts
+    filters = [Contract.org_id == org_id, Contract.is_deleted == False]  # Updated filter
 
     if params.type and params.type.lower() != "all":
-        filters.append(func.lower(Contract.type )== params.type.lower())
+        filters.append(func.lower(Contract.type) == params.type.lower())
 
     if params.status and params.status.lower() != "all":
-        filters.append(func.lower(Contract.status )== params.status.lower())
+        filters.append(func.lower(Contract.status) == params.status.lower())
 
     if params.search:
         search_term = f"%{params.search}%"
@@ -34,43 +37,45 @@ def build_contract_filters(org_id: UUID, params: ContractRequest):
     return filters
 
 # ----------------- Contract Query -----------------
-
-
 def get_contract_query(db: Session, org_id: UUID, params: ContractRequest):
     filters = build_contract_filters(org_id, params)
     return db.query(Contract).filter(*filters)
 
 
-# ---------------- Overview ----------------
 def get_contracts_overview(db: Session, org_id: UUID, params: ContractRequest):
     filters = build_contract_filters(org_id, params)
     today = date.today()
-    next_month = today + timedelta(days=30)  # Changed to 30 days for next month
+    next_month = today + timedelta(days=30)
 
     # Total contracts with filters
     total_contracts = db.query(func.count(Contract.id)).filter(*filters).scalar()
 
-    # Active contracts (Contract.status == 'active') with filters
+    # Active contracts - status = 'active' AND end_date is either null or in future
     active_contracts = (
         db.query(func.count(Contract.id))
         .filter(
             *filters,
-            func.lower(Contract.status) == "active"
+            func.lower(Contract.status) == "active",
+            or_(
+                Contract.end_date == None,
+                Contract.end_date >= today
+            )
         )
         .scalar()
     )
 
-    # Expiring soon AND status expired (within next month)
+        # Expiring soon - Use the SAME filters but add date constraint
+    expiring_filters = build_contract_filters(org_id, params)  # Same base filters
     expiring_soon = (
         db.query(func.count(Contract.id))
         .filter(
-            *filters,
-            func.lower(Contract.status) == "expired",  # Status must be expired
-            Contract.end_date != None,  # Ensure end_date is not null
-            Contract.end_date.between(today, next_month)  # Ending within next month
+            *expiring_filters,  # Use the same filters (including status if provided)
+            Contract.end_date != None,
+            Contract.end_date.between(today, next_month)
         )
         .scalar()
     )
+
 
     # Total value with filters
     total_value = db.query(func.coalesce(func.sum(Contract.value), 0)).filter(*filters).scalar()
@@ -91,7 +96,7 @@ def contracts_filter_status_lookup(db: Session, org_id: str, status: Optional[st
             Contract.status.label("id"),
             Contract.status.label("name")
         )
-        .filter(Contract.org_id == org_id)
+        .filter(Contract.org_id == org_id ,  Contract.is_deleted == False)  # Updated filter
         .distinct()
     )
     if status:
@@ -113,7 +118,7 @@ def contracts_filter_type_lookup(db: Session, org_id: str, contract_type: Option
             Contract.type.label("id"),
             Contract.type.label("name")
         )
-        .filter(Contract.org_id == org_id)
+        .filter(Contract.org_id == org_id , Contract.is_deleted == False)  # Updated filter
         .distinct()
     )
     if contract_type:
@@ -131,8 +136,15 @@ def contracts_type_lookup(org_id: UUID, db: Session):
 
 
 # ----------------- Get All Contracts -----------------
+# ----------------- Get All Contracts -----------------
 def get_contracts(db: Session, org_id: UUID, params: ContractRequest) -> ContractListResponse:
-    base_query = get_contract_query(db, org_id, params)
+    # Join with Vendor and Site tables to get the names
+    base_query = (
+        db.query(Contract)
+        .outerjoin(Vendor, Contract.vendor_id == Vendor.id)
+        .outerjoin(Site, Contract.site_id == Site.id)
+        .filter(*build_contract_filters(org_id, params))
+    )
 
     # Total count for pagination
     total = base_query.with_entities(func.count(Contract.id)).scalar()
@@ -146,47 +158,107 @@ def get_contracts(db: Session, org_id: UUID, params: ContractRequest) -> Contrac
         .all()
     )
 
-    # Convert ORM objects to Pydantic models
-    results = [ContractOut.from_orm(c) for c in contracts]
+    # Convert ORM objects to Pydantic models with vendor_name and site_name
+    results = []
+    for contract in contracts:
+        # Create a dictionary with the contract data
+        contract_data = contract.__dict__.copy()
+        
+        # Safely get vendor_name - check if vendor relationship is loaded and exists
+        vendor_name = None
+        if hasattr(contract, 'vendor') and contract.vendor:
+            vendor_name = contract.vendor.name
+        contract_data["vendor_name"] = vendor_name
+        
+        # Safely get site_name - check if site relationship is loaded and exists
+        site_name = None
+        if hasattr(contract, 'site') and contract.site:
+            site_name = contract.site.name
+        contract_data["site_name"] = site_name
+        
+        results.append(ContractOut.model_validate(contract_data))
 
     return ContractListResponse(contracts=results, total=total)
 
 
 def get_contract_by_id(db: Session, contract_id: str) -> Optional[Contract]:
-    return db.query(Contract).filter(Contract.id == contract_id).first()
+    # Join with Vendor and Site tables to get the names
+    return (
+        db.query(Contract)
+        .outerjoin(Vendor, Contract.vendor_id == Vendor.id)
+        .outerjoin(Site, Contract.site_id == Site.id)
+        .filter(Contract.id == contract_id, Contract.is_deleted == False)
+        .first()
+    )
+
 
 
 # -------- Create Contract --------
-def create_contract(db: Session, contract: ContractCreate) -> Contract:
+def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
     db_contract = Contract(id=uuid.uuid4(), **contract.model_dump())
     db.add(db_contract)
     db.commit()
-    db.refresh(db_contract)
-    return db_contract
+    
+    # Fetch the created contract with joins to get vendor and site names
+    result = (
+        db.query(
+            Contract,
+            Vendor.name.label('vendor_name'),
+            Site.name.label('site_name')
+        )
+        .outerjoin(Vendor, Contract.vendor_id == Vendor.id)
+        .outerjoin(Site, Contract.site_id == Site.id)
+        .filter(Contract.id == db_contract.id)
+        .first()
+    )
+    
+    if result:
+        contract, vendor_name, site_name = result
+        contract_data = contract.__dict__.copy()
+        contract_data["vendor_name"] = vendor_name
+        contract_data["site_name"] = site_name
+        return ContractOut.model_validate(contract_data)
+    
+    # Fallback: return without names if join fails
+    contract_data = db_contract.__dict__.copy()
+    contract_data["vendor_name"] = None
+    contract_data["site_name"] = None
+    return ContractOut.model_validate(contract_data)
 
 
 # -------- Update Contract --------
-def update_contract(db: Session, contract: ContractUpdate) -> Optional[Contract]:
-    db_contract = db.query(Contract).filter(Contract.id == contract.id).first()
+def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractOut]:
+    db_contract = (
+        db.query(Contract)
+        .filter(Contract.id == contract.id, Contract.is_deleted == False)
+        .first()
+    )
     if not db_contract:
         return None
+    
     # Update only fields that are set in the request
     for k, v in contract.model_dump(exclude_unset=True).items():
         setattr(db_contract, k, v)
 
     db.commit()
-    db.refresh(db_contract)
-    return db_contract
+    
+    # Return the updated contract with vendor_name and site_name
+    return get_contract_by_id(db, contract.id)
 
-
+# -------- Delete Contract (Soft Delete) --------
 def delete_contract(db: Session, contract_id: UUID, org_id: UUID) -> bool:
+    # Verify contract exists and belongs to org
     db_contract = (
         db.query(Contract)
-        .filter(Contract.id == contract_id, Contract.org_id == org_id)
+        .filter(Contract.id == contract_id, Contract.org_id == org_id, Contract.is_deleted == False)
         .first()
     )
     if not db_contract:
         return False
-    db.delete(db_contract)
+    
+    # Soft delete
+    db_contract.is_deleted = True
+    db_contract.updated_at = func.now()
     db.commit()
+    
     return True

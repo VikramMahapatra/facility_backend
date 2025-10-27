@@ -1,7 +1,7 @@
 # app/crud/vendors.py
 import uuid
 from typing import Dict, List, Optional
-from sqlalchemy import case, func, lateral, literal, or_, select , String
+from sqlalchemy import case, func, lateral, literal, or_, select, String
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID
 from ...models.maintenance_assets.asset_category import AssetCategory
@@ -10,94 +10,10 @@ from ...schemas.procurement.vendors_schemas import VendorCreate, VendorListRespo
 from ...enum.procurement_enum import VendorStatus, VendorCategories
 from shared.schemas import Lookup
 
-# ---------------- Overview ----------------
-def get_vendors_overview(db: Session, org_id: uuid.UUID, params: VendorRequest):
-    filters = build_vendor_filters(org_id, params)
-    
-    # Total vendors
-    total_vendors = db.query(func.count(Vendor.id)).filter(*filters).scalar()
-
-    # Active vendors
-    active_vendors = db.query(func.count(Vendor.id)).filter(
-        *filters,
-        func.lower(Vendor.status) == "active"
-    ).scalar()
-
-    # Average rating
-    avg_rating = db.query(func.avg(Vendor.rating)).filter(*filters).scalar()
-    avg_rating = round(float(avg_rating or 0), 2)
-
-    # Categories - Your original working approach
-    categories_lateral = lateral(
-        select(func.jsonb_array_elements_text(Vendor.categories).label("category"))
-    ).alias("categories_lateral")
-
-    categories = db.query(
-        func.count(func.distinct(categories_lateral.c.category))
-    ).filter(*filters).scalar() or 0
-
-    return {
-        "totalVendors": total_vendors,
-        "activeVendors": active_vendors,
-        "avgRating": avg_rating,
-        "Categories": categories
-    }
-
-# -----status_lookup
-def vendors_filter_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
-    query = (
-        db.query(
-            Vendor.status.label("id"),
-            Vendor.status.label("name")
-        )
-        .filter(Vendor.org_id == org_id)
-        .distinct()
-    )
-    if status:
-        query = query.filter(Vendor.status == status)
-
-    return query.all()
-
-# ----------------- Filter by status Enum-----------------
-
-
-def vendors_status_lookup(db: Session, org_id: str):
-    return [
-        Lookup(id=status.value, name=status.name.capitalize())
-        for status in VendorStatus
-    ]
-
-# ---------categories_lookup
-
-
-def vendors_filter_categories_lookup(db: Session, org_id: str):
-    # Use jsonb_array_elements_text to expand JSON array into rows
-    categories_subquery = (
-        db.query(
-            func.distinct(func.trim(func.jsonb_array_elements_text(
-                Vendor.categories))).label("category")
-        )
-        .filter(Vendor.org_id == org_id)
-        .subquery()
-    )
-    query = db.query(
-        categories_subquery.c.category.label("id"),
-        categories_subquery.c.category.label("name")
-    )
-
-    return query.all()
-
-
-def Vendor_Categories_lookup(org_id: uuid.UUID, db: Session):
-    return [
-        Lookup(id=categories.value, name=categories.name.capitalize())
-        for categories in VendorCategories
-    ]
-
-
 # ----------------- Build Filters for Vendors -----------------
 def build_vendor_filters(org_id: uuid.UUID, params: VendorRequest):
-    filters = [Vendor.org_id == org_id]
+    # Always filter out deleted vendors
+    filters = [Vendor.org_id == org_id, Vendor.is_deleted == False]  # ✅ Updated filter
 
     if params.status and params.status.lower() != "all":
         filters.append(Vendor.status == params.status)
@@ -119,12 +35,89 @@ def build_vendor_filters(org_id: uuid.UUID, params: VendorRequest):
 
     return filters
 
+# ---------------- Overview ----------------
+def get_vendors_overview(db: Session, org_id: uuid.UUID, params: VendorRequest):
+    filters = build_vendor_filters(org_id, params)
+    
+    # Total vendors
+    total_vendors = db.query(func.count(Vendor.id)).filter(*filters).scalar()
+
+    # Active vendors
+    active_vendors = db.query(func.count(Vendor.id)).filter(
+        *filters,
+        func.lower(Vendor.status) == "active"
+    ).scalar()
+
+    # Average rating
+    avg_rating = db.query(func.avg(Vendor.rating)).filter(*filters).scalar()
+    avg_rating = round(float(avg_rating or 0), 2)
+
+    # Categories
+    categories_lateral = lateral(
+        select(func.jsonb_array_elements_text(Vendor.categories).label("category"))
+    ).alias("categories_lateral")
+
+    categories = db.query(
+        func.count(func.distinct(categories_lateral.c.category))
+    ).filter(*filters).scalar() or 0
+
+    return {
+        "totalVendors": total_vendors,
+        "activeVendors": active_vendors,
+        "avgRating": avg_rating,
+        "Categories": categories
+    }
+
+# -----status_lookup-----
+def vendors_filter_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
+    query = (
+        db.query(
+            Vendor.status.label("id"),
+            Vendor.status.label("name")
+        )
+        .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)  # ✅ Updated filter
+        .distinct()
+    )
+    if status:
+        query = query.filter(Vendor.status == status)
+
+    return query.all()
+
+# ----------------- Filter by status Enum-----------------
+def vendors_status_lookup(db: Session, org_id: str):
+    return [
+        Lookup(id=status.value, name=status.name.capitalize())
+        for status in VendorStatus
+    ]
+
+# ---------categories_lookup---------
+def vendors_filter_categories_lookup(db: Session, org_id: str):
+    # Use jsonb_array_elements_text to expand JSON array into rows
+    categories_subquery = (
+        db.query(
+            func.distinct(func.trim(func.jsonb_array_elements_text(
+                Vendor.categories))).label("category")
+        )
+        .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)  # ✅ Updated filter
+        .subquery()
+    )
+    query = db.query(
+        categories_subquery.c.category.label("id"),
+        categories_subquery.c.category.label("name")
+    )
+
+    return query.all()
+
+def Vendor_Categories_lookup(org_id: uuid.UUID, db: Session):
+    return [
+        Lookup(id=categories.value, name=categories.name.capitalize())
+        for categories in VendorCategories
+    ]
 
 # ----------------- Vendor Query -----------------
 def get_vendor_query(db: Session, org_id: uuid.UUID, params: VendorRequest):
     filters = build_vendor_filters(org_id, params)
     return db.query(Vendor).filter(*filters)
-
 
 # ----------------- Get All Vendors -----------------
 def get_vendors(db: Session, org_id: uuid.UUID, params: VendorRequest) -> VendorListResponse:
@@ -146,21 +139,19 @@ def get_vendors(db: Session, org_id: uuid.UUID, params: VendorRequest) -> Vendor
 
     return VendorListResponse(vendors=results, total=total)
 
-
 def get_vendor_by_id(db: Session, vendor_id: str) -> Optional[Vendor]:
-    return db.query(Vendor).filter(Vendor.id == vendor_id).first()
-
+    # ✅ Updated filter to exclude deleted vendors
+    return db.query(Vendor).filter(Vendor.id == vendor_id, Vendor.is_deleted == False).first()
 
 def create_vendor(db: Session, vendor: VendorCreate) -> Vendor:
-    db_vendor = Vendor(**vendor.model_dump())  # Convert Pydantic model to dict
+    db_vendor = Vendor(**vendor.model_dump())
     db.add(db_vendor)
     db.commit()
     db.refresh(db_vendor)
     return db_vendor
 
-
 def update_vendor(db: Session, vendor: VendorUpdate) -> Optional[Vendor]:
-    db_vendor = get_vendor_by_id(db, vendor.id)
+    db_vendor = get_vendor_by_id(db, vendor.id)  # ✅ Use the updated get_vendor_by_id
     if not db_vendor:
         return None
     # Update only provided fields
@@ -170,17 +161,22 @@ def update_vendor(db: Session, vendor: VendorUpdate) -> Optional[Vendor]:
     db.refresh(db_vendor)
     return db_vendor
 
-# ----------------- Delete -----------------
-
-
-def delete_vendor(db: Session, vendor_id: uuid.UUID) -> bool:
-    db_vendor = get_vendor_by_id(db, vendor_id)
+# ----------------- Delete (Soft Delete) -----------------
+def delete_vendor(db: Session, vendor_id: uuid.UUID, org_id: uuid.UUID) -> Optional[Vendor]:
+    db_vendor = (
+        db.query(Vendor)
+        .filter(Vendor.id == vendor_id, Vendor.org_id == org_id, Vendor.is_deleted == False)
+        .first()
+    )
     if not db_vendor:
-        return False
-    db.delete(db_vendor)
+        return None
+    
+    # ✅ Soft delete - set is_deleted to True instead of actually deleting
+    db_vendor.is_deleted = True
+    db_vendor.updated_at = func.now()
     db.commit()
-    return True
-
+    db.refresh(db_vendor)
+    return db_vendor
 
 def vendor_lookup(db: Session, org_id: UUID):
     contact_name = Vendor.contact["contact_name"].astext
@@ -200,7 +196,7 @@ def vendor_lookup(db: Session, org_id: UUID):
                 ),
             ).label("name"),
         )
-        .filter(Vendor.org_id == org_id)
+        .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)  # ✅ Updated filter
         .distinct()
         .all()
     )

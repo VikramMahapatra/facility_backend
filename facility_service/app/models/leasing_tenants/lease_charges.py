@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Date, Numeric, ForeignKey
+from sqlalchemy import Boolean, Column, String, Date, Numeric, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from sqlalchemy.orm import relationship
@@ -15,5 +15,6 @@ class LeaseCharge(Base):
     period_end = Column(Date)
     amount = Column(Numeric(14,2), nullable=False)
     tax_pct = Column(Numeric(5,2), default=0)
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     lease = relationship("Lease", back_populates="charges")

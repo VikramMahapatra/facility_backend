@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict
 from datetime import date, timedelta
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, NUMERIC, and_
@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant
+from ...models.leasing_tenants.lease_charges import LeaseCharge
 
 from ...enum.leasing_tenants_enum import LeaseKind, LeaseStatus
 from shared.schemas import Lookup
@@ -20,7 +21,7 @@ from uuid import UUID
 
 
 def build_filters(org_id: UUID, params: LeaseRequest):
-    filters = [Lease.org_id == org_id]
+    filters = [Lease.org_id == org_id, Lease.is_deleted == False]
 
     if params.site_id and params.site_id.lower() != "all":
         filters.append(Lease.site_id == params.site_id)
@@ -38,9 +39,11 @@ def build_filters(org_id: UUID, params: LeaseRequest):
 
 
 def get_overview(db: Session, org_id: UUID, params: LeaseRequest):
+    # Use the same base query without extra joins that were causing issues
     base = db.query(Lease).filter(*build_filters(org_id, params))
 
     active = base.filter(Lease.status == "active").count()
+    
     monthly = base.filter(Lease.status == "active").with_entities(
         func.coalesce(func.sum(Lease.rent_amount), 0)
     ).scalar() or 0
@@ -52,10 +55,16 @@ def get_overview(db: Session, org_id: UUID, params: LeaseRequest):
         Lease.end_date >= today
     ).count()
 
-    avg_days = base.with_entities(
+    # Calculate average lease term in months
+    avg_days = base.filter(
+        Lease.start_date.isnot(None),
+        Lease.end_date.isnot(None),
+        Lease.end_date > Lease.start_date
+    ).with_entities(
         func.avg(func.cast(Lease.end_date - Lease.start_date, NUMERIC))
     ).scalar() or 0
-    avg_months = float(avg_days) / 30.0
+    
+    avg_months = round(float(avg_days) / 30.0, 1) if avg_days > 0 else 0
 
     return {
         "activeLeases": active,
@@ -72,7 +81,6 @@ def get_list(db: Session, org_id: UUID, params: LeaseRequest) -> LeaseListRespon
 
     leases = []
     for row in rows:
-
         tenant_name = None
         if row.partner is not None:
             tenant_name = row.partner.legal_name
@@ -85,10 +93,14 @@ def get_list(db: Session, org_id: UUID, params: LeaseRequest) -> LeaseListRespon
         site_name = None
         if row.space_id:
             space_code = db.query(Space.code).filter(
-                Space.id == row.space_id).scalar()
+                Space.id == row.space_id,
+                Space.is_deleted == False
+            ).scalar()
         if row.site_id:
             site_name = db.query(Site.name).filter(
-                Site.id == row.site_id).scalar()
+                Site.id == row.site_id,
+                Site.is_deleted == False
+            ).scalar()
         leases.append(
             LeaseOut.model_validate(
                 {
@@ -103,7 +115,10 @@ def get_list(db: Session, org_id: UUID, params: LeaseRequest) -> LeaseListRespon
 
 
 def get_by_id(db: Session, lease_id: str) -> Optional[Lease]:
-    return db.query(Lease).filter(Lease.id == lease_id).first()
+    return db.query(Lease).filter(
+        Lease.id == lease_id,
+        Lease.is_deleted == False
+    ).first()
 
 
 def create(db: Session, payload: LeaseCreate) -> Lease:
@@ -145,13 +160,34 @@ def update(db: Session, payload: LeaseUpdate) -> Optional[Lease]:
     return obj
 
 
-def delete(db: Session, lease_id: str) -> Optional[Lease]:
+def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
+    """Delete lease with protection - check for active lease charges first"""
     obj = get_by_id(db, lease_id)
     if not obj:
-        return None
-    db.delete(obj)
+        return {"success": False, "message": "Lease not found"}
+    
+    # Verify organization ownership
+    if obj.org_id != org_id:
+        return {"success": False, "message": "Lease not found or access denied"}
+
+    # Check if lease has any active lease charges
+    active_charges_count = db.query(LeaseCharge).filter(
+        LeaseCharge.lease_id == lease_id,
+        LeaseCharge.is_deleted == False
+    ).count()
+
+    if active_charges_count > 0:
+        return {
+            "success": False,
+            "message": f"Cannot delete lease with {active_charges_count} active charge(s). Please delete all lease charges first.",
+            "active_charges_count": active_charges_count
+        }
+
+    # Soft delete the lease
+    obj.is_deleted = True
     db.commit()
-    return obj
+    
+    return {"success": True, "message": "Lease deleted successfully"}
 
 
 def lease_lookup(org_id: UUID, db: Session):
@@ -164,7 +200,10 @@ def lease_lookup(org_id: UUID, db: Session):
             joinedload(Lease.space).load_only(Space.id, Space.name),
             joinedload(Lease.site).load_only(Site.id, Site.name),
         )
-        .filter(Lease.org_id == org_id)
+        .filter(
+            Lease.org_id == org_id,
+            Lease.is_deleted == False
+        )
         .distinct(Lease.id)
         .all()
     )
@@ -202,17 +241,6 @@ def lease_kind_lookup(org_id: UUID, db: Session):
         Lookup(id=kind.value, name=kind.name.capitalize())
         for kind in LeaseKind
     ]
-    # query = (
-    #     db.query(
-    #         Lease.kind.label('id'),
-    #         Lease.kind.label('name')
-    #     )
-    #     .distinct()
-    #     .filter(Lease.org_id == org_id)
-    #     .order_by("id")
-
-    # )
-    # return query.all()
 
 
 def lease_status_lookup(org_id: UUID, db: Session):
@@ -220,21 +248,9 @@ def lease_status_lookup(org_id: UUID, db: Session):
         Lookup(id=status.value, name=status.name.capitalize())
         for status in LeaseStatus
     ]
-    # query = (
-    #     db.query(
-    #         Lease.status.label('id'),
-    #         Lease.status.label('name')
-    #     )
-    #     .distinct()
-    #     .filter(Lease.org_id == org_id)
-    #     .order_by("id")
-
-    # )
-    # return query.all()
 
 
 def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Session):
-
     partners = []
     if kind.lower() == LeaseKind.commercial:
         partners = (
@@ -242,7 +258,13 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
                 CommercialPartner.id,
                 CommercialPartner.legal_name.label('name')
             )
-            .filter(and_(CommercialPartner.org_id == org_id, CommercialPartner.site_id == site_id))
+            .filter(
+                and_(
+                    CommercialPartner.org_id == org_id, 
+                    CommercialPartner.site_id == site_id,
+                    CommercialPartner.is_deleted == False
+                )
+            )
             .distinct()
             .all()
         )
@@ -252,7 +274,10 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
                 Tenant.id,
                 Tenant.name
             )
-            .filter(Tenant.site_id == site_id)
+            .filter(
+                Tenant.site_id == site_id,
+                Tenant.is_deleted == False
+            )
             .distinct()
             .all()
         )

@@ -49,7 +49,11 @@ def create_lease(
 
 
 @router.put("/", response_model=None)
-def update_lease(payload: LeaseUpdate, db: Session = Depends(get_db)):
+def update_lease(
+    payload: LeaseUpdate, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
     try:
         obj = crud.update(db, payload)
     except ValueError as e:
@@ -60,11 +64,19 @@ def update_lease(payload: LeaseUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{lease_id}", response_model=None)
-def delete_lease(lease_id: str, db: Session = Depends(get_db)):
-    obj = crud.delete(db, lease_id)
-    if not obj:
-        raise HTTPException(status_code=404, detail="Lease not found")
-    return obj
+def delete_lease(
+    lease_id: str, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    # Pass org_id as the third parameter
+    result = crud.delete(db, lease_id, current_user.org_id)
+    
+    # Check if the delete was successful
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message"))
+    
+    return result
 
 
 @router.get("/lease-lookup", response_model=List[Lookup])

@@ -20,7 +20,11 @@ from decimal import Decimal
 
 
 def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
-    filters = [Lease.org_id == org_id]
+    filters = [
+        Lease.org_id == org_id,
+        LeaseCharge.is_deleted == False,  # Add soft delete filter for lease charges
+        Lease.is_deleted == False  # Add soft delete filter for leases
+    ]
 
     if params.charge_code and params.charge_code != "all":
         filters.append(func.lower(LeaseCharge.charge_code)
@@ -42,7 +46,11 @@ def get_lease_charges_overview(db: Session, org_id: UUID):
     base = (
         db.query(LeaseCharge)
         .join(Lease, LeaseCharge.lease_id == Lease.id)
-        .filter(Lease.org_id == org_id)
+        .filter(
+            Lease.org_id == org_id,
+            LeaseCharge.is_deleted == False,  # Add soft delete filter
+            Lease.is_deleted == False  # Add soft delete filter for leases
+        )
     )
 
     total_val = float(base.with_entities(func.coalesce(
@@ -55,8 +63,10 @@ def get_lease_charges_overview(db: Session, org_id: UUID):
 
     this_month_count = int(
         base.with_entities(func.count(LeaseCharge.id))
-        .filter(extract("year", LeaseCharge.period_start) == today.year,
-                extract("month", LeaseCharge.period_start) == today.month)
+        .filter(
+            extract("year", LeaseCharge.period_start) == today.year,
+            extract("month", LeaseCharge.period_start) == today.month
+        )
         .scalar() or 0
     )
 
@@ -137,7 +147,10 @@ def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
 
 
 def get_lease_charge_by_id(db: Session, charge_id: UUID):
-    return db.query(LeaseCharge).filter(LeaseCharge.id == charge_id).first()
+    return db.query(LeaseCharge).filter(
+        LeaseCharge.id == charge_id,
+        LeaseCharge.is_deleted == False  # Add soft delete filter
+    ).first()
 
 
 def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
@@ -163,20 +176,26 @@ def update_lease_charge(
     return obj
 
 
-def delete_lease_charge(db: Session, charge_id: UUID, org_id: UUID) -> Optional[LeaseCharge]:
-
+def delete_lease_charge(db: Session, charge_id: UUID, org_id: UUID) -> Dict:
+    """Soft delete lease charge - can be directly deleted as it's at the bottom of hierarchy"""
     obj = get_lease_charge_by_id(db, charge_id)
     if not obj:
-        return None
-
+        return {"success": False, "message": "Lease charge not found"}
+    
+    # Verify organization ownership through the associated lease
     if org_id is not None:
-        lease = db.query(Lease).filter(Lease.id == obj.lease_id).first()
+        lease = db.query(Lease).filter(
+            Lease.id == obj.lease_id,
+            Lease.is_deleted == False  # Only check non-deleted leases
+        ).first()
         if not lease or lease.org_id != org_id:
-            return None
+            return {"success": False, "message": "Lease charge not found or access denied"}
 
-    db.delete(obj)
+    # Perform soft delete - no dependency checks needed as lease charges are leaf nodes
+    obj.is_deleted = True
     db.commit()
-    return obj
+    
+    return {"success": True, "message": "Lease charge deleted successfully"}
 
 
 def lease_charge_month_lookup(
@@ -188,6 +207,8 @@ def lease_charge_month_lookup(
         for i in range(1, 13)
     ]
     return months
+    
+    # If you want to use database-driven lookup with soft delete filters:
     # query = (
     #     db.query(
     #         cast(extract("month", LeaseCharge.period_start), String).label("id"),
@@ -195,13 +216,14 @@ def lease_charge_month_lookup(
     #     )
     #     .distinct()
     #     .join(Lease, LeaseCharge.lease_id == Lease.id)
-    #     .filter(Lease.org_id == org_id)
+    #     .filter(
+    #         Lease.org_id == org_id,
+    #         LeaseCharge.is_deleted == False,  # Add soft delete filter
+    #         Lease.is_deleted == False         # Add soft delete filter for leases
+    #     )
     #     .order_by("id")
     # )
-
-    return query.all()
-
-# filter by types
+    # return query.all()
 
 
 def lease_charge_code_lookup(
@@ -212,6 +234,8 @@ def lease_charge_code_lookup(
         Lookup(id=code.value, name=code.name.capitalize())
         for code in LeaseChargeCode
     ]
+    
+    # If you want to use database-driven lookup with soft delete filters:
     # query = (
     #     db.query(
     #         LeaseCharge.charge_code.label('id'),
@@ -219,8 +243,11 @@ def lease_charge_code_lookup(
     #     )
     #     .distinct()
     #     .join(Lease, LeaseCharge.lease_id == Lease.id)
-    #     .filter(Lease.org_id == org_id)
+    #     .filter(
+    #         Lease.org_id == org_id,
+    #         LeaseCharge.is_deleted == False,  # Add soft delete filter
+    #         Lease.is_deleted == False         # Add soft delete filter for leases
+    #     )
     #     .order_by("id")
-
     # )
     # return query.all()

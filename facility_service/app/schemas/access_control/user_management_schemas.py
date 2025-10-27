@@ -1,8 +1,8 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 from uuid import UUID
-
+from enum import Enum
 from ...schemas.access_control.role_management_schemas import RoleOut
 from shared.schemas import CommonQueryParams
 
@@ -60,3 +60,17 @@ class UserRequest(CommonQueryParams):
 class UserListResponse(BaseModel):
     users: List[UserOut]
     total: int
+
+
+class ApprovalStatus(str, Enum):
+    approve = "approve"
+    reject = "reject"
+
+
+class ApprovalStatusRequest(BaseModel):
+    user_id: UUID
+    status: ApprovalStatus = Field(..., description="User approval status")
+
+    model_config = {
+        "use_enum_values": True
+    }

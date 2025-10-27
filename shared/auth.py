@@ -42,9 +42,9 @@ def validate_current_token(credentials: HTTPAuthorizationCredentials = Depends(s
     user = verify_token(token)
 
     # ✅ Check if user is inactive
-    if user.status.lower() == "inactive":
+    if user.status.lower() != "active":
         return error_response(
-            message="User is inactive. Access denied",
+            message="User is not active. Access denied",
             status_code=str(AppStatusCode.AUTHENTICATION_USER_INACTIVE),
             http_status=400
         )

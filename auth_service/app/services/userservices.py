@@ -69,7 +69,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
         "phone": user.phone,
         "picture_url": str(user.pictureUrl) if user.pictureUrl else None,
         "account_type": user.accountType,
-        "status": "inactive"
+        "status": "pending_approval"
     }
 
     user_instance = Users(**new_user)
@@ -77,7 +77,8 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
     db.flush()
 
     # Add role based on account type
-    user_role = "Admin" if user.accountType == "Organization" else "Default"
+    user_role = "admin" if func.lower(
+        user.accountType) == "organization" else "default"
     default_role = db.query(Roles).filter(
         func.lower(Roles.name) == user_role.lower()).first()
 
@@ -87,7 +88,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
         raise ValueError(f"Role '{user.role}' not found")
 
     # Add role based on account type
-    if user.accountType == "Organization" and user.organizationName:
+    if func.lower(user.accountType) == "organization" and user.organizationName:
         new_org = {
             "name": user.organizationName
         }
@@ -97,7 +98,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
         facility_db.refresh(org_instance)
 
         user_instance.org_id = org_instance.id
-    elif user.accountType == "Tenant":
+    elif func.lower(user.accountType) == "tenant":
         user_instance.org_id = facility_db.query(
             SiteSafe.org_id).filter(SiteSafe.id == user.site_id).scalar()
 

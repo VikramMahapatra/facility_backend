@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Date, Numeric, ForeignKey, DateTime
+from sqlalchemy import Boolean, Column, String, Date, Numeric, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -39,6 +39,7 @@ class Lease(Base):
     created_at = Column(DateTime(timezone=True),
                         server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     # relationships
     tenant = relationship("Tenant", back_populates="leases")

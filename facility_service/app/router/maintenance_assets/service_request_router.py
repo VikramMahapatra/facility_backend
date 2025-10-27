@@ -2,6 +2,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
+from shared.json_response_helper import success_response
 from shared.schemas import Lookup
 from ...schemas.maintenance_assets.service_requests_schemas import (
     ServiceRequestCreate, ServiceRequestListResponse, ServiceRequestOut, ServiceRequestRequest, ServiceRequestUpdate, ServiceRequestOverviewResponse)
@@ -60,20 +61,22 @@ def create_request_route(
         current_user=current_user  # Pass current_user to service function
     )
 
-# ---------------- Delete service request ----------------
-
-
+# ---------------- Delete Service Request (Soft Delete) ----------------
 @router.delete("/{request_id}")
-def delete_service_request_route(
+def delete_service_request_soft(
     request_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    success = crud.delete_service_request(db, request_id)
+    success = crud.delete_service_request_soft(db, request_id, current_user.org_id)
     if not success:
-        raise HTTPException(
-            status_code=404, detail="Service Request not found")
-    return {"message": "Service Request deleted successfully"}
+        raise HTTPException(status_code=404, detail="Service Request not found")
+    
+    return success_response(
+        data="deleted successfully",
+        message="Service Request deleted successfully",
+        status_code="200"
+    )
 
 
 @router.get("/service-request-lookup", response_model=List[Lookup])

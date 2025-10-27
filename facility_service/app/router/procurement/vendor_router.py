@@ -12,7 +12,6 @@ from shared.auth import validate_current_token
 router = APIRouter(prefix="/api/vendors",
                    tags=["vendors"], dependencies=[Depends(validate_current_token)])
 
-
 # ---------------- List all vendors ----------------
 @router.get("/all", response_model=VendorListResponse)
 def get_vendors(
@@ -23,16 +22,15 @@ def get_vendors(
     return crud.get_vendors(db, current_user.org_id, params)
 
 # -----overview----
-@router.get("/overview", response_model=VendorOverviewResponse)  # Make sure this matches
+@router.get("/overview", response_model=VendorOverviewResponse)
 def overview(
     params: VendorRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.get_vendors_overview(db, current_user.org_id, params)
+
 # -----Update------------------------
-
-
 @router.put("/", response_model=None)
 def update_vendor_endpoint(
     vendor: VendorUpdate,
@@ -45,8 +43,6 @@ def update_vendor_endpoint(
     return {"message": "Vendor updated successfully"}
 
 # -------create-------------------------------
-
-
 @router.post("/", response_model=VendorOut)
 def create_vendor(
     vendor: VendorCreate,
@@ -56,20 +52,17 @@ def create_vendor(
     vendor.org_id = current_user.org_id
     return crud.create_vendor(db, vendor)
 
-# ---------------- Delete ----------------
-
-
-@router.delete("/{vendor_id}")
+# ---------------- Delete (Soft Delete) ----------------
+@router.delete("/{vendor_id}", response_model=VendorOut)  # ✅ Updated response model
 def delete_vendor_route(
     vendor_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    success = crud.delete_vendor(db, vendor_id)
-    if not success:
+    db_vendor = crud.delete_vendor(db, vendor_id, current_user.org_id)  # ✅ Updated function call
+    if not db_vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
-    return {"message": "Vendor deleted successfully"}
-
+    return db_vendor  # ✅ Return the soft-deleted vendor
 
 @router.get("/vendor-lookup", response_model=List[Lookup])
 def vendor_lookup(
@@ -79,8 +72,6 @@ def vendor_lookup(
     return crud.vendor_lookup(db, current_user.org_id)
 
 # ----------status_lookup-------------
-
-
 @router.get("/status-lookup", response_model=List[Lookup])
 def vendors_status_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -89,8 +80,6 @@ def vendors_status_lookup_endpoint(
     return crud.vendors_status_lookup(db, current_user.org_id)
 
 # ----------categories lookup---------
-
-
 @router.get("/categories-lookup", response_model=List[Lookup])
 def vendors_categories_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -99,8 +88,6 @@ def vendors_categories_lookup_endpoint(
     return crud.Vendor_Categories_lookup(db, current_user.org_id)
 
 # ----------filter_status_lookup-------------
-
-
 @router.get("/filter-status-lookup", response_model=List[Lookup])
 def vendors_filter_status_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -109,8 +96,6 @@ def vendors_filter_status_lookup_endpoint(
     return crud.vendors_filter_status_lookup(db, current_user.org_id)
 
 # ----------filter_categories lookup---------
-
-
 @router.get("/filter-categories-lookup", response_model=List[Lookup])
 def Vendor_filter_Categories_lookup_endpoint(
     db: Session = Depends(get_db),

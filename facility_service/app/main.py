@@ -1,3 +1,30 @@
+from .router.energy_iot import meter_readings_router, meters_router, consumption_report_router
+from .router.overview import analytics_router, dashboard_router
+from .router.hospitality import bookings_router, rate_plans_router, housekeeping_tasks_router
+from .router.parking_access import parking_zones_router, access_events_router, visitors_router
+from .router.maintenance_assets import (
+    asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, pm_template_router, service_request_router, work_order_router)
+from .router.crm import contact_router
+from .router.financials import (
+    invoice_router, tax_codes_router, revenue_router)
+from .router.overview import (dashboard_router, analytics_router)
+from .router.space_sites import (
+    orgs_router,
+    sites_router,
+    space_group_members_router,
+    space_groups_router,
+    spaces_router,
+    building_block_router,
+    space_filter_router)
+from .router.leasing_tenants import lease_charges_router, leases_router, tenants_router
+from .router import (
+    purchase_orders_router,
+    purchase_order_lines_router,
+    commercial_partners_router,
+)
+from .router.access_control import (
+    user_management_router, role_management_router, role_policies_router, pending_approval_router, role_approval_rules_router
+)
 from shared.exception_handler import setup_exception_handlers
 from shared.response_wrapper import JsonResponseMiddleware
 from fastapi import FastAPI
@@ -16,34 +43,6 @@ from .models import (
 from .router.common import export_router
 from .router.mobile_app import master_router, home_router
 from .router.procurement import contracts_router, vendor_router
-from .router.access_control import (
-    user_management_router, role_management_router, role_policies_router, pending_approval_router
-)
-from .router import (
-    purchase_orders_router,
-    purchase_order_lines_router,
-    commercial_partners_router,
-)
-from .router.leasing_tenants import lease_charges_router, leases_router, tenants_router
-from .router.space_sites import (
-    orgs_router,
-    sites_router,
-    space_group_members_router,
-    space_groups_router,
-    spaces_router,
-    building_block_router,
-    space_filter_router)
-from .router.overview import (dashboard_router, analytics_router)
-from .router.financials import (
-    invoice_router, tax_codes_router, revenue_router)
-from .router.crm import contact_router
-from .router.maintenance_assets import (
-    asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, pm_template_router, service_request_router, work_order_router)
-from .router.parking_access import parking_zones_router, access_events_router, visitors_router
-from .router.hospitality import bookings_router, rate_plans_router, housekeeping_tasks_router
-from .router.overview import analytics_router, dashboard_router
-from .router.energy_iot import meter_readings_router, meters_router, consumption_report_router
-
 
 app = FastAPI(title="Facility Service API")
 
@@ -116,4 +115,5 @@ app.include_router(role_management_router.router)
 app.include_router(role_policies_router.router)
 app.include_router(master_router.router)
 app.include_router(home_router.router)
+app.include_router(role_approval_rules_router.router)
 app.include_router(pending_approval_router.router)

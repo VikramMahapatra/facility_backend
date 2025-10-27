@@ -317,7 +317,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
             "name": tenant.name,
             "email": tenant.email,
             "phone": tenant.phone,
-            "address": tenant.contact_info.address if tenant.contact_info else None,
+            "address": (tenant.contact_info or {}).get("address"),
             "status": tenant.status or "active",
             "created_at": now,
             "updated_at": now,

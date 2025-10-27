@@ -53,7 +53,7 @@ def update_tenant_endpoint(
     return {"message": "Tenant updated successfully"}
 
 # ----------------- Create Tenant -----------------
-@router.post("/", response_model=TenantOut)
+@router.post("/", response_model=None)
 def create_tenant_endpoint(
     tenant: TenantCreate,
     db: Session = Depends(get_db),

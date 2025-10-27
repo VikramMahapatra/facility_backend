@@ -11,3 +11,17 @@ class UserRoleEnum(str, Enum):
     MANAGER = "manager"
     ACCOUNTANT = "accountant"
     FRONTDESK = "frontdesk"
+
+
+class ApproverRoleEnum(str, Enum):
+    ADMIN = "admin"
+    MANAGER = "manager"
+    ACCOUNTANT = "accountant"
+    FRONTDESK = "frontdesk"
+
+class CanApproveRoleEnum(str, Enum):
+    ADMIN = "admin"
+    MANAGER = "manager"
+    ACCOUNTANT = "accountant"
+    FRONTDESK = "frontdesk"
+    DEFAULT = "default"

@@ -1,9 +1,10 @@
 from typing import Dict, List, Optional
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import Text, and_, func, cast, Float, literal,String, or_ 
 
 from ...models.maintenance_assets.work_order import WorkOrder
-from facility_service.app.models.crm.contacts import Contact
+from ...models.crm.contacts import Contact
 from shared.schemas import Lookup, UserToken
 from ...models.maintenance_assets.service_request import ServiceRequest
 from uuid import UUID
@@ -17,7 +18,7 @@ from ...enum.maintenance_assets_enum import ServiceRequestStatus, ServiceRequest
 
 
 def build_service_request_filters(org_id: UUID, params: ServiceRequestRequest):
-    filters = [ServiceRequest.org_id == org_id]
+    filters = [ServiceRequest.org_id == org_id ,ServiceRequest.is_deleted == False ] # ✅ Add soft delete filter
 
     if params.category and params.category.lower() != "all":
         filters.append(func.lower(ServiceRequest.category)
@@ -122,7 +123,7 @@ def service_request_filter_status_lookup(db: Session, org_id: str) -> List[Dict]
             ServiceRequest.status.label("id"),
             ServiceRequest.status.label("name")
         )
-        .filter(ServiceRequest.org_id == org_id)
+        .filter(ServiceRequest.org_id == org_id, ServiceRequest.is_deleted == False)  # ✅ Add soft delete filter
         .distinct()
         .order_by("name")
     )
@@ -151,7 +152,8 @@ def service_request_filter_category_lookup(db: Session, org_id: str) -> List[Dic
         .filter(
             ServiceRequest.org_id == org_id,
             ServiceRequest.category.isnot(None),
-            ServiceRequest.category != ""
+            ServiceRequest.category != "",
+            ServiceRequest.is_deleted == False  # ✅ Add soft delete filter
         )
         .distinct()
         .order_by("name")
@@ -299,17 +301,41 @@ def update_service_request(db: Session, request_update: ServiceRequestUpdate, cu
     return db_request
 
 
-
-# ----------------- Delete -----------------
-def delete_service_request(db: Session, request_id: UUID) -> bool:
+# ----------------- Delete Service Request (Soft Delete) with Validation -----------------
+def delete_service_request_soft(db: Session, request_id: UUID, org_id: UUID) -> bool:
+    """
+    Soft delete service request ONLY if no active work orders are linked to it
+    Returns: True if deleted, False if not found or has active work orders
+    """
+    # Check if service request exists and is not deleted
     db_request = db.query(ServiceRequest).filter(
-        ServiceRequest.id == request_id).first()
+        ServiceRequest.id == request_id,
+        ServiceRequest.org_id == org_id,
+        ServiceRequest.is_deleted == False
+    ).first()
+    
     if not db_request:
         return False
-    db.delete(db_request)
+    
+    # ✅ Check if service request has any active work orders
+    from ...models.maintenance_assets.work_order import WorkOrder
+    active_work_orders_count = db.query(WorkOrder).filter(
+        WorkOrder.request_id == request_id,
+        WorkOrder.is_deleted == False,
+        WorkOrder.status.in_(['open', 'in_progress', 'in progress'])  # Active statuses
+    ).count()
+    
+    if active_work_orders_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete service request. It has {active_work_orders_count} active work orders. Please close or delete the work orders first."
+        )
+    
+    # ✅ Soft delete the service request
+    db_request.is_deleted = True
+    db_request.deleted_at = func.now()
     db.commit()
     return True
-
 
 def service_request_lookup(db: Session, org_id: UUID):
     """
@@ -332,7 +358,7 @@ def service_request_lookup(db: Session, org_id: UUID):
                 Contact.kind == ServiceRequest.requester_kind
             )
         )
-        .filter(ServiceRequest.org_id == org_id)
+        .filter(ServiceRequest.org_id == org_id, ServiceRequest.is_deleted == False)  # ✅ Add soft delete filter
         .distinct()
         .order_by("name")
         .all()

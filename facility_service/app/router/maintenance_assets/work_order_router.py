@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token, UserToken
+from shared.json_response_helper import success_response
 from shared.schemas import Lookup
 
 from ...schemas.maintenance_assets.work_order_schemas import (
@@ -18,7 +19,6 @@ from ...schemas.maintenance_assets.work_order_schemas import (
 )
 from ...crud.maintenance_assets import work_order_crud as crud
 from ...crud.maintenance_assets.work_order_crud import (
-    create_work_order,
     get_work_orders_overview,
 )
 
@@ -64,12 +64,22 @@ def create_work_order_endpoint(
     # Pass org_id to the function
     return crud.create_work_order(db, work_order, current_user.org_id)
 
-@router.delete("/{work_order_id}", response_model=None)
-def delete_work_order(work_order_id: str, db: Session = Depends(get_db)):
-    db_work_order = crud.delete_work_order(db, work_order_id)
-    if not db_work_order:
-        raise HTTPException(status_code=404, detail="work order not found")
-    return db_work_order
+# ---------------- Delete Work Order (Soft Delete) ----------------
+@router.delete("/{work_order_id}")
+def delete_work_order_soft(
+    work_order_id: str, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    success = crud.delete_work_order_soft(db, work_order_id, current_user.org_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    
+    return success_response(
+        data="Work order deleted successfully",
+        message="Work order deleted successfully",
+        status_code="200"
+    )
 
 # ---------------- Filter Work Orders by Status ----------------
 @router.get("/filter-status-lookup", response_model=List[Lookup])

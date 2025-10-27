@@ -24,8 +24,6 @@ router = APIRouter(
 )
 
 # ------------all
-
-
 @router.get("/all", response_model=TenantListResponse)
 def tenants_all(
     params: TenantRequest = Depends(),
@@ -35,8 +33,6 @@ def tenants_all(
     return crud.get_all_tenants(db, current_user.org_id, params)
 
 # Overview
-
-
 @router.get("/overview", response_model=TenantOverviewResponse)
 def tenants_overview(
     db: Session = Depends(get_db),
@@ -45,8 +41,6 @@ def tenants_overview(
     return crud.get_tenants_overview(db, current_user.org_id)
 
 # ----------------- Update Tenant -----------------
-
-
 @router.put("/", response_model=None)
 def update_tenant_endpoint(
     tenant_update: TenantUpdate,
@@ -59,29 +53,25 @@ def update_tenant_endpoint(
     return {"message": "Tenant updated successfully"}
 
 # ----------------- Create Tenant -----------------
-
-
-@router.post("/", response_model=TenantOut)
+@router.post("/", response_model=None)
 def create_tenant_endpoint(
     tenant: TenantCreate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.create_tenant(db, tenant)
+
 # ---------------- Delete Tenant ----------------
-
-
 @router.delete("/{tenant_id}")
 def delete_tenant_route(
     tenant_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    success = crud.delete_tenant(db, tenant_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    return {"message": "Tenant deleted successfully"}
-
+    result = crud.delete_tenant(db, tenant_id)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return {"message": result["message"]}
 
 # ----------------  Type Lookup ----------------
 @router.get("/type-lookup", response_model=List[Lookup])
@@ -92,8 +82,6 @@ def tenant_type_lookup_endpoint(
     return crud.tenant_type_lookup(db, current_user.org_id)
 
 # ----------------  Status Lookup ----------------
-
-
 @router.get("/status-lookup", response_model=List[Lookup])
 def tenant_status_lookup_endpoint(
     db: Session = Depends(get_db),

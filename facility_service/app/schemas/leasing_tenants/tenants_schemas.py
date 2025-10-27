@@ -11,12 +11,12 @@ class TenantBase(BaseModel):
     site_id: UUID
     space_id: UUID
     name: str
-    email: Optional[str] = None   # <- make optional
+    email: Optional[str] = None
     phone: Optional[str] = None
     tenant_type: str
     status: str
     contact_info: Optional[Any] = None
-    type:  Optional[str] = None
+    type: Optional[str] = None
     legal_name: Optional[str] = None
 
 
@@ -32,8 +32,8 @@ class TenantRequest(BaseModel):
     search: Optional[str] = None
     skip: int = 0
     limit: int = 10
-    status: Optional[str] = None   # <- add this
-    type: Optional[str] = None     # <- add this
+    status: Optional[str] = None
+    type: Optional[str] = None
 
 
 class TenantOut(BaseModel):
@@ -43,13 +43,17 @@ class TenantOut(BaseModel):
     building_block_id: UUID
     space_id: UUID
     name: str
-    email: Optional[str] = None   # <- make optional
+    email: Optional[str] = None
     phone: Optional[str] = None
     tenant_type: str
-    type:  Optional[str] = None
+    type: Optional[str] = None
     status: str
     contact_info: Optional[Any] = None
     tenant_leases: Optional[List[LeaseOut]] = None
+    
+    # ADD ONLY THESE - frontend will handle name lookups
+    space_id: Optional[UUID] = None
+    building_block_id: Optional[UUID] = None  # ✅ Correct name
 
     model_config = {"from_attributes": True}
 

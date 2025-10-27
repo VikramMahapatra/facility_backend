@@ -26,6 +26,8 @@ class Tenant(Base):
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
     address = Column(JSONB)
+    status = Column(String(16), default="active", nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     leases = relationship(
         "Lease", back_populates="tenant", cascade="all, delete")

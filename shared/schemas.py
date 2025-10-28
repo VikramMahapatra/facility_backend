@@ -15,7 +15,7 @@ class UserToken(BaseModel):
     name: Optional[str] = None  # added for service request requester id
     account_type: str
     status: str
-    role: list[str]
+    role_ids: list[str]
     exp: int
 
 

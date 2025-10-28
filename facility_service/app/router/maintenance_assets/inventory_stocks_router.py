@@ -3,6 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
+from shared.schemas import UserToken
 from ...schemas.maintenance_assets.inventory_stocks_schemas import InventoryStockOut, InventoryStockCreate, InventoryStockUpdate
 from ...crud.maintenance_assets import inventory_stocks_crud as crud
 from shared.auth import validate_current_token
@@ -12,37 +13,62 @@ router = APIRouter(prefix="/api/inventory-stocks",
 
 
 @router.get("/", response_model=List[InventoryStockOut])
-def read_stocks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_inventory_stocks(db, skip=skip, limit=limit)
-
+def read_stocks(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_inventory_stocks(db, current_user.org_id, skip=skip, limit=limit)
 
 @router.get("/{stock_id}", response_model=InventoryStockOut)
-def read_stock(stock_id: str, db: Session = Depends(get_db)):
-    db_stock = crud.get_inventory_stock_by_id(db, stock_id)
+def read_stock(
+    stock_id: str, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    db_stock = crud.get_inventory_stock_by_id(db, stock_id, current_user.org_id)
     if not db_stock:
-        raise HTTPException(
-            status_code=404, detail="Inventory stock not found")
+        raise HTTPException(status_code=404, detail="Inventory stock not found")
     return db_stock
-
 
 @router.post("/", response_model=InventoryStockOut)
-def create_stock(stock: InventoryStockCreate, db: Session = Depends(get_db)):
-    return crud.create_inventory_stock(db, stock)
+def create_stock(
+    stock: InventoryStockCreate, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.create_inventory_stock(db, stock, current_user.org_id)
 
-
-@router.put("/{stock_id}", response_model=InventoryStockOut)
-def update_stock(stock_id: str, stock: InventoryStockUpdate, db: Session = Depends(get_db)):
-    db_stock = crud.update_inventory_stock(db, stock_id, stock)
+@router.put("/", response_model=InventoryStockOut)
+def update_stock(
+    stock: InventoryStockUpdate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    db_stock = crud.update_inventory_stock(db, stock, current_user.org_id)
     if not db_stock:
-        raise HTTPException(
-            status_code=404, detail="Inventory stock not found")
+        raise HTTPException(status_code=404, detail="Inventory stock not found")
     return db_stock
 
-
-@router.delete("/{stock_id}", response_model=InventoryStockOut)
-def delete_stock(stock_id: str, db: Session = Depends(get_db)):
-    db_stock = crud.delete_inventory_stock(db, stock_id)
-    if not db_stock:
-        raise HTTPException(
-            status_code=404, detail="Inventory stock not found")
-    return db_stock
+# ---------------- Delete Inventory Stock (Soft Delete) ----------------
+@router.delete("/{stock_id}")
+def delete_stock(
+    stock_id: str, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    try:
+        success = crud.delete_inventory_stock_soft(db, stock_id, current_user.org_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Inventory stock not found")
+        
+        return {
+            "data": "deleted successfully",
+            "status": "Success",
+            "status_code": "200",
+            "message": "Inventory stock deleted successfully"
+        }
+    except ValueError as e:
+        # Handle business rule violations
+        raise HTTPException(status_code=400, detail=str(e))

@@ -1,7 +1,7 @@
 # app/models/inventory_stocks.py
 import uuid
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy import Column, String, Numeric, ForeignKey
+from sqlalchemy import Boolean, Column, DateTime, String, Numeric, ForeignKey
 from sqlalchemy.orm import relationship
 from shared.database import Base
 
@@ -18,6 +18,10 @@ class InventoryStock(Base):
     )
     qty_on_hand = Column(Numeric(14,3), default=0)
     bin_location = Column(String(64))
+
+        # ✅ Add soft delete columns
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     # 🔑 Added relationship to item
     item = relationship("InventoryItem", back_populates="stocks")

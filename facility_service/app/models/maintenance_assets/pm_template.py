@@ -1,7 +1,7 @@
 # app/models/maintenance_assets/pm_template.py
 
 import uuid
-from sqlalchemy import Column, DateTime, String, ForeignKey, JSON, Numeric, Date, func
+from sqlalchemy import Boolean, Column, DateTime, String, ForeignKey, JSON, Numeric, Date, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from shared.database import Base
@@ -26,6 +26,11 @@ class PMTemplate(Base):
     # New Columns
     next_due = Column(Date, nullable=True)  # stores next PM due date
     status = Column(String(32), nullable=False, default='active')  # active/inactive/etc.
+    
+        # ✅ Add soft delete columns
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
 
     # Relationships
     organization = relationship("Org", back_populates="pm_templates")

@@ -85,10 +85,6 @@ def get_service_request_overview(db: Session, org_id: UUID, params: ServiceReque
         "in_progress_requests": in_progress_requests or 0,
         "avg_resolution_hours": round(avg_resolution,2) if avg_resolution else None
     }
-
-# ----------------- Get All Service Requests -----------------
-
-
 def get_service_requests(db: Session, org_id: UUID, params: ServiceRequestRequest) -> ServiceRequestListResponse:
     base_query = get_service_request_query(db, org_id, params)
     total = base_query.with_entities(func.count(ServiceRequest.id)).scalar()
@@ -103,16 +99,20 @@ def get_service_requests(db: Session, org_id: UUID, params: ServiceRequestReques
 
     results = []
     for r in requests:
-        customer_name = (
-        db.query(Contact.full_name)
-        .filter(Contact.id == r.requester_id)
-        .scalar()
-            )
-
+        requester_name = None
+        
+        # Apply same logic as create/update for fetching requester name
+        if r.requester_kind and r.requester_id:
+            if r.requester_kind == "resident":
+                tenant = db.query(Tenant).filter(Tenant.id == r.requester_id).first()
+                requester_name = tenant.name if tenant else None
+            elif r.requester_kind == "merchant":
+                partner = db.query(CommercialPartner).filter(CommercialPartner.id == r.requester_id).first()
+                requester_name = partner.legal_name if partner else None
+        
         results.append(ServiceRequestOut.model_validate(
-            {**r.__dict__, "requester_name": customer_name}
+            {**r.__dict__, "requester_name": requester_name}
         ))
-
 
     return {"requests": results, "total": total}
 

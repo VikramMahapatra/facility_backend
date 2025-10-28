@@ -1,7 +1,10 @@
 from typing import Dict, List, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import Text, and_, func, cast, Float, literal,String, or_ 
+from sqlalchemy import Text, and_, func, cast, Float, literal,String, or_
+
+from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
+from facility_service.app.models.leasing_tenants.tenants import Tenant 
 
 from ...models.maintenance_assets.work_order import WorkOrder
 from ...models.crm.contacts import Contact
@@ -82,10 +85,6 @@ def get_service_request_overview(db: Session, org_id: UUID, params: ServiceReque
         "in_progress_requests": in_progress_requests or 0,
         "avg_resolution_hours": round(avg_resolution,2) if avg_resolution else None
     }
-
-# ----------------- Get All Service Requests -----------------
-
-
 def get_service_requests(db: Session, org_id: UUID, params: ServiceRequestRequest) -> ServiceRequestListResponse:
     base_query = get_service_request_query(db, org_id, params)
     total = base_query.with_entities(func.count(ServiceRequest.id)).scalar()
@@ -100,16 +99,20 @@ def get_service_requests(db: Session, org_id: UUID, params: ServiceRequestReques
 
     results = []
     for r in requests:
-        customer_name = (
-        db.query(Contact.full_name)
-        .filter(Contact.id == r.requester_id)
-        .scalar()
-            )
-
+        requester_name = None
+        
+        # Apply same logic as create/update for fetching requester name
+        if r.requester_kind and r.requester_id:
+            if r.requester_kind == "resident":
+                tenant = db.query(Tenant).filter(Tenant.id == r.requester_id).first()
+                requester_name = tenant.name if tenant else None
+            elif r.requester_kind == "merchant":
+                partner = db.query(CommercialPartner).filter(CommercialPartner.id == r.requester_id).first()
+                requester_name = partner.legal_name if partner else None
+        
         results.append(ServiceRequestOut.model_validate(
-            {**r.__dict__, "requester_name": customer_name}
+            {**r.__dict__, "requester_name": requester_name}
         ))
-
 
     return {"requests": results, "total": total}
 
@@ -196,75 +199,52 @@ def service_request_channel_lookup(org_id: UUID, db: Session):
         for channel in ServiceRequestchannel
     ]
 
-# --------------------------crud operation enpoints-----------------------------
-# update create change by using userid
+
 def create_service_request(
     db: Session, org_id: UUID, request: ServiceRequestCreate, current_user: UserToken
 ) -> ServiceRequestOut:
     """
-    Creates a service request:
-    - Ensures requester contact exists
-    - Uses token user if requester_id is not provided
-    - Avoids inserting null full_name
+    Creates a service request with simplified field mapping
     """
     
-    # Determine requester info
-    if request.requester_id:
-        contact = db.query(Contact).filter(Contact.id == request.requester_id).first()
-        if contact:
-            requester_id = contact.id
-            requester_name = contact.full_name
-        else:
-            # Create new contact with fallback full_name
-            requester_name = getattr(request, "requester_name", None) or "Unknown"
-            new_contact = Contact(
-                id=request.requester_id,
-                org_id=org_id,
-                kind="resident",
-                full_name=requester_name,
-                email=getattr(request, "email", None),
-                phone_e164=getattr(request, "phone", None),
-            )
-            db.add(new_contact)
-            db.commit()
-            db.refresh(new_contact)
-            requester_id = new_contact.id
+    if not request.requester_kind:
+        raise HTTPException(status_code=400, detail="requester_kind is required")
+    if not request.requester_id:
+        raise HTTPException(status_code=400, detail="requester_id is required")
+    
+    # Fetch requester name based on kind
+    if request.requester_kind == "resident":
+        tenant = db.query(Tenant).filter(Tenant.id == request.requester_id).first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        requester_name = tenant.name
+    elif request.requester_kind == "merchant":
+        partner = db.query(CommercialPartner).filter(CommercialPartner.id == request.requester_id).first()
+        if not partner:
+            raise HTTPException(status_code=404, detail="Commercial partner not found")
+        requester_name = partner.legal_name
     else:
-        # Use current user as requester
-        contact = db.query(Contact).filter(Contact.id == current_user.user_id).first()
-        if not contact:
-            requester_name = current_user.name or "Unknown"
-            new_contact = Contact(
-                id=current_user.user_id,
-                org_id=org_id,
-                kind="resident",
-                full_name=requester_name,
-                email=getattr(current_user, "email", None),
-                phone_e164=getattr(current_user, "phone", None),
-            )
-            db.add(new_contact)
-            db.commit()
-            db.refresh(new_contact)
-        requester_id = current_user.user_id
-        requester_name = current_user.name or "Unknown"
+        raise HTTPException(status_code=400, detail="Invalid requester kind")
 
-    # Create service request
-    db_request = ServiceRequest(
-        org_id=org_id,
-        requester_id=requester_id,
-        **request.model_dump(exclude={"requester_id", "requester_name", "org_id"})
-    )
+    # Create service request - exclude org_id from model_dump since we're passing it explicitly
+    request_data = request.model_dump(exclude={"org_id"})
+    request_data.update({
+        "org_id": org_id,
+        "channel": request.channel or "portal",
+        "priority": request.priority or "medium", 
+        "status": request.status or "open",
+    })
+    
+    db_request = ServiceRequest(**request_data)
     db.add(db_request)
     db.commit()
     db.refresh(db_request)
 
-    # Prepare output with requester_name
     db_request_out = ServiceRequestOut.from_orm(db_request)
     db_request_out.requester_name = requester_name
     return db_request_out
 
-
-def update_service_request(db: Session, request_update: ServiceRequestUpdate, current_user: UserToken) -> Optional[ServiceRequest]:
+def update_service_request(db: Session, request_update: ServiceRequestUpdate, current_user: UserToken) -> Optional[ServiceRequestOut]:
     db_request = (
         db.query(ServiceRequest)
         .filter(
@@ -298,7 +278,25 @@ def update_service_request(db: Session, request_update: ServiceRequestUpdate, cu
 
     db.commit()
     db.refresh(db_request)
-    return db_request
+
+    # Fetch requester name based on kind (same logic as create)
+    requester_name = None
+    if db_request.requester_kind and db_request.requester_id:
+        if db_request.requester_kind == "resident":
+            tenant = db.query(Tenant).filter(Tenant.id == db_request.requester_id).first()
+            if tenant:
+                requester_name = tenant.name
+        elif db_request.requester_kind == "merchant":
+            partner = db.query(CommercialPartner).filter(CommercialPartner.id == db_request.requester_id).first()
+            if partner:
+                requester_name = partner.legal_name
+
+    # Return ServiceRequestOut with requester_name (same as create)
+    db_request_out = ServiceRequestOut.from_orm(db_request)
+    if requester_name:
+        db_request_out.requester_name = requester_name
+    
+    return db_request_out
 
 
 # ----------------- Delete Service Request (Soft Delete) with Validation -----------------

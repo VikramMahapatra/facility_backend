@@ -1,9 +1,11 @@
 
 from fastapi import Form
 from pydantic import BaseModel, EmailStr,  HttpUrl, field_serializer, model_validator
-from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
+from typing import Any, Dict, Generic, List, Optional, TypeVar, Union, get_args, get_origin
 from uuid import UUID
 from datetime import datetime
+
+from shared.empty_string_model_wrapper import EmptyStringModel
 
 # Shared properties
 T = TypeVar("T")
@@ -15,7 +17,8 @@ class UserToken(BaseModel):
     name: Optional[str] = None  # added for service request requester id
     account_type: str
     status: str
-    role_ids: Optional[List[str]] = None # added for service request in lease_partner_lookup  
+    # added for service request in lease_partner_lookup
+    role_ids: Optional[List[str]] = None
     exp: int
 
 
@@ -45,16 +48,6 @@ class ExportRequestParams(BaseModel):
     search: Optional[str] = None
     skip: Optional[int] = 0
     limit: Optional[int] = 100
-
-
-class EmptyStringModel(BaseModel):
-
-    @model_validator(mode="after")
-    def replace_none_with_empty(self):
-        for field, value in self.__dict__.items():
-            if value is None:
-                setattr(self, field, "")
-        return self
 
 
 class JsonOutResult(EmptyStringModel, Generic[T]):

@@ -65,7 +65,8 @@ def google_login(db: Session, facility_db: Session, req: authchemas.GoogleAuthRe
             raise HTTPException(
                 status_code=400, detail="Google email not verified")
 
-        user = db.query(Users).filter(Users.email == email).first()
+        user = db.query(Users).filter(
+            Users.email == email and Users.is_deleted == False).first()
 
         if not user:
             return authchemas.AuthenticationResponse(

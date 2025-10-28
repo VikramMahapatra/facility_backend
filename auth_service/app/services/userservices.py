@@ -167,16 +167,30 @@ def get_user_by_id(facility_db: Session, user_data: Users):
     user_org_data = facility_db.query(OrgSafe).filter(
         OrgSafe.id == user_data.org_id).first()
 
+    # ✅ Extract unique role policies
+    role_policies = []
+    for role in user_data.roles:
+        for policy in role.policies:
+            role_policies.append({
+                "resource": policy.resource,
+                "action": policy.action
+            })
+
+    # ✅ Remove duplicates (optional)
+    role_policies = [dict(t)
+                     for t in {tuple(d.items()) for d in role_policies}]
+
     user_dict = {
         "id": str(user_data.id),
         "name": user_data.full_name,
         "email": user_data.email,
         "phone": user_data.phone,
         "account_type": user_data.account_type,
-        "organization_name": user_org_data.name,
+        "organization_name": user_org_data.name if user_org_data else None,
         "status": user_data.status,
         "is_authenticated": True if user_data.status == "active" else False,
         "roles": [RoleOut.model_validate(role) for role in user_data.roles],
+        "role_policies": role_policies
     }
 
     return user_dict

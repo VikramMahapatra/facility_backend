@@ -54,17 +54,6 @@ class RoleOut(BaseModel):
         "from_attributes": True
     }
 
-
-class UserResponse(BaseModel):
-    id: str
-    name: str
-    email: str
-    account_type: str
-    organization_name: str
-    status: str
-    is_authenticated: bool = False
-    roles: List[RoleOut]
-
     # dependency to convert Form fields → Pydantic model
 
 
@@ -80,3 +69,26 @@ def as_form(
         phone=phone,
         role=role,
     )
+
+
+class RolePolicyOut(BaseModel):
+    resource: str
+    action: str
+
+    class Config:
+        from_attributes = True
+
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    account_type: str
+    organization_name: str
+    status: str
+    is_authenticated: bool = False
+    roles: List[RoleOut]
+    role_policies: List[RolePolicyOut]
+
+    class Config:
+        from_attributes = True

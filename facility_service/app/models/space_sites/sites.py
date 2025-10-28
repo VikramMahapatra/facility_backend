@@ -1,6 +1,6 @@
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Boolean, Column, String, Date, DateTime, func, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB , UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from ...models.hospitality.rate_plans import RatePlan
 import uuid
@@ -8,10 +8,9 @@ from sqlalchemy import JSON
 from shared.database import Base
 
 
-
-
 class Site(Base):
     __tablename__ = "sites"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey(
@@ -27,7 +26,7 @@ class Site(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True),
                         server_default=func.now(), onupdate=func.now())
-    is_deleted = Column(Boolean, default=False, nullable=False) 
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     # Relationships
     org = relationship("Org", back_populates="sites", cascade="all, delete")
@@ -43,11 +42,12 @@ class Site(Base):
     work_orders = relationship("WorkOrder", back_populates="site")
     leases = relationship("Lease", back_populates="site")
 
-     # FIXED: Use string references for hospitality models
+    # FIXED: Use string references for hospitality models
     rate_plans = relationship("RatePlan", back_populates="site")
     guests = relationship("Guest", back_populates="site")
-    bookings = relationship("Booking", back_populates="site") 
-    housekeeping_tasks = relationship("HousekeepingTask", back_populates="site")
+    bookings = relationship("Booking", back_populates="site")
+    housekeeping_tasks = relationship(
+        "HousekeepingTask", back_populates="site")
     meters = relationship("Meter", back_populates="site",
                           cascade="all, delete-orphan")
 

@@ -258,9 +258,10 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
                 CommercialPartner.id,
                 CommercialPartner.legal_name.label('name')
             )
+            .join(Site, CommercialPartner.site_id == Site.id)  # Add join with Site table
             .filter(
                 and_(
-                    CommercialPartner.org_id == org_id, 
+                    Site.org_id == org_id, 
                     CommercialPartner.site_id == site_id,
                     CommercialPartner.is_deleted == False
                 )

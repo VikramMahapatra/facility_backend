@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.auth import validate_current_token #for dependicies 
 from shared.database import get_facility_db as get_db
+from shared.json_response_helper import success_response
 from shared.schemas import Lookup, UserToken
 from ...schemas.maintenance_assets.pm_templates_schemas import (
     PMTemplateCreate,
@@ -60,17 +61,22 @@ def create_pm_template(
     return crud.create_pm_template(db, template)
 
 
-# ---------------- Delete template ----------------
+# ---------------- Delete PM Template (Soft Delete) ----------------
 @router.delete("/{template_id}")
-def delete_pm_template_route(
+def delete_pm_template_soft(
     template_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    success = crud.delete_pm_template(db, template_id)
+    success = crud.delete_pm_template_soft(db, template_id, current_user.org_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Template not found")
-    return {"message": "PM Template deleted successfully"}
+        raise HTTPException(status_code=404, detail="PM Template not found")
+    
+    return success_response(
+        data="deleted successfully",
+        message="PM Template deleted successfully",
+        status_code="200"
+    )
 
 
 # ---------------- Frequency Lookup ----------------

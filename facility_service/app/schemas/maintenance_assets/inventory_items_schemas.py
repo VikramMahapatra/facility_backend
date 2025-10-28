@@ -1,27 +1,37 @@
-# app/schemas/inventory_items.py
 from pydantic import BaseModel
-from typing import Optional, Any
-from decimal import Decimal
+from uuid import UUID
+from typing import Optional, Dict, Any
+from datetime import datetime
 
 class InventoryItemBase(BaseModel):
-    org_id: str
+    org_id: UUID
     sku: Optional[str] = None
     name: str
     category: Optional[str] = None
-    uom: Optional[str] = "ea"
-    tracking: Optional[str] = "none"
-    reorder_level: Optional[Decimal] = None
-    attributes: Optional[Any] = None
+    uom: str = "ea"
+    tracking: str = "none"
+    reorder_level: Optional[float] = None
+    attributes: Optional[Dict[str, Any]] = None
 
 class InventoryItemCreate(InventoryItemBase):
     pass
 
-class InventoryItemUpdate(InventoryItemBase):
-    pass
+class InventoryItemUpdate(BaseModel):
+    id: UUID
+    sku: Optional[str] = None
+    name: Optional[str] = None
+    category: Optional[str] = None
+    uom: Optional[str] = None
+    tracking: Optional[str] = None
+    reorder_level: Optional[float] = None
+    attributes: Optional[Dict[str, Any]] = None
 
 class InventoryItemOut(InventoryItemBase):
-    id: str
+    id: UUID
+    is_deleted: bool
+    deleted_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
-    model_config = {
-    "from_attributes": True
-}
+    class Config:
+        from_attributes = True

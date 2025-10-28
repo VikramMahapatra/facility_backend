@@ -1,6 +1,6 @@
 # app/models/inventory_items.py
 import uuid
-from sqlalchemy import Column, String, Numeric
+from sqlalchemy import Boolean, Column, DateTime, String, Numeric
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from shared.database import Base
@@ -17,6 +17,9 @@ class InventoryItem(Base):
     tracking = Column(String(16), default="none")
     reorder_level = Column(Numeric(12,3))
     attributes = Column(JSONB)
+        # Add soft delete columns
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     # 🔑 Added relationship to stocks
     stocks = relationship(

@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.users import Users
 from auth_service.app.models.userroles import UserRoles
+from ...models.leasing_tenants.commercial_partners import CommercialPartner
+from ...models.leasing_tenants.tenants import Tenant
 from ...crud.access_control import user_management_crud
 from ...schemas.access_control.role_management_schemas import RoleOut
 from shared.schemas import Lookup
@@ -61,6 +63,17 @@ def update_user_approval_status(db: Session, request: ApprovalStatusRequest):
         user.status = "active"
     else:
         user.status = "rejected"
+
+    tenant = db.query(Tenant).filter(Tenant.id == request.user_id).first()
+
+    if tenant:
+        if request.status == ApprovalStatus.approve:
+            tenant.status = user.status
+
+    commercial_partner = db.query(Tenant).filter(
+        CommercialPartner.id == request.user_id).first()
+    if commercial_partner:
+        commercial_partner.status = user.status
 
     db.commit()
     db.refresh(user)

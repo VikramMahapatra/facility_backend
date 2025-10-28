@@ -146,13 +146,13 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
 
 
 def get_user_token(facility_db: Session, user: Users):
-    roles = [r.name for r in user.roles]
+    roles = [str(r.id) for r in user.roles]
     token = auth.create_access_token({
         "user_id": str(user.id),
         "org_id": str(user.org_id),
         "account_type": user.account_type,
         "status": user.status,
-        "role": roles})
+        "role_ids": roles})
     user_data = get_user_by_id(facility_db, user)
 
     return authchemas.AuthenticationResponse(
@@ -172,9 +172,10 @@ def get_user_by_id(facility_db: Session, user_data: Users):
         "name": user_data.full_name,
         "email": user_data.email,
         "phone": user_data.phone,
-        "accountType": user_data.account_type,
-        "organizationName": user_org_data.name,
+        "account_type": user_data.account_type,
+        "organization_name": user_org_data.name,
         "status": user_data.status,
+        "is_authenticated": True if user_data.status == "active" else False,
         "roles": [RoleOut.model_validate(role) for role in user_data.roles],
     }
 

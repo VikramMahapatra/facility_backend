@@ -68,12 +68,12 @@ def google_login(db: Session, facility_db: Session, req: authchemas.GoogleAuthRe
         user = db.query(Users).filter(Users.email == email).first()
 
         if not user:
-            return {
-                "needs_registration": True,
-                "email": email,
-                "name": id_info.get("name"),
-                "picture": id_info.get("picture")
-            }
+            return authchemas.AuthenticationResponse(
+                needs_registration=True,
+                email=email,
+                name=id_info.get("name"),
+                picture=id_info.get("picture")
+            )
 
         return userservices.get_user_token(facility_db, user)
 

@@ -59,8 +59,10 @@ class UserResponse(BaseModel):
     id: str
     name: str
     email: str
-    accountType: str
-    organizationName: str
+    account_type: str
+    organization_name: str
+    status: str
+    is_authenticated: bool = False
     roles: List[RoleOut]
 
     # dependency to convert Form fields → Pydantic model

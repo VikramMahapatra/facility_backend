@@ -16,7 +16,8 @@ from ...schemas.maintenance_assets.pm_templates_schemas import (
     PMTemplateOut,
 )
 
-#--------------------overview------------------
+
+# ----------------- Update Existing overview Functions with Soft Delete Filter -----------------
 
 def get_pm_templates_overview(db: Session, org_id: UUID, params: PMTemplateRequest):
     filters = build_pm_template_filters(org_id, params)
@@ -26,26 +27,29 @@ def get_pm_templates_overview(db: Session, org_id: UUID, params: PMTemplateReque
     start_of_week = today - timedelta(days=today.weekday())
     end_of_week = start_of_week + timedelta(days=6)
 
-    # Total templates with filters
-    total_templates = db.query(PMTemplate).filter(*filters).count()
+    # Total templates with filters (exclude deleted)
+    total_templates = db.query(PMTemplate).filter(*filters, PMTemplate.is_deleted == False).count()
 
-    # Active templates with filters
+    # Active templates with filters (exclude deleted)
     active_templates = db.query(PMTemplate).filter(
         *filters,
-        PMTemplate.status == 'active'
+        PMTemplate.status == 'active',
+        PMTemplate.is_deleted == False
     ).count()
 
-    # Due this week with filters
+    # Due this week with filters (exclude deleted)
     due_this_week = db.query(PMTemplate).filter(
         *filters,
         PMTemplate.next_due >= start_of_week,
-        PMTemplate.next_due <= end_of_week
+        PMTemplate.next_due <= end_of_week,
+        PMTemplate.is_deleted == False
     ).count()
 
-    # Completed count with filters
+    # Completed count with filters (exclude deleted)
     completed_count = db.query(PMTemplate).filter(
         *filters,
-        PMTemplate.status == 'completed'
+        PMTemplate.status == 'completed',
+        PMTemplate.is_deleted == False
     ).count()
 
     # Completion rate with filters
@@ -58,7 +62,6 @@ def get_pm_templates_overview(db: Session, org_id: UUID, params: PMTemplateReque
         "completion_rate": round(completion_rate, 2)
     }
 
-
 # ----------------- LOOKUP by Frequency -----------------
 def pm_templates_filter_frequency_lookup(db: Session, org_id: str):
     rows = (
@@ -66,7 +69,10 @@ def pm_templates_filter_frequency_lookup(db: Session, org_id: str):
             func.lower(PMTemplate.frequency).label("id"),
             func.initcap(PMTemplate.frequency).label("name")
         )
-        .filter(PMTemplate.org_id == org_id)
+        .filter(
+            PMTemplate.org_id == org_id,
+            PMTemplate.is_deleted == False  # ✅ Add soft delete filter
+        )
         .distinct()
         .order_by(func.lower(PMTemplate.frequency))
         .all()
@@ -92,7 +98,10 @@ def pm_templates_category_lookup(db: Session, org_id: str) -> List[Dict]:
             AssetCategory.name.label("name")
         )
         .join(PMTemplate, PMTemplate.category_id == AssetCategory.id)
-        .filter(PMTemplate.org_id == org_id)
+        .filter(
+            PMTemplate.org_id == org_id,
+            PMTemplate.is_deleted == False  # ✅ Add soft delete filter
+        )
         .distinct()
         .order_by(AssetCategory.name)
     )
@@ -109,7 +118,10 @@ def pm_templates_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
             PMTemplate.status.label("id"),
             PMTemplate.status.label("name")
         )
-        .filter(PMTemplate.org_id == org_id)
+        .filter(
+            PMTemplate.org_id == org_id,
+            PMTemplate.is_deleted == False  # ✅ Add soft delete filter
+        )
         .distinct()
         .order_by(PMTemplate.status)
     )
@@ -125,7 +137,9 @@ def pm_templates_status_lookup(db: Session, org_id: str):
 
 # ----------------- Build Filters -----------------
 def build_pm_template_filters(org_id: UUID, params: PMTemplateRequest):
-    filters = [PMTemplate.org_id == org_id]
+    filters = [PMTemplate.org_id == org_id,
+                PMTemplate.is_deleted == False  # ✅ Add soft delete filter
+               ]
 
     if params.category_id and params.category_id.lower() != "all":
         filters.append(PMTemplate.category_id == params.category_id)
@@ -176,7 +190,9 @@ def get_pm_templates(db: Session, org_id: UUID, params: PMTemplateRequest) -> PM
 
 # ----------------- Get By ID -----------------
 def get_pm_template_by_id(db: Session, template_id: str) -> Optional[PMTemplate]:
-    return db.query(PMTemplate).filter(PMTemplate.id == template_id).first()
+    return db.query(PMTemplate).filter(PMTemplate.id == template_id,
+                                       PMTemplate.is_deleted == False  # ✅ Add soft delete filter
+                                       ).first()
 
 
 # ----------------- Create -----------------
@@ -200,12 +216,25 @@ def update_pm_template(db: Session, template: PMTemplateUpdate) -> Optional[PMTe
     return db_template
 
 
-# ----------------- Delete -----------------
-def delete_pm_template(db: Session, template_id: UUID) -> bool:
-    db_template = get_pm_template_by_id(db, template_id)
+# ----------------- Soft Delete PM Template -----------------
+def delete_pm_template_soft(db: Session, template_id: UUID, org_id: UUID) -> bool:
+    """
+    Soft delete PM template
+    Returns: True if deleted, False if not found
+    """
+    db_template = db.query(PMTemplate).filter(
+        PMTemplate.id == template_id,
+        PMTemplate.org_id == org_id,
+        PMTemplate.is_deleted == False
+    ).first()
+    
     if not db_template:
         return False
-    db.delete(db_template)
+    
+    # ✅ Soft delete
+    db_template.is_deleted = True
+    db_template.deleted_at = func.now()
     db.commit()
     return True
+
 

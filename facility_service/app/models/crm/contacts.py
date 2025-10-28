@@ -23,5 +23,5 @@ class Contact(Base):
     # Optional: relationship to site
     site = relationship("Site", backref="contacts")
 
-    service_requests = relationship("ServiceRequest", back_populates="requester")
+    
 

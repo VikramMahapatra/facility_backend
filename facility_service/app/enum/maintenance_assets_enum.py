@@ -52,9 +52,7 @@ class ServiceRequestRequesterKind(str, Enum):
 
     resident = "resident"
     merchant = "merchant"
-    guest = "guest"
-    staff = "staff"
-    visitor = "visitor"
+
 
 
 class ServiceRequestPriority(str, Enum):

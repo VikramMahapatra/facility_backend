@@ -33,18 +33,20 @@ def get_service_requests_endpoint(
     return crud.get_service_requests(db, current_user.org_id, params)
 
 
-# ----------------- Update Service Request -----------------
-@router.put("/", response_model=None)
-def update_service_request_route(
-    request_update: ServiceRequestUpdate,
+@router.put("/", response_model=ServiceRequestOut)
+def update_request_route(
+    request: ServiceRequestUpdate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    updated = crud.update_service_request(db, request_update, current_user)
-    if not updated:
-        raise HTTPException(
-            status_code=404, detail="Service Request not found")
-    return {"message": "Service Request updated successfully"}
+    updated_request = crud.update_service_request(
+        db=db,
+        request_update=request,
+        current_user=current_user
+    )
+    if not updated_request:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    return updated_request
 
 
 # ----------------- Create Service Request -----------------

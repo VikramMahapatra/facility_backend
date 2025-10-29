@@ -23,6 +23,7 @@ from ...schemas.leasing_tenants.tenants_schemas import (
     TenantRequest,
 )
 
+from fastapi import HTTPException, status
 # ------------------------------------------------------------
 
 def get_tenants_overview(db: Session, org_id) -> dict:
@@ -306,14 +307,40 @@ def get_commercial_partner_by_id(db: Session, partner_id: str) -> Optional[Comme
         CommercialPartner.is_deleted == False
     ).first()
 
+
 def create_tenant(db: Session, tenant: TenantCreate):
     now = datetime.utcnow()
 
     if tenant.tenant_type == "individual":
-        # Only create Tenant - include space_id
+        # ✅ Check if space already has a tenant (1 tenant per space)
+        existing_tenant_in_space = db.query(Tenant).filter(
+            Tenant.space_id == tenant.space_id,
+            Tenant.is_deleted == False
+        ).first()
+
+        if existing_tenant_in_space:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Space already has a tenant assigned. One space can only have one tenant."
+            )
+
+        # Check for duplicate name (case-insensitive) within the same site
+        existing_tenant_by_name = db.query(Tenant).filter(
+            Tenant.site_id == tenant.site_id,
+            Tenant.is_deleted == False,
+            func.lower(Tenant.name) == func.lower(tenant.name)  # Case-insensitive
+        ).first()
+
+        if existing_tenant_by_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tenant with name '{tenant.name}' already exists in this site"
+            )
+
+        # Create Tenant
         tenant_data = {
             "site_id": tenant.site_id,
-            "space_id": tenant.space_id,  # Store space_id in tenant
+            "space_id": tenant.space_id,
             "name": tenant.name,
             "email": tenant.email,
             "phone": tenant.phone,
@@ -329,12 +356,38 @@ def create_tenant(db: Session, tenant: TenantCreate):
         return db_tenant
 
     elif tenant.tenant_type == "commercial":
-        # Only create CommercialPartner - include space_id
+        # ✅ Check if space already has a commercial partner (1 tenant per space)
+        existing_partner_in_space = db.query(CommercialPartner).filter(
+            CommercialPartner.space_id == tenant.space_id,
+            CommercialPartner.is_deleted == False
+        ).first()
+
+        if existing_partner_in_space:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Space already has a commercial partner assigned. One space can only have one tenant."
+            )
+
+        # Check for duplicate legal_name (case-insensitive) within the same site
+        legal_name = tenant.legal_name or tenant.name
+        existing_partner_by_name = db.query(CommercialPartner).filter(
+            CommercialPartner.site_id == tenant.site_id,
+            CommercialPartner.is_deleted == False,
+            func.lower(CommercialPartner.legal_name) == func.lower(legal_name)  # Case-insensitive
+        ).first()
+
+        if existing_partner_by_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Commercial partner with name '{legal_name}' already exists in this site"
+            )
+
+        # Create CommercialPartner
         partner_data = {
             "site_id": tenant.site_id,
-            "space_id": tenant.space_id,  # Store space_id in commercial partner
+            "space_id": tenant.space_id,
             "type": tenant.type or "merchant",
-            "legal_name": tenant.legal_name or tenant.name,
+            "legal_name": legal_name,
             "contact": tenant.contact_info.dict() if tenant.contact_info else None,
             "status": tenant.status or "active",
             "created_at": now,
@@ -346,23 +399,52 @@ def create_tenant(db: Session, tenant: TenantCreate):
         db.refresh(db_partner)
         return db_partner
 
-def update_tenant(db: Session, update_data: TenantUpdate):
+def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
     update_dict = update_data.dict(exclude_unset=True)
     update_dict["updated_at"] = datetime.utcnow()
 
     if update_data.tenant_type == "individual":
-        db_tenant = get_tenant_by_id(db, update_data.id)
+        db_tenant = get_tenant_by_id(db, tenant_id)
         if not db_tenant:
-            return None
+            raise HTTPException(status_code=404, detail="Tenant not found")
 
-        # Update Tenant table - include space_id
-        db.query(Tenant).filter(Tenant.id == update_data.id).update(
+        # ✅ Check if space_id is being updated and if new space already has a tenant
+        if 'space_id' in update_dict and update_dict['space_id'] != db_tenant.space_id:
+            existing_tenant_in_new_space = db.query(Tenant).filter(
+                Tenant.space_id == update_dict['space_id'],
+                Tenant.id != tenant_id,  # Exclude current tenant
+                Tenant.is_deleted == False
+            ).first()
+
+            if existing_tenant_in_new_space:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Target space already has a tenant assigned. One space can only have one tenant."
+                )
+
+        # Check for duplicate name (case-insensitive) if name is being updated
+        if 'name' in update_dict and update_dict['name'] != db_tenant.name:
+            existing_tenant_by_name = db.query(Tenant).filter(
+                Tenant.site_id == db_tenant.site_id,
+                Tenant.id != tenant_id,
+                Tenant.is_deleted == False,
+                func.lower(Tenant.name) == func.lower(update_dict['name'])  # Case-insensitive
+            ).first()
+
+            if existing_tenant_by_name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Tenant with name '{update_dict['name']}' already exists in this site"
+                )
+
+        # Update Tenant table
+        db.query(Tenant).filter(Tenant.id == tenant_id).update(
             {
                 "name": update_dict.get("name", db_tenant.name),
                 "email": update_dict.get("email", db_tenant.email),
                 "phone": update_dict.get("phone", db_tenant.phone),
                 "status": update_dict.get("status", db_tenant.status),
-                "space_id": update_dict.get("space_id", db_tenant.space_id),  # Update space_id
+                "space_id": update_dict.get("space_id", db_tenant.space_id),
                 "address": (
                     update_dict.get("contact_info", {}).get("address")
                     if update_dict.get("contact_info")
@@ -377,19 +459,46 @@ def update_tenant(db: Session, update_data: TenantUpdate):
         return db_tenant
 
     elif update_data.tenant_type == "commercial":
-        db_partner = get_commercial_partner_by_id(db, update_data.id)
-
+        db_partner = get_commercial_partner_by_id(db, tenant_id)
         if not db_partner:
-            return None
+            raise HTTPException(status_code=404, detail="Commercial partner not found")
 
+        # ✅ Check if space_id is being updated and if new space already has a commercial partner
+        if 'space_id' in update_dict and update_dict['space_id'] != db_partner.space_id:
+            existing_partner_in_new_space = db.query(CommercialPartner).filter(
+                CommercialPartner.space_id == update_dict['space_id'],
+                CommercialPartner.id != tenant_id,  # Exclude current partner
+                CommercialPartner.is_deleted == False
+            ).first()
+
+            if existing_partner_in_new_space:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Target space already has a commercial partner assigned. One space can only have one tenant."
+                )
+
+        # Check for duplicate legal_name (case-insensitive) if being updated
+        new_legal_name = update_dict.get("legal_name") or update_dict.get("name")
+        if new_legal_name and new_legal_name != db_partner.legal_name:
+            existing_partner_by_name = db.query(CommercialPartner).filter(
+                CommercialPartner.site_id == db_partner.site_id,
+                CommercialPartner.id != tenant_id,
+                CommercialPartner.is_deleted == False,
+                func.lower(CommercialPartner.legal_name) == func.lower(new_legal_name)  # Case-insensitive
+            ).first()
+
+            if existing_partner_by_name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Commercial partner with name '{new_legal_name}' already exists in this site"
+                )
+
+        # Update commercial partner
         if db_partner:
-            # Update existing commercial partner - include space_id
-            db_partner.legal_name = update_dict.get(
-                "legal_name", db_partner.legal_name)
+            db_partner.legal_name = update_dict.get("legal_name", db_partner.legal_name)
             db_partner.type = update_dict.get("type", db_partner.type)
-            db_partner.space_id = update_dict.get("space_id", db_partner.space_id)  # ADDED space_id update
-            db_partner.contact = update_dict.get(
-                "contact_info") or db_partner.contact
+            db_partner.space_id = update_dict.get("space_id", db_partner.space_id)
+            db_partner.contact = update_dict.get("contact_info") or db_partner.contact
             db_partner.status = update_dict.get("status", db_partner.status)
             db_partner.updated_at = datetime.utcnow()
 
@@ -398,7 +507,8 @@ def update_tenant(db: Session, update_data: TenantUpdate):
 
     else:
         raise ValueError(f"Invalid tenant_type: {update_data.tenant_type}")
-
+    
+    
 # ----------------- Delete Tenant -----------------
 def delete_tenant(db: Session, tenant_id: UUID) -> Dict:
     """Delete tenant with automatic type detection"""

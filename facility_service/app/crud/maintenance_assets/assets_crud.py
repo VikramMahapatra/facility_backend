@@ -15,6 +15,9 @@ from shared.schemas import Lookup
 from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.maintenance_assets.assets import Asset
 from ...schemas.maintenance_assets.assets_schemas import AssetCreate, AssetOut, AssetUpdate, AssetsRequest, AssetsResponse
+from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
+
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
@@ -159,22 +162,129 @@ def get_asset_by_id(db: Session, asset_id: str):
         .first()
     )
 
+#----------------create-----------------------------------
+
 def create_asset(db: Session, asset: AssetCreate):
+    # Check for duplicate name (case-insensitive) within the same org and site
+    existing_asset = db.query(Asset).filter(
+        Asset.org_id == asset.org_id,
+        Asset.site_id == asset.site_id,
+        Asset.is_deleted == False,
+        func.lower(Asset.name) == func.lower(asset.name)  # Case-insensitive
+    ).first()
+
+    if existing_asset:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Asset with name '{asset.name}' already exists in this site"
+        )
+
+    # Check for duplicate serial_no (case-insensitive) if provided
+    if asset.serial_no:
+        existing_serial = db.query(Asset).filter(
+            Asset.org_id == asset.org_id,
+            Asset.site_id == asset.site_id,
+            Asset.is_deleted == False,
+            func.lower(Asset.serial_no) == func.lower(asset.serial_no)  # Case-insensitive
+        ).first()
+
+        if existing_serial:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Asset with serial number '{asset.serial_no}' already exists"
+            )
+
+    # Check for duplicate tag (case-insensitive)
+    existing_tag = db.query(Asset).filter(
+        Asset.org_id == asset.org_id,
+        Asset.site_id == asset.site_id,
+        Asset.is_deleted == False,
+        func.lower(Asset.tag) == func.lower(asset.tag)  # Case-insensitive
+    ).first()
+
+    if existing_tag:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Asset with tag '{asset.tag}' already exists in this site"
+        )
+
+    # Create the asset
     db_asset = Asset(**asset.model_dump())
     db.add(db_asset)
     db.commit()
     db.refresh(db_asset)
     return db_asset
-
-def update_asset(db: Session, asset: AssetUpdate):
-    db_asset = get_asset_by_id(db, asset.id)
+def update_asset(db: Session, asset_id: UUID, asset_update: AssetUpdate):
+    db_asset = get_asset_by_id(db, asset_id)
     if not db_asset:
-        return None
-    for k, v in asset.dict(exclude_unset=True).items():
-        setattr(db_asset, k, v)
-    db.commit()
-    db.refresh(db_asset)
-    return db_asset
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found"
+        )
+    
+    # Extract update data
+    update_data = asset_update.model_dump(exclude_unset=True)
+    
+    # Only validate if tag, name, or serial_no are being updated
+    if any(field in update_data for field in ['tag', 'name', 'serial_no']):
+        # Build duplicate check query (exclude current asset)
+        duplicate_filters = [
+            Asset.org_id == db_asset.org_id,
+            Asset.site_id == db_asset.site_id,
+            Asset.id != asset_id,
+            Asset.is_deleted == False
+        ]
+        
+        duplicate_conditions = []
+        if 'tag' in update_data:
+            duplicate_conditions.append(Asset.tag == update_data['tag'])  # Case-sensitive for tags
+        if 'name' in update_data:
+            duplicate_conditions.append(func.lower(Asset.name) == func.lower(update_data['name']))  # Case-insensitive for names
+        if 'serial_no' in update_data and update_data['serial_no']:
+            duplicate_conditions.append(Asset.serial_no == update_data['serial_no'])  # Case-sensitive for serial numbers
+        
+        if duplicate_conditions:
+            duplicate_filters.append(or_(*duplicate_conditions))
+            
+            # Check for existing assets with same values
+            existing_asset = db.query(Asset).filter(*duplicate_filters).first()
+            
+            if existing_asset:
+                if 'tag' in update_data and existing_asset.tag == update_data['tag']:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Asset with tag '{update_data['tag']}' already exists in this site"
+                    )
+                if 'name' in update_data and func.lower(existing_asset.name) == func.lower(update_data['name']):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Asset with name '{update_data['name']}' already exists in this site"
+                    )
+                if 'serial_no' in update_data and update_data['serial_no'] and existing_asset.serial_no == update_data['serial_no']:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Asset with serial number '{update_data['serial_no']}' already exists"
+                    )
+    
+    # Update the asset
+    for field, value in update_data.items():
+        setattr(db_asset, field, value)
+    
+    try:
+        db.commit()
+        db.refresh(db_asset)
+        return db_asset
+    except IntegrityError as e:
+        db.rollback()
+        if "uix_org_site_tag" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Asset with tag '{update_data.get('tag', db_asset.tag)}' already exists in this site"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Duplicate asset found during update"
+        )
 
 def delete_asset(db: Session, asset_id: str, org_id: str) -> bool:
     """

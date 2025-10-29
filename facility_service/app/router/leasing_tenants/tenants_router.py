@@ -41,16 +41,12 @@ def tenants_overview(
     return crud.get_tenants_overview(db, current_user.org_id)
 
 # ----------------- Update Tenant -----------------
-@router.put("/", response_model=None)
-def update_tenant_endpoint(
-    tenant_update: TenantUpdate,
-    db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
-):
-    updated = crud.update_tenant(db, tenant_update)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    return {"message": "Tenant updated successfully"}
+@router.put("/{tenant_id}", response_model=None)
+def update_tenant(
+        tenant_id: UUID,  # Get from URL path
+        update_data: TenantUpdate,  # Get from request body
+        db: Session = Depends(get_db)):
+    return crud.update_tenant(db, tenant_id, update_data)  # Pass 3 arguments
 
 # ----------------- Create Tenant -----------------
 @router.post("/", response_model=None)

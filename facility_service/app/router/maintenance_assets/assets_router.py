@@ -44,12 +44,13 @@ def create_asset(
     asset.org_id = current_user.org_id
     return crud.create_asset(db, asset)
 
-@router.put("/", response_model=None)
-def update_asset(asset: AssetUpdate, db: Session = Depends(get_db)):
-    db_asset = crud.update_asset(db, asset)
-    if not db_asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    return db_asset
+@router.put("/{asset_id}", response_model=None)
+def update_asset(
+        asset_id: UUID,
+        asset_update: AssetUpdate,
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.update_asset(db, asset_id, asset_update)
 
 # ---------------- Delete Asset (Soft Delete) ----------------
 @router.delete("/{asset_id}")  # REMOVE response_model=AssetOut

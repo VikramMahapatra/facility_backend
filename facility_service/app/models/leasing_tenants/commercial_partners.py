@@ -8,6 +8,7 @@ from shared.database import Base
 
 class CommercialPartner(Base):
     __tablename__ = "commercial_partners"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     site_id = Column(UUID(as_uuid=True), nullable=False)

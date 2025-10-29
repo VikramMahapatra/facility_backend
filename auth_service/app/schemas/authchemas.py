@@ -1,7 +1,6 @@
-from pydantic import BaseModel, EmailStr, Field, HttpUrl
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator
 from typing import Annotated, Literal, Optional, Union
-
-from shared.schemas import EmptyStringModel
+from shared.empty_string_model_wrapper import EmptyStringModel
 from ..schemas.userschema import UserResponse
 
 AllowedRole = Literal["manager", "admin", "superadmin", "user", "default"]
@@ -40,7 +39,7 @@ class LoginSuccessResponse(EmptyStringModel):
     user: UserResponse
 
 
-class AuthenticationResponse(EmptyStringModel):
+class AuthenticationResponse(BaseModel):
     needs_registration: Literal[True, False]
     access_token: Optional[str] = None
     token_type: str = "bearer"
@@ -49,6 +48,17 @@ class AuthenticationResponse(EmptyStringModel):
     email: Optional[EmailStr] = None
     mobile: Optional[str] = None
     picture: Optional[str] = None
+
+    @model_validator(mode="after")
+    def convert_null_values(self):
+        for field, value in self.__dict__.items():
+            if field == "user":
+                if value is None:
+                    setattr(self, field, {})  # ✅ Empty object
+            else:
+                if value is None:
+                    setattr(self, field, "")  # ✅ Empty string
+        return self
 
 
 AuthResponse = Annotated[

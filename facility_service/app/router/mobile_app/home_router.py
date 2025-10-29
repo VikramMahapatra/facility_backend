@@ -2,7 +2,6 @@ from datetime import datetime
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
-from sqlalchemy import UUID
 from sqlalchemy.orm import Session
 
 from ...schemas.mobile_app.home_schemas import HomeDetailResponse, HomeDetailsResponse
@@ -23,7 +22,9 @@ router = APIRouter(
 def get_master_details(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_token)):
     return home_crud.get_home_spaces(db, current_user)
 
-#home details 
+# home details
+
+
 @router.get("/details", response_model=HomeDetailsResponse)
 def get_home_details_endpoint(
     space_id: str = Query(..., description="Space ID to get home details for"),

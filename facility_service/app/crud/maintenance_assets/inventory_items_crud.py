@@ -30,7 +30,7 @@ def create_inventory_item(db: Session, item: InventoryItemCreate, org_id: UUID) 
     # ✅ Use org_id from token instead of request body
     item_data = item.dict()
     item_data['org_id'] = org_id  # Override with token org_id
-    db_item = InventoryItem(id=str(uuid.uuid4()), **item_data)
+    db_item = InventoryItem(**item_data)
     db.add(db_item)
     db.commit()
     db.refresh(db_item)

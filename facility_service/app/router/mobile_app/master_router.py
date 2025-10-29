@@ -22,8 +22,8 @@ def site_lookup(params: SiteRequest = None, db: Session = Depends(get_db)):
 
 
 @router.post("/building-lookup", response_model=List[Lookup])
-def building_lookup(site_id: Optional[str] = None, db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
-    return building_block_crud.get_building_lookup(db, site_id, current_user.org_id)
+def building_lookup(site_id: Optional[str] = None, db: Session = Depends(get_db)):
+    return building_block_crud.get_building_lookup(db, site_id, None)
 
 
 @router.post("/space-lookup", response_model=List[Lookup])

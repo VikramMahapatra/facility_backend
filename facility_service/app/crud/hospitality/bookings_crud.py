@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Dict, List, Optional
 from sqlalchemy import Text, distinct, func, case, cast, Date, or_
 from sqlalchemy.orm import Session
-from ...enum.hospitality_enum import BookingChannel
+from ...enum.hospitality_enum import BookingChannel, BookingStatus
 from shared.schemas import Lookup, UserToken
 from ...models.hospitality.bookings import Booking
 from ...models.hospitality.booking_cancellations import BookingCancellation
@@ -94,6 +94,12 @@ def Booking_channel_lookup(org_id: UUID, db: Session):
         for channel in BookingChannel
     ]
 
+
+def Booking_status_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=status.value, name=status.name.capitalize())
+        for status in BookingStatus
+    ]
 
 # ----------------- Build Filters -----------------
 def build_booking_filters(org_id: UUID, params: BookingRequest):

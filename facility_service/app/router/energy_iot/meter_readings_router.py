@@ -38,9 +38,7 @@ def overview(
 @router.post("/", response_model=None)
 def create_meter_reading(
         data: MeterReadingCreate,
-        db: Session = Depends(get_db),
-        current_user: UserToken = Depends(validate_current_token)):
-    data.org_id = current_user.org_id
+        db: Session = Depends(get_db)):
     return crud.create(db, data)
 
 

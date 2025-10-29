@@ -6,6 +6,9 @@ from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.maintenance_assets.assets import Asset
 from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryCreate, AssetCategoryUpdate
 from uuid import UUID
+from sqlalchemy import func, or_, and_
+from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 
 def get_asset_categories(db: Session, skip: int = 0, limit: int = 100) -> List[AssetCategory]:
     # Updated filter to exclude deleted categories
@@ -15,8 +18,37 @@ def get_asset_category_by_id(db: Session, category_id: str) -> Optional[AssetCat
     #  Updated filter to exclude deleted categories
     return db.query(AssetCategory).filter(AssetCategory.id == category_id, AssetCategory.is_deleted == False).first()
 
+
 def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCategory:
-    db_category = AssetCategory(id=str(uuid.uuid4()), **category.dict())
+    # Check for duplicate name (case-insensitive) within the same organization
+    existing_category = db.query(AssetCategory).filter(
+        AssetCategory.org_id == category.org_id,
+        AssetCategory.is_deleted == False,
+        func.lower(AssetCategory.name) == func.lower(category.name)  # Case-insensitive
+    ).first()
+
+    if existing_category:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Category with name '{category.name}' already exists in this organization"
+        )
+
+    # Check for duplicate code (case-insensitive) if provided
+    if category.code:
+        existing_code = db.query(AssetCategory).filter(
+            AssetCategory.org_id == category.org_id,
+            AssetCategory.is_deleted == False,
+            func.lower(AssetCategory.code) == func.lower(category.code)  # Case-insensitive
+        ).first()
+
+        if existing_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Category with code '{category.code}' already exists"
+            )
+
+    # Create the category
+    db_category = AssetCategory(id=str(uuid.uuid4()), **category.model_dump())
     db.add(db_category)
     db.commit()
     db.refresh(db_category)
@@ -25,29 +57,66 @@ def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCa
 def update_asset_category(db: Session, category_id: str, category: AssetCategoryUpdate) -> Optional[AssetCategory]:
     db_category = get_asset_category_by_id(db, category_id)
     if not db_category:
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found"
+        )
     
-    # Check if code is being updated and if it already exists for another category
-    if category.code and category.code != db_category.code:
-        existing_category = db.query(AssetCategory).filter(
-            AssetCategory.code == category.code,
+    # Extract update data
+    update_data = category.model_dump(exclude_unset=True)
+    
+    # Only validate if name or code are being updated
+    if any(field in update_data for field in ['name', 'code']):
+        # Build duplicate check query (exclude current category)
+        duplicate_filters = [
+            AssetCategory.org_id == db_category.org_id,
             AssetCategory.id != category_id,
             AssetCategory.is_deleted == False
-        ).first()
-        if existing_category:
+        ]
+        
+        duplicate_conditions = []
+        if 'name' in update_data:
+            duplicate_conditions.append(func.lower(AssetCategory.name) == func.lower(update_data['name']))
+        if 'code' in update_data and update_data['code']:
+            duplicate_conditions.append(func.lower(AssetCategory.code) == func.lower(update_data['code']))
+        
+        if duplicate_conditions:
+            duplicate_filters.append(or_(*duplicate_conditions))
+            
+            # Check for existing categories with same values
+            existing_category = db.query(AssetCategory).filter(*duplicate_filters).first()
+            
+            if existing_category:
+                if 'name' in update_data and func.lower(existing_category.name) == func.lower(update_data['name']):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Category with name '{update_data['name']}' already exists in this organization"
+                    )
+                if 'code' in update_data and update_data['code'] and func.lower(existing_category.code) == func.lower(update_data['code']):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Category with code '{update_data['code']}' already exists"
+                    )
+    
+    # Update the category
+    for field, value in update_data.items():
+        setattr(db_category, field, value)
+    
+    try:
+        db.commit()
+        db.refresh(db_category)
+        return db_category
+    except IntegrityError as e:
+        db.rollback()
+        if "asset_categories_code_key" in str(e):
             raise HTTPException(
-                status_code=400, 
-                detail=f"Category code '{category.code}' already exists"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Category with code '{update_data.get('code', db_category.code)}' already exists"
             )
-    
-    # Update fields
-    for k, v in category.dict(exclude_unset=True).items():
-        setattr(db_category, k, v)
-    
-    db.commit()
-    db.refresh(db_category)
-    return db_category
-
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Duplicate category found during update"
+        )
 
 
 def delete_asset_category(db: Session, category_id: str, org_id: UUID) -> bool:

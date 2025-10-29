@@ -53,11 +53,9 @@ def update_invoice(invoice: InvoiceUpdate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Invoice not found")
     return db_invoice
 
-
 @router.delete("/{invoice_id}", response_model=None)
-def delete_space(space_id: str, db: Session = Depends(get_db)):
-    db_invoice = crud.delete_space(db, space_id)
-    if not db_invoice:
+def delete_invoice(invoice_id: str, db: Session = Depends(get_db)):
+    result = crud.delete_invoice(db, invoice_id)  # ✅ Correct function name
+    if not result:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    return db_invoice
-
+    return {"message": "Invoice deleted successfully"}

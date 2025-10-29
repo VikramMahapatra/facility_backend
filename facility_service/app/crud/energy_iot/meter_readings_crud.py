@@ -63,14 +63,13 @@ def get_meter_readings_overview(db: Session, org_id: UUID):
         "iotConnected": iot_connected,
     }
 
-
 def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = False) -> MeterReadingListResponse:
     """Return all readings, optionally filtered by meter."""
     q = db.query(MeterReading).join(Meter)
 
     if params.search:
         search_term = f"%{params.search}%"
-        q.filter(
+        q = q.filter(  # Note: you need to assign back to q
             or_(
                 Meter.code.ilike(search_term),
                 Meter.kind.ilike(search_term)
@@ -81,18 +80,14 @@ def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = 
     if not is_export:
         total = q.with_entities(func.count(MeterReading.id)).scalar()
 
+    # Apply ordering, offset, and limit
+    q = q.order_by(MeterReading.ts.desc())
+    
     if not is_export:
-        query = (
-            q
-            .order_by(MeterReading.ts.desc())
-            .offset(params.skip)
-            .limit(params.limit)
-            .all()
-        )
-    else:
-        query = q.order_by(MeterReading.ts.desc())
+        q = q.offset(params.skip).limit(params.limit)
 
-    meter_readings = query.all()
+    # Execute the query
+    meter_readings = q.all()
 
     readings = []
     for r in meter_readings:
@@ -110,8 +105,7 @@ def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = 
     if is_export:
         return {"readings": readings}
 
-    return {"readings": readings, "total": len(readings)}
-
+    return {"readings": readings, "total": total}  # Use the total count we calculated earlier
 
 def create(db: Session, payload: MeterReadingCreate) -> MeterReading:
     obj = MeterReading(**payload.model_dump())

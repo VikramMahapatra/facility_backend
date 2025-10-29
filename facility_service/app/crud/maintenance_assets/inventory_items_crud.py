@@ -2,6 +2,7 @@
 
 from typing import List, Optional
 from uuid import UUID
+import uuid
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from ...models.maintenance_assets.inventory_items import InventoryItem

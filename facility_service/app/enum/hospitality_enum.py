@@ -7,6 +7,14 @@ class BookingChannel(str, Enum):
     online_travel_agent = "Online Travel Agent"
     corporate = "Corporate"
 
+class BookingStatus(str,Enum):
+    
+    reserved = "reserved"
+    in_house = "in_house"
+    cancelled = "cancelled"
+    checked_out = "checked_out"
+    no_show = "no_show"
+
 class RatePlanStatus (str , Enum):
 
     active = "Active"

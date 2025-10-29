@@ -5,6 +5,8 @@ from typing import Any, List, Literal, Optional
 from uuid import UUID
 from datetime import datetime
 
+from shared.empty_string_model_wrapper import EmptyStringModel
+
 # Shared properties
 
 
@@ -79,7 +81,7 @@ class RolePolicyOut(BaseModel):
         from_attributes = True
 
 
-class UserResponse(BaseModel):
+class UserResponse(EmptyStringModel):
     id: str
     name: str
     email: str

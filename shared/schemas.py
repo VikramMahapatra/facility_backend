@@ -58,5 +58,5 @@ class JsonOutResult(EmptyStringModel, Generic[T]):
 
 
 class MasterLookupQueryParams(BaseModel):
-    site_id: Optional[UUID] = None
-    building_id: Optional[UUID] = None
+    site_id: Optional[str] = None
+    building_id: Optional[str] = None

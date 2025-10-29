@@ -8,9 +8,9 @@ from shared.schemas import CommonQueryParams
 
 
 class AssetBase(BaseModel):
-    org_id: Optional[UUID]
+    org_id: Optional[UUID]=None
     site_id: UUID
-    space_id: Optional[UUID]
+    space_id: Optional[UUID]=None
     category_id: Optional[UUID]
     tag: str
     name: str
@@ -20,7 +20,7 @@ class AssetBase(BaseModel):
     purchase_date: Optional[date]
     warranty_expiry: Optional[date]
     cost: Optional[float]
-    attributes: Optional[Dict]
+    attributes: Optional[Dict]=None
     status: Optional[str] = "active"
 
 

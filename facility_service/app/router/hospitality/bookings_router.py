@@ -94,3 +94,10 @@ def booking_channel_lookup(
 ):
     return crud.Booking_channel_lookup(db, current_user.org_id)
 
+# ----------------status Lookup by enum ----------------
+@router.get("/status-lookup", response_model=List[Lookup])
+def booking_status_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.Booking_status_lookup(db, current_user.org_id)

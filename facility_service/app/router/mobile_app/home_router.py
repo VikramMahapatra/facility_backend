@@ -26,7 +26,7 @@ def get_master_details(db: Session = Depends(get_db), current_user: UserToken = 
 
 
 @router.get("/details", response_model=HomeDetailsResponse)
-def get_home_details_endpoint(
+def get_home_details(
     space_id: str = Query(..., description="Space ID to get home details for"),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_token)

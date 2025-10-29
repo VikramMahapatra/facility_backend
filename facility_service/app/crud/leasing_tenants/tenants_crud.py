@@ -3,8 +3,9 @@ from datetime import datetime
 from typing import Dict, Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, literal, or_
-from sqlalchemy.dialects.postgresql import UUID
+from uuid import UUID
 
+from ...models.leasing_tenants.lease_charges import LeaseCharge
 from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.models.space_sites.buildings import Building
 
@@ -511,72 +512,128 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
     
 # ----------------- Delete Tenant -----------------
 def delete_tenant(db: Session, tenant_id: UUID) -> Dict:
-    """Delete tenant with automatic type detection"""
+    """Delete tenant with automatic type detection - DELETES LEASES & CHARGES TOO"""
     
     # Try individual tenant first
     tenant = get_tenant_by_id(db, tenant_id)
     if tenant:
-        return _delete_individual_tenant(db, tenant_id)
+        return delete_individual_tenant(db, tenant_id)
     
     # Try commercial partner
     partner = get_commercial_partner_by_id(db, tenant_id)
     if partner:
-        return _delete_commercial_partner(db, tenant_id)
+        return delete_commercial_partner(db, tenant_id)
     
     return {"success": False, "message": "Tenant not found"}
 
-def _delete_individual_tenant(db: Session, tenant_id: UUID) -> Dict:
-    """Helper function to delete individual tenant"""
-    tenant = get_tenant_by_id(db, tenant_id)
-    if not tenant:
-        return {"success": False, "message": "Tenant not found"}
+def delete_individual_tenant(db: Session, tenant_id: UUID) -> Dict:
+    """Soft delete individual tenant + all leases + all lease charges"""
+    try:
+        tenant = get_tenant_by_id(db, tenant_id)
+        if not tenant:
+            return {"success": False, "message": "Tenant not found"}
+        
+        # ✅ FIXED: Get leases properly
+        leases = db.query(Lease).filter(
+            Lease.tenant_id == tenant_id,
+            Lease.is_deleted == False
+        ).all()
+        
+        lease_ids = [lease.id for lease in leases]
+        active_lease_count = len([lease for lease in leases if lease.status == "active"])
+        
+        now = datetime.utcnow()
+        
+        # ✅ 1. SOFT DELETE THE TENANT
+        tenant.is_deleted = True
+        tenant.updated_at = now
+        
+        # ✅ 2. SOFT DELETE ALL LEASES FOR THIS TENANT
+        if lease_ids:
+            db.query(Lease).filter(
+                Lease.id.in_(lease_ids)
+            ).update({
+                "is_deleted": True, 
+                "updated_at": now
+            }, synchronize_session=False)
+            
+            # ✅ 3. SOFT DELETE ALL LEASE CHARGES FOR THOSE LEASES
+            db.query(LeaseCharge).filter(
+                LeaseCharge.lease_id.in_(lease_ids),
+                LeaseCharge.is_deleted == False
+            ).update({
+                "is_deleted": True
+            }, synchronize_session=False)
+        
+        db.commit()
+        
+        # ✅ CLEAR MESSAGE: Only show one message with active lease count
+        if active_lease_count > 0:
+            return {
+                "success": True, 
+                "message": f"Tenant with {active_lease_count} active lease(s) deleted successfully"
+            }
+        else:
+            return {"success": True, "message": "Tenant deleted successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "message": f"Database error: {str(e)}"}
+
+def delete_commercial_partner(db: Session, partner_id: UUID) -> Dict:
+    """Soft delete commercial partner + all leases + all lease charges"""
+    try:
+        partner = get_commercial_partner_by_id(db, partner_id)
+        if not partner:
+            return {"success": False, "message": "Commercial partner not found"}
+        
+        # ✅ FIXED: Get leases properly
+        leases = db.query(Lease).filter(
+            Lease.partner_id == partner_id,
+            Lease.is_deleted == False
+        ).all()
+        
+        lease_ids = [lease.id for lease in leases]
+        active_lease_count = len([lease for lease in leases if lease.status == "active"])
+        
+        now = datetime.utcnow()
+        
+        # ✅ 1. SOFT DELETE THE COMMERCIAL PARTNER
+        partner.is_deleted = True
+        
+        # ✅ 2. SOFT DELETE ALL LEASES FOR THIS PARTNER
+        if lease_ids:
+            db.query(Lease).filter(
+                Lease.id.in_(lease_ids)
+            ).update({
+                "is_deleted": True, 
+                "updated_at": now
+            }, synchronize_session=False)
+            
+            # ✅ 3. SOFT DELETE ALL LEASE CHARGES FOR THOSE LEASES
+            db.query(LeaseCharge).filter(
+                LeaseCharge.lease_id.in_(lease_ids),
+                LeaseCharge.is_deleted == False
+            ).update({
+                "is_deleted": True
+            }, synchronize_session=False)
+        
+        db.commit()
+        
+        # ✅ CLEAR MESSAGE: Only show one message with active lease count
+        if active_lease_count > 0:
+            return {
+                "success": True, 
+                "message": f"Commercial partner with {active_lease_count} active lease(s) deleted successfully"
+            }
+        else:
+            return {"success": True, "message": "Commercial partner deleted successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "message": f"Database error: {str(e)}"}
     
-    # CHECK FOR ACTIVE LEASES - PREVENTS DELETION IF ACTIVE LEASES EXIST
-    active_leases_count = db.query(Lease).filter(
-        Lease.tenant_id == tenant_id,
-        Lease.is_deleted == False,
-        Lease.status == "active"  # ONLY CHECK ACTIVE LEASES
-    ).count()
-
-    if active_leases_count > 0:
-        return {
-            "success": False,
-            "message": f"Cannot delete tenant with {active_leases_count} active lease(s). Please delete all leases first.",
-            "active_leases_count": active_leases_count
-        }
-
-    # Soft delete the tenant
-    tenant.is_deleted = True
-    tenant.updated_at = datetime.utcnow()
-    db.commit()
-    return {"success": True, "message": "Tenant deleted successfully"}
-
-def _delete_commercial_partner(db: Session, partner_id: UUID) -> Dict:
-    """Helper function to delete commercial partner"""
-    partner = get_commercial_partner_by_id(db, partner_id)
-    if not partner:
-        return {"success": False, "message": "Commercial partner not found"}
     
-    # CHECK FOR ACTIVE LEASES - PREVENTS DELETION IF ACTIVE LEASES EXIST
-    active_leases_count = db.query(Lease).filter(
-        Lease.partner_id == partner_id,
-        Lease.is_deleted == False,
-        Lease.status == "active"  # ONLY CHECK ACTIVE LEASES
-    ).count()
-
-    if active_leases_count > 0:
-        return {
-            "success": False,
-            "message": f"Cannot delete commercial partner with {active_leases_count} active lease(s). Please delete all leases first.",
-            "active_leases_count": active_leases_count
-        }
-
-    # Soft delete the commercial partner
-    partner.is_deleted = True
-    partner.updated_at = datetime.utcnow()
-    db.commit()
-    return {"success": True, "message": "Commercial partner deleted successfully"}
-
 # -----------type lookup
 def tenant_type_lookup(db: Session, org_id: str) -> List[Dict]:
     return [

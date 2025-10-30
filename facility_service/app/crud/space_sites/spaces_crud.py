@@ -1,6 +1,7 @@
 import uuid
 from typing import List, Optional
 from datetime import datetime
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
@@ -97,6 +98,31 @@ def get_space_by_id(db: Session, space_id: str) -> Optional[Space]:
 
 
 def create_space(db: Session, space: SpaceCreate) -> Space:
+    # Check for duplicate space code within the same building (case-insensitive)
+    if space.building_block_id:
+        existing_space = db.query(Space).filter(
+            Space.building_block_id == space.building_block_id,
+            Space.is_deleted == False,
+            func.lower(Space.code) == func.lower(space.code)  # Case-insensitive code within same building
+        ).first()
+        
+        if existing_space:
+            building_name = db.query(Building.name).filter(Building.id == space.building_block_id).scalar()
+            raise HTTPException(400, f"Space with code '{space.code}' already exists in building '{building_name}'")
+    
+    # Check for duplicate space name within the same building (if building and name are specified)
+    if space.building_block_id and space.name:
+        existing_space_by_name = db.query(Space).filter(
+            Space.building_block_id == space.building_block_id,
+            Space.is_deleted == False,
+            func.lower(Space.name) == func.lower(space.name)  # Case-insensitive name within same building
+        ).first()
+        
+        if existing_space_by_name:
+            building_name = db.query(Building.name).filter(Building.id == space.building_block_id).scalar()
+            raise HTTPException(400, f"Space with name '{space.name}' already exists in building '{building_name}'")
+    
+    # Create space
     db_space = Space(**space.model_dump(exclude="building_block"))
     db.add(db_space)
     db.commit()
@@ -107,9 +133,40 @@ def create_space(db: Session, space: SpaceCreate) -> Space:
 def update_space(db: Session, space: SpaceUpdate) -> Optional[Space]:
     db_space = get_space_by_id(db, space.id)
     if not db_space:
-        return None
-    for k, v in space.dict(exclude_unset=True).items():
-        setattr(db_space, k, v)
+        raise HTTPException(404, "Space not found")
+    
+    update_data = space.dict(exclude_unset=True)
+    
+    # Check for code duplicates within same building (if building exists and code is being updated)
+    if 'code' in update_data and db_space.building_block_id:
+        existing_space = db.query(Space).filter(
+            Space.building_block_id == db_space.building_block_id,  # Same building
+            Space.id != space.id,  # Different space
+            Space.is_deleted == False,
+            func.lower(Space.code) == func.lower(update_data.get('code', ''))  # Case-insensitive
+        ).first()
+        
+        if existing_space:
+            building_name = db.query(Building.name).filter(Building.id == db_space.building_block_id).scalar()
+            raise HTTPException(400, f"Space with code '{update_data['code']}' already exists in building '{building_name}'")
+    
+    # Check for name duplicates within same building (if building exists and name is being updated)
+    if 'name' in update_data and db_space.building_block_id:
+        existing_space_by_name = db.query(Space).filter(
+            Space.building_block_id == db_space.building_block_id,  # Same building
+            Space.id != space.id,  # Different space
+            Space.is_deleted == False,
+            func.lower(Space.name) == func.lower(update_data.get('name', ''))  # Case-insensitive
+        ).first()
+        
+        if existing_space_by_name:
+            building_name = db.query(Building.name).filter(Building.id == db_space.building_block_id).scalar()
+            raise HTTPException(400, f"Space with name '{update_data['name']}' already exists in building '{building_name}'")
+    
+    # Update space
+    for key, value in update_data.items():
+        setattr(db_space, key, value)
+    
     db.commit()
     db.refresh(db_space)
     return db_space

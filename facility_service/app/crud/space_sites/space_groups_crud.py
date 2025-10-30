@@ -1,5 +1,6 @@
 # app/crud/space_groups.py
 import uuid
+from uuid import UUID
 from typing import List, Optional, Dict
 from sqlalchemy import or_, func, literal
 from sqlalchemy.orm import Session
@@ -65,7 +66,8 @@ def get_space_response(sg: SpaceGroup) -> SpaceGroupOut:
 
 
 def create_space_group(db: Session, group: SpaceGroupCreate) -> SpaceGroupOut:
-    sg = SpaceGroup(**group.model_dump())
+    data = group.model_dump(exclude={"group_members"})  # 👈 exclude invalid field
+    sg = SpaceGroup(**data)
     db.add(sg)
     db.commit()
     db.refresh(sg)

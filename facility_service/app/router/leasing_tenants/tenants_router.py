@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
+from shared.json_response_helper import success_response
 from shared.schemas import Lookup, UserToken
 
 from ...schemas.leasing_tenants.tenants_schemas import (
@@ -40,14 +41,6 @@ def tenants_overview(
 ):
     return crud.get_tenants_overview(db, current_user.org_id)
 
-# ----------------- Update Tenant -----------------
-@router.put("/{tenant_id}", response_model=None)
-def update_tenant(
-        tenant_id: UUID,  # Get from URL path
-        update_data: TenantUpdate,  # Get from request body
-        db: Session = Depends(get_db)):
-    return crud.update_tenant(db, tenant_id, update_data)  # Pass 3 arguments
-
 # ----------------- Create Tenant -----------------
 @router.post("/", response_model=None)
 def create_tenant_endpoint(
@@ -55,7 +48,38 @@ def create_tenant_endpoint(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.create_tenant(db, tenant)
+    # Assign org_id from current user if needed
+    # tenant.org_id = current_user.org_id  # Uncomment if your Tenant model has org_id
+    
+    result = crud.create_tenant(db, tenant)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    return success_response(
+        data=result,
+        message="Tenant created successfully"
+    )
+
+
+
+# ----------------- Update Tenant -----------------
+@router.put("/{tenant_id}", response_model=None) 
+def update_tenant(
+    tenant_id: UUID,  # Get from URL path
+    update_data: TenantUpdate,  # Get from request body
+    db: Session = Depends(get_db)
+):
+    result = crud.update_tenant(db, tenant_id, update_data)
+    
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    return success_response(
+        data=result,
+        message="Tenant updated successfully"
+    )
 
 # ---------------- Delete Tenant ----------------
 @router.delete("/{tenant_id}")

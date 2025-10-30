@@ -8,6 +8,8 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy.dialects.postgresql import UUID
 from dateutil.relativedelta import relativedelta
 from facility_service.app.models.space_sites.sites import Site
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
 from ...models.space_sites.buildings import Building
 from ...models.space_sites.spaces import Space
 from ...enum.maintenance_assets_enum import AssetStatus
@@ -162,7 +164,7 @@ def get_asset_by_id(db: Session, asset_id: str):
         .first()
     )
 
-#----------------create-----------------------------------
+
 
 def create_asset(db: Session, asset: AssetCreate):
     # Check for duplicate name (case-insensitive) within the same org and site
@@ -174,9 +176,10 @@ def create_asset(db: Session, asset: AssetCreate):
     ).first()
 
     if existing_asset:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Asset with name '{asset.name}' already exists in this site"
+        return error_response(
+            message=f"Asset with name '{asset.name}' already exists in this site",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
         )
 
     # Check for duplicate serial_no (case-insensitive) if provided
@@ -189,9 +192,10 @@ def create_asset(db: Session, asset: AssetCreate):
         ).first()
 
         if existing_serial:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Asset with serial number '{asset.serial_no}' already exists"
+            return error_response(
+                message=f"Asset with serial number '{asset.serial_no}' already exists",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
             )
 
     # Check for duplicate tag (case-insensitive)
@@ -203,9 +207,10 @@ def create_asset(db: Session, asset: AssetCreate):
     ).first()
 
     if existing_tag:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Asset with tag '{asset.tag}' already exists in this site"
+        return error_response(
+            message=f"Asset with tag '{asset.tag}' already exists in this site",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
         )
 
     # Create the asset
@@ -214,12 +219,14 @@ def create_asset(db: Session, asset: AssetCreate):
     db.commit()
     db.refresh(db_asset)
     return db_asset
+
 def update_asset(db: Session, asset_id: UUID, asset_update: AssetUpdate):
     db_asset = get_asset_by_id(db, asset_id)
     if not db_asset:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Asset not found"
+        return error_response(
+            message="Asset not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
         )
     
     # Extract update data
@@ -251,19 +258,22 @@ def update_asset(db: Session, asset_id: UUID, asset_update: AssetUpdate):
             
             if existing_asset:
                 if 'tag' in update_data and existing_asset.tag == update_data['tag']:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Asset with tag '{update_data['tag']}' already exists in this site"
+                    return error_response(
+                        message=f"Asset with tag '{update_data['tag']}' already exists in this site",
+                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                        http_status=400
                     )
                 if 'name' in update_data and func.lower(existing_asset.name) == func.lower(update_data['name']):
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Asset with name '{update_data['name']}' already exists in this site"
+                    return error_response(
+                        message=f"Asset with name '{update_data['name']}' already exists in this site",
+                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                        http_status=400
                     )
                 if 'serial_no' in update_data and update_data['serial_no'] and existing_asset.serial_no == update_data['serial_no']:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Asset with serial number '{update_data['serial_no']}' already exists"
+                    return error_response(
+                        message=f"Asset with serial number '{update_data['serial_no']}' already exists",
+                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                        http_status=400
                     )
     
     # Update the asset
@@ -277,14 +287,17 @@ def update_asset(db: Session, asset_id: UUID, asset_update: AssetUpdate):
     except IntegrityError as e:
         db.rollback()
         if "uix_org_site_tag" in str(e):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Asset with tag '{update_data.get('tag', db_asset.tag)}' already exists in this site"
+            return error_response(
+                message=f"Asset with tag '{update_data.get('tag', db_asset.tag)}' already exists in this site",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
             )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Duplicate asset found during update"
+        return error_response(
+            message="Duplicate asset found during update",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
         )
+
 
 def delete_asset(db: Session, asset_id: str, org_id: str) -> bool:
     """

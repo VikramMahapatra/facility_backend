@@ -2,6 +2,9 @@ import uuid
 from typing import List, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
 from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.maintenance_assets.assets import Asset
 from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryCreate, AssetCategoryUpdate
@@ -28,9 +31,10 @@ def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCa
     ).first()
 
     if existing_category:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Category with name '{category.name}' already exists in this organization"
+        return error_response(
+            message=f"Category with name '{category.name}' already exists in this organization",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
         )
 
     # Check for duplicate code (case-insensitive) if provided
@@ -42,9 +46,10 @@ def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCa
         ).first()
 
         if existing_code:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Category with code '{category.code}' already exists"
+            return error_response(
+                message=f"Category with code '{category.code}' already exists",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
             )
 
     # Create the category
@@ -57,9 +62,10 @@ def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCa
 def update_asset_category(db: Session, category_id: str, category: AssetCategoryUpdate) -> Optional[AssetCategory]:
     db_category = get_asset_category_by_id(db, category_id)
     if not db_category:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Category not found"
+        return error_response(
+            message="Category not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
         )
     
     # Extract update data
@@ -88,14 +94,16 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
             
             if existing_category:
                 if 'name' in update_data and func.lower(existing_category.name) == func.lower(update_data['name']):
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Category with name '{update_data['name']}' already exists in this organization"
+                    return error_response(
+                        message=f"Category with name '{update_data['name']}' already exists in this organization",
+                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                        http_status=400
                     )
                 if 'code' in update_data and update_data['code'] and func.lower(existing_category.code) == func.lower(update_data['code']):
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Category with code '{update_data['code']}' already exists"
+                    return error_response(
+                        message=f"Category with code '{update_data['code']}' already exists",
+                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                        http_status=400
                     )
     
     # Update the category
@@ -109,13 +117,15 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
     except IntegrityError as e:
         db.rollback()
         if "asset_categories_code_key" in str(e):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Category with code '{update_data.get('code', db_category.code)}' already exists"
+            return error_response(
+                message=f"Category with code '{update_data.get('code', db_category.code)}' already exists",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
             )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Duplicate category found during update"
+        return error_response(
+            message="Duplicate category found during update",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
         )
 
 

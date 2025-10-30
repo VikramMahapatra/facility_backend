@@ -31,16 +31,42 @@ def read_category(category_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="AssetCategory not found")
     return db_category
 
-@router.post("/", response_model=AssetCategoryOut)
-def create_category(category: AssetCategoryCreate, db: Session = Depends(get_db)):
-    return crud.create_asset_category(db, category)
+@router.post("/", response_model=None)
+def create_category(
+    category: AssetCategoryCreate, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    # Set org_id from current user if not provided
+    if not category.org_id:
+        category.org_id = current_user.org_id
+    
+    result = crud.create_asset_category(db, category)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != 200:
+        return result
+    
+    # Convert SQLAlchemy model to Pydantic model
+    category_response = AssetCategoryOut.model_validate(result)
+    return success_response(data=category_response, message="Asset category created successfully")
 
-@router.put("/{category_id}", response_model=AssetCategoryOut)
-def update_category(category_id: str, category: AssetCategoryUpdate, db: Session = Depends(get_db)):
-    db_category = crud.update_asset_category(db, category_id, category)
-    if not db_category:
-        raise HTTPException(status_code=404, detail="AssetCategory not found")
-    return db_category
+@router.put("/{category_id}", response_model=None)
+def update_category(
+    category_id: str, 
+    category: AssetCategoryUpdate, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    result = crud.update_asset_category(db, category_id, category)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != 200:
+        return result
+    
+    # Convert SQLAlchemy model to Pydantic model
+    category_response = AssetCategoryOut.model_validate(result)
+    return success_response(data=category_response, message="Asset category updated successfully")
 
 # ---------------- Delete AssetCategory (Soft Delete) ----------------
 @router.delete("/{category_id}")

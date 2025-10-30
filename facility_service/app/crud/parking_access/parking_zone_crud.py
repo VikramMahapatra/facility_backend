@@ -6,10 +6,14 @@ from sqlalchemy import func, cast, or_, case, literal, Numeric, and_
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.dialects.postgresql import UUID
 
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
+
 from ...models.space_sites.sites import Site
 from ...models.parking_access.parking_zones import ParkingZone
 from ...schemas.parking_access.parking_zone_schemas import ParkingZoneCreate, ParkingZoneOut, ParkingZoneRequest, ParkingZoneUpdate, ParkingZonesResponse
-
+from sqlalchemy import and_
+from fastapi import HTTPException, status
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
@@ -85,22 +89,100 @@ def get_zone_by_id(db: Session, zone_id: str):
 
 
 def create_parking_zone(db: Session, zone: ParkingZoneCreate):
+    # Case-insensitive validation: Check for duplicate name in same site
+    existing_zone = db.query(ParkingZone).filter(
+        and_(
+            ParkingZone.org_id == zone.org_id,
+            ParkingZone.site_id == zone.site_id,
+            func.lower(ParkingZone.name) == func.lower(zone.name)
+        )
+    ).first()
+    
+    if existing_zone:
+        return error_response(
+            message=f"Parking zone with name '{zone.name}' already exists in this site",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
+    
     db_zone = ParkingZone(**zone.model_dump())
     db.add(db_zone)
     db.commit()
     db.refresh(db_zone)
-    return db_zone
+    
+    # Fetch with site name join
+    result = (
+        db.query(ParkingZone, Site.name.label('site_name'))
+        .join(Site, ParkingZone.site_id == Site.id)
+        .filter(ParkingZone.id == db_zone.id)
+        .first()
+    )
+    
+    if result:
+        zone, site_name = result
+        zone_data = zone.__dict__.copy()
+        zone_data["site_name"] = site_name
+        return ParkingZoneOut.model_validate(zone_data)
+    
+    # Fallback without site_name
+    zone_data = db_zone.__dict__.copy()
+    zone_data["site_name"] = None
+    return ParkingZoneOut.model_validate(zone_data)
 
 
-def update_parking_zone(db: Session, zone: ParkingZoneUpdate):
-    db_zone = get_zone_by_id(db, zone.id)
+def update_parking_zone(db: Session, zone_id: uuid.UUID, zone_update: ParkingZoneUpdate):
+    db_zone = db.query(ParkingZone).filter(ParkingZone.id == zone_id).first()
     if not db_zone:
-        return None
-    for k, v in zone.dict(exclude_unset=True).items():
-        setattr(db_zone, k, v)
+        return error_response(
+            message="Parking zone not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
+    
+    # Case-insensitive validation: Check if name is being updated and if it causes duplicates
+    if hasattr(zone_update, 'name') and zone_update.name is not None and zone_update.name.lower() != db_zone.name.lower():
+        existing_zone = db.query(ParkingZone).filter(
+            and_(
+                ParkingZone.org_id == db_zone.org_id,
+                ParkingZone.site_id == db_zone.site_id,
+                func.lower(ParkingZone.name) == func.lower(zone_update.name),
+                ParkingZone.id != zone_id  # Exclude current zone from check
+            )
+        ).first()
+        
+        if existing_zone:
+            return error_response(
+                message=f"Parking zone with name '{zone_update.name}' already exists in this site",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
+    
+    # Update fields
+    update_data = zone_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_zone, field, value)
+    
     db.commit()
     db.refresh(db_zone)
-    return db_zone
+    
+    # Fetch with site name join
+    result = (
+        db.query(ParkingZone, Site.name.label('site_name'))
+        .join(Site, ParkingZone.site_id == Site.id)
+        .filter(ParkingZone.id == zone_id)
+        .first()
+    )
+    
+    if result:
+        zone, site_name = result
+        zone_data = zone.__dict__.copy()
+        zone_data["site_name"] = site_name
+        return ParkingZoneOut.model_validate(zone_data)
+    
+    # Fallback without site_name
+    zone_data = db_zone.__dict__.copy()
+    zone_data["site_name"] = None
+    return ParkingZoneOut.model_validate(zone_data)
 
 
 def delete_parking_zone(db: Session, zone_id: str):

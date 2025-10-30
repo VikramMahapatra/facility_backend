@@ -17,130 +17,143 @@ from ..models.users import Users
 from ..schemas.userschema import RoleOut, UserCreate
 from shared.config import settings
 from datetime import datetime
+from sqlalchemy.exc import SQLAlchemyError
+
+# profile_pic_path = None
+
+# if file:
+#     file_location = os.path.join(settings.UPLOAD_DIR, file.filename)
+#     with open(file_location, "wb") as buffer:
+#         shutil.copyfileobj(file.file, buffer)
+#     profile_pic_path = file_location
 
 
 def create_user(db: Session, facility_db: Session, user: UserCreate):
-    # profile_pic_path = None
+    try:
+        now = datetime.utcnow()
 
-    # if file:
-    #     file_location = os.path.join(settings.UPLOAD_DIR, file.filename)
-    #     with open(file_location, "wb") as buffer:
-    #         shutil.copyfileobj(file.file, buffer)
-    #     profile_pic_path = file_location
-    now = datetime.utcnow()
+        # ✅ Build full name
+        full_name = (user.name or "").strip()
+        if not full_name:
+            first = (user.first_name or "").strip()
+            last = (user.last_name or "").strip()
+            full_name = f"{first} {last}".strip()
 
-    if user.name and user.name.strip():
-        full_name = user.name
-    else:
-        # Combine first_name + last_name (handling missing parts)
-        first = user.first_name or ""
-        last = user.last_name or ""
-        full_name = f"{first} {last}".strip() or None
+        if not full_name:
+            raise HTTPException(
+                status_code=400,
+                detail="User name is required."
+            )
 
-    if not full_name:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="full_name is required. Provide user.name or user.first_name/user.last_name."
+        # ✅ Check duplicate email
+        if user.email:
+            if db.query(Users).filter(Users.email == user.email).first():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Email '{user.email}' is already registered."
+                )
+
+        # ✅ Check duplicate phone
+        if user.phone:
+            if db.query(Users).filter(Users.phone == user.phone).first():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Phone number '{user.phone}' is already registered."
+                )
+
+        # ✅ Create base user
+        user_instance = Users(
+            full_name=full_name,
+            email=user.email,
+            phone=user.phone,
+            picture_url=str(user.pictureUrl) if user.pictureUrl else None,
+            account_type=user.accountType.lower(),
+            status="pending_approval"
         )
+        db.add(user_instance)
+        db.flush()
 
-    # ✅ Email duplicate check
-    if user.email:
-        existing_email = db.query(Users).filter(
-            Users.email == user.email).first()
-        if existing_email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Email '{user.email}' is already registered."
-            )
+        # ✅ Assign Role
+        role_name = ("admin" if user.accountType.lower() ==
+                     "organization" else user.accountType.lower())
+        role_obj = db.query(Roles).filter(
+            func.lower(Roles.name) == role_name).first()
 
-    # ✅ Phone duplicate check
-    if user.phone:
-        existing_phone = db.query(Users).filter(
-            Users.phone == user.phone).first()
-        if existing_phone:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Phone number '{user.phone}' is already registered."
-            )
+        if not role_obj:
+            raise HTTPException(400, f"Role '{role_name}' not found")
 
-    new_user = {
-        "full_name": full_name,
-        "email": user.email,
-        "phone": user.phone,
-        "picture_url": str(user.pictureUrl) if user.pictureUrl else None,
-        "account_type": user.accountType,
-        "status": "pending_approval"
-    }
+        user_instance.roles.append(role_obj)
 
-    user_instance = Users(**new_user)
-    db.add(user_instance)
-    db.flush()
+        # ✅ ACCOUNT TYPE: ORGANIZATION
+        if user.accountType.lower() == "organization":
+            if not user.organizationName:
+                raise HTTPException(400, "Organization name required")
 
-    # Add role based on account type
-    user_role = "admin" if func.lower(
-        user.accountType) == "organization" else "default"
-    default_role = db.query(Roles).filter(
-        func.lower(Roles.name) == user_role.lower()).first()
+            org_instance = OrgSafe(name=user.organizationName)
+            facility_db.add(org_instance)
+            facility_db.flush()  # ✅ ensure id generated
 
-    if default_role:
-        user_instance.roles.append(default_role)
-    else:
-        raise ValueError(f"Role '{user.role}' not found")
+            user_instance.org_id = org_instance.id
 
-    # Add role based on account type
-    if func.lower(user.accountType) == "organization" and user.organizationName:
-        new_org = {
-            "name": user.organizationName
-        }
-        org_instance = OrgSafe(**new_org)
-        facility_db.add(org_instance)
+        # ✅ ACCOUNT TYPE: TENANT
+        elif user.accountType.lower() == "tenant":
+            # ✅ Find site
+            site = facility_db.query(SiteSafe).filter(
+                SiteSafe.id == user.site_id).first()
+            if not site:
+                raise HTTPException(400, "Invalid site selected")
+
+            user_instance.org_id = site.org_id
+
+            if not user_instance.org_id:
+                raise HTTPException(
+                    400, "Selected site has no organization assigned")
+
+            if user.tenant_type == "individual":
+                if not user.space_id:
+                    raise HTTPException(
+                        400, "space_id required for individual tenant")
+
+                tenant_obj = TenantSafe(
+                    site_id=user.site_id,
+                    space_id=user.space_id,
+                    name=full_name,
+                    email=user.email,
+                    phone=user.phone,
+                    status="inactive",
+                    user_id=user_instance.id
+                )
+                facility_db.add(tenant_obj)
+
+            elif user.tenant_type == "commercial":
+                partner_obj = CommercialPartnerSafe(
+                    site_id=user.site_id,
+                    type="merchant",
+                    legal_name=full_name,
+                    contact={"name": full_name,
+                             "phone": user.phone, "email": user.email},
+                    status="inactive",
+                    user_id=user_instance.id
+                )
+                facility_db.add(partner_obj)
+            else:
+                raise HTTPException(400, "Invalid tenant type")
+
+        # ✅ Commit All OR Rollback All
+        db.commit()
         facility_db.commit()
-        facility_db.refresh(org_instance)
+        db.refresh(user_instance)
 
-        user_instance.org_id = org_instance.id
-    elif func.lower(user.accountType) == "tenant":
-        user_instance.org_id = facility_db.query(
-            SiteSafe.org_id).filter(SiteSafe.id == user.site_id).scalar()
+    except HTTPException:
+        db.rollback()
+        facility_db.rollback()
+        raise
 
-        if not user_instance.org_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid site."
-            )
-
-        if user.tenant_type == "individual":
-            tenant_data = {
-                "site_id": user.site_id,
-                "space_id": user.space_id,
-                "name": full_name,
-                "email": user.email,
-                "phone": user.phone,
-                "status": "inactive",
-                "user_id": user_instance.id
-            }
-            db_tenant = TenantSafe(**tenant_data)
-            facility_db.add(db_tenant)
-        elif user.tenant_type == "commercial":
-            # Only create CommercialPartner
-            partner_data = {
-                "site_id": user.site_id,
-                "type": "merchant",
-                "legal_name": full_name,
-                "contact": {
-                    "name": full_name,
-                    "phone": user.phone,
-                    "email": user.email
-                },
-                "status": "inactive",
-                "user_id": user_instance.id
-            }
-            db_partner = CommercialPartnerSafe(**partner_data)
-            facility_db.add(db_partner)
-
-        facility_db.commit()
-
-    db.commit()
-    db.refresh(user_instance)
+    except SQLAlchemyError as e:
+        db.rollback()
+        facility_db.rollback()
+        print("DB Error:", e)
+        raise HTTPException(500, "Internal server error while creating user")
 
     return get_user_token(facility_db, user_instance)
 

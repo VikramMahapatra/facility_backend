@@ -55,3 +55,8 @@ class JsonOutResult(EmptyStringModel, Generic[T]):
     status: str
     status_code: str
     message: str
+
+
+class MasterLookupQueryParams(BaseModel):
+    site_id: Optional[str] = None
+    building_id: Optional[str] = None

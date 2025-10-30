@@ -5,8 +5,11 @@ from uuid import UUID
 import uuid
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
 from ...models.maintenance_assets.inventory_items import InventoryItem
-from ...schemas.maintenance_assets.inventory_items_schemas import InventoryItemCreate, InventoryItemUpdate
+from ...schemas.maintenance_assets.inventory_items_schemas import InventoryItemCreate, InventoryItemOut, InventoryItemUpdate
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
@@ -37,9 +40,10 @@ def create_inventory_item(db: Session, item: InventoryItemCreate, org_id: UUID) 
     ).first()
 
     if existing_item:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Inventory item with name '{item.name}' already exists in this organization"
+        return error_response(
+            message=f"Inventory item with name '{item.name}' already exists in this organization",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
         )
 
     # ✅ Use org_id from token instead of request body
@@ -51,12 +55,16 @@ def create_inventory_item(db: Session, item: InventoryItemCreate, org_id: UUID) 
         db.add(db_item)
         db.commit()
         db.refresh(db_item)
-        return db_item
+        
+        # Convert to InventoryItemOut for proper serialization
+        return InventoryItemOut.model_validate(db_item)
+        
     except IntegrityError as e:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Duplicate inventory item found"
+        return error_response(
+            message="Duplicate inventory item found",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
         )
 
 def update_inventory_item(db: Session, item: InventoryItemUpdate, org_id: UUID) -> Optional[InventoryItem]:
@@ -68,9 +76,10 @@ def update_inventory_item(db: Session, item: InventoryItemUpdate, org_id: UUID) 
     ).first()
 
     if not db_item:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Inventory item not found"
+        return error_response(
+            message="Inventory item not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
         )
 
     # Extract update data
@@ -87,9 +96,10 @@ def update_inventory_item(db: Session, item: InventoryItemUpdate, org_id: UUID) 
         ).first()
 
         if existing_item:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Inventory item with name '{update_data['name']}' already exists in this organization"
+            return error_response(
+                message=f"Inventory item with name '{update_data['name']}' already exists in this organization",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
             )
 
     # Update only the fields that are provided
@@ -99,13 +109,18 @@ def update_inventory_item(db: Session, item: InventoryItemUpdate, org_id: UUID) 
     try:
         db.commit()
         db.refresh(db_item)
-        return db_item
+        
+        # Convert to InventoryItemOut for proper serialization
+        return InventoryItemOut.model_validate(db_item)
+        
     except IntegrityError as e:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Duplicate inventory item found during update"
+        return error_response(
+            message="Duplicate inventory item found during update",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
         )
+
 
 # ----------------- Soft Delete Inventory Item -----------------
 

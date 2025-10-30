@@ -1,6 +1,9 @@
 from typing import List, Optional
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+
+from shared.json_response_helper import success_response
 from ...schemas.parking_access.parking_zone_schemas import ParkingZoneCreate, ParkingZoneOverview, ParkingZoneRequest, ParkingZoneUpdate, ParkingZonesResponse
 from ...crud.parking_access import parking_zone_crud as crud
 from shared.database import get_facility_db as get_db
@@ -38,15 +41,34 @@ def create_parking_zone(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     zone.org_id = current_user.org_id
-    return crud.create_parking_zone(db, zone)
+    result = crud.create_parking_zone(db, zone)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    return success_response(
+        data=result,
+        message="Parking zone created successfully"
+    )
 
 
 @router.put("/", response_model=None)
-def update_parking_zone(zone: ParkingZoneUpdate, db: Session = Depends(get_db)):
-    db_zone = crud.update_parking_zone(db, zone)
-    if not db_zone:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    return db_zone
+def update_parking_zone(
+    zone_id: uuid.UUID, 
+    zone: ParkingZoneUpdate, 
+    db: Session = Depends(get_db)
+):
+    result = crud.update_parking_zone(db, zone_id, zone)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    return success_response(
+        data=result,
+        message="Parking zone updated successfully"
+    )
 
 
 @router.delete("/{zone_id}", response_model=None)

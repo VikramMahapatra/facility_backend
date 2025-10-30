@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from shared.json_response_helper import success_response
-from ...schemas.maintenance_assets.assets_schemas import AssetCreate, AssetOverview, AssetUpdate, AssetsRequest, AssetsResponse, AssetOut
+from ...schemas.maintenance_assets.assets_schemas import AssetCreate, AssetOverview, AssetResponse, AssetUpdate, AssetsRequest, AssetsResponse, AssetOut
 from ...crud.maintenance_assets import assets_crud as crud
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
@@ -36,13 +36,22 @@ def get_assets_overview(
 ):
     return crud.get_asset_overview(db, current_user.org_id, params)
 
+
 @router.post("/", response_model=None)
 def create_asset(
         asset: AssetCreate,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     asset.org_id = current_user.org_id
-    return crud.create_asset(db, asset)
+    result = crud.create_asset(db, asset)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != 200:
+        return result
+    
+    # Convert SQLAlchemy model to Pydantic model
+    asset_response = AssetResponse.model_validate(result)
+    return success_response(data=asset_response, message="Asset created successfully")
 
 @router.put("/{asset_id}", response_model=None)
 def update_asset(
@@ -50,7 +59,17 @@ def update_asset(
         asset_update: AssetUpdate,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return crud.update_asset(db, asset_id, asset_update)
+    result = crud.update_asset(db, asset_id, asset_update)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != 200:
+        return result
+    
+    # Convert SQLAlchemy model to Pydantic model
+    asset_response = AssetResponse.model_validate(result)
+    return success_response(data=asset_response, message="Asset updated successfully")
+
+
 
 # ---------------- Delete Asset (Soft Delete) ----------------
 @router.delete("/{asset_id}")  # REMOVE response_model=AssetOut

@@ -4,6 +4,9 @@ from sqlalchemy import func, and_, or_
 from uuid import UUID
 from datetime import datetime
 
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
+
 from ...models.maintenance_assets.assets import Asset
 
 from ...models.energy_iot.meters import Meter
@@ -12,6 +15,9 @@ from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 
 from ...schemas.energy_iot.meters_schemas import BulkMeterRequest, BulkUploadError, MeterCreate, MeterImport, MeterRequest, MeterUpdate, MeterOut, MeterListResponse
+
+from sqlalchemy import and_, func
+from fastapi import HTTPException, status
 
 
 def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = False) -> MeterListResponse:
@@ -164,11 +170,30 @@ def bulk_update_meters(db: Session, request: BulkMeterRequest):
 
 
 def create(db: Session, payload: MeterCreate) -> Meter:
+    # Case-insensitive validation: Check for duplicate meter code in same org + space
+    existing_meter = db.query(Meter).filter(
+        and_(
+            Meter.org_id == payload.org_id,
+            Meter.space_id == payload.space_id,  # Same space
+            func.lower(Meter.code) == func.lower(payload.code),  # Case-insensitive
+            Meter.status != 'deleted'
+        )
+    ).first()
+    
+    if existing_meter:
+        return error_response(
+            message=f"Meter with code '{payload.code}' already exists in this space",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
+    
     obj = Meter(**payload.model_dump())
     db.add(obj)
     db.commit()
     db.refresh(obj)
-    return obj
+    
+    # Use your Pydantic model for serialization
+    return MeterOut.model_validate(obj)
 
 
 def update(db: Session, payload: MeterUpdate) -> Optional[Meter]:
@@ -176,13 +201,42 @@ def update(db: Session, payload: MeterUpdate) -> Optional[Meter]:
     if not obj:
         return None
 
+    # Get target space_id (use new value if provided, otherwise keep current)
+    target_space_id = getattr(payload, 'space_id', obj.space_id)
+    target_code = getattr(payload, 'code', obj.code)
+
+    # Check if code OR space is being changed (case-insensitive)
+    code_changed = hasattr(payload, 'code') and payload.code is not None and payload.code.lower() != obj.code.lower()
+    space_changed = hasattr(payload, 'space_id') and payload.space_id is not None and payload.space_id != obj.space_id
+
+    # If either code or space is changing, check for duplicates in the TARGET space
+    if code_changed or space_changed:
+        existing_meter = db.query(Meter).filter(
+            and_(
+                Meter.org_id == obj.org_id,
+                Meter.space_id == target_space_id,  # Check in TARGET space
+                func.lower(Meter.code) == func.lower(target_code),  # Check TARGET code
+                Meter.id != payload.id  # Exclude current meter
+            )
+        ).first()
+        
+        if existing_meter:
+            return error_response(
+                message=f"Meter with code '{target_code}' already exists in this space",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
+
+    # Update fields
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(obj, k, v)
 
     db.commit()
     db.refresh(obj)
-    return obj
+    
+    # Use your Pydantic model for serialization
+    return MeterOut.model_validate(obj)
 
 
 def delete(db: Session, meter_id: UUID) -> Optional[Meter]:

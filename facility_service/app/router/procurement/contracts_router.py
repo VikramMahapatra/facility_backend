@@ -2,8 +2,9 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from shared.app_status_code import AppStatusCode
 from shared.database import get_facility_db as get_db
-from shared.json_response_helper import success_response
+from shared.json_response_helper import error_response, success_response
 from shared.schemas import Lookup, UserToken
 from ...schemas.procurement.contracts_schemas import ContractListResponse, ContractOut, ContractCreate, ContractOverviewResponse, ContractRequest, ContractUpdate
 from ...crud.procurement import contracts_crud as crud
@@ -32,16 +33,6 @@ def overview(
 ):
     return crud.get_contracts_overview(db, current_user.org_id, params)
 
-@router.put("/", response_model=None)
-def update_contract_endpoint(
-    contract: ContractUpdate,
-    db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
-):
-    db_contract = crud.update_contract(db, contract)
-    if not db_contract:
-        raise HTTPException(status_code=404, detail="Contract not found")
-    return {"message": "Contract updated successfully"}
 
 # --------- Create Contract ---------
 @router.post("/", response_model=ContractOut)
@@ -52,7 +43,42 @@ def create_contract(
 ):
     # Assign org_id from current user
     contract.org_id = current_user.org_id
-    return crud.create_contract(db, contract)
+    result = crud.create_contract(db, contract)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    return success_response(
+        data=result,
+        message="Contract created successfully"
+    )
+
+
+@router.put("/", response_model=None)
+def update_contract_endpoint(
+    contract: ContractUpdate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    result = crud.update_contract(db, contract)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    if not result:
+        return error_response(
+            message="Contract not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
+    
+    return success_response(
+        data={"message": "Contract updated successfully"},
+        message="Contract updated successfully"
+    )
+
 
 @router.delete("/{contract_id}")
 def delete_contract(

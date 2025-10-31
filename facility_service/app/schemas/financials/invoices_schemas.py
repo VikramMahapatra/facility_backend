@@ -9,8 +9,8 @@ from shared.schemas import CommonQueryParams
 class InvoiceBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
-    customer_kind: str
-    customer_id: UUID  
+    customer_kind: Optional[str] = None
+    customer_id: Optional[UUID] = None
     invoice_no: str
     date: Optional[str] 
     due_date: Optional[str] 
@@ -34,11 +34,11 @@ class InvoiceOut(InvoiceBase):
     id: UUID
     org_id: Optional[UUID] = None
     site_id: UUID
-    customer_kind: str
-    customer_id: UUID  
-    customer_name: str
+    customer_kind:  Optional[str] = None
+    customer_id:  Optional[UUID] = None
+    customer_name: Optional[str] = None
     invoice_no: str
-    date: Optional[str] 
+    date: Optional[str]
     due_date: Optional[str] 
     status: str
     currency: str
@@ -74,7 +74,7 @@ class PaymentOut(BaseModel):
     org_id: Optional[UUID] = None
     invoice_id: UUID
     invoice_no: str
-    customer_name: str
+    customer_name:Optional[str] = None
     method: str
     ref_no: str
     amount: Decimal  

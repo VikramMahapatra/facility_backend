@@ -5,8 +5,6 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ...schemas.mobile_app.help_desk_schemas import ComplaintResponse
-
-from ...schemas.mobile_app.home_schemas import HomeDetailResponse, HomeDetailsResponse
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
 from shared.schemas import UserToken

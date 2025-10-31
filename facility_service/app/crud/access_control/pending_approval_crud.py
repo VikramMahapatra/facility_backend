@@ -64,7 +64,7 @@ def update_user_approval_status(db: Session, request: ApprovalStatusRequest):
     else:
         user.status = "rejected"
 
-    tenant = db.query(Tenant).filter(Tenant.id == request.user_id).first()
+    tenant = db.query(Tenant).filter(Tenant.user_id == request.user_id).first()
 
     if tenant:
         if request.status == ApprovalStatus.approve:

@@ -28,7 +28,7 @@ def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = 
             joinedload(Meter.space).load_only(Space.id, Space.name),
             joinedload(Meter.asset).load_only(Asset.id, Asset.name),
         )
-        .filter(Meter.org_id == org_id)
+        .filter(Meter.org_id == org_id, Meter.is_deleted == False)
     )
 
     if params.search:
@@ -95,7 +95,7 @@ def get_by_id(db: Session, meter_id: UUID) -> Optional[MeterOut]:
             joinedload(Meter.space).load_only(Space.name),
             joinedload(Meter.asset).load_only(Asset.name),
         )
-        .filter(Meter.id == meter_id)
+        .filter(Meter.id == meter_id, Meter.is_deleted == False)
         .first()
     )
     if not m:
@@ -127,7 +127,7 @@ def bulk_update_meters(db: Session, request: BulkMeterRequest):
     bulk_error_list = []
     for m in request.meters:
         errors = []
-        obj = db.query(Meter).filter(Meter.code == m.code).first()
+        obj = db.query(Meter).filter(Meter.code == m.code, Meter.is_deleted == False).first()
 
         site_id = db.query(Site.id).filter(
             Site.name == m.siteName).scalar()
@@ -148,7 +148,7 @@ def bulk_update_meters(db: Session, request: BulkMeterRequest):
                 # create meter
                 meter_data = Meter(
                     **m.model_dump(exclude={"siteName", "spaceName"}))
-                db.add(obj)
+                db.add(meter_data)
                 inserted += 1
 
             else:
@@ -176,7 +176,7 @@ def create(db: Session, payload: MeterCreate) -> Meter:
             Meter.org_id == payload.org_id,
             Meter.space_id == payload.space_id,  # Same space
             func.lower(Meter.code) == func.lower(payload.code),  # Case-insensitive
-            Meter.status != 'deleted'
+            Meter.is_deleted == False
         )
     ).first()
     
@@ -197,7 +197,7 @@ def create(db: Session, payload: MeterCreate) -> Meter:
 
 
 def update(db: Session, payload: MeterUpdate) -> Optional[Meter]:
-    obj = db.query(Meter).filter(Meter.id == payload.id).first()
+    obj = db.query(Meter).filter(Meter.id == payload.id, Meter.is_deleted == False).first()
     if not obj:
         return None
 
@@ -216,7 +216,8 @@ def update(db: Session, payload: MeterUpdate) -> Optional[Meter]:
                 Meter.org_id == obj.org_id,
                 Meter.space_id == target_space_id,  # Check in TARGET space
                 func.lower(Meter.code) == func.lower(target_code),  # Check TARGET code
-                Meter.id != payload.id  # Exclude current meter
+                Meter.id != payload.id,  # Exclude current meter
+                Meter.is_deleted == False
             )
         ).first()
         
@@ -240,9 +241,12 @@ def update(db: Session, payload: MeterUpdate) -> Optional[Meter]:
 
 
 def delete(db: Session, meter_id: UUID) -> Optional[Meter]:
-    obj = db.query(Meter).filter(Meter.id == meter_id).first()
+    obj = db.query(Meter).filter(Meter.id == meter_id, Meter.is_deleted == False).first()
     if not obj:
         return None
-    db.delete(obj)
+    
+    # SOFT DELETE - Change from hard delete to soft delete
+    obj.is_deleted = True
     db.commit()
+    
     return obj

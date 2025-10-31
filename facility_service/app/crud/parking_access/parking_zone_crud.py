@@ -20,7 +20,8 @@ from fastapi import HTTPException, status
 # ----------------------------------------------------------------------
 
 def build_parking_zone_filters(org_id: UUID, params: ParkingZoneRequest):
-    filters = [ParkingZone.org_id == org_id]
+    # Add soft delete filter - only show non-deleted zones
+    filters = [ParkingZone.org_id == org_id, ParkingZone.is_deleted == False]
 
     if params.site_id and params.site_id != "all":
         filters.append(ParkingZone.site_id == params.site_id)
@@ -38,12 +39,12 @@ def get_parking_zone_query(db: Session, org_id: UUID, params: ParkingZoneRequest
 
 
 def get_parking_zone_overview(db: Session, org_id: UUID):
-
+    # Add soft delete filter for overview
     zone_fields = db.query(
         func.count(ParkingZone.id).label("total_zones"),
         func.coalesce(func.sum(ParkingZone.capacity),
                       0).label("total_capacity"),
-    ).filter(ParkingZone.org_id == org_id).one()
+    ).filter(ParkingZone.org_id == org_id, ParkingZone.is_deleted == False).one()
 
     if zone_fields.total_zones > 0:
         avg_capacity = zone_fields.total_capacity / zone_fields.total_zones
@@ -53,7 +54,7 @@ def get_parking_zone_overview(db: Session, org_id: UUID):
     return {
         "totalZones": int(zone_fields.total_zones or 0),
         "totalCapacity": int(zone_fields.total_capacity or 0),
-        "avgCapacity": float(avg_capacity or 0),
+        "avgCapacity": round(avg_capacity , 2),
     }
 
 
@@ -85,16 +86,18 @@ def get_parking_zones(db: Session, org_id: UUID, params: ParkingZoneRequest) -> 
 
 
 def get_zone_by_id(db: Session, zone_id: str):
-    return db.query(ParkingZone).filter(ParkingZone.id == zone_id).first()
+    # Add soft delete filter - only return non-deleted zones
+    return db.query(ParkingZone).filter(ParkingZone.id == zone_id, ParkingZone.is_deleted == False).first()
 
 
 def create_parking_zone(db: Session, zone: ParkingZoneCreate):
-    # Case-insensitive validation: Check for duplicate name in same site
+    # Case-insensitive validation: Check for duplicate name in same site (only non-deleted zones)
     existing_zone = db.query(ParkingZone).filter(
         and_(
             ParkingZone.org_id == zone.org_id,
             ParkingZone.site_id == zone.site_id,
-            func.lower(ParkingZone.name) == func.lower(zone.name)
+            func.lower(ParkingZone.name) == func.lower(zone.name),
+            ParkingZone.is_deleted == False  # Only check non-deleted zones
         )
     ).first()
     
@@ -114,7 +117,7 @@ def create_parking_zone(db: Session, zone: ParkingZoneCreate):
     result = (
         db.query(ParkingZone, Site.name.label('site_name'))
         .join(Site, ParkingZone.site_id == Site.id)
-        .filter(ParkingZone.id == db_zone.id)
+        .filter(ParkingZone.id == db_zone.id, ParkingZone.is_deleted == False)
         .first()
     )
     
@@ -131,7 +134,8 @@ def create_parking_zone(db: Session, zone: ParkingZoneCreate):
 
 
 def update_parking_zone(db: Session, zone_id: uuid.UUID, zone_update: ParkingZoneUpdate):
-    db_zone = db.query(ParkingZone).filter(ParkingZone.id == zone_id).first()
+    # Only allow updates on non-deleted zones
+    db_zone = db.query(ParkingZone).filter(ParkingZone.id == zone_id, ParkingZone.is_deleted == False).first()
     if not db_zone:
         return error_response(
             message="Parking zone not found",
@@ -139,14 +143,15 @@ def update_parking_zone(db: Session, zone_id: uuid.UUID, zone_update: ParkingZon
             http_status=404
         )
     
-    # Case-insensitive validation: Check if name is being updated and if it causes duplicates
+    # Case-insensitive validation: Check if name is being updated and if it causes duplicates (only non-deleted zones)
     if hasattr(zone_update, 'name') and zone_update.name is not None and zone_update.name.lower() != db_zone.name.lower():
         existing_zone = db.query(ParkingZone).filter(
             and_(
                 ParkingZone.org_id == db_zone.org_id,
                 ParkingZone.site_id == db_zone.site_id,
                 func.lower(ParkingZone.name) == func.lower(zone_update.name),
-                ParkingZone.id != zone_id  # Exclude current zone from check
+                ParkingZone.id != zone_id,  # Exclude current zone from check
+                ParkingZone.is_deleted == False  # Only check non-deleted zones
             )
         ).first()
         
@@ -169,7 +174,7 @@ def update_parking_zone(db: Session, zone_id: uuid.UUID, zone_update: ParkingZon
     result = (
         db.query(ParkingZone, Site.name.label('site_name'))
         .join(Site, ParkingZone.site_id == Site.id)
-        .filter(ParkingZone.id == zone_id)
+        .filter(ParkingZone.id == zone_id, ParkingZone.is_deleted == False)
         .first()
     )
     
@@ -186,9 +191,14 @@ def update_parking_zone(db: Session, zone_id: uuid.UUID, zone_update: ParkingZon
 
 
 def delete_parking_zone(db: Session, zone_id: str):
-    db_zone = get_zone_by_id(db, zone_id)
+    # Soft delete implementation - mark as deleted instead of actual deletion
+    db_zone = db.query(ParkingZone).filter(ParkingZone.id == zone_id, ParkingZone.is_deleted == False).first()
     if not db_zone:
         return None
-    db.delete(db_zone)
+    
+    # Perform soft delete by setting is_deleted to True
+    db_zone.is_deleted = True
+    db_zone.updated_at = func.now()  # Update timestamp
     db.commit()
+    
     return True

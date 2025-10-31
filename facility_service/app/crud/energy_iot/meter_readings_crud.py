@@ -18,14 +18,14 @@ def get_meter_readings_overview(db: Session, org_id: UUID):
     # Total meters
     total_meters = (
         db.query(func.count(Meter.id))
-        .filter(Meter.org_id == org_id)
+        .filter(Meter.org_id == org_id, Meter.is_deleted == False)
         .scalar()
     ) or 0
 
     # Active meters
     active_meters = (
         db.query(func.count(Meter.id))
-        .filter(Meter.org_id == org_id, Meter.status == "active")
+        .filter(Meter.org_id == org_id, Meter.status == "active", Meter.is_deleted == False)
         .scalar()
     ) or 0
 
@@ -37,7 +37,7 @@ def get_meter_readings_overview(db: Session, org_id: UUID):
             func.max(MeterReading.ts).label("latest_ts")
         )
         .join(Meter, Meter.id == MeterReading.meter_id)
-        .filter(Meter.org_id == org_id)
+        .filter(Meter.org_id == org_id, Meter.is_deleted == False, MeterReading.is_deleted == False)
         .group_by(MeterReading.meter_id)
         .subquery()
     )
@@ -50,7 +50,9 @@ def get_meter_readings_overview(db: Session, org_id: UUID):
         .join(Meter, Meter.id == MeterReading.meter_id)
         .filter(
             Meter.org_id == org_id,
-            MeterReading.source == "iot"
+            MeterReading.source == "iot",
+            Meter.is_deleted == False,
+            MeterReading.is_deleted == False
         )
         .scalar()
         or 0
@@ -65,7 +67,7 @@ def get_meter_readings_overview(db: Session, org_id: UUID):
 
 def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = False) -> MeterReadingListResponse:
     """Return all readings, optionally filtered by meter."""
-    q = db.query(MeterReading).join(Meter)
+    q = db.query(MeterReading).join(Meter).filter(MeterReading.is_deleted == False, Meter.is_deleted == False)
 
     if params.search:
         search_term = f"%{params.search}%"
@@ -115,8 +117,8 @@ def create(db: Session, payload: MeterReadingCreate) -> MeterReading:
     return obj
 
 
-def update(db: Session, payload: MeterReadingUpdate) -> Optional[Meter]:
-    obj = db.query(MeterReading).filter(MeterReading.id == payload.id).first()
+def update(db: Session, payload: MeterReadingUpdate) -> Optional[MeterReading]:
+    obj = db.query(MeterReading).filter(MeterReading.id == payload.id, MeterReading.is_deleted == False).first()
     if not obj:
         return None
 
@@ -129,13 +131,15 @@ def update(db: Session, payload: MeterReadingUpdate) -> Optional[Meter]:
     return obj
 
 
-def delete(db: Session, meter_reading_id: UUID) -> Optional[Meter]:
-    obj = db.query(MeterReading).filter(
-        MeterReading.id == meter_reading_id).first()
+def delete(db: Session, meter_reading_id: UUID) -> Optional[MeterReading]:
+    obj = db.query(MeterReading).filter(MeterReading.id == meter_reading_id, MeterReading.is_deleted == False).first()
     if not obj:
         return None
-    db.delete(obj)
+    
+    # SOFT DELETE - Change from hard delete to soft delete
+    obj.is_deleted = True
     db.commit()
+    
     return obj
 
 
@@ -149,6 +153,7 @@ def meter_reading_lookup(db: Session, org_id: str):
         .join(Site, Site.id == Meter.site_id)
         .filter(Meter.org_id == org_id)
         .filter(Meter.status == 'active')
+        .filter(Meter.is_deleted == False)
         .order_by(func.lower(Meter.code))
         .all()
     )
@@ -162,7 +167,7 @@ def bulk_update_readings(db: Session, request: BulkMeterReadingRequest):
     for m in request.readings:
         errors = []
         meter_id = db.query(Meter.id).filter(
-            Meter.code == m.meterCode).scalar()
+            Meter.code == m.meterCode, Meter.is_deleted == False).scalar()
 
         if not meter_id:
             errors.append("Meter code doesn't exist in the system")
@@ -173,7 +178,8 @@ def bulk_update_readings(db: Session, request: BulkMeterReadingRequest):
                 db.query(MeterReading)
                 .filter(
                     MeterReading.meter_id == meter_id,
-                    cast(MeterReading.ts, Date) == m.timestamp.date()
+                    cast(MeterReading.ts, Date) == m.timestamp.date(),
+                    MeterReading.is_deleted == False
                 ).first()
             )
 

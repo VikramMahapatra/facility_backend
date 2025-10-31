@@ -2,6 +2,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from shared.json_response_helper import success_response
+
 from ...schemas.energy_iot.meters_schemas import MeterRequest
 from ...schemas.energy_iot.meter_readings_schemas import BulkMeterReadingRequest, MeterReadingCreate, MeterReadingListResponse, MeterReadingOverview, MeterReadingUpdate
 from ...crud.energy_iot import meter_readings_crud as crud
@@ -46,7 +48,7 @@ def create_meter_reading(
 def update_meter_reading(data: MeterReadingUpdate, db: Session = Depends(get_db)):
     model = crud.update(db, data)
     if not model:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Meter reading not found")
     return model
 
 
@@ -54,8 +56,14 @@ def update_meter_reading(data: MeterReadingUpdate, db: Session = Depends(get_db)
 def delete_meter_reading(id: str, db: Session = Depends(get_db)):
     model = crud.delete(db, id)
     if not model:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    return model
+        raise HTTPException(status_code=404, detail="Meter reading not found")
+    
+    # Use your success_response helper
+    return success_response(
+        data=None,
+        message="Meter reading deleted successfully"
+    )
+
 
 
 @router.get("/meter-reading-lookup", response_model=List[Lookup])

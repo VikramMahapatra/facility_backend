@@ -73,7 +73,11 @@ def update_parking_zone(
 
 @router.delete("/{zone_id}", response_model=None)
 def delete_parking_zone(zone_id: str, db: Session = Depends(get_db)):
-    db_zone = crud.delete_parking_zone(db, zone_id)
-    if not db_zone:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    return db_zone
+    result = crud.delete_parking_zone(db, zone_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Parking zone not found")
+    
+    return success_response(
+        data=None,
+        message="Parking zone deleted successfully"
+    )

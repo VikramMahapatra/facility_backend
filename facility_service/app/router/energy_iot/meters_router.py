@@ -1,4 +1,5 @@
 from typing import List, Optional
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -37,21 +38,6 @@ async def bulk_update_meters(
     for r in request.meters:
         r.org_id = current_user.org_id
     return crud.bulk_update_meters(db, request)
-
-
-@router.post("/", response_model=None)
-def create_meter(
-        data: MeterCreate,
-        db: Session = Depends(get_db),
-        current_user: UserToken = Depends(validate_current_token)):
-    data.org_id = current_user.org_id
-    try:
-        return crud.create(db, data)
-    except HTTPException as e:
-        # Re-raise the validation exception
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/", response_model=None)
@@ -96,9 +82,14 @@ def update_meter(
         message="Meter updated successfully"
     )
 
+
 @router.delete("/{id}", response_model=None)
 def delete_meter(id: str, db: Session = Depends(get_db)):
-    model = crud.delete(db, id)
-    if not model:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    return model
+    result = crud.delete(db, id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Meter not found")
+    
+    return success_response(
+        data=None,
+        message="Meter deleted successfully"
+    )

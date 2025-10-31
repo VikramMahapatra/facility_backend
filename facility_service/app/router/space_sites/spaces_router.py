@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
+from shared.json_response_helper import success_response
 from ...schemas.space_sites.spaces_schemas import SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate
 from ...crud.space_sites import spaces_crud as crud
 from shared.auth import validate_current_token  # for dependicies
@@ -32,21 +33,39 @@ def get_space_overview(
     return crud.get_spaces_overview(db, current_user.org_id, params)
 
 
-@router.post("/", response_model=SpaceOut)
+@router.post("/", response_model=None)
 def create_space(
-        space: SpaceCreate,
-        db: Session = Depends(get_db),
-        current_user: UserToken = Depends(validate_current_token)):
+    space: SpaceCreate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
     space.org_id = current_user.org_id
-    return crud.create_space(db, space)
+    result = crud.create_space(db, space)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != 200:
+        return result
+    
+    # Convert SQLAlchemy model to Pydantic model
+    space_response = SpaceOut.model_validate(result)
+    return success_response(data=space_response, message="Space created successfully")
 
+@router.put("/", response_model=None)
+def update_space(
+    space: SpaceUpdate, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    result = crud.update_space(db, space)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != 200:
+        return result
+    
+    # Convert SQLAlchemy model to Pydantic model
+    space_response = SpaceOut.model_validate(result)
+    return success_response(data=space_response, message="Space updated successfully")
 
-@router.put("/", response_model=SpaceOut)
-def update_space(space: SpaceUpdate, db: Session = Depends(get_db)):
-    db_space = crud.update_space(db, space)
-    if not db_space:
-        raise HTTPException(status_code=404, detail="Space not found")
-    return db_space
 
 
 @router.delete("/{space_id}", response_model=SpaceOut)

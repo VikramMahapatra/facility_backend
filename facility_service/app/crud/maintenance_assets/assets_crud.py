@@ -7,7 +7,7 @@ from sqlalchemy import func, cast, or_, case, literal, Numeric, and_, distinct
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.dialects.postgresql import UUID
 from dateutil.relativedelta import relativedelta
-from facility_service.app.models.space_sites.sites import Site
+from ...models.space_sites.sites import Site
 from shared.app_status_code import AppStatusCode
 from shared.json_response_helper import error_response
 from ...models.space_sites.buildings import Building

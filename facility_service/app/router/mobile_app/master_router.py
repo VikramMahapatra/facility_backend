@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from ...schemas.space_sites.sites_schemas import SiteRequest
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
-from shared.schemas import ExportRequestParams, ExportResponse, Lookup, MasterLookupQueryParams, UserToken
+from shared.schemas import ExportRequestParams, ExportResponse, Lookup, MasterQueryParams, UserToken
 from ...crud.space_sites import site_crud, building_block_crud, spaces_crud
 
 
@@ -22,10 +22,10 @@ def site_lookup(params: SiteRequest = None, db: Session = Depends(get_db)):
 
 
 @router.post("/building-lookup", response_model=List[Lookup])
-def building_lookup(params: MasterLookupQueryParams = None, db: Session = Depends(get_db)):
+def building_lookup(params: MasterQueryParams = None, db: Session = Depends(get_db)):
     return building_block_crud.get_building_lookup(db, params.site_id, None)
 
 
 @router.post("/space-lookup", response_model=List[Lookup])
-def space_lookup(params: MasterLookupQueryParams = None, db: Session = Depends(get_db)):
+def space_lookup(params: MasterQueryParams = None, db: Session = Depends(get_db)):
     return spaces_crud.get_space_lookup(db, params.site_id, params.building_id, None)

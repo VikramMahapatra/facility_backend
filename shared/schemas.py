@@ -57,6 +57,7 @@ class JsonOutResult(EmptyStringModel, Generic[T]):
     message: str
 
 
-class MasterLookupQueryParams(BaseModel):
+class MasterQueryParams(BaseModel):
     site_id: Optional[str] = None
     building_id: Optional[str] = None
+    space_id: Optional[str] = None

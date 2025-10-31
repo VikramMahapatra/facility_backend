@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from ...schemas.mobile_app.home_schemas import HomeDetailsResponse, MasterDetailResponse
 from shared.database import get_facility_db as get_db
-from shared.auth import validate_token
-from shared.schemas import UserToken
+from shared.auth import validate_token, validate_current_token
+from shared.schemas import MasterQueryParams, UserToken
 from ...crud.mobile_app import home_crud
 
 
@@ -18,17 +18,17 @@ router = APIRouter(
 )
 
 
-@router.get("/master-details", response_model=MasterDetailResponse)
+@router.post("/master-details", response_model=MasterDetailResponse)
 def get_master_details(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_token)):
     return home_crud.get_home_spaces(db, current_user)
 
 # home details
 
 
-@router.get("/details", response_model=HomeDetailsResponse)
+@router.post("/details", response_model=HomeDetailsResponse)
 def get_home_details(
-    space_id: str = Query(..., description="Space ID to get home details for"),
+    params: MasterQueryParams = None,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_token)
+    current_user: UserToken = Depends(validate_current_token)
 ):
-    return home_crud.get_home_details(db, space_id)
+    return home_crud.get_home_details(db, params.space_id)

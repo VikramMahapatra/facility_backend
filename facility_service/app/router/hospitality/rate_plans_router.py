@@ -3,8 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
 
+from shared.app_status_code import AppStatusCode
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token  
+from shared.json_response_helper import error_response, success_response
 from shared.schemas import Lookup, UserToken
 from ...schemas.hospitality.rate_plans_schemas import (
     RatePlanCreate, 
@@ -44,11 +46,8 @@ def create_rate_plan_route(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.create_rate_plan(
-        db=db,
-        org_id=current_user.org_id,
-        rate_plan=rate_plan
-    )
+    result = crud.create_rate_plan(db, current_user.org_id, rate_plan)
+    return success_response(data=result, message="Rate plan created successfully")
 
 
 # ----------------- Update Rate Plan -----------------
@@ -58,11 +57,19 @@ def update_rate_plan_route(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    updated = crud.update_rate_plan(db, rate_plan_update, current_user)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Rate Plan not found")
-    return {"message": "Rate Plan updated successfully"}
-
+    result = crud.update_rate_plan(db, rate_plan_update, current_user)
+    
+    if not result:
+        return error_response(
+            message="Rate Plan not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
+    
+    return success_response(
+        data={"message": "Rate Plan updated successfully"},
+        message="Rate Plan updated successfully"
+    )
 
 # ---------------- Delete Rate Plan ----------------
 @router.delete("/{rate_plan_id}")

@@ -1,6 +1,9 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response, success_response
 from ...crud.financials import tax_codes_crud as crud
 from ...schemas.financials.tax_codes_schemas import (
     TaxCodeCreate, TaxCodeOut, TaxCodeUpdate, TaxOverview, TaxCodesRequest, TaxCodesResponse, TaxReturnResponse
@@ -42,17 +45,43 @@ def get_tax_returns(
 def create_tax_code(
     tax: TaxCodeCreate, 
     db: Session = Depends(get_db),
-    current_user : UserToken = Depends(validate_current_token)):
+    current_user: UserToken = Depends(validate_current_token)):
+    
     tax.org_id = current_user.org_id
-    return crud.create_tax_code(db, tax)
+    result = crud.create_tax_code(db, tax)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    return success_response(
+        data=result,
+        message="Tax code created successfully"
+    )
 
 
 @router.put("/", response_model=None)
-def update_tax_code(tax: TaxCodeUpdate, db: Session = Depends(get_db)):
-    db_tax = crud.update_tax_code(db, tax)
-    if not db_tax:
-        raise HTTPException(status_code=404, detail="Tax code not found")
-    return db_tax
+def update_tax_code(
+    tax: TaxCodeUpdate, 
+    db: Session = Depends(get_db)):
+    
+    result = crud.update_tax_code(db, tax)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    if not result:
+        return error_response(
+            message="Tax code not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
+    
+    return success_response(
+        data=result,
+        message="Tax code updated successfully"
+    )
 
 
 @router.delete("/{tax_code_id}", response_model=None)

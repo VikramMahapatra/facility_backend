@@ -1,9 +1,9 @@
-import uuid
+from uuid import UUID
 from typing import List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, or_, case, literal, Numeric
-from sqlalchemy.dialects.postgresql import UUID
+
 
 from ...models.crm.contacts import Contact
 from ...models.financials.invoices import Invoice, PaymentAR

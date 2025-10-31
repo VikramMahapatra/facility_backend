@@ -32,13 +32,18 @@ class Period(EmptyStringModel):
 class LeaseContractDetail(EmptyStringModel):
     start_date: Optional[date] = None
     expiry_date: Optional[date] = None
-    lease_amount: float = 0.0
+    rent_amount: float = 0.0
+    total_rent_paid: float = 0.0
+    rent_frequency: Optional[str] = None
+    last_paid_date: Optional[date] = None
+    next_due_date: Optional[date] = None
 
 
 class MaintenanceDetail(EmptyStringModel):
     last_paid: Optional[date] = None
     next_due_date: Optional[date] = None
-    maintenance_amount: float = 0.0
+    next_maintenance_amount: float = 0.0
+    total_maintenance_paid: float = 0.0
 
 
 class Statistics(EmptyStringModel):

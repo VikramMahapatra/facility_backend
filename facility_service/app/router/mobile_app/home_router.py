@@ -14,12 +14,12 @@ from ...crud.mobile_app import home_crud
 router = APIRouter(
     prefix="/api/home",
     tags=["Home"],
-    dependencies=[Depends(validate_token)]
+    dependencies=[Depends(validate_current_token)]
 )
 
 
 @router.post("/master-details", response_model=MasterDetailResponse)
-def get_master_details(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_token)):
+def get_master_details(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
     return home_crud.get_home_spaces(db, current_user)
 
 # home details

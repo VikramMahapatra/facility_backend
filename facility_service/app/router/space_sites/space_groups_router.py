@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
+from shared.json_response_helper import success_response
 from shared.schemas import Lookup, UserToken
 from ...schemas.space_sites.space_groups_schemas import SpaceGroupOut, SpaceGroupCreate, SpaceGroupRequest, SpaceGroupResponse, SpaceGroupUpdate
 from ...crud.space_sites import space_groups_crud as crud
@@ -17,20 +18,38 @@ def get_space_groups(
     current_user: UserToken = Depends(validate_current_token)):
     return crud.get_space_groups(db, current_user.org_id, params)
 
-@router.post("/", response_model=SpaceGroupOut)
+@router.post("/", response_model=None)
 def create_space_group(
     group: SpaceGroupCreate, 
     db: Session = Depends(get_db),
-    current_user : UserToken = Depends(validate_current_token)):
+    current_user: UserToken = Depends(validate_current_token)
+):
     group.org_id = current_user.org_id
-    return crud.create_space_group(db, group)
+    result = crud.create_space_group(db, group)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != 200:
+        return result
+    
+    # Convert SQLAlchemy model to Pydantic model
+    space_group_response = SpaceGroupOut.model_validate(result)
+    return success_response(data=space_group_response, message="Space group created successfully")
 
-@router.put("/", response_model=SpaceGroupOut)
-def update_space_group(group: SpaceGroupUpdate, db: Session = Depends(get_db)):
-    db_group = crud.update_space_group(db, group)
-    if not db_group:
-        raise HTTPException(status_code=404, detail="SpaceGroup not found")
-    return db_group
+@router.put("/", response_model=None)
+def update_space_group(
+    group: SpaceGroupUpdate, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    result = crud.update_space_group(db, group)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != 200:
+        return result
+    
+    # Convert SQLAlchemy model to Pydantic model
+    space_group_response = SpaceGroupOut.model_validate(result)
+    return success_response(data=space_group_response, message="Space group updated successfully")
 
 @router.delete("/{group_id}", response_model=Dict[str, Any])
 def delete_space_group(group_id: str, db: Session = Depends(get_db)):

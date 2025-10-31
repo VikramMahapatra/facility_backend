@@ -1,11 +1,15 @@
 # site_crud.py
 from operator import or_
+from sqlite3 import IntegrityError
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, and_, distinct, case
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 from typing import Dict, Optional
+
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
 
 from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
@@ -151,23 +155,38 @@ def get_site(db: Session, site_id: str):
 
 
 # site_crud.py - Update create_site and update_site functions
-
 def create_site(db: Session, site: SiteCreate):
-    # Check for duplicate name or code in same org (case-insensitive)
-    existing_site = db.query(Site).filter(
+    # Check for duplicate name
+    existing_name = db.query(Site).filter(
         Site.org_id == site.org_id,
         Site.is_deleted == False,
-        or_(
-            func.lower(Site.name) == func.lower(site.name),  # Case-insensitive
-            Site.code == site.code
-        )
+        func.lower(Site.name) == func.lower(site.name)
     ).first()
     
-    if existing_site:
-        if func.lower(existing_site.name) == func.lower(site.name):
-            raise HTTPException(400, f"Site with name '{site.name}' already exists")
-        if existing_site.code == site.code:
-            raise HTTPException(400, f"Site with code '{site.code}' already exists")
+    # Check for duplicate code
+    existing_code = db.query(Site).filter(
+        Site.org_id == site.org_id,
+        Site.is_deleted == False,
+        func.lower(Site.code) == func.lower(site.code)
+    ).first()
+    
+    # Evaluate the comparisons in Python
+    name_match = existing_name and existing_name.name.lower() == site.name.lower()
+    code_match = existing_code and existing_code.code.lower() == site.code.lower()
+    
+    if name_match:
+        return error_response(
+            message=f"Site with name '{site.name}' already exists",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
+    
+    if code_match:
+        return error_response(
+            message=f"Site with code '{site.code}' already exists",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
     
     # Create site
     db_site = Site(**site.model_dump())
@@ -176,30 +195,53 @@ def create_site(db: Session, site: SiteCreate):
     db.refresh(db_site)
     return get_site(db, db_site.id)
 
+
 def update_site(db: Session, site: SiteUpdate):
     db_site = get_site_by_id(db, site.id)
     if not db_site:
-        raise HTTPException(404, "Site not found")
+        return error_response(
+            message="Site not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
     
     update_data = site.dict(exclude_unset=True)
     
-    # Check for duplicates only if name/code is being updated (case-insensitive)
+    # Check for duplicates only if name/code is being updated
     if 'name' in update_data or 'code' in update_data:
-        existing_site = db.query(Site).filter(
-            Site.org_id == db_site.org_id,
-            Site.id != site.id,
-            Site.is_deleted == False,
-            or_(
-                func.lower(Site.name) == func.lower(update_data.get('name', '')),  # Case-insensitive
-                Site.code == update_data.get('code')
-            )
-        ).first()
+        # Check for duplicate name
+        if 'name' in update_data:
+            existing_name = db.query(Site).filter(
+                Site.org_id == db_site.org_id,
+                Site.id != site.id,
+                Site.is_deleted == False,
+                func.lower(Site.name) == func.lower(update_data['name'])
+            ).first()
+            
+            name_match = existing_name and existing_name.name.lower() == update_data['name'].lower()
+            if name_match:
+                return error_response(
+                    message=f"Site with name '{update_data['name']}' already exists",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                    http_status=400
+                )
         
-        if existing_site:
-            if func.lower(existing_site.name) == func.lower(update_data.get('name', '')):
-                raise HTTPException(400, f"Site with name '{update_data['name']}' already exists")
-            if existing_site.code == update_data.get('code'):
-                raise HTTPException(400, f"Site with code '{update_data['code']}' already exists")
+        # Check for duplicate code  
+        if 'code' in update_data:
+            existing_code = db.query(Site).filter(
+                Site.org_id == db_site.org_id,
+                Site.id != site.id,
+                Site.is_deleted == False,
+                func.lower(Site.code) == func.lower(update_data['code'])
+            ).first()
+            
+            code_match = existing_code and existing_code.code.lower() == update_data['code'].lower()
+            if code_match:
+                return error_response(
+                    message=f"Site with code '{update_data['code']}' already exists",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                    http_status=400
+                )
     
     # Update site
     for key, value in update_data.items():
@@ -208,6 +250,7 @@ def update_site(db: Session, site: SiteUpdate):
     db.commit()
     db.refresh(db_site)
     return get_site(db, site.id)
+
 
 # In site_crud.py - update the delete_site function
 def delete_site(db: Session, site_id: str) -> Dict:

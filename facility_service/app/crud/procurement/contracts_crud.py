@@ -4,7 +4,7 @@ from typing import List, Optional
 import uuid
 from sqlalchemy.orm import Session
 
-from facility_service.app.models.space_sites.sites import Site
+from ...models.space_sites.sites import Site
 from shared.app_status_code import AppStatusCode
 from shared.json_response_helper import error_response
 

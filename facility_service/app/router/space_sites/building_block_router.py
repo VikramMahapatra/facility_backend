@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 # Use relative imports
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
+from shared.json_response_helper import success_response
 from shared.schemas import Lookup, UserToken #dependancies
 #for get all list of sites 
 from fastapi import APIRouter, Depends
@@ -31,17 +32,39 @@ def building_lookup(site_id: Optional[str]= Query(None), db: Session = Depends(g
     return crud.get_building_lookup(db, site_id, current_user.org_id)
 
 
-@router.post("/", response_model=BuildingOut)
-def create_building(building: BuildingCreate, db: Session = Depends(get_db), current_user : UserToken = Depends(validate_current_token)):
+@router.post("/", response_model=None)
+def create_building(
+    building: BuildingCreate, 
+    db: Session = Depends(get_db), 
+    current_user: UserToken = Depends(validate_current_token)
+):
     building.org_id = current_user.org_id
-    return crud.create_building(db, building)
+    result = crud.create_building(db, building)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != 200:
+        return result
+    
+    # Convert SQLAlchemy model to Pydantic model
+    building_response = BuildingOut.model_validate(result)
+    return success_response(data=building_response, message="Building created successfully")
 
-@router.put("/", response_model=BuildingOut)
-def update_building(building: BuildingUpdate, db: Session = Depends(get_db)):
-    db_site = crud.update_building(db, building)  # Fixed: changed update_site to update_building
-    if not db_site:
-        raise HTTPException(status_code=404, detail="Building not found")
-    return db_site
+@router.put("/", response_model=None)
+def update_building(
+    building: BuildingUpdate, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    result = crud.update_building(db, building)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != 200:
+        return result
+    
+    # Convert SQLAlchemy model to Pydantic model
+    building_response = BuildingOut.model_validate(result)
+    return success_response(data=building_response, message="Building updated successfully")
+
 
 @router.delete("/{id}", response_model=Dict[str, Any])
 def delete_building(id: str, db: Session = Depends(get_db)):

@@ -1,10 +1,14 @@
 # building_crud.py
+from sqlite3 import IntegrityError
 from typing import Optional, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, or_
 from datetime import datetime
 from uuid import UUID
 from fastapi import HTTPException
+
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
 from ...schemas.space_sites.building_schemas import BuildingCreate, BuildingRequest, BuildingUpdate
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
@@ -80,20 +84,27 @@ def create_building(db: Session, building: BuildingCreate):
     ).first()
     
     if existing_building:
-        raise HTTPException(400, f"Building with name '{building.name}' already exists in this site")
+        return error_response(
+            message=f"Building with name '{building.name}' already exists in this site",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
     
     # Create building
     db_building = Building(**building.model_dump(exclude={"org_id"}))
     db.add(db_building)
     db.commit()
     db.refresh(db_building)
-    return get_building(db, db_building.id)
-
+    return get_building(db, db_building.id)  # Use get_building which returns computed fields
 
 def update_building(db: Session, building: BuildingUpdate):
     db_building = get_building_by_id(db, building.id)
     if not db_building:
-        raise HTTPException(404, "Building not found")
+        return error_response(
+            message="Building not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
     
     update_data = building.dict(exclude_unset=True)
     
@@ -107,15 +118,28 @@ def update_building(db: Session, building: BuildingUpdate):
         ).first()
         
         if existing_building:
-            raise HTTPException(400, f"Building with name '{update_data['name']}' already exists in this site")
+            return error_response(
+                message=f"Building with name '{update_data['name']}' already exists in this site",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
     
     # Update building
     for key, value in update_data.items():
         setattr(db_building, key, value)
     
-    db.commit()
-    db.refresh(db_building)
-    return get_building(db, db_building.id)
+    try:
+        db.commit()
+        db.refresh(db_building)
+        return get_building(db, db_building.id)  # Use get_building which returns computed fields
+    except IntegrityError as e:
+        db.rollback()
+        return error_response(
+            message="Error updating building",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+    
 
 
 def get_building_by_id(db: Session, building_id: str):
@@ -166,6 +190,34 @@ def get_building(db: Session, id: str):
         )
     )
     return building_query.first()
+
+
+def get_building_lookup(db: Session, site_id: str, org_id: str):
+    building_query = (
+        db.query(Building.id, Building.name)
+        .join(Site, Site.id == Building.site_id)
+        .filter(
+            Building.is_deleted == False,  # Add this filter
+            Site.is_deleted == False      # Add this filter
+        )
+    )
+
+    if org_id:
+        building_query = building_query.filter(Site.org_id == org_id)
+
+    if site_id and site_id.lower() != "all":
+        building_query = building_query.filter(Site.id == site_id)
+
+    return building_query.all()
+
+
+
+def get_building_by_id(db: Session, building_id: str):
+    return db.query(Building).filter(
+        Building.id == building_id,
+        Building.is_deleted == False  # Add this filter
+    ).first()
+
 
 
 def get_building_lookup(db: Session, site_id: str, org_id: str):

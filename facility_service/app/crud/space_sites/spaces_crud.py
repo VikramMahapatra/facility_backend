@@ -1,3 +1,4 @@
+from sqlite3 import IntegrityError
 import uuid
 from typing import List, Optional
 from datetime import datetime
@@ -5,6 +6,9 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
+
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
 from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
@@ -97,7 +101,8 @@ def get_space_by_id(db: Session, space_id: str) -> Optional[Space]:
     return db.query(Space).filter(Space.id == space_id, Space.is_deleted == False).first()
 
 
-def create_space(db: Session, space: SpaceCreate) -> Space:
+
+def create_space(db: Session, space: SpaceCreate):
     # Check for duplicate space code within the same building (case-insensitive)
     if space.building_block_id:
         existing_space = db.query(Space).filter(
@@ -108,7 +113,11 @@ def create_space(db: Session, space: SpaceCreate) -> Space:
         
         if existing_space:
             building_name = db.query(Building.name).filter(Building.id == space.building_block_id).scalar()
-            raise HTTPException(400, f"Space with code '{space.code}' already exists in building '{building_name}'")
+            return error_response(
+                message=f"Space with code '{space.code}' already exists in building '{building_name}'",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
     
     # Check for duplicate space name within the same building (if building and name are specified)
     if space.building_block_id and space.name:
@@ -120,22 +129,30 @@ def create_space(db: Session, space: SpaceCreate) -> Space:
         
         if existing_space_by_name:
             building_name = db.query(Building.name).filter(Building.id == space.building_block_id).scalar()
-            raise HTTPException(400, f"Space with name '{space.name}' already exists in building '{building_name}'")
+            return error_response(
+                message=f"Space with name '{space.name}' already exists in building '{building_name}'",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
     
-    # Create space
-    db_space = Space(**space.model_dump(exclude="building_block"))
+    # Create space - exclude building_block field
+    space_data = space.model_dump(exclude={"building_block"})
+    db_space = Space(**space_data)
     db.add(db_space)
     db.commit()
     db.refresh(db_space)
     return db_space
 
-
-def update_space(db: Session, space: SpaceUpdate) -> Optional[Space]:
+def update_space(db: Session, space: SpaceUpdate):
     db_space = get_space_by_id(db, space.id)
     if not db_space:
-        raise HTTPException(404, "Space not found")
+        return error_response(
+            message="Space not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
     
-    update_data = space.dict(exclude_unset=True)
+    update_data = space.model_dump(exclude_unset=True, exclude={"building_block"})
     
     # Check for code duplicates within same building (if building exists and code is being updated)
     if 'code' in update_data and db_space.building_block_id:
@@ -148,7 +165,11 @@ def update_space(db: Session, space: SpaceUpdate) -> Optional[Space]:
         
         if existing_space:
             building_name = db.query(Building.name).filter(Building.id == db_space.building_block_id).scalar()
-            raise HTTPException(400, f"Space with code '{update_data['code']}' already exists in building '{building_name}'")
+            return error_response(
+                message=f"Space with code '{update_data['code']}' already exists in building '{building_name}'",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
     
     # Check for name duplicates within same building (if building exists and name is being updated)
     if 'name' in update_data and db_space.building_block_id:
@@ -161,15 +182,27 @@ def update_space(db: Session, space: SpaceUpdate) -> Optional[Space]:
         
         if existing_space_by_name:
             building_name = db.query(Building.name).filter(Building.id == db_space.building_block_id).scalar()
-            raise HTTPException(400, f"Space with name '{update_data['name']}' already exists in building '{building_name}'")
+            return error_response(
+                message=f"Space with name '{update_data['name']}' already exists in building '{building_name}'",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
     
     # Update space
     for key, value in update_data.items():
         setattr(db_space, key, value)
     
-    db.commit()
-    db.refresh(db_space)
-    return db_space
+    try:
+        db.commit()
+        db.refresh(db_space)
+        return db_space
+    except IntegrityError as e:
+        db.rollback()
+        return error_response(
+            message="Error updating space",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def delete_space(db: Session, space_id: str) -> Optional[Space]:

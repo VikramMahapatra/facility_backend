@@ -6,7 +6,7 @@ from sqlalchemy import Date, func, cast, or_, case, literal, Numeric, and_
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.dialects.postgresql import UUID
 
-from facility_service.app.models.space_sites.sites import Site
+from ...models.space_sites.sites import Site
 
 from ...models.parking_access.access_events import AccessEvent
 from ...schemas.parking_access.access_event_schemas import AccessEventOut, AccessEventRequest, AccessEventsResponse

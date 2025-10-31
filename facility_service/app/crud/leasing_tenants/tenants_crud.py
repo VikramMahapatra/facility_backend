@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, literal, or_
 from uuid import UUID
 
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
+
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.models.space_sites.buildings import Building
@@ -320,9 +323,10 @@ def create_tenant(db: Session, tenant: TenantCreate):
         ).first()
 
         if existing_tenant_in_space:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Space already has a tenant assigned. One space can only have one tenant."
+            return error_response(
+                message=f"Space already has a tenant assigned. One space can only have one tenant.",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
             )
 
         # Check for duplicate name (case-insensitive) within the same site
@@ -333,9 +337,10 @@ def create_tenant(db: Session, tenant: TenantCreate):
         ).first()
 
         if existing_tenant_by_name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tenant with name '{tenant.name}' already exists in this site"
+            return error_response(
+                message=f"Tenant with name '{tenant.name}' already exists in this site",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
             )
 
         # Create Tenant
@@ -364,9 +369,10 @@ def create_tenant(db: Session, tenant: TenantCreate):
         ).first()
 
         if existing_partner_in_space:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Space already has a commercial partner assigned. One space can only have one tenant."
+            return error_response(
+                message=f"Space already has a commercial partner assigned. One space can only have one tenant.",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
             )
 
         # Check for duplicate legal_name (case-insensitive) within the same site
@@ -378,9 +384,10 @@ def create_tenant(db: Session, tenant: TenantCreate):
         ).first()
 
         if existing_partner_by_name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Commercial partner with name '{legal_name}' already exists in this site"
+            return error_response(
+                message=f"Commercial partner with name '{legal_name}' already exists in this site",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
             )
 
         # Create CommercialPartner
@@ -400,6 +407,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
         db.refresh(db_partner)
         return db_partner
 
+
 def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
     update_dict = update_data.dict(exclude_unset=True)
     update_dict["updated_at"] = datetime.utcnow()
@@ -407,7 +415,11 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
     if update_data.tenant_type == "individual":
         db_tenant = get_tenant_by_id(db, tenant_id)
         if not db_tenant:
-            raise HTTPException(status_code=404, detail="Tenant not found")
+            return error_response(
+                message="Tenant not found",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=404
+            )
 
         # ✅ Check if space_id is being updated and if new space already has a tenant
         if 'space_id' in update_dict and update_dict['space_id'] != db_tenant.space_id:
@@ -418,9 +430,10 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
             ).first()
 
             if existing_tenant_in_new_space:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Target space already has a tenant assigned. One space can only have one tenant."
+                return error_response(
+                    message=f"Target space already has a tenant assigned. One space can only have one tenant.",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                    http_status=400
                 )
 
         # Check for duplicate name (case-insensitive) if name is being updated
@@ -433,9 +446,10 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
             ).first()
 
             if existing_tenant_by_name:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Tenant with name '{update_dict['name']}' already exists in this site"
+                return error_response(
+                    message=f"Tenant with name '{update_dict['name']}' already exists in this site",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                    http_status=400
                 )
 
         # Update Tenant table
@@ -462,7 +476,11 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
     elif update_data.tenant_type == "commercial":
         db_partner = get_commercial_partner_by_id(db, tenant_id)
         if not db_partner:
-            raise HTTPException(status_code=404, detail="Commercial partner not found")
+            return error_response(
+                message="Commercial partner not found",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=404
+            )
 
         # ✅ Check if space_id is being updated and if new space already has a commercial partner
         if 'space_id' in update_dict and update_dict['space_id'] != db_partner.space_id:
@@ -473,9 +491,10 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
             ).first()
 
             if existing_partner_in_new_space:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Target space already has a commercial partner assigned. One space can only have one tenant."
+                return error_response(
+                    message=f"Target space already has a commercial partner assigned. One space can only have one tenant.",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                    http_status=400
                 )
 
         # Check for duplicate legal_name (case-insensitive) if being updated
@@ -489,9 +508,10 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
             ).first()
 
             if existing_partner_by_name:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Commercial partner with name '{new_legal_name}' already exists in this site"
+                return error_response(
+                    message=f"Commercial partner with name '{new_legal_name}' already exists in this site",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                    http_status=400
                 )
 
         # Update commercial partner
@@ -507,7 +527,11 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
         return db_partner
 
     else:
-        raise ValueError(f"Invalid tenant_type: {update_data.tenant_type}")
+        return error_response(
+            message=f"Invalid tenant_type: {update_data.tenant_type}",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
     
     
 # ----------------- Delete Tenant -----------------

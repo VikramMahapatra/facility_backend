@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, cast, Text, case
+from sqlalchemy import func, or_, cast, Text, case , and_
 from typing import Dict, List, Optional
 from datetime import date, datetime
 from sqlalchemy.dialects.postgresql import UUID
@@ -12,6 +12,12 @@ from ...schemas.hospitality.rate_plans_schemas import (
     RatePlanListResponse, RatePlanOverview
 )
 from ...enum.hospitality_enum import RatePlansMealPlan ,RatePlanStatus
+
+from sqlalchemy import and_, func
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
+
+
 # ----------------- Overview Calculation -----------------
 def get_rate_plan_overview(
     db: Session, 
@@ -154,8 +160,25 @@ def get_rate_plan(db: Session, rate_plan_id: UUID, org_id: UUID) -> Optional[Rat
     ).first()
 
 
+
 # ----------------- Create Rate Plan -----------------
 def create_rate_plan(db: Session, org_id: UUID, rate_plan: RatePlanCreate) -> RatePlan:
+    # Case-insensitive validation: Check for duplicate rate plan name in same SITE
+    existing_plan = db.query(RatePlan).filter(
+        and_(
+            RatePlan.org_id == org_id,
+            RatePlan.site_id == rate_plan.site_id,  # Same site
+            func.lower(RatePlan.name) == func.lower(rate_plan.name)
+        )
+    ).first()
+    
+    if existing_plan:
+        return error_response(
+            message=f"Rate plan with name '{rate_plan.name}' already exists in this site",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
+    
     db_rate_plan = RatePlan(
         org_id=org_id,
         **rate_plan.dict(exclude={"org_id"})
@@ -175,6 +198,27 @@ def update_rate_plan(db: Session, rate_plan_update: RatePlanUpdate, current_user
 
     if not db_rate_plan:
         return None
+
+    # Get target site_id (use new value if provided, otherwise keep current)
+    target_site_id = getattr(rate_plan_update, 'site_id', db_rate_plan.site_id)
+    target_name = getattr(rate_plan_update, 'name', db_rate_plan.name)
+
+    # ALWAYS check for duplicates in the same SITE
+    existing_plan = db.query(RatePlan).filter(
+        and_(
+            RatePlan.org_id == current_user.org_id,
+            RatePlan.site_id == target_site_id,  # Same site
+            func.lower(RatePlan.name) == func.lower(target_name),
+            RatePlan.id != rate_plan_update.id
+        )
+    ).first()
+    
+    if existing_plan:
+        return error_response(
+            message=f"Rate plan with name '{target_name}' already exists in this site",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
 
     # Update only fields provided
     update_data = rate_plan_update.dict(exclude_unset=True)

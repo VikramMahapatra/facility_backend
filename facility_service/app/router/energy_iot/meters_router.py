@@ -2,6 +2,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response, success_response
+
 from ...schemas.energy_iot.meters_schemas import BulkMeterRequest, MeterCreate, MeterListResponse, MeterRequest, MeterUpdate
 from ...crud.energy_iot import meters_crud as crud
 from shared.database import get_facility_db as get_db
@@ -42,16 +45,56 @@ def create_meter(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     data.org_id = current_user.org_id
-    return crud.create(db, data)
+    try:
+        return crud.create(db, data)
+    except HTTPException as e:
+        # Re-raise the validation exception
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/", response_model=None)
+def create_meter(
+    data: MeterCreate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)):
+    
+    data.org_id = current_user.org_id
+    result = crud.create(db, data)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    return success_response(
+        data=result,
+        message="Meter created successfully"
+    )
 
 
 @router.put("/", response_model=None)
-def update_meter(data: MeterUpdate, db: Session = Depends(get_db)):
-    model = crud.update(db, data)
-    if not model:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    return model
-
+def update_meter(
+    data: MeterUpdate, 
+    db: Session = Depends(get_db)):
+    
+    result = crud.update(db, data)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    if not result:
+        return error_response(
+            message="Meter not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
+    
+    return success_response(
+        data=result,
+        message="Meter updated successfully"
+    )
 
 @router.delete("/{id}", response_model=None)
 def delete_meter(id: str, db: Session = Depends(get_db)):

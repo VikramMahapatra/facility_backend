@@ -4,7 +4,9 @@ from typing import List, Optional
 import uuid
 from sqlalchemy.orm import Session
 
-from facility_service.app.models.space_sites.sites import Site
+from ...models.space_sites.sites import Site
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
 
 from ...enum.procurement_enum import ContractStatus, ContractType
 from shared.schemas import Lookup
@@ -13,6 +15,8 @@ from sqlalchemy import func, or_ , String
 from datetime import date, timedelta
 from ...models.procurement.contracts import Contract
 from ...models.procurement.vendors import Vendor
+from sqlalchemy import and_, func
+from fastapi import HTTPException, status
 
 
 # ----------------- Build Filters for Contracts -----------------
@@ -192,9 +196,24 @@ def get_contract_by_id(db: Session, contract_id: str) -> Optional[Contract]:
     )
 
 
-
 # -------- Create Contract --------
 def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
+    # Case-INSENSITIVE validation: Check for duplicate contract title in same org
+    existing_contract = db.query(Contract).filter(
+        and_(
+            Contract.org_id == contract.org_id,
+            func.lower(Contract.title) == func.lower(contract.title),  # Case-insensitive comparison
+            Contract.is_deleted == False
+        )
+    ).first()
+    
+    if existing_contract:
+        return error_response(
+            message=f"Contract with title '{contract.title}' already exists in this organization",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
+    
     db_contract = Contract(id=uuid.uuid4(), **contract.model_dump())
     db.add(db_contract)
     db.commit()
@@ -236,6 +255,24 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
     if not db_contract:
         return None
     
+    # Case-INSENSITIVE validation: Check if title is being updated and causes duplicates
+    if hasattr(contract, 'title') and contract.title is not None and contract.title.lower() != db_contract.title.lower():
+        existing_contract = db.query(Contract).filter(
+            and_(
+                Contract.org_id == db_contract.org_id,
+                func.lower(Contract.title) == func.lower(contract.title),  # Case-insensitive comparison
+                Contract.is_deleted == False,
+                Contract.id != contract.id  # Exclude current contract
+            )
+        ).first()
+        
+        if existing_contract:
+            return error_response(
+                message=f"Contract with title '{contract.title}' already exists in this organization",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
+    
     # Update only fields that are set in the request
     for k, v in contract.model_dump(exclude_unset=True).items():
         setattr(db_contract, k, v)
@@ -244,6 +281,7 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
     
     # Return the updated contract with vendor_name and site_name
     return get_contract_by_id(db, contract.id)
+
 
 # -------- Delete Contract (Soft Delete) --------
 def delete_contract(db: Session, contract_id: UUID, org_id: UUID) -> bool:

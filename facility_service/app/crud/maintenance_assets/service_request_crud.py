@@ -3,8 +3,8 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import Text, and_, func, cast, Float, literal,String, or_
 
-from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
-from facility_service.app.models.leasing_tenants.tenants import Tenant 
+from ...models.leasing_tenants.commercial_partners import CommercialPartner
+from ...models.leasing_tenants.tenants import Tenant 
 
 from ...models.maintenance_assets.work_order import WorkOrder
 from ...models.crm.contacts import Contact

@@ -17,7 +17,7 @@ class BuildingOut(BaseModel):
     attributes: Optional[Any] = None
 
     class Config:
-        from_attribute = True
+        from_attributes = True  # Change from_attribute to from_attributes FOR CREATE AND UPDATE VALIDATION
         
 class BuildingRequest(CommonQueryParams):
     site_id: Optional[str] = None

@@ -3,6 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.database import get_facility_db as get_db
+from shared.json_response_helper import success_response
 from shared.schemas import UserToken
 from ...schemas.maintenance_assets.inventory_items_schemas import InventoryItemOut, InventoryItemCreate, InventoryItemUpdate
 from ...crud.maintenance_assets import inventory_items_crud as crud
@@ -31,25 +32,40 @@ def read_item(
         raise HTTPException(status_code=404, detail="Inventory item not found")
     return db_item
 
-@router.post("/", response_model=InventoryItemOut)
+@router.post("/", response_model=None)
 def create_item(
     item: InventoryItemCreate, 
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     # Set org_id from token and create item
-    return crud.create_inventory_item(db, item, current_user.org_id)
+    result = crud.create_inventory_item(db, item, current_user.org_id)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    return success_response(
+        data=result,
+        message="Inventory item created successfully"
+    )
 
-@router.put("/", response_model=InventoryItemOut)
+@router.put("/", response_model=None)
 def update_item(
     item: InventoryItemUpdate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    db_item = crud.update_inventory_item(db, item, current_user.org_id)
-    if not db_item:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    return db_item
+    result = crud.update_inventory_item(db, item, current_user.org_id)
+    
+    # Check if result is an error response
+    if hasattr(result, 'status_code') and result.status_code != "100":
+        return result
+    
+    return success_response(
+        data=result,
+        message="Inventory item updated successfully"
+    )
 
 # ---------------- Delete Inventory Item (Soft Delete) ----------------
 @router.delete("/{item_id}")

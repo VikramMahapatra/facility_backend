@@ -5,6 +5,8 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
+
+from ...models.leasing_tenants.tenants import Tenant
 from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
@@ -177,13 +179,32 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
     if not db_space:
         return None
 
+    # Check if there are any leases associated with this space (even deleted ones)
+    existing_leases = (
+        db.query(Lease)
+        .filter(Lease.space_id == space_id)
+        .first()
+    )
+    
+    # Check if there are any tenants associated with this space (even deleted ones)
+    existing_tenants = (
+        db.query(Tenant)
+        .filter(Tenant.space_id == space_id)
+        .first()
+    )
+
+    if existing_leases or existing_tenants:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete space that has ever had tenants or leases associated with it."
+        )
+
     # Soft delete - set is_deleted to True instead of actually deleting
-    db_space.is_deleted = True  # Updated column name
+    db_space.is_deleted = True
     db_space.updated_at = func.now()
     db.commit()
     db.refresh(db_space)
     return db_space
-
 
 def get_space_lookup(db: Session, site_id: str, building_id: str, org_id: str):
     space_query = (

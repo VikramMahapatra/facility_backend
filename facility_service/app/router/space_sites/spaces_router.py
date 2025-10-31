@@ -51,11 +51,18 @@ def update_space(space: SpaceUpdate, db: Session = Depends(get_db)):
 
 @router.delete("/{space_id}", response_model=SpaceOut)
 def delete_space(space_id: str, db: Session = Depends(get_db)):
-    db_space = crud.delete_space(db, space_id)
-    if not db_space:
-        raise HTTPException(status_code=404, detail="Space not found")
-    return db_space
-
+    try:
+        db_space = crud.delete_space(db, space_id)
+        if not db_space:
+            raise HTTPException(status_code=404, detail="Space not found")
+        return db_space
+    except HTTPException:
+        # Re-raise the HTTPException from the CRUD layer
+        raise
+    except Exception as e:
+        # Handle any other unexpected errors
+        raise HTTPException(status_code=500, detail="Internal server error")
+    
 
 @router.get("/lookup", response_model=List[Lookup])
 def space_lookup(site_id: Optional[str] = Query(None),

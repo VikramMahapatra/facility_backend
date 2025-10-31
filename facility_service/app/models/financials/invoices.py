@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import (
-    Column, String, Date, Numeric, Text, ForeignKey, DateTime, func, UniqueConstraint
+    Boolean, Column, String, Date, Numeric, Text, ForeignKey, DateTime, func, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -22,6 +22,7 @@ class Invoice(Base):
     due_date: Date = Column(Date)
     status: str = Column(String(16), default="draft")  # draft|issued|paid|partial|void
     currency: str = Column(String(8), default="INR")
+    is_deleted = Column(Boolean, default=False, nullable=False)
     totals: dict = Column(JSONB)  # {sub:..., tax:..., grand:...}
     # Rename to avoid conflict
     meta: dict = Column("metadata", JSONB)  # Column name in DB stays "metadata"

@@ -164,7 +164,6 @@ def get_user_token(facility_db: Session, user: Users):
         "user_id": str(user.id),
         "org_id": str(user.org_id),
         "account_type": user.account_type,
-        "status": user.status,
         "role_ids": roles})
     user_data = get_user_by_id(facility_db, user)
 

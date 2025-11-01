@@ -172,7 +172,7 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
         lease_contract_detail["rent_frequency"] = lease.frequency
         lease_contract_detail["rent_amount"] = rent_amount
         lease_contract_detail["last_paid_date"] = last_rent_paid
-        lease_contract_detail["next_due_date"] = next_due_date
+        lease_contract_detail["next_due_date"] = next_rent_due_date
 
         # ✅ 2. Maintenance Details - FIXED LOGIC
         maintenance_query = (
@@ -305,7 +305,7 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
     notifications = (
         db.query(Notification)
         .filter(and_(Notification.user_id == user.user_id, Notification.read == False))
-        .order_by(Notification.timestamp.desc())
+        .order_by(Notification.posted_date.desc())
         .limit(5)
         .all()
     )
@@ -316,5 +316,5 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
         "lease_contract_detail": lease_contract_detail | {},
         "maintenance_detail": maintenance_detail | {},
         "statistics": statistics,
-        "notifications": notfication_list | []
+        "notifications": notfication_list or []
     }

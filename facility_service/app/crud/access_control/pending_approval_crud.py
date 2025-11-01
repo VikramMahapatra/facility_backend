@@ -71,7 +71,7 @@ def update_user_approval_status(db: Session, facility_db: Session, request: Appr
         if request.status == ApprovalStatus.approve:
             tenant.status = user.status
 
-    commercial_partner = facility_db.query(Tenant).filter(
+    commercial_partner = facility_db.query(CommercialPartner).filter(
         CommercialPartner.id == request.user_id).first()
     if commercial_partner:
         commercial_partner.status = user.status

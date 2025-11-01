@@ -47,20 +47,13 @@ def validate_current_token(
     # decoded token → contains user_id or email
     user_data = verify_token(token)
 
-    if not user_data:
-        return error_response(
-            message="Invalid token",
-            status_code=str(AppStatusCode.AUTHENTICATION_TOKEN_INVALID),
-            http_status=401
-        )
-
     # Fetch the user from the database
     user = db.query(Users).filter(Users.id == user_data.user_id).first()
 
     if not user:
         return error_response(
             message="User not found",
-            status_code=str(AppStatusCode.AUTHENTICATION_USER_NOT_FOUND),
+            status_code=str(AppStatusCode.AUTHENTICATION_USER_INVALID),
             http_status=404
         )
 
@@ -83,6 +76,13 @@ def validate_token(
     user_data = verify_token(token)
 
     user = db.query(Users).filter(Users.id == user_data.user_id).first()
+
+    if not user:
+        return error_response(
+            message="User not found",
+            status_code=str(AppStatusCode.AUTHENTICATION_USER_INVALID),
+            http_status=404
+        )
 
     user_data.status = user.status
     return user_data

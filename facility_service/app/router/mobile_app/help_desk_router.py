@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ...schemas.mobile_app.help_desk_schemas import ComplaintResponse
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
-from shared.schemas import UserToken
+from shared.schemas import MasterQueryParams, UserToken
 from ...crud.mobile_app import help_desk_crud
 
 
@@ -18,10 +18,9 @@ router = APIRouter(
 )
 
 
-@router.get("/getcomplaints", response_model=List[ComplaintResponse])
+@router.post("/getcomplaints", response_model=List[ComplaintResponse])
 def get_complaints(
-        space_id: str = Query(...,
-                              description="Space ID to get home details for"),
+        params: MasterQueryParams = None,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return help_desk_crud.get_complaints(db, space_id)
+    return help_desk_crud.get_complaints(db, params.space_id)

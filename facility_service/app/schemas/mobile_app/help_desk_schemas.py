@@ -13,6 +13,7 @@ class ComplaintResponse(EmptyStringModel):
     category: str
     status: str
     description: Optional[str] = None
+    comments: Optional[str] = None
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}

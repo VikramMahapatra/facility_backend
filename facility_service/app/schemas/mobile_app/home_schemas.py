@@ -3,6 +3,8 @@ from uuid import UUID
 from typing import Optional, List, Any
 from datetime import date
 from pydantic import BaseModel
+
+from ...schemas.system.notifications_schemas import NotificationOut
 from ...schemas.leases_schemas import LeaseOut
 from shared.schemas import CommonQueryParams, EmptyStringModel
 
@@ -58,5 +60,6 @@ class HomeDetailsResponse(EmptyStringModel):
     lease_contract_detail: LeaseContractDetail
     maintenance_detail: MaintenanceDetail
     statistics: Statistics
+    notifications: Optional[List[NotificationOut]] = None
 
     model_config = {"from_attributes": True}

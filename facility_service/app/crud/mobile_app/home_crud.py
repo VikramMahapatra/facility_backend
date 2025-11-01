@@ -5,9 +5,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta
 from typing import Dict, Optional
 
-from facility_service.app.models.leasing_tenants.lease_charges import LeaseCharge
-from facility_service.app.models.maintenance_assets.service_request import ServiceRequest
-from facility_service.app.models.maintenance_assets.work_order import WorkOrder
+from ...models.leasing_tenants.lease_charges import LeaseCharge
+from ...models.maintenance_assets.service_request import ServiceRequest
+from ...models.maintenance_assets.work_order import WorkOrder
+from ...models.system.notifications import Notification
+from ...schemas.system.notifications_schemas import NotificationOut
 
 from ...models.leasing_tenants.leases import Lease
 from shared.schemas import UserToken
@@ -75,7 +77,7 @@ def get_home_spaces(db: Session, user: UserToken):
     }
 
 
-def get_home_details(db: Session, space_id: UUID):
+def get_home_details(db: Session, space_id: UUID, user: UserToken):
     """
     Get comprehensive home details for a specific space
     """
@@ -299,8 +301,20 @@ def get_home_details(db: Session, space_id: UUID):
         }
     }
 
+    # notifications
+    notifications = (
+        db.query(Notification)
+        .filter(and_(Notification.user_id == user.user_id, Notification.read == False))
+        .order_by(Notification.timestamp.desc())
+        .limit(5)
+        .all()
+    )
+
+    notfication_list = [NotificationOut(n) for n in notifications]
+
     return {
         "lease_contract_detail": lease_contract_detail | {},
         "maintenance_detail": maintenance_detail | {},
-        "statistics": statistics
+        "statistics": statistics,
+        "notifications": notfication_list | []
     }

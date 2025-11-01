@@ -31,4 +31,4 @@ def get_home_details(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return home_crud.get_home_details(db, params.space_id)
+    return home_crud.get_home_details(db, params.space_id, current_user)

@@ -54,7 +54,7 @@ def get_pending_users_for_approval(db: Session, org_id: str, params: UserRequest
     return {"users": users_with_roles, "total": total}
 
 
-def update_user_approval_status(db: Session, request: ApprovalStatusRequest):
+def update_user_approval_status(db: Session, facility_db: Session, request: ApprovalStatusRequest):
     user = db.query(Users).filter(Users.id == request.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -64,17 +64,19 @@ def update_user_approval_status(db: Session, request: ApprovalStatusRequest):
     else:
         user.status = "rejected"
 
-    tenant = db.query(Tenant).filter(Tenant.user_id == request.user_id).first()
+    tenant = facility_db.query(Tenant).filter(
+        Tenant.user_id == request.user_id).first()
 
     if tenant:
         if request.status == ApprovalStatus.approve:
             tenant.status = user.status
 
-    commercial_partner = db.query(Tenant).filter(
+    commercial_partner = facility_db.query(CommercialPartner).filter(
         CommercialPartner.id == request.user_id).first()
     if commercial_partner:
         commercial_partner.status = user.status
 
+    facility_db.commit()
     db.commit()
     db.refresh(user)
     return user_management_crud.get_user(db, user.id)

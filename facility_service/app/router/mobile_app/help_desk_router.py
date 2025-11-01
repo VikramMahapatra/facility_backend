@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from ...schemas.mobile_app.help_desk_schemas import ComplaintResponse
+from ...schemas.mobile_app.help_desk_schemas import ComplaintCreate, ComplaintCreateResponse, ComplaintResponse
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
 from shared.schemas import MasterQueryParams, UserToken
@@ -24,3 +24,17 @@ def get_complaints(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     return help_desk_crud.get_complaints(db, params.space_id)
+
+
+#Raise a complaint without photos/videos initially
+@router.post("/raiseComplaint", response_model=ComplaintCreateResponse)
+def raise_complaint(
+    complaint_data: ComplaintCreate,  
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return help_desk_crud.raise_complaint(
+        db, 
+        complaint_data,  
+        current_user
+    )

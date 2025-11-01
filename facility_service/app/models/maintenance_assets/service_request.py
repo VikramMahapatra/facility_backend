@@ -41,7 +41,8 @@ class ServiceRequest(Base):
     is_deleted = Column(Boolean, default=False, nullable=False)
     # ✅ Add deleted timestamp
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
-
+        # Add this new column for preferred time only
+    my_preferred_time = Column(String(8), nullable=True)  # Store time as HH:MM:SS or HH:MM
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True),
                         server_default=func.now(), onupdate=func.now())

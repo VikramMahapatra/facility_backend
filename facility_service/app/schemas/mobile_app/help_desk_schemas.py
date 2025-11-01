@@ -17,3 +17,22 @@ class ComplaintResponse(EmptyStringModel):
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+class ComplaintCreate(EmptyStringModel):
+    space_id: str  # ✅ unit_id → space_id
+    category: str
+    request_type: str
+    description: str
+    my_preferred_time: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+class ComplaintCreateResponse(EmptyStringModel):
+    id: UUID
+    space_id: UUID
+    category: str
+    request_type: str
+    description: str
+    my_preferred_time: Optional[str] = None
+
+    model_config = {"from_attributes": True}

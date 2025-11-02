@@ -1,7 +1,10 @@
 from datetime import datetime
 from enum import Enum
+from typing import List
 from pydantic import BaseModel
 from uuid import UUID
+
+from shared.empty_string_model_wrapper import EmptyStringModel
 
 
 class NotificationType(str, Enum):
@@ -39,3 +42,8 @@ class NotificationOut(NotificationBase):
     model_config = {
         "from_attributes": True
     }
+
+
+class NotificationListResponse(EmptyStringModel):
+    notifications: List[NotificationOut]
+    total: int

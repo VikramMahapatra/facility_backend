@@ -13,6 +13,7 @@ T = TypeVar("T")
 
 class UserToken(BaseModel):
     user_id: str
+    session_id: str
     org_id: UUID
     name: Optional[str] = None  # added for service request requester id
     account_type: str

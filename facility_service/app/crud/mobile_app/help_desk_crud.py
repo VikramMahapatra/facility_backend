@@ -18,12 +18,12 @@ def get_complaints(db: Session, space_id: UUID):
     complaints = db.query(ServiceRequest).filter(
         ServiceRequest.space_id == space_id).all()
 
-    comments_count = complaint.comments.count()
     results = []
     for complaint in complaints:
+        comments_count = complaint.comments.count()
         results.append(
             ComplaintResponse.model_validate({
-                **complaints.__dict__,
+                **complaint.__dict__,
                 "comments": comments_count or 0
             })
         )

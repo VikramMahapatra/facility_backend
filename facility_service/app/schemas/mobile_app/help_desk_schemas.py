@@ -42,6 +42,8 @@ class ComplaintCreateResponse(EmptyStringModel):
 
 
 
+class ComplaintDetailsRequest(BaseModel):
+    service_request_id: str
 
 
 class CommentOut(BaseModel):

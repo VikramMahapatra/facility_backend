@@ -13,10 +13,11 @@ class ComplaintResponse(EmptyStringModel):
     category: str
     status: str
     description: Optional[str] = None
-    comments: Optional[str] = None
+    comments: Optional[int] = None
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
 
 class ComplaintCreate(EmptyStringModel):
     space_id: str  # ✅ unit_id → space_id
@@ -26,6 +27,7 @@ class ComplaintCreate(EmptyStringModel):
     my_preferred_time: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
 
 class ComplaintCreateResponse(EmptyStringModel):
     id: UUID

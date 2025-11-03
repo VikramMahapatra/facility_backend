@@ -1,11 +1,14 @@
 import os
 import shutil
-from fastapi import HTTPException, UploadFile, status
+from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func
 
-from auth_service.app.schemas import authchemas
+from shared.app_status_code import AppStatusCode
+from shared.json_response_helper import error_response
 
+from ..models.user_login_session import UserLoginSession
+from ..schemas.authchemas import AuthenticationResponse
 from ..models.sites_safe import SiteSafe
 from ..models.commercial_partner_safe import CommercialPartnerSafe
 from ..models.tenants_safe import TenantSafe
@@ -28,7 +31,11 @@ from sqlalchemy.exc import SQLAlchemyError
 #     profile_pic_path = file_location
 
 
-def create_user(db: Session, facility_db: Session, user: UserCreate):
+def create_user(
+        request: Request,
+        db: Session,
+        facility_db: Session,
+        user: UserCreate):
     try:
         now = datetime.utcnow()
 
@@ -40,25 +47,28 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
             full_name = f"{first} {last}".strip()
 
         if not full_name:
-            raise HTTPException(
-                status_code=400,
-                detail="User name is required."
+            return error_response(
+                message="User name is required.",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                http_status=status.HTTP_400_BAD_REQUEST
             )
 
         # ✅ Check duplicate email
         if user.email:
             if db.query(Users).filter(Users.email == user.email).first():
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Email '{user.email}' is already registered."
+                return error_response(
+                    message=f"Email '{user.email}' is already registered.",
+                    status_code=str(AppStatusCode.USER_USERNAME_IS_UNIQUE),
+                    http_status=status.HTTP_400_BAD_REQUEST
                 )
 
         # ✅ Check duplicate phone
         if user.phone:
             if db.query(Users).filter(Users.phone == user.phone).first():
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Phone number '{user.phone}' is already registered."
+                return error_response(
+                    message=f"Phone number '{user.phone}' is already registered.",
+                    status_code=str(AppStatusCode.INVALID_INPUT),
+                    http_status=status.HTTP_400_BAD_REQUEST
                 )
 
         # ✅ Create base user
@@ -80,14 +90,22 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
             func.lower(Roles.name) == role_name).first()
 
         if not role_obj:
-            raise HTTPException(400, f"Role '{role_name}' not found")
+            return error_response(
+                message=f"Role '{role_name}' not found",
+                status_code=str(AppStatusCode.INVALID_INPUT),
+                http_status=status.HTTP_400_BAD_REQUEST
+            )
 
         user_instance.roles.append(role_obj)
 
         # ✅ ACCOUNT TYPE: ORGANIZATION
         if user.accountType.lower() == "organization":
             if not user.organizationName:
-                raise HTTPException(400, "Organization name required")
+                return error_response(
+                    message="Organization name required",
+                    status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                    http_status=status.HTTP_400_BAD_REQUEST
+                )
 
             org_instance = OrgSafe(name=user.organizationName)
             facility_db.add(org_instance)
@@ -101,18 +119,29 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
             site = facility_db.query(SiteSafe).filter(
                 SiteSafe.id == user.site_id).first()
             if not site:
-                raise HTTPException(400, "Invalid site selected")
+                return error_response(
+                    message="Invalid site selected",
+                    status_code=str(AppStatusCode.INVALID_INPUT),
+                    http_status=status.HTTP_400_BAD_REQUEST
+                )
 
             user_instance.org_id = site.org_id
 
             if not user_instance.org_id:
-                raise HTTPException(
-                    400, "Selected site has no organization assigned")
+                return error_response(
+                    message="Selected site has no organization assigned",
+                    status_code=str(AppStatusCode.INVALID_INPUT),
+                    http_status=status.HTTP_400_BAD_REQUEST
+                )
 
             if user.tenant_type == "individual":
                 if not user.space_id:
-                    raise HTTPException(
-                        400, "space_id required for individual tenant")
+                    return error_response(
+                        message="space_id required for individual tenant",
+                        status_code=str(
+                            AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                        http_status=status.HTTP_400_BAD_REQUEST
+                    )
 
                 tenant_obj = TenantSafe(
                     site_id=user.site_id,
@@ -137,7 +166,11 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                 )
                 facility_db.add(partner_obj)
             else:
-                raise HTTPException(400, "Invalid tenant type")
+                return error_response(
+                    message="Invalid tenant type",
+                    status_code=str(AppStatusCode.INVALID_INPUT),
+                    http_status=status.HTTP_400_BAD_REQUEST
+                )
 
         # ✅ Commit All OR Rollback All
         db.commit()
@@ -155,22 +188,37 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
         print("DB Error:", e)
         raise HTTPException(500, "Internal server error while creating user")
 
-    return get_user_token(facility_db, user_instance)
+    return get_user_token(request, db, facility_db, user_instance)
 
 
-def get_user_token(facility_db: Session, user: Users):
+def get_user_token(request: Request, auth_db: Session, facility_db: Session, user: Users):
     roles = [str(r.id) for r in user.roles]
+    ip = request.client.host
+    ua = request.headers.get("user-agent")
+    session = UserLoginSession(
+        user_id=user.id,
+        platform="portal",
+        ip_address=ip,
+        user_agent=ua,
+    )
+    auth_db.add(session)
+    auth_db.commit()
+    auth_db.refresh(session)
+
     token = auth.create_access_token({
         "user_id": str(user.id),
+        "session_id": str(session.id),
         "org_id": str(user.org_id),
         "account_type": user.account_type,
-        "status": user.status,
         "role_ids": roles})
+    refresh_token = auth.create_refresh_token(auth_db, session.id)
+
     user_data = get_user_by_id(facility_db, user)
 
-    return authchemas.AuthenticationResponse(
+    return AuthenticationResponse(
         needs_registration=False,
         access_token=token,
+        refresh_token=refresh_token.token,
         token_type="bearer",
         user=user_data
     )

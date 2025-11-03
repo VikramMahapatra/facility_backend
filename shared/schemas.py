@@ -16,9 +16,9 @@ class UserToken(BaseModel):
     org_id: UUID
     name: Optional[str] = None  # added for service request requester id
     account_type: str
-    status: str
     # added for service request in lease_partner_lookup
     role_ids: Optional[List[str]] = None
+    status: Optional[str] = None
     exp: int
 
 

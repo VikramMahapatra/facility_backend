@@ -7,7 +7,7 @@ from shared.json_response_helper import success_response
 from ...schemas.parking_access.parking_zone_schemas import ParkingZoneCreate, ParkingZoneOverview, ParkingZoneRequest, ParkingZoneUpdate, ParkingZonesResponse
 from ...crud.parking_access import parking_zone_crud as crud
 from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token  # for dependicies
+from shared.auth import validate_current_token  # for dependencies
 from shared.schemas import Lookup, UserToken
 from uuid import UUID
 
@@ -18,7 +18,6 @@ router = APIRouter(
 )
 
 # -----------------------------------------------------------------
-
 
 @router.get("/all", response_model=ParkingZonesResponse)
 def get_parking_zones(
@@ -55,11 +54,11 @@ def create_parking_zone(
 
 @router.put("/", response_model=None)
 def update_parking_zone(
-    zone_id: uuid.UUID, 
-    zone: ParkingZoneUpdate, 
-    db: Session = Depends(get_db)
+    zone: ParkingZoneUpdate,  # ✅ Changed: Remove zone_id parameter, get ID from zone body
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)  # ✅ Added authentication
 ):
-    result = crud.update_parking_zone(db, zone_id, zone)
+    result = crud.update_parking_zone(db, zone)  # ✅ Pass the entire zone object
     
     # Check if result is an error response
     if hasattr(result, 'status_code') and result.status_code != "100":
@@ -72,7 +71,11 @@ def update_parking_zone(
 
 
 @router.delete("/{zone_id}", response_model=None)
-def delete_parking_zone(zone_id: str, db: Session = Depends(get_db)):
+def delete_parking_zone(
+    zone_id: str, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)  # ✅ Added authentication
+):
     result = crud.delete_parking_zone(db, zone_id)
     if not result:
         raise HTTPException(status_code=404, detail="Parking zone not found")

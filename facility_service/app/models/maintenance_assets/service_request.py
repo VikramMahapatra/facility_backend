@@ -34,15 +34,15 @@ class ServiceRequest(Base):
     status = Column(String(24), nullable=False, default='open')
     ratings = Column(Float, nullable=True)
     sla = Column(JSON, nullable=True)
-    comments = Column(Text, nullable=True)
 
     linked_work_order_id = Column(UUID(as_uuid=True), nullable=True)
     # ✅ Add soft delete column
     is_deleted = Column(Boolean, default=False, nullable=False)
     # ✅ Add deleted timestamp
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
-        # Add this new column for preferred time only
-    my_preferred_time = Column(String(8), nullable=True)  # Store time as HH:MM:SS or HH:MM
+    # Add this new column for preferred time only
+    # Store time as HH:MM:SS or HH:MM
+    my_preferred_time = Column(String(8), nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True),
                         server_default=func.now(), onupdate=func.now())
@@ -52,3 +52,12 @@ class ServiceRequest(Base):
     site = relationship("Site", backref="service_requests")
     space = relationship("Space", backref="service_requests")
     work_orders = relationship("WorkOrder", back_populates="service_requests")
+
+    comments = relationship(
+        "Comment",
+        primaryjoin="and_(foreign(Comment.entity_id)==ServiceRequest.id, "
+        "Comment.module_name=='service_request', "
+        "Comment.is_deleted==False)",
+        viewonly=True,
+        lazy="dynamic"
+    )

@@ -32,16 +32,16 @@ class NotRegisteredResponse(EmptyStringModel):
     picture: Optional[HttpUrl] = None
 
 
-class LoginSuccessResponse(EmptyStringModel):
-    needs_registration: Literal[False]
+class TokenSuccessResponse(EmptyStringModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
-    user: UserResponse
 
 
 class AuthenticationResponse(BaseModel):
     needs_registration: Literal[True, False]
     access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
     user: Optional[UserResponse] = None
     name:  Optional[str] = None
@@ -59,9 +59,3 @@ class AuthenticationResponse(BaseModel):
                 if value is None:
                     setattr(self, field, "")  # ✅ Empty string
         return self
-
-
-AuthResponse = Annotated[
-    Union[NotRegisteredResponse, LoginSuccessResponse],
-    Field(discriminator="needs_registration"),
-]

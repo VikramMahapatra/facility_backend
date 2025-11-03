@@ -1,8 +1,11 @@
-import datetime
+from datetime import datetime, timedelta
+import secrets
 from typing import Optional
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
+from auth_service.app.models.refresh_token import RefreshToken
+from auth_service.app.models.user_login_session import UserLoginSession
 from auth_service.app.models.users import Users
 from shared.app_status_code import AppStatusCode
 from shared.config import settings
@@ -15,8 +18,8 @@ security = HTTPBearer()
 
 
 def create_access_token(data: dict):
-    expires = datetime.datetime.utcnow(
-    ) + datetime.timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+    expires = datetime.utcnow(
+    ) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
     data.update({'exp': expires})
     # ✅ Ensure "name" exists if user is passed added it for service request requester id
     if 'name' not in data and 'full_name' in data:
@@ -25,17 +28,54 @@ def create_access_token(data: dict):
     return jwt.encode(data, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
-def verify_token(token: str) -> Optional[dict]:
+def create_refresh_token(db, session_id):
+    token_str = secrets.token_urlsafe(64)
+    expires = datetime.utcnow() + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+
+    refresh = RefreshToken(
+        session_id=session_id,
+        token=token_str,
+        expires_at=expires
+    )
+    db.add(refresh)
+    db.commit()
+    db.refresh(refresh)
+    return refresh
+
+
+def verify_token(db: Session, token: str) -> Optional[dict]:
     """Verify and decode a JWT token."""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET,
                              algorithms=settings.JWT_ALGORITHM)
-        return UserToken(**payload)
+        user = UserToken(**payload)
+
+        if not user.user_id or not user.session_id:
+            return error_response(
+                message="Invalid token structure",
+                status_code=str(AppStatusCode.AUTHENTICATION_TOKEN_INVALID),
+                http_status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # ✅ Check session validity
+        session = db.query(UserLoginSession).filter(
+            UserLoginSession.id == user.session_id,
+            UserLoginSession.user_id == user.user_id
+        ).first()
+
+        if not session or not session.is_active:
+            return error_response(
+                message="Session has been logged out or is inactive",
+                status_code=str(AppStatusCode.AUTHENTICATION_SESSION_TIMEOUT),
+                http_status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        return user
     except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
+        return error_response(
+            message="Invalid or expired token",
+            status_code=str(AppStatusCode.AUTHENTICATION_TOKEN_EXPIRED),
+            http_status=status.HTTP_401_UNAUTHORIZED
         )
 
 
@@ -45,7 +85,7 @@ def validate_current_token(
 ):
     token = credentials.credentials
     # decoded token → contains user_id or email
-    user_data = verify_token(token)
+    user_data = verify_token(db, token)
 
     # Fetch the user from the database
     user = db.query(Users).filter(Users.id == user_data.user_id).first()
@@ -73,7 +113,7 @@ def validate_token(
         db: Session = Depends(get_db)
 ):
     token = credentials.credentials
-    user_data = verify_token(token)
+    user_data = verify_token(db, token)
 
     user = db.query(Users).filter(Users.id == user_data.user_id).first()
 

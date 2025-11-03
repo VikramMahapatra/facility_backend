@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from shared.exception_handler import setup_exception_handlers
 from shared.response_wrapper import JsonResponseMiddleware
 from .routers import authrouter, userrouter
-from .models import users, roles, userroles, rolepolicy, user_otps
+from .models import users, roles, userroles, rolepolicy, user_otps, user_login_session, refresh_token
 
 # Create tables
 AuthBase.metadata.create_all(bind=auth_engine)

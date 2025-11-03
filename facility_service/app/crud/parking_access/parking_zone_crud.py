@@ -133,9 +133,9 @@ def create_parking_zone(db: Session, zone: ParkingZoneCreate):
     return ParkingZoneOut.model_validate(zone_data)
 
 
-def update_parking_zone(db: Session, zone_id: uuid.UUID, zone_update: ParkingZoneUpdate):
+def update_parking_zone(db: Session, zone_update: ParkingZoneUpdate):  # ✅ Changed parameter
     # Only allow updates on non-deleted zones
-    db_zone = db.query(ParkingZone).filter(ParkingZone.id == zone_id, ParkingZone.is_deleted == False).first()
+    db_zone = db.query(ParkingZone).filter(ParkingZone.id == zone_update.id, ParkingZone.is_deleted == False).first()  # ✅ Get ID from zone_update
     if not db_zone:
         return error_response(
             message="Parking zone not found",
@@ -150,7 +150,7 @@ def update_parking_zone(db: Session, zone_id: uuid.UUID, zone_update: ParkingZon
                 ParkingZone.org_id == db_zone.org_id,
                 ParkingZone.site_id == db_zone.site_id,
                 func.lower(ParkingZone.name) == func.lower(zone_update.name),
-                ParkingZone.id != zone_id,  # Exclude current zone from check
+                ParkingZone.id != zone_update.id,  # Exclude current zone from check
                 ParkingZone.is_deleted == False  # Only check non-deleted zones
             )
         ).first()
@@ -174,7 +174,7 @@ def update_parking_zone(db: Session, zone_id: uuid.UUID, zone_update: ParkingZon
     result = (
         db.query(ParkingZone, Site.name.label('site_name'))
         .join(Site, ParkingZone.site_id == Site.id)
-        .filter(ParkingZone.id == zone_id, ParkingZone.is_deleted == False)
+        .filter(ParkingZone.id == zone_update.id, ParkingZone.is_deleted == False)  # ✅ Use zone_update.id
         .first()
     )
     

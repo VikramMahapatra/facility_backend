@@ -23,9 +23,16 @@ class Comment(Base):
 
     # Actual comment text
     content = Column(Text, nullable=False)
+       # Reply support (self-referencing)
+    parent_comment_id = Column(UUID(as_uuid=True), ForeignKey("comments.id"), nullable=True)
+    parent_comment = relationship("Comment", remote_side=[id], backref="replies")
+
+    # Reactions (likes, emojis, etc.)
+    comment_reaction = Column(Text, nullable=True)
 
     # Soft delete support
     is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True),

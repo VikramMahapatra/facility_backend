@@ -61,3 +61,16 @@ class ServiceRequest(Base):
         viewonly=True,
         lazy="dynamic"
     )
+
+
+    attachments = relationship(
+    "Attachment",
+    primaryjoin="and_("
+        "foreign(Attachment.entity_id) == ServiceRequest.id, "
+        "Attachment.module_name == 'service_request', "
+        "Attachment.is_deleted == False"
+    ")",
+    viewonly=True,
+    lazy="dynamic"
+)
+

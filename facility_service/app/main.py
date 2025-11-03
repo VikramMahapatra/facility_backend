@@ -38,12 +38,12 @@ from .models.financials import invoices
 from .models.leasing_tenants import commercial_partners, leases, lease_charges, tenants
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.system import notifications, notification_settings
-from .models.common import comments , attachments
+from .models.common import comments, attachments
 from .models import (
     purchase_order_lines, purchase_orders
 )
 from .router.common import export_router
-from .router.mobile_app import master_router, home_router, help_desk_router , user_profile_router
+from .router.mobile_app import master_router, home_router, help_desk_router, user_profile_router
 from .router.procurement import contracts_router, vendor_router
 from .router.system import notifications_router
 

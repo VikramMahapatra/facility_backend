@@ -13,6 +13,7 @@ class ComplaintResponse(EmptyStringModel):
     category: str
     status: str
     description: Optional[str] = None
+    my_preferred_time: Optional[str] = None
     comments: Optional[int] = None
     created_at: Optional[datetime] = None
 

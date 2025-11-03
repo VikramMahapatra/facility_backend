@@ -43,7 +43,7 @@ from .models import (
     purchase_order_lines, purchase_orders
 )
 from .router.common import export_router
-from .router.mobile_app import master_router, home_router, help_desk_router
+from .router.mobile_app import master_router, home_router, help_desk_router , user_profile_router
 from .router.procurement import contracts_router, vendor_router
 from .router.system import notifications_router
 
@@ -122,3 +122,4 @@ app.include_router(role_approval_rules_router.router)
 app.include_router(pending_approval_router.router)
 app.include_router(help_desk_router.router)
 app.include_router(notifications_router.router)
+app.include_router(user_profile_router.router)

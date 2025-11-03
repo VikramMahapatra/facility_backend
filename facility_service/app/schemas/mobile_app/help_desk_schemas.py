@@ -41,8 +41,10 @@ class ComplaintCreateResponse(EmptyStringModel):
     model_config = {"from_attributes": True}
 
 
+#adding comments
 
-
+class ComplaintDetailsRequest(BaseModel):
+    service_request_id: str
 
 
 class CommentOut(BaseModel):

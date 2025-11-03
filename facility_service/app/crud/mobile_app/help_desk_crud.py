@@ -1,14 +1,16 @@
+import json
 from operator import or_
+from ...models.common.comments import Comment
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, and_, distinct, case
+from sqlalchemy import desc, func, cast, and_, distinct, case
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from facility_service.app.models.space_sites.spaces import Space
 
-from ...schemas.mobile_app.help_desk_schemas import ComplaintCreateResponse, ComplaintResponse, ComplaintCreate
+from ...schemas.mobile_app.help_desk_schemas import ComplaintCreateResponse, ComplaintDetailsResponse, ComplaintResponse, ComplaintCreate
 from ...models.maintenance_assets.service_request import ServiceRequest
 from shared.schemas import UserToken
 from sqlalchemy.orm import joinedload
@@ -66,3 +68,47 @@ def raise_complaint(db: Session, complaint_data: ComplaintCreate, current_user: 
     db.refresh(complaint)
 
     return ComplaintCreateResponse.model_validate(complaint)
+
+
+def get_complaint_details(db: Session, service_request_id: str) -> ComplaintDetailsResponse:
+    """
+    Fetch full Service Request details along with all related comments
+    """
+    # Step 1: Fetch service request
+    service_req = (
+        db.query(ServiceRequest)
+        .filter(ServiceRequest.id == service_request_id, ServiceRequest.is_deleted == False)
+        .first()
+    )
+
+    if not service_req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    # Step 2: Fetch all comments for that service request (latest first)
+    comments = (
+        db.query(Comment)
+        .filter(
+            Comment.entity_id == service_request_id,
+            Comment.module_name == "service_request",
+            Comment.is_deleted == False
+        )
+        .order_by(Comment.created_at.desc())  # ✅ latest first
+        .all()
+    )
+
+    # Step 3: Return as schema
+    return ComplaintDetailsResponse(
+        id=service_req.id,
+        sr_no=service_req.sr_no,
+        category=service_req.category,
+        priority=service_req.priority,
+        status=service_req.status,
+        description=service_req.description,
+        created_at=service_req.created_at,
+        updated_at=service_req.updated_at,
+        requester_kind=service_req.requester_kind,
+        requester_id=service_req.requester_id,
+        space_id=service_req.space_id,
+        site_id=service_req.site_id,
+        comments=comments
+    )

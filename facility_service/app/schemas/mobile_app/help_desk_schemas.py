@@ -37,6 +37,7 @@ class ComplaintCreateResponse(EmptyStringModel):
     request_type: str
     description: str
     my_preferred_time: Optional[str] = None
+    comments: Optional[int] = 0  # ✅ Add comments field here too
 
     model_config = {"from_attributes": True}
 

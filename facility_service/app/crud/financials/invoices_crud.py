@@ -141,7 +141,11 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
 
 
 def get_invoice_by_id(db: Session, invoice_id: str):
-    return db.query(Invoice).filter(Invoice.id == invoice_id,Invoice.is_deleted == False)  # ✅ Add this).first()
+    return db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.is_deleted == False
+    ).first()
+ # ✅ Add this).first()
 
 
 def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_user):

@@ -310,7 +310,7 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
         .all()
     )
 
-    notfication_list = [NotificationOut(**n.__dict__) for n in notifications]
+    notfication_list = [NotificationOut(**n.__dict__) for n in notifications]#added **dict to convert from orm object to pydantic model
 
     return {
         "lease_contract_detail": lease_contract_detail | {},

@@ -56,12 +56,4 @@ def update_meter(
 
 
 @router.delete("/{id}", response_model=None)
-def delete_meter(id: str, db: Session = Depends(get_db)):
-    result = crud.delete(db, id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Meter not found")
-    
-    return success_response(
-        data=None,
-        message="Meter deleted successfully"
-    )
+def delete_meter(id: str, db: Session = Depends(get_db)): return crud.delete(db, id)

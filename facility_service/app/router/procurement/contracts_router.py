@@ -61,16 +61,8 @@ def delete_contract(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    success = crud.delete_contract(db, contract_id, current_user.org_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Contract not found")
-    
-    return success_response(
-        data=None,
-        message="Contract deleted successfully",
-        status_code="200"  # Use the appropriate status code from AppStatusCode
-    )
-
+   
+    return crud.delete_contract(db, contract_id, current_user.org_id)
 # ----------status_lookup-------------
 @router.get("/filter-status-lookup", response_model=List[Lookup])
 def contracts_filter_status_lookup_endpoint(

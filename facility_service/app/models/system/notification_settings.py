@@ -11,3 +11,4 @@ class NotificationSetting(Base):
     label = Column(String(255), nullable=False)
     description = Column(String(500), nullable=False)
     enabled = Column(Boolean, default=True)
+    user_id = Column(UUID(as_uuid=True), nullable=False)

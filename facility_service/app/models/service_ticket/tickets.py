@@ -27,7 +27,7 @@ class Ticket(Base):
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
-    closed_at = Column(TIMESTAMP(timezone=True))
+    closed_date = Column(TIMESTAMP(timezone=True))
  
     org = relationship("Org", back_populates="tickets")
     site = relationship("Site", back_populates="tickets")

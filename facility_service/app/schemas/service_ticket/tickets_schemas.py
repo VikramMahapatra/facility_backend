@@ -110,7 +110,6 @@ class TicketEscalationRequest(BaseModel):
 
 class TicketDetailsResponse(EmptyStringModel):
     id: UUID
-    sr_no: str
     category: Optional[str] = None
     priority: Optional[str] = None
     status: Optional[str] = None
@@ -118,17 +117,18 @@ class TicketDetailsResponse(EmptyStringModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     closed_date: Optional[datetime] = None
-    requester_kind: Optional[str] = None
-    requester_id: Optional[UUID] = None
-    requester_name: Optional[str] = None
     space_id: Optional[UUID] = None
     space_name: Optional[str] = None
     building_name: Optional[str] = None
-    site_name: Optional[UUID] = None
+    site_name: Optional[str] = None
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
     comments: List[CommentOut] = []
     logs: List[TicketWorkFlowOut] = []
+    preferred_time: Optional[str] = None 
+    assigned_to: Optional[UUID] = None  
+    assigned_to_name: Optional[str] = None
+    request_type: Optional[str] = None  
 
     class Config:
         from_attributes = True

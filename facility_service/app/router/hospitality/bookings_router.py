@@ -69,11 +69,7 @@ def delete_booking_route(
     booking_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    success = crud.delete_booking(db, booking_id, current_user.org_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Booking not found")
-    return {"message": "Booking deleted successfully"}
+):return crud.delete_booking(db, booking_id, current_user.org_id)
 
 # ----------------filter(DB)  Status  ----------------
 @router.get("/filter-status-lookup", response_model=List[Lookup])

@@ -55,11 +55,7 @@ def delete_vendor_route(
     vendor_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    db_vendor = crud.delete_vendor(db, vendor_id, current_user.org_id)  # ✅ Updated function call
-    if not db_vendor:
-        raise HTTPException(status_code=404, detail="Vendor not found")
-    return db_vendor  # ✅ Return the soft-deleted vendor
+): return crud.delete_vendor(db, vendor_id, current_user.org_id) # ✅ Return the soft-deleted vendor
 
 @router.get("/vendor-lookup", response_model=List[Lookup])
 def vendor_lookup(

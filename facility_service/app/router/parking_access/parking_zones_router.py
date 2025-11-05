@@ -56,12 +56,5 @@ def delete_parking_zone(
     zone_id: str, 
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)  # ✅ Added authentication
-):
-    result = crud.delete_parking_zone(db, zone_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Parking zone not found")
-    
-    return success_response(
-        data=None,
-        message="Parking zone deleted successfully"
-    )
+):return crud.delete_parking_zone(db, zone_id)
+       

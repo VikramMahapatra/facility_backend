@@ -68,7 +68,5 @@ def update_tax_code(
 @router.delete("/{tax_code_id}", response_model=None)
 def delete_tax_code(tax_code_id: str, db: Session = Depends(get_db)):
     db_tax = crud.delete_tax_code(db, tax_code_id)
-    if not db_tax:
-        raise HTTPException(status_code=404, detail="Tax code not found")
     return db_tax
 

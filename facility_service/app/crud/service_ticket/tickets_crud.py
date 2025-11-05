@@ -4,6 +4,9 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
 
+from auth_service.app.models.users import Users
+from facility_service.app.schemas.mobile_app.help_desk_schemas import TicketWorkFlowOut
+
 from ...models.service_ticket.sla_policy import SlaPolicy
 from ...models.service_ticket.tickets_commets import TicketComment
 from ...models.service_ticket.tickets_feedback import TicketFeedback
@@ -34,11 +37,11 @@ def get_tickets(db: Session, params: TicketFilterRequest):
         )
 
 
-def get_ticket_details(db: Session, ticket_id: str):
+def get_ticket_details(db: Session,auth_db :Session, ticket_id: str):
     """
-    Fetch full Tickets details along with all related comments
+    Fetch full Tickets details along with all related comments and logs
     """
-    # Step 1: Fetch service request
+    # Step 1: Fetch service request with joins for related data
     service_req = (
         db.query(Ticket)
         .filter(Ticket.id == ticket_id)
@@ -49,33 +52,72 @@ def get_ticket_details(db: Session, ticket_id: str):
         raise HTTPException(
             status_code=404, detail="Service request not found")
 
-    # Step 2: Fetch all comments for that service request (latest first)
-    comments = (
-        db.query(TicketComment)
-        .filter(
-            TicketComment.ticket_id == ticket_id,
-        )
-        .order_by(TicketComment.created_at.desc())  # ✅ latest first
-        .all()
-    )
+    # Step 2: Get assigned_to from SLA policies based on category - FIXED
+ 
+    assigned_to_name = None
 
-    # Step 3: Return as schema
-    return TicketDetailsResponse(
-        id=service_req.id,
-        sr_no=service_req.sr_no,
-        category=service_req.category,
-        priority=service_req.priority,
-        status=service_req.status,
-        description=service_req.description,
-        created_at=service_req.created_at,
-        updated_at=service_req.updated_at,
-        requester_kind=service_req.requester_kind,
-        requester_id=service_req.requester_id,
-        space_id=service_req.space_id,
-        site_id=service_req.site_id,
-        comments=comments
-    )
+    if service_req.category:
+        # Get the category name from the TicketCategory relationship
+        category_name = service_req.category.category_name if service_req.category.category_name else None
+        
+                # Fetch assigned user full_name from auth.db user table
+    assigned_user = (
+                    auth_db.query(Users)
+                    .filter(Users.id ==  service_req.assigned_to)
+                    .first()
+                )
+    assigned_to_name = assigned_user.full_name if assigned_user else None
 
+
+
+    # Combine both logs
+    all_logs = []
+    
+    # Add workflow logs
+    for log in  service_req.comments:
+        all_logs.append(TicketWorkFlowOut(
+            id=log.id,
+            ticket_id=log.ticket_id,
+            type="comment",
+            action_taken=log.comment_text,
+            created_at=log.created_at,
+            action_by=log.user_id
+        ))
+    
+    # Add assignment logs
+    for log in service_req.assignments:
+        all_logs.append(TicketWorkFlowOut(
+        id=log.id,
+        ticket_id=log.ticket_id,
+        type="audit",
+        action_taken=log.reason,
+        created_at=log.assigned_at,  
+        action_by=log.assigned_from
+    ))
+
+    # Sort all logs by created_at
+    user_ids = [t.action_by for t in all_logs]
+
+    # fetch all user names from auth db in one go
+    users = auth_db.query(Users.id, Users.full_name).filter(Users.id.in_(user_ids)).all()
+    user_map = {uid: uname for uid, uname in users}
+    all_logs.sort(key=lambda x: x.created_at, reverse=True)
+
+     # Step 5: Return as schema
+    return TicketDetailsResponse.model_validate(
+        {   
+            **service_req.__dict__,
+            "category" : service_req.category.category_name if service_req.category else None,
+            "space_name" : service_req.space.name if service_req.space else None,
+            "building_name" :service_req.space.building.name if service_req.space and service_req.space.building else None,
+            "site_name":service_req.site.name if service_req.site else None,
+            "closed_date": service_req.closed_date if service_req.closed_date else None,
+            "assigned_to_name":assigned_to_name,  
+            "can_escalate":False,
+            "can_reopen":False,
+            "logs":all_logs
+        }
+    )
 
 def create_ticket(session: Session, data: TicketCreate, user: UserToken):
     # Create Ticket (defaults to OPEN)

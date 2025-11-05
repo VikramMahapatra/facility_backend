@@ -1,42 +1,85 @@
 
+from typing import Optional
+from pydantic import computed_field
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import TIMESTAMP, Boolean, Column, String, ForeignKey, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
 from shared.database import Base
-from shared.database import Base# adjust the import to your Base
+from shared.database import Base  # adjust the import to your Base
+from datetime import datetime, timezone, timedelta
+
+
 class Ticket(Base):
     __tablename__ = "tickets"
- 
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"))
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"))
     space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"))
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"))
-    category_id = Column(UUID(as_uuid=True), ForeignKey("ticket_categories.id"))
- 
+    category_id = Column(UUID(as_uuid=True),
+                         ForeignKey("ticket_categories.id"))
+
     title = Column(String(255), nullable=False)
     description = Column(Text)
-    status = Column(String(50), default="OPEN")
-    priority = Column(String(20), default="MEDIUM")
+    status = Column(String(50), default="open")
+    priority = Column(String(20), default="medium")
     created_by = Column(UUID(as_uuid=True))
     assigned_to = Column(UUID(as_uuid=True))
-    request_type = Column(String(20), default="UNIT")
-    prefered_time = Column(String(255) , nullable=True)
+    request_type = Column(String(20), default="unit")
+    preferred_time = Column(String(255), nullable=True)
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True),
+                        server_default=func.now(), onupdate=func.now())
     closed_date = Column(TIMESTAMP(timezone=True))
- 
+
     org = relationship("Org", back_populates="tickets")
     site = relationship("Site", back_populates="tickets")
     space = relationship("Space", back_populates="tickets")
     tenant = relationship("Tenant", back_populates="tickets")
     category = relationship("TicketCategory", back_populates="tickets")
- 
+
     workflows = relationship("TicketWorkflow", back_populates="ticket")
     assignments = relationship("TicketAssignment", back_populates="ticket")
     comments = relationship("TicketComment", back_populates="ticket")
     feedbacks = relationship("TicketFeedback", back_populates="ticket")
     work_orders = relationship("TicketWorkOrder", back_populates="ticket")
+
+    # -------------------------------
+    # Computed flags
+    # -------------------------------
+
+    @property
+    def can_escalate(self) -> bool:
+        """A ticket can escalate if SLA escalation time has passed and it's not yet closed/escalated."""
+        if not self.category or not self.category.sla_policy:
+            return False
+
+        sla = self.category.sla_policy
+        if not sla.escalation_time_mins:
+            return False
+
+        # Can't escalate if already closed or escalated
+        if self.status.lower() in ("closed", "escalated"):
+            return False
+
+        # check if escalation window exceeded
+        elapsed = (datetime.now(timezone.utc) -
+                   self.created_at).total_seconds() / 60
+        return elapsed >= sla.escalation_time_mins
+
+    @property
+    def can_reopen(self) -> bool:
+        """A ticket can be reopened if it's closed recently (within 24h)."""
+        if self.status.lower() not in ("closed", "escalated"):
+            return False
+
+        if not self.closed_date:
+            return False
+
+        elapsed = (datetime.now(timezone.utc) -
+                   self.closed_date).total_seconds() / 3600
+        return elapsed <= 24  # can reopen within 24 hours

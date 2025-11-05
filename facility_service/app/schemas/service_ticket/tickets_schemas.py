@@ -33,7 +33,7 @@ class TicketOut(BaseModel):
     space_id: Optional[UUID]
     tenant_id: Optional[UUID]
     category_id: UUID
-    category_name: Optional[str] = None
+    category: Optional[str] = None
     title: str
     description: str
     status: str
@@ -41,7 +41,7 @@ class TicketOut(BaseModel):
     created_by: UUID
     assigned_to: Optional[UUID]
     request_type: str
-    prefered_time: Optional[str]
+    preferred_time: Optional[str]
     created_at: datetime
     updated_at: datetime
     closed_date: Optional[datetime] = None
@@ -125,10 +125,10 @@ class TicketDetailsResponse(EmptyStringModel):
     can_reopen: Optional[bool] = False
     comments: List[CommentOut] = []
     logs: List[TicketWorkFlowOut] = []
-    preferred_time: Optional[str] = None 
-    assigned_to: Optional[UUID] = None  
+    preferred_time: Optional[str] = None
+    assigned_to: Optional[UUID] = None
     assigned_to_name: Optional[str] = None
-    request_type: Optional[str] = None  
+    request_type: Optional[str] = None
 
     class Config:
         from_attributes = True

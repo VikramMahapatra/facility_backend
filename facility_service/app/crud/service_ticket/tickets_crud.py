@@ -3,8 +3,9 @@ import select
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
-
+from sqlalchemy import and_, func
 from auth_service.app.models.users import Users
+from facility_service.app.models.leasing_tenants.tenants import Tenant
 from facility_service.app.schemas.mobile_app.help_desk_schemas import TicketWorkFlowOut
 
 from ...models.service_ticket.sla_policy import SlaPolicy
@@ -19,25 +20,51 @@ from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.app_status_code import AppStatusCode
 from shared.json_response_helper import error_response
 
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest, TicketOut
 
 
-def get_tickets(db: Session, params: TicketFilterRequest):
+def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToken):
     """Get all tickets with pagination"""
-    try:
-        skip = (params.page - 1) * params.limit
-        limit = params.limit
-        tickets = db.query(Ticket).offset(skip).limit(limit).all()
-        return tickets
-    except Exception as e:
-        return error_response(
-            message=f"Error retrieving tickets: {str(e)}",
-            status_code=str(AppStatusCode.OPERATION_FAILED),
-            http_status=400
+
+    if (current_user.account_type == "organization"):
+        filters = [Ticket.org_id == current_user.org_id]
+    else:
+        tenant_id = db.query(Tenant.id).filter(and_(
+            Tenant.user_id == current_user.user_id, Tenant.is_deleted == False)).scalar()
+        filters = [Ticket.tenant_id == tenant_id]
+
+    if params.status and params.status.lower() != "all":
+        filters.append(func.lower(Ticket.status)
+                       == params.status.lower())
+
+    base_query = db.query(Ticket).filter(*filters)
+
+    total = base_query.with_entities(func.count(Ticket.id)).scalar()
+
+    if params.skip and params.limit:
+        tickets = (
+            base_query
+            .offset(params.skip)
+            .limit(params.limit)
+            .all()
         )
+    else:
+        tickets = base_query.all()
+
+    results = []
+    for t in tickets:
+        category_name = t.category.category_name if t.category else None
+        complaint_data = {
+            **t.__dict__,
+            "category": category_name,  # override with name
+        }
+
+        results.append(TicketOut.model_validate(complaint_data))
+
+    return {"tickets": results, "total": total}
 
 
-def get_ticket_details(db: Session,auth_db :Session, ticket_id: str):
+def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
     """
     Fetch full Tickets details along with all related comments and logs
     """
@@ -53,28 +80,26 @@ def get_ticket_details(db: Session,auth_db :Session, ticket_id: str):
             status_code=404, detail="Service request not found")
 
     # Step 2: Get assigned_to from SLA policies based on category - FIXED
- 
+
     assigned_to_name = None
 
     if service_req.category:
         # Get the category name from the TicketCategory relationship
         category_name = service_req.category.category_name if service_req.category.category_name else None
-        
-                # Fetch assigned user full_name from auth.db user table
+
+        # Fetch assigned user full_name from auth.db user table
     assigned_user = (
-                    auth_db.query(Users)
-                    .filter(Users.id ==  service_req.assigned_to)
-                    .first()
-                )
+        auth_db.query(Users)
+        .filter(Users.id == service_req.assigned_to)
+        .first()
+    )
     assigned_to_name = assigned_user.full_name if assigned_user else None
-
-
 
     # Combine both logs
     all_logs = []
-    
+
     # Add workflow logs
-    for log in  service_req.comments:
+    for log in service_req.comments:
         all_logs.append(TicketWorkFlowOut(
             id=log.id,
             ticket_id=log.ticket_id,
@@ -83,41 +108,43 @@ def get_ticket_details(db: Session,auth_db :Session, ticket_id: str):
             created_at=log.created_at,
             action_by=log.user_id
         ))
-    
+
     # Add assignment logs
     for log in service_req.assignments:
         all_logs.append(TicketWorkFlowOut(
-        id=log.id,
-        ticket_id=log.ticket_id,
-        type="audit",
-        action_taken=log.reason,
-        created_at=log.assigned_at,  
-        action_by=log.assigned_from
-    ))
+            id=log.id,
+            ticket_id=log.ticket_id,
+            type="audit",
+            action_taken=log.reason,
+            created_at=log.assigned_at,
+            action_by=log.assigned_from
+        ))
 
     # Sort all logs by created_at
     user_ids = [t.action_by for t in all_logs]
 
     # fetch all user names from auth db in one go
-    users = auth_db.query(Users.id, Users.full_name).filter(Users.id.in_(user_ids)).all()
+    users = auth_db.query(Users.id, Users.full_name).filter(
+        Users.id.in_(user_ids)).all()
     user_map = {uid: uname for uid, uname in users}
     all_logs.sort(key=lambda x: x.created_at, reverse=True)
 
-     # Step 5: Return as schema
+    # Step 5: Return as schema
     return TicketDetailsResponse.model_validate(
-        {   
+        {
             **service_req.__dict__,
-            "category" : service_req.category.category_name if service_req.category else None,
-            "space_name" : service_req.space.name if service_req.space else None,
-            "building_name" :service_req.space.building.name if service_req.space and service_req.space.building else None,
-            "site_name":service_req.site.name if service_req.site else None,
+            "category": service_req.category.category_name if service_req.category else None,
+            "space_name": service_req.space.name if service_req.space else None,
+            "building_name": service_req.space.building.name if service_req.space and service_req.space.building else None,
+            "site_name": service_req.site.name if service_req.site else None,
             "closed_date": service_req.closed_date if service_req.closed_date else None,
-            "assigned_to_name":assigned_to_name,  
-            "can_escalate":False,
-            "can_reopen":False,
-            "logs":all_logs
+            "assigned_to_name": assigned_to_name,
+            "can_escalate": False,
+            "can_reopen": False,
+            "logs": all_logs
         }
     )
+
 
 def create_ticket(session: Session, data: TicketCreate, user: UserToken):
     # Create Ticket (defaults to OPEN)
@@ -134,7 +161,7 @@ def create_ticket(session: Session, data: TicketCreate, user: UserToken):
         category_id=data.category_id,
         title=data.title,
         description=data.description,
-        status="OPEN",
+        status="open",
         created_by=data.created_by,
         created_date=datetime.utcnow(),
         updated_at=datetime.utcnow(),
@@ -166,7 +193,7 @@ def create_ticket(session: Session, data: TicketCreate, user: UserToken):
         ticket_id=new_ticket.ticket_id,
         action_by=data.created_by,
         old_status=None,
-        new_status="OPEN",
+        new_status="open",
         action_taken="Ticket Created"
     )
     session.add(workflow_log)
@@ -196,7 +223,7 @@ def escalate_ticket(db: Session, data: TicketActionRequest):
     old_status = ticket.status
 
     # Update ticket
-    ticket.status = "ESCALATED"
+    ticket.status = "escalated"
     ticket.assigned_to = sla.escalation_contact
     ticket.updated_at = datetime.utcnow()
 
@@ -214,7 +241,7 @@ def escalate_ticket(db: Session, data: TicketActionRequest):
         ticket_id=ticket.ticket_id,
         action_by=data.action_by,
         old_status=old_status,
-        new_status="ESCALATED",
+        new_status="escalated",
         action_taken="Manual Escalation Triggered"
     )
     db.add(workflow_log)
@@ -232,7 +259,7 @@ def resolve_ticket(db: Session, data: TicketActionRequest):
         raise Exception("Ticket not found")
 
     old_status = ticket.status
-    ticket.status = "CLOSED"
+    ticket.status = "closed"
     ticket.closed_at = datetime.utcnow()
     ticket.updated_at = datetime.utcnow()
 
@@ -240,7 +267,7 @@ def resolve_ticket(db: Session, data: TicketActionRequest):
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status,
-        new_status="CLOSED",
+        new_status="closed",
         action_taken=data.comment or "Ticket Resolved/Closed"
     )
     db.add(workflow)
@@ -255,18 +282,18 @@ def reopen_ticket(db: Session, data: TicketActionRequest):
         Ticket.ticket_id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
         raise Exception("Ticket not found")
-    if ticket.status != "CLOSED":
+    if ticket.status != "closed":
         raise Exception("Only closed tickets can be reopened")
 
     old_status = ticket.status
-    ticket.status = "REOPENED"
+    ticket.status = "reopened"
     ticket.updated_at = datetime.utcnow()
 
     workflow = TicketWorkflow(
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status,
-        new_status="REOPENED",
+        new_status="reopened",
         action_taken=data.comment or "Ticket Reopened"
     )
     db.add(workflow)
@@ -290,7 +317,7 @@ def return_ticket(db: Session, data: TicketActionRequest):
     assigned_to = sla.default_contact if sla else None
 
     old_status = ticket.status
-    ticket.status = "RETURNED"
+    ticket.status = "returned"
     ticket.assigned_to = assigned_to
     ticket.updated_at = datetime.utcnow()
 
@@ -306,7 +333,7 @@ def return_ticket(db: Session, data: TicketActionRequest):
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status,
-        new_status="RETURNED",
+        new_status="returned",
         action_taken=data.comment or "Ticket Returned to Another User"
     )
     db.add(workflow)
@@ -356,7 +383,7 @@ def add_feedback(payload: AddFeedbackRequest, db: Session):
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    if ticket.status != "RESOLVED":
+    if ticket.status != "closed":
         raise HTTPException(
             status_code=403, detail="Feedback can only be added after resolution")
 

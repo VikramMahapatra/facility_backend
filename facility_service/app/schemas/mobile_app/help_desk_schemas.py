@@ -14,7 +14,6 @@ class ComplaintOut(EmptyStringModel):
     status: str
     description: Optional[str] = None
     preferred_time: Optional[str] = None
-    comments: Optional[int] = None
     created_at: Optional[datetime] = None
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
@@ -85,11 +84,11 @@ class ComplaintDetailsResponse(EmptyStringModel):
     description: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    closed_date: Optional[datetime] = None 
+    closed_date: Optional[datetime] = None
     space_id: Optional[UUID] = None
     space_name: Optional[str] = None
     building_name: Optional[str] = None
-    site_name: Optional[str] = None 
+    site_name: Optional[str] = None
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
     comments: List[CommentOut] = []
@@ -97,7 +96,7 @@ class ComplaintDetailsResponse(EmptyStringModel):
     preferred_time: Optional[str] = None
     assigned_to: Optional[UUID] = None
     assigned_to_name: Optional[str] = None
-    request_type: Optional[str] = None  
+    request_type: Optional[str] = None
 
     class Config:
         from_attributes = True

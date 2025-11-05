@@ -26,7 +26,7 @@ class UserToken(BaseModel):
 class CommonQueryParams(BaseModel):
     search: Optional[str] = None
     skip: Optional[int] = 0
-    limit: Optional[int] = 100
+    limit: Optional[int] = None
 
 
 class Lookup(BaseModel):

@@ -27,7 +27,8 @@ def get_complaints(
         params: TicketFilterRequest = None,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return tickets_crud.get_tickets(db, params)
+    result = tickets_crud.get_tickets(db, params, current_user)
+    return result["tickets"]
 
 
 # Raise a complaint without photos/videos initially
@@ -48,12 +49,12 @@ def raise_complaint(
 def get_complaint_details(
     request: ComplaintDetailsRequest,
     db: Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),  
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     return tickets_crud.get_ticket_details(
         db=db,
-        auth_db=auth_db,  
+        auth_db=auth_db,
         ticket_id=request.ticket_id
     )
 

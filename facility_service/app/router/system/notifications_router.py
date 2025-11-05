@@ -20,3 +20,35 @@ def get_all_notifications(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.get_all_notifications(db, current_user.user_id, params)
+
+
+
+@router.put("/{notification_id}/read", response_model=None)
+def mark_notification_as_read(
+    notification_id: str, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.mark_notification_as_read(db, notification_id)
+
+@router.put("/read-all", response_model=None)
+def mark_all_notifications_as_read(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.mark_all_notifications_as_read(db, current_user.user_id)  # Changed to user_id
+
+@router.delete("/{notification_id}", response_model=None)
+def delete_notification(
+    notification_id: str, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.delete_notification(db, notification_id)
+
+@router.delete("/actions/clear-all", response_model=None)
+def clear_all_notifications(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.clear_all_notifications(db, current_user.user_id)

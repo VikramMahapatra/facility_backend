@@ -34,3 +34,5 @@ class Notification(Base):
     posted_date = Column(DateTime, default=datetime.utcnow)
     read = Column(Boolean, default=False)
     priority = Column(Enum(PriorityType), default=PriorityType.medium)
+    # In your Notification model
+    is_deleted = Column(Boolean, default=False)

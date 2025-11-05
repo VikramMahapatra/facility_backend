@@ -28,3 +28,50 @@ def get_all_notifications(db: Session, user_id: str, params: CommonQueryParams):
 
     result = [NotificationOut.model_validate(role) for role in roles]
     return {"notifications": result, "total": total}
+
+
+
+def mark_notification_as_read(db: Session, notification_id: str):
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.is_deleted == False
+    ).first()
+    
+    if not notification:
+        return None
+
+    notification.read = True
+    db.commit()
+    return True
+
+def mark_all_notifications_as_read(db: Session, user_id: str):
+    db.query(Notification).filter(
+        Notification.user_id == user_id,
+        Notification.is_deleted == False,
+        Notification.read == False
+    ).update({"read": True})
+    db.commit()
+    return True
+
+
+def delete_notification(db: Session, notification_id: str):
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.is_deleted == False
+    ).first()
+    
+    if not notification:
+        return None
+
+    notification.is_deleted = True
+    db.commit()
+    return True
+
+def clear_all_notifications(db: Session, user_id: str):
+    """Soft delete all notifications for a user"""
+    db.query(Notification).filter(
+        Notification.user_id == user_id,
+        Notification.is_deleted == False
+    ).update({"is_deleted": True})
+    db.commit()
+    return True

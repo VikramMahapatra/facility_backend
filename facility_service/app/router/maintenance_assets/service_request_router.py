@@ -69,17 +69,8 @@ def delete_service_request_soft(
     request_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    success = crud.delete_service_request_soft(db, request_id, current_user.org_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Service Request not found")
-    
-    return success_response(
-        data="deleted successfully",
-        message="Service Request deleted successfully",
-        status_code="200"
-    )
-
+): return crud.delete_service_request_soft(db, request_id, current_user.org_id)
+       
 
 @router.get("/service-request-lookup", response_model=List[Lookup])
 def service_request_lookup(

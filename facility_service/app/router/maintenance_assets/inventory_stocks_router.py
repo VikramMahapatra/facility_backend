@@ -57,18 +57,4 @@ def delete_stock(
     stock_id: str, 
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    try:
-        success = crud.delete_inventory_stock_soft(db, stock_id, current_user.org_id)
-        if not success:
-            raise HTTPException(status_code=404, detail="Inventory stock not found")
-        
-        return {
-            "data": "deleted successfully",
-            "status": "Success",
-            "status_code": "200",
-            "message": "Inventory stock deleted successfully"
-        }
-    except ValueError as e:
-        # Handle business rule violations
-        raise HTTPException(status_code=400, detail=str(e))
+):return crud.delete_inventory_stock_soft(db, stock_id, current_user.org_id) 

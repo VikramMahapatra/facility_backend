@@ -55,10 +55,7 @@ def update_space_group(
 def delete_space_group(group_id: str, db: Session = Depends(get_db)):
     result = crud.delete_space_group(db, group_id)
     
-    # Always return 200, but with success=false for errors
-    if not result["success"]:
-        # Return 200 with error message, not 400
-        return result
+   
     
     return result
     

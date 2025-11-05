@@ -66,9 +66,5 @@ def update_site(
 def delete_site(site_id: str, db: Session = Depends(get_db)):
     result = crud.delete_site(db, site_id)
     
-    # Always return 200, but with success=false for errors
-    if not result["success"]:
-        # Return 200 with error message, not 400
-        return result
-    
+   
     return result

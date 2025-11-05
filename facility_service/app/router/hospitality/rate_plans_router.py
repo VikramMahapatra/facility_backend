@@ -77,11 +77,7 @@ def delete_rate_plan_route(
     rate_plan_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    success = crud.delete_rate_plan(db, rate_plan_id, current_user.org_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Rate Plan not found")
-    return {"message": "Rate Plan deleted successfully"}
+):return crud.delete_rate_plan(db, rate_plan_id, current_user.org_id)
 
 
 # ----------------filter(DB)  Status  ----------------

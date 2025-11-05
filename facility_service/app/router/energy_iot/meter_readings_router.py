@@ -54,16 +54,8 @@ def update_meter_reading(data: MeterReadingUpdate, db: Session = Depends(get_db)
 
 @router.delete("/{id}", response_model=None)
 def delete_meter_reading(id: str, db: Session = Depends(get_db)):
-    model = crud.delete(db, id)
-    if not model:
-        raise HTTPException(status_code=404, detail="Meter reading not found")
-    
-    # Use your success_response helper
-    return success_response(
-        data=None,
-        message="Meter reading deleted successfully"
-    )
-
+    return crud.delete(db, id)
+       
 
 
 @router.get("/meter-reading-lookup", response_model=List[Lookup])

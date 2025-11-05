@@ -68,15 +68,7 @@ def delete_lease(
     lease_id: str, 
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    # Pass org_id as the third parameter
-    result = crud.delete(db, lease_id, current_user.org_id)
-    
-    # Check if the delete was successful
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("message"))
-    
-    return result
+):return crud.delete(db, lease_id, current_user.org_id)
 
 
 @router.get("/lease-lookup", response_model=List[Lookup])

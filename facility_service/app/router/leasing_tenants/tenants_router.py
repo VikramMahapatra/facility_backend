@@ -87,11 +87,7 @@ def delete_tenant_route(
     tenant_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    result = crud.delete_tenant(db, tenant_id)
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["message"])
-    return {"message": result["message"]}
+):return crud.delete_tenant(db, tenant_id)
 
 # ----------------  Type Lookup ----------------
 @router.get("/type-lookup", response_model=List[Lookup])

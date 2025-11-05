@@ -67,17 +67,8 @@ def delete_pm_template_soft(
     template_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    success = crud.delete_pm_template_soft(db, template_id, current_user.org_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="PM Template not found")
-    
-    return success_response(
-        data="deleted successfully",
-        message="PM Template deleted successfully",
-        status_code="200"
-    )
-
+):return crud.delete_pm_template_soft(db, template_id, current_user.org_id)
+       
 
 # ---------------- Frequency Lookup ----------------
 @router.get("/frequency-lookup", response_model=List[Lookup])

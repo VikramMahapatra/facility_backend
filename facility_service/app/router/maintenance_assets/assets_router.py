@@ -77,15 +77,9 @@ def delete_asset(
         asset_id: str, 
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    success = crud.delete_asset(db, asset_id, current_user.org_id)  # Change to return boolean
-    if not success:
-        raise HTTPException(status_code=404, detail="Asset not found")
+   
+    return crud.delete_asset(db, asset_id, current_user.org_id)
     
-    return success_response(
-        data="Asset deleted successfully",  #  Add your message here in data field
-        message="Asset deleted successfully",
-        status_code="200"
-    )
 
 @router.get("/asset-lookup", response_model=list[Lookup])
 def asset_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):

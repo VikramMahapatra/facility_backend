@@ -70,9 +70,6 @@ def update_building(
 def delete_building(id: str, db: Session = Depends(get_db)):
     result = crud.delete_building(db, id)
     
-    # Always return 200, but with success=false for errors
-    if not result["success"]:
-        # Return 200 with error message, not 400
-        return result
+   
     
     return result

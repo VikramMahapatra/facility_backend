@@ -62,6 +62,7 @@ def escalate_ticket(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
+    request.action_by = current_user.user_id
     return tickets_crud.escalate_ticket(db, request)
 
 
@@ -71,6 +72,7 @@ def resolved_ticket(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
+    request.action_by = current_user.user_id
     return tickets_crud.resolve_ticket(db, request)
 
 
@@ -80,6 +82,7 @@ def reopen_ticket(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
+    request.action_by = current_user.user_id
     return tickets_crud.reopen_ticket(db, request)
 
 
@@ -89,4 +92,5 @@ def return_ticket(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
+    request.action_by = current_user.user_id
     return tickets_crud.return_ticket(db, request)

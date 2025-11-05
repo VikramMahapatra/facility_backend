@@ -50,10 +50,7 @@ def update_work_order(
     work_order: WorkOrderUpdate,
     db: Session = Depends(get_db)
 ):
-    db_work_order = crud.update_work_order(db, work_order)
-    if not db_work_order:
-        raise HTTPException(status_code=404, detail="Work order not found")
-    return {"message": "Work order updated successfully"}
+    return crud.update_work_order(db, work_order)
 
 @router.post("/", response_model=WorkOrderOut)
 def create_work_order_endpoint(

@@ -43,15 +43,8 @@ def create_asset(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     asset.org_id = current_user.org_id
-    result = crud.create_asset(db, asset)
+    return crud.create_asset(db, asset)
     
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    asset_response = AssetResponse.model_validate(result)
-    return success_response(data=asset_response, message="Asset created successfully")
 
 @router.put("/{asset_id}", response_model=None)
 def update_asset(
@@ -59,15 +52,8 @@ def update_asset(
         asset_update: AssetUpdate,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    result = crud.update_asset(db, asset_id, asset_update)
+    return crud.update_asset(db, asset_id, asset_update)
     
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    asset_response = AssetResponse.model_validate(result)
-    return success_response(data=asset_response, message="Asset updated successfully")
 
 
 
@@ -80,12 +66,7 @@ def delete_asset(
     success = crud.delete_asset(db, asset_id, current_user.org_id)  # Change to return boolean
     if not success:
         raise HTTPException(status_code=404, detail="Asset not found")
-    
-    return success_response(
-        data="Asset deleted successfully",  #  Add your message here in data field
-        message="Asset deleted successfully",
-        status_code="200"
-    )
+    return crud.delete_asset(db, asset_id, current_user.org_id)
 
 @router.get("/asset-lookup", response_model=list[Lookup])
 def asset_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):

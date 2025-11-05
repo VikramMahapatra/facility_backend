@@ -53,3 +53,5 @@ class Space(Base):
         "HousekeepingTask", back_populates="space", cascade="all, delete-orphan")
     meters = relationship("Meter", back_populates="space",
                           cascade="all, delete-orphan")
+    tickets = relationship("Ticket", back_populates="space")
+

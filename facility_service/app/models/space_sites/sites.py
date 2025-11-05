@@ -52,3 +52,4 @@ class Site(Base):
                           cascade="all, delete-orphan")
 
     contracts = relationship("Contract", back_populates="site")
+    tickets = relationship("Ticket", back_populates="site")

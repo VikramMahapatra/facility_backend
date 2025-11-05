@@ -34,3 +34,4 @@ class Tenant(Base):
         "Lease", back_populates="tenant", cascade="all, delete")
     site = relationship("Site", back_populates="tenants")
     space = relationship("Space", back_populates="tenants")
+    tickets = relationship("Ticket", back_populates="tenant")

@@ -46,9 +46,7 @@ def create_rate_plan_route(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    result = crud.create_rate_plan(db, current_user.org_id, rate_plan)
-    return success_response(data=result, message="Rate plan created successfully")
-
+    return crud.create_rate_plan(db, current_user.org_id, rate_plan)
 
 # ----------------- Update Rate Plan -----------------
 @router.put("/", response_model=None)
@@ -65,11 +63,7 @@ def update_rate_plan_route(
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=404
         )
-    
-    return success_response(
-        data={"message": "Rate Plan updated successfully"},
-        message="Rate Plan updated successfully"
-    )
+    return result
 
 # ---------------- Delete Rate Plan ----------------
 @router.delete("/{rate_plan_id}")

@@ -37,10 +37,7 @@ def update_vendor_endpoint(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    db_vendor = crud.update_vendor(db, vendor)
-    if not db_vendor:
-        raise HTTPException(status_code=404, detail="Vendor not found")
-    return {"message": "Vendor updated successfully"}
+    return crud.update_vendor(db, vendor)
 
 # -------create-------------------------------
 @router.post("/", response_model=VendorOut)

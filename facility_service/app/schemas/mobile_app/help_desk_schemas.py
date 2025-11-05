@@ -13,9 +13,12 @@ class ComplaintResponse(EmptyStringModel):
     category: str
     status: str
     description: Optional[str] = None
-    my_preferred_time: Optional[str] = None
+    preferred_time: Optional[str] = None
     comments: Optional[int] = None
     created_at: Optional[datetime] = None
+    can_escalate :Optional[bool] = False
+    can_reopen : Optional[bool] = False
+    closed_date: Optional[datetime]= None
 
     model_config = {"from_attributes": True}
 
@@ -25,7 +28,7 @@ class ComplaintCreate(EmptyStringModel):
     category: str
     request_type: str
     description: str
-    my_preferred_time: Optional[str] = None
+    preferred_time: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -36,7 +39,7 @@ class ComplaintCreateResponse(EmptyStringModel):
     category: str
     request_type: str
     description: str
-    my_preferred_time: Optional[str] = None
+    preferred_time: Optional[str] = None
     comments: Optional[int] = 0  # ✅ Add comments field here too
 
     model_config = {"from_attributes": True}

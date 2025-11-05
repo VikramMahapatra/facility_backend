@@ -41,15 +41,7 @@ def create_category(
     if not category.org_id:
         category.org_id = current_user.org_id
     
-    result = crud.create_asset_category(db, category)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    category_response = AssetCategoryOut.model_validate(result)
-    return success_response(data=category_response, message="Asset category created successfully")
+    return crud.create_asset_category(db, category)
 
 @router.put("/{category_id}", response_model=None)
 def update_category(
@@ -58,15 +50,7 @@ def update_category(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    result = crud.update_asset_category(db, category_id, category)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    category_response = AssetCategoryOut.model_validate(result)
-    return success_response(data=category_response, message="Asset category updated successfully")
+    return crud.update_asset_category(db, category_id, category)
 
 # ---------------- Delete AssetCategory (Soft Delete) ----------------
 @router.delete("/{category_id}")

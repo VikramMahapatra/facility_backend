@@ -57,10 +57,7 @@ def update_invoice(
     invoice: InvoiceUpdate, 
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)):
-    db_invoice = crud.update_invoice(db, invoice, current_user)
-    if not db_invoice:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    return db_invoice
+    return crud.update_invoice(db, invoice, current_user)
 
 # ✅ FIXED: Convert UUID to string for CRUD
 # ---------------- Delete Invoice (Soft Delete) ----------------

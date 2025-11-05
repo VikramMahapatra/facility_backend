@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from ...schemas.service_ticket.tickets_schemas import TicketFilterRequest
+from ...schemas.service_ticket.tickets_schemas import TicketActionRequest, TicketFilterRequest
 
 from ...crud.service_ticket import tickets_crud
 
-from ...schemas.mobile_app.help_desk_schemas import  ComplaintCreate, ComplaintCreateResponse, ComplaintDetailsRequest, ComplaintDetailsResponse, ComplaintResponse
+from ...schemas.mobile_app.help_desk_schemas import ComplaintCreate, ComplaintDetailsRequest, ComplaintDetailsResponse, ComplaintOut, ComplaintResponse
 from shared.database import get_facility_db as get_db
 from shared.auth import validate_current_token
 from shared.schemas import MasterQueryParams, UserToken
@@ -22,36 +22,71 @@ router = APIRouter(
 )
 
 
-@router.post("/getcomplaints", response_model=List[ComplaintResponse])
+@router.post("/getcomplaints", response_model=List[ComplaintOut])
 def get_complaints(
         params: TicketFilterRequest = None,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return tickets_crud.get_tickets(db, params)  
+    return tickets_crud.get_tickets(db, params)
 
 
-#Raise a complaint without photos/videos initially
-@router.post("/raisecomplaint", response_model=ComplaintCreateResponse)
+# Raise a complaint without photos/videos initially
+@router.post("/raisecomplaint", response_model=ComplaintResponse)
 def raise_complaint(
-    complaint_data: ComplaintCreate,  
+    complaint_data: ComplaintCreate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return tickets_crud.create_ticket(
-        db, 
-        complaint_data,  
+        db,
+        complaint_data,
         current_user
     )
 
 
-
 @router.post("/complaintdetails", response_model=ComplaintDetailsResponse)
-def get_complaint_details_api(
+def get_complaint_details(
     request: ComplaintDetailsRequest,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
-    return help_desk_crud.get_complaint_details(
-        db=db, 
-        service_request_id=request.service_request_id
+    return tickets_crud.get_ticket_details(
+        db=db,
+        ticket_id=request.ticket_id
     )
+
+
+@router.post("/ticket-escalation", response_model=ComplaintResponse)
+def escalate_ticket(
+    request: TicketActionRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    return tickets_crud.escalate_ticket(db, request)
+
+
+@router.post("/ticket-resolved", response_model=ComplaintResponse)
+def resolved_ticket(
+    request: TicketActionRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    return tickets_crud.resolve_ticket(db, request)
+
+
+@router.post("/ticket-reopened", response_model=ComplaintResponse)
+def reopen_ticket(
+    request: TicketActionRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    return tickets_crud.reopen_ticket(db, request)
+
+
+@router.post("/ticket-returned", response_model=ComplaintResponse)
+def return_ticket(
+    request: TicketActionRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    return tickets_crud.return_ticket(db, request)

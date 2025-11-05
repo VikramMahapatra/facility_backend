@@ -48,6 +48,7 @@ from .router.common import export_router
 from .router.mobile_app import master_router, home_router, help_desk_router, user_profile_router
 from .router.procurement import contracts_router, vendor_router
 from .router.system import notifications_router
+from .router.system import notifiaction_settings_router
 
 app = FastAPI(title="Facility Service API")
 
@@ -126,3 +127,4 @@ app.include_router(help_desk_router.router)
 app.include_router(notifications_router.router)
 app.include_router(user_profile_router.router)
 app.include_router(tickets_router.router)
+app.include_router(notifiaction_settings_router.router)

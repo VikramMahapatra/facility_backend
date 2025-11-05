@@ -57,11 +57,7 @@ def update_housekeeping_task_endpoint(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    updated = crud.update_housekeeping_task(db, task_update, current_user)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Housekeeping Task not found")
-    return {"message": "Housekeeping Task updated successfully"}
-
+    return crud.update_housekeeping_task(db, task_update, current_user)
 
 @router.delete("/{task_id}")
 def delete_housekeeping_task_endpoint(

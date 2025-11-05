@@ -45,42 +45,14 @@ def create_meter(
     data: MeterCreate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)):
-    
     data.org_id = current_user.org_id
-    result = crud.create(db, data)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    return success_response(
-        data=result,
-        message="Meter created successfully"
-    )
-
+    return crud.create(db, data)
 
 @router.put("/", response_model=None)
 def update_meter(
     data: MeterUpdate, 
     db: Session = Depends(get_db)):
-    
-    result = crud.update(db, data)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    if not result:
-        return error_response(
-            message="Meter not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=404
-        )
-    
-    return success_response(
-        data=result,
-        message="Meter updated successfully"
-    )
+    return crud.update(db, data)
 
 
 @router.delete("/{id}", response_model=None)

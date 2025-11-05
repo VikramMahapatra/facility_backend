@@ -47,10 +47,7 @@ def update_booking_route(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    updated = crud.update_booking(db, booking_update, current_user)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Booking not found")
-    return {"message": "Booking updated successfully"}
+    return crud.update_booking(db, booking_update, current_user)
 
 
 # ----------------- Create Booking -----------------

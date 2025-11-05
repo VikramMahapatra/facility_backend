@@ -20,7 +20,7 @@ router = APIRouter(
 )
 
 # -----------------------------------------------------------------
-@router.get("/all", response_model=AssetsResponse)
+@router.get("/all", response_model=AssetsResponse)#6
 def get_assets(
         params: AssetsRequest = Depends(),
         db: Session = Depends(get_db),
@@ -43,15 +43,8 @@ def create_asset(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     asset.org_id = current_user.org_id
-    result = crud.create_asset(db, asset)
+    return crud.create_asset(db, asset)
     
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    asset_response = AssetResponse.model_validate(result)
-    return success_response(data=asset_response, message="Asset created successfully")
 
 @router.put("/{asset_id}", response_model=None)
 def update_asset(
@@ -59,15 +52,8 @@ def update_asset(
         asset_update: AssetUpdate,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    result = crud.update_asset(db, asset_id, asset_update)
+    return crud.update_asset(db, asset_id, asset_update)
     
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    asset_response = AssetResponse.model_validate(result)
-    return success_response(data=asset_response, message="Asset updated successfully")
 
 
 

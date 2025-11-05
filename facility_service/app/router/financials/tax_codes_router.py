@@ -46,43 +46,24 @@ def create_tax_code(
     tax: TaxCodeCreate, 
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)):
-    
     tax.org_id = current_user.org_id
-    result = crud.create_tax_code(db, tax)
+    return crud.create_tax_code(db, tax)
     
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    return success_response(
-        data=result,
-        message="Tax code created successfully"
-    )
-
 
 @router.put("/", response_model=None)
 def update_tax_code(
     tax: TaxCodeUpdate, 
     db: Session = Depends(get_db)):
-    
     result = crud.update_tax_code(db, tax)
-    
-    # Check if result is an error response
     if hasattr(result, 'status_code') and result.status_code != "100":
         return result
-    
     if not result:
         return error_response(
             message="Tax code not found",
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=404
         )
-    
-    return success_response(
-        data=result,
-        message="Tax code updated successfully"
-    )
-
+    return result
 
 @router.delete("/{tax_code_id}", response_model=None)
 def delete_tax_code(tax_code_id: str, db: Session = Depends(get_db)):

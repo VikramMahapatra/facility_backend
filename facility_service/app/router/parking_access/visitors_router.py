@@ -44,10 +44,7 @@ def create_visitor_log(
 
 @router.put("/", response_model=None)
 def update_visitor_log(data: VisitorUpdate, db: Session = Depends(get_db)):
-    model = crud.update_visitor_log(db, data)
-    if not model:
-        raise HTTPException(status_code=404, detail="Visitor not found")
-    return model
+    return crud.update_visitor_log(db, data)
 
 
 @router.delete("/{id}", response_model=None)

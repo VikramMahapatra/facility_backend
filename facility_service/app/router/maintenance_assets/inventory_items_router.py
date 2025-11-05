@@ -38,34 +38,16 @@ def create_item(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    # Set org_id from token and create item
-    result = crud.create_inventory_item(db, item, current_user.org_id)
+    return crud.create_inventory_item(db, item, current_user.org_id)
     
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    return success_response(
-        data=result,
-        message="Inventory item created successfully"
-    )
 
 @router.put("/", response_model=None)
 def update_item(
     item: InventoryItemUpdate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    result = crud.update_inventory_item(db, item, current_user.org_id)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    return success_response(
-        data=result,
-        message="Inventory item updated successfully"
-    )
+):  
+    return crud.update_inventory_item(db, item, current_user.org_id)
 
 # ---------------- Delete Inventory Item (Soft Delete) ----------------
 @router.delete("/{item_id}")

@@ -42,10 +42,7 @@ def create_lease_charge(
 
 @router.put("/", response_model=None)
 def update_lease_charge(data: LeaseChargeUpdate, db: Session = Depends(get_db)):
-    model = crud.update_lease_charge(db, data)
-    if not model:
-        raise HTTPException(status_code=404, detail="Lease charge not found")
-    return model
+    return  crud.update_lease_charge(db, data)
 
 
 @router.delete("/{id}", response_model=None)

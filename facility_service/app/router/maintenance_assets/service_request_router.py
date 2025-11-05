@@ -39,15 +39,11 @@ def update_request_route(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    updated_request = crud.update_service_request(
+    return crud.update_service_request(
         db=db,
         request_update=request,
         current_user=current_user
     )
-    if not updated_request:
-        raise HTTPException(status_code=404, detail="Service request not found")
-    return updated_request
-
 
 # ----------------- Create Service Request -----------------
 @router.post("/", response_model=ServiceRequestOut)

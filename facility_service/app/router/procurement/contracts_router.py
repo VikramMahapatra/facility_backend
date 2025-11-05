@@ -43,16 +43,7 @@ def create_contract(
 ):
     # Assign org_id from current user
     contract.org_id = current_user.org_id
-    result = crud.create_contract(db, contract)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    return success_response(
-        data=result,
-        message="Contract created successfully"
-    )
+    return crud.create_contract(db, contract)
 
 
 @router.put("/", response_model=None)
@@ -60,24 +51,8 @@ def update_contract_endpoint(
     contract: ContractUpdate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    result = crud.update_contract(db, contract)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    if not result:
-        return error_response(
-            message="Contract not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=404
-        )
-    
-    return success_response(
-        data={"message": "Contract updated successfully"},
-        message="Contract updated successfully"
-    )
+): 
+    return crud.update_contract(db, contract)
 
 
 @router.delete("/{contract_id}")

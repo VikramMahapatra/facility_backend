@@ -40,15 +40,7 @@ def create_space(
     current_user: UserToken = Depends(validate_current_token)
 ):
     space.org_id = current_user.org_id
-    result = crud.create_space(db, space)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    space_response = SpaceOut.model_validate(result)
-    return success_response(data=space_response, message="Space created successfully")
+    return crud.create_space(db, space)
 
 @router.put("/", response_model=None)
 def update_space(
@@ -56,15 +48,7 @@ def update_space(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    result = crud.update_space(db, space)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    space_response = SpaceOut.model_validate(result)
-    return success_response(data=space_response, message="Space updated successfully")
+    return crud.update_space(db, space)
 
 
 

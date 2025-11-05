@@ -39,15 +39,7 @@ def create_building(
     current_user: UserToken = Depends(validate_current_token)
 ):
     building.org_id = current_user.org_id
-    result = crud.create_building(db, building)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    building_response = BuildingOut.model_validate(result)
-    return success_response(data=building_response, message="Building created successfully")
+    return crud.create_building(db, building)
 
 @router.put("/", response_model=None)
 def update_building(
@@ -55,16 +47,7 @@ def update_building(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    result = crud.update_building(db, building)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    building_response = BuildingOut.model_validate(result)
-    return success_response(data=building_response, message="Building updated successfully")
-
+    return crud.update_building(db, building)
 
 @router.delete("/{id}", response_model=Dict[str, Any])
 def delete_building(id: str, db: Session = Depends(get_db)):

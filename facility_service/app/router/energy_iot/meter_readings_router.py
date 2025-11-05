@@ -46,10 +46,7 @@ def create_meter_reading(
 
 @router.put("/", response_model=None)
 def update_meter_reading(data: MeterReadingUpdate, db: Session = Depends(get_db)):
-    model = crud.update(db, data)
-    if not model:
-        raise HTTPException(status_code=404, detail="Meter reading not found")
-    return model
+    return crud.update(db, data)
 
 
 @router.delete("/{id}", response_model=None)

@@ -44,10 +44,7 @@ def update_pm_template(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    db_template = crud.update_pm_template(db, template)
-    if not db_template:
-        raise HTTPException(status_code=404, detail="Template not found")
-    return {"message": "Pm_templater updated successfully"}
+    return crud.update_pm_template(db, template)
 
 
 # ---------------- Create template ----------------

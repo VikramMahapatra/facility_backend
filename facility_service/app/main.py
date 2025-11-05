@@ -1,3 +1,4 @@
+from .router.service_ticket import tickets_router
 from .router.energy_iot import meter_readings_router, meters_router, consumption_report_router
 from .router.overview import analytics_router, dashboard_router
 from .router.hospitality import bookings_router, rate_plans_router, housekeeping_tasks_router
@@ -42,6 +43,7 @@ from .models.common import comments, attachments
 from .models import (
     purchase_order_lines, purchase_orders
 )
+from.models.service_ticket import sla_policy,ticket_assignment,tickets_category,tickets_commets,tickets_feedback,tickets_reaction,tickets_work_order,tickets_workflow,tickets
 from .router.common import export_router
 from .router.mobile_app import master_router, home_router, help_desk_router, user_profile_router
 from .router.procurement import contracts_router, vendor_router
@@ -123,3 +125,4 @@ app.include_router(pending_approval_router.router)
 app.include_router(help_desk_router.router)
 app.include_router(notifications_router.router)
 app.include_router(user_profile_router.router)
+app.include_router(tickets_router.router)

@@ -40,34 +40,15 @@ def create_parking_zone(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     zone.org_id = current_user.org_id
-    result = crud.create_parking_zone(db, zone)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    return success_response(
-        data=result,
-        message="Parking zone created successfully"
-    )
-
+    return crud.create_parking_zone(db, zone)
 
 @router.put("/", response_model=None)
 def update_parking_zone(
     zone: ParkingZoneUpdate,  # ✅ Changed: Remove zone_id parameter, get ID from zone body
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)  # ✅ Added authentication
-):
-    result = crud.update_parking_zone(db, zone)  # ✅ Pass the entire zone object
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    return success_response(
-        data=result,
-        message="Parking zone updated successfully"
-    )
+):  
+    return crud.update_parking_zone(db, zone) 
 
 
 @router.delete("/{zone_id}", response_model=None)

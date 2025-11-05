@@ -50,18 +50,7 @@ def create_tenant_endpoint(
 ):
     # Assign org_id from current user if needed
     # tenant.org_id = current_user.org_id  # Uncomment if your Tenant model has org_id
-    
-    result = crud.create_tenant(db, tenant)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    return success_response(
-        data=result,
-        message="Tenant created successfully"
-    )
-
+    return crud.create_tenant(db, tenant)
 
 
 # ----------------- Update Tenant -----------------
@@ -71,15 +60,8 @@ def update_tenant(
     update_data: TenantUpdate,  # Get from request body
     db: Session = Depends(get_db)
 ):
-    result = crud.update_tenant(db, tenant_id, update_data)
     
-    if hasattr(result, 'status_code') and result.status_code != "100":
-        return result
-    
-    return success_response(
-        data=result,
-        message="Tenant updated successfully"
-    )
+    return crud.update_tenant(db, tenant_id, update_data)
 
 # ---------------- Delete Tenant ----------------
 @router.delete("/{tenant_id}")

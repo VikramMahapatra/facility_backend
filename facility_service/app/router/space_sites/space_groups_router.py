@@ -25,15 +25,7 @@ def create_space_group(
     current_user: UserToken = Depends(validate_current_token)
 ):
     group.org_id = current_user.org_id
-    result = crud.create_space_group(db, group)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    space_group_response = SpaceGroupOut.model_validate(result)
-    return success_response(data=space_group_response, message="Space group created successfully")
+    return crud.create_space_group(db, group)
 
 @router.put("/", response_model=None)
 def update_space_group(
@@ -41,15 +33,7 @@ def update_space_group(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    result = crud.update_space_group(db, group)
-    
-    # Check if result is an error response
-    if hasattr(result, 'status_code') and result.status_code != 200:
-        return result
-    
-    # Convert SQLAlchemy model to Pydantic model
-    space_group_response = SpaceGroupOut.model_validate(result)
-    return success_response(data=space_group_response, message="Space group updated successfully")
+    return crud.update_space_group(db, group)
 
 @router.delete("/{group_id}", response_model=Dict[str, Any])
 def delete_space_group(group_id: str, db: Session = Depends(get_db)):

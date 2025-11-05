@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 
 from facility_service.app.models.space_sites.spaces import Space
 
-from ...schemas.mobile_app.help_desk_schemas import ComplaintCreateResponse, ComplaintDetailsResponse, ComplaintResponse, ComplaintCreate
+from ...schemas.mobile_app.help_desk_schemas import ComplaintDetailsResponse, ComplaintOut, ComplaintResponse, ComplaintCreate
 from ...models.maintenance_assets.service_request import ServiceRequest
 from shared.schemas import UserToken
 from sqlalchemy.orm import joinedload
@@ -24,7 +24,7 @@ def get_complaints(db: Session, space_id: UUID):
     for complaint in complaints:
         comments_count = complaint.comments.count()
         results.append(
-            ComplaintResponse.model_validate({
+            ComplaintOut.model_validate({
                 **complaint.__dict__,
                 "comments": comments_count or 0
             })
@@ -72,8 +72,8 @@ def raise_complaint(db: Session, complaint_data: ComplaintCreate, current_user: 
         **complaint.__dict__,
         "comments": 0  # ✅ New complaints have 0 comments
     }
-    
-    return ComplaintCreateResponse.model_validate(response_data)
+
+    return ComplaintResponse.model_validate(response_data)
 
 
 def get_complaint_details(db: Session, service_request_id: str) -> ComplaintDetailsResponse:
@@ -88,7 +88,8 @@ def get_complaint_details(db: Session, service_request_id: str) -> ComplaintDeta
     )
 
     if not service_req:
-        raise HTTPException(status_code=404, detail="Service request not found")
+        raise HTTPException(
+            status_code=404, detail="Service request not found")
 
     # Step 2: Fetch all comments for that service request (latest first)
     comments = (

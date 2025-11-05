@@ -7,7 +7,7 @@ from ...schemas.leases_schemas import LeaseOut
 from shared.schemas import CommonQueryParams, EmptyStringModel
 
 
-class ComplaintResponse(EmptyStringModel):
+class ComplaintOut(EmptyStringModel):
     id: UUID
     space_id: UUID
     category: str
@@ -16,9 +16,9 @@ class ComplaintResponse(EmptyStringModel):
     preferred_time: Optional[str] = None
     comments: Optional[int] = None
     created_at: Optional[datetime] = None
-    can_escalate :Optional[bool] = False
-    can_reopen : Optional[bool] = False
-    closed_date: Optional[datetime]= None
+    can_escalate: Optional[bool] = False
+    can_reopen: Optional[bool] = False
+    closed_date: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -33,56 +33,71 @@ class ComplaintCreate(EmptyStringModel):
     model_config = {"from_attributes": True}
 
 
-class ComplaintCreateResponse(EmptyStringModel):
+class ComplaintResponse(EmptyStringModel):
     id: UUID
     space_id: UUID
     category: str
     request_type: str
     description: str
     preferred_time: Optional[str] = None
-    comments: Optional[int] = 0  # ✅ Add comments field here too
+    created_at: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
 
-#adding comments
+# adding comments
 
 class ComplaintDetailsRequest(BaseModel):
-    service_request_id: str
+    ticket_id: str
 
 
-class CommentOut(BaseModel):
+class CommentOut(EmptyStringModel):
     id: UUID
-    module_name: Optional[str]
-    entity_id: Optional[UUID]
-    user_id: Optional[UUID]
-    user_type: Optional[str]
-    content: Optional[str]
-    parent_comment_id: Optional[UUID] = None
+    ticket_id: UUID
+    user_id: Optional[UUID] = None
+    user_name: Optional[str] = None
+    comment_text: Optional[str] = None
     comment_reaction: Optional[str] = None
-    is_deleted: Optional[bool] = None
     created_at: datetime
-    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
 
 
-class ComplaintDetailsResponse(BaseModel):
+class TicketWorkFlowOut(EmptyStringModel):
+    id: UUID
+    ticket_id: Optional[UUID]
+    type: Optional[str] = None
+    action_taken: Optional[str] = None
+    created_at: datetime
+    action_by: UUID
+    action_by_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ComplaintDetailsResponse(EmptyStringModel):
     id: UUID
     sr_no: str
-    category: Optional[str]
-    priority: Optional[str]
-    status: Optional[str]
-    description: Optional[str]
+    category: Optional[str] = None
+    priority: Optional[str] = None
+    status: Optional[str] = None
+    description: Optional[str] = None
     created_at: datetime
-    updated_at: Optional[datetime]
-    requester_kind: Optional[str]
-    requester_id: Optional[UUID]
+    updated_at: Optional[datetime] = None
+    closed_date: Optional[datetime] = None
+    requester_kind: Optional[str] = None
+    requester_id: Optional[UUID] = None
     requester_name: Optional[str] = None
-    space_id: Optional[UUID]
-    site_id: Optional[UUID]
+    space_id: Optional[UUID] = None
+    space_name: Optional[str] = None
+    building_name: Optional[str] = None
+    site_name: Optional[UUID] = None
+    can_escalate: Optional[bool] = False
+    can_reopen: Optional[bool] = False
     comments: List[CommentOut] = []
+    logs: List[TicketWorkFlowOut] = []
 
     class Config:
         from_attributes = True

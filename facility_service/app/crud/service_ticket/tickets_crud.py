@@ -240,15 +240,22 @@ def return_ticket(db: Session, data: TicketActionRequest):
     if not ticket:
         raise Exception("Ticket not found")
 
+    # Fetch SLA Policy for auto-assignment
+    sla = db.execute(
+        select(SlaPolicy).where(SlaPolicy.sla_id == data.category_id)
+    ).scalar_one_or_none()
+
+    assigned_to = sla.default_contact if sla else None
+
     old_status = ticket.status
     ticket.status = "RETURNED"
-    ticket.assigned_to = data.return_to
+    ticket.assigned_to = assigned_to
     ticket.updated_at = datetime.utcnow()
 
     assignment = TicketAssignment(
         ticket_id=data.ticket_id,
         assigned_from=data.action_by,
-        assigned_to=data.return_to,
+        assigned_to=assigned_to,
         reason=data.comment or "Ticket Returned"
     )
     db.add(assignment)

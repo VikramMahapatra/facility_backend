@@ -73,7 +73,7 @@ def raise_complaint(db: Session, complaint_data: ComplaintCreate, current_user: 
         "comments": 0  # ✅ New complaints have 0 comments
     }
 
-    return ComplaintCreateResponse.model_validate(response_data)
+    return ComplaintResponse.model_validate(response_data)
 
 
 def get_complaint_details(db: Session, service_request_id: str) -> ComplaintDetailsResponse:

@@ -95,7 +95,6 @@ class AddFeedbackRequest(BaseModel):
 class TicketActionRequest(BaseModel):
     ticket_id: UUID
     action_by: Optional[UUID] = None
-    return_to: Optional[UUID] = None
     comment: Optional[str] = None
 
 

@@ -31,12 +31,12 @@ class NotificationBase(BaseModel):
 
 
 class NotificationCreate(NotificationBase):
-    user_id: int
+    user_id: UUID
 
 
 class NotificationOut(NotificationBase):
     id: UUID
-    user_id: int
+    user_id: UUID
     posted_date: datetime
 
     model_config = {

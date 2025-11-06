@@ -104,6 +104,9 @@ def get_overview(db: Session, org_id: UUID, params: LeaseRequest):
 # ----------------------------------------------------
 # ✅ Get list with tenant / partner / site search
 # ----------------------------------------------------
+# ----------------------------------------------------
+# ✅ Get list with tenant / partner / site search
+# ----------------------------------------------------
 def get_list(db: Session, org_id: UUID, params: LeaseRequest) -> LeaseListResponse:
     q = (
         db.query(Lease)
@@ -111,6 +114,7 @@ def get_list(db: Session, org_id: UUID, params: LeaseRequest) -> LeaseListRespon
         .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
         .outerjoin(CommercialPartner, CommercialPartner.id == Lease.partner_id)
         .filter(*build_filters(org_id, params))
+        .order_by(Lease.updated_at.desc())  # ✅ ADD THIS LINE - NEWEST FIRST
     )
 
     total = q.count()

@@ -5,6 +5,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta
 from typing import Dict, Optional
 
+from facility_service.app.models.service_ticket.tickets import Ticket
+from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
+
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.maintenance_assets.service_request import ServiceRequest
 from ...models.maintenance_assets.work_order import WorkOrder
@@ -77,6 +80,10 @@ def get_home_spaces(db: Session, user: UserToken):
     }
 
 
+
+
+
+
 def get_home_details(db: Session, space_id: UUID, user: UserToken):
     """
     Get comprehensive home details for a specific space
@@ -109,7 +116,7 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
             .first()
         )
 
-    # ✅ 1. Lease Contract Details
+    # ✅ Default placeholders
     lease_contract_detail = {
         "start_date": None,
         "expiry_date": None,
@@ -120,15 +127,19 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
         "next_due_date": None
     }
 
+    maintenance_detail = {
+        "last_paid": None,
+        "next_due_date": None,
+        "total_maintenance_paid": 0.0,
+        "next_maintenance_amount": 0.0
+    }
+
     if lease:
         lease_contract_detail["start_date"] = lease.start_date
         lease_contract_detail["expiry_date"] = lease.end_date
 
-        # ✅ FIXED: Calculate TOTAL lease amount PROPERLY
-        # Get base rent amount
         rent_amount = float(lease.rent_amount) if lease.rent_amount else 0.0
 
-        # Get next due date
         rent_query = (
             db.query(LeaseCharge)
             .filter(
@@ -140,7 +151,6 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
             )
         )
         rent_charges = rent_query.all()
-        # Get total rent paid
         total_rent_paid = sum(
             charge.amount for charge in rent_charges) if rent_charges else 0
 
@@ -150,31 +160,24 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
             .all()
         )
 
+        current_date = date.today()
         last_rent_paid = None
         next_rent_due_date = None
 
         if all_rent_periods:
-            # Find the current or most recent period
-            current_rent_period = None
             for period in all_rent_periods:
                 if period.period_start <= current_date <= period.period_end:
-                    current_rent_period = period
+                    last_rent_paid = period.period_start
+                    next_rent_due_date = period.period_end + timedelta(days=1)
                     break
 
-            if current_rent_period:
-                last_rent_paid = current_rent_period.period_start  # Payment due at start of period
-                next_rent_due_date = current_rent_period.period_end + \
-                    timedelta(days=1)
-
-        # ✅ TOTAL = Base Rent + All Additional Charges
-        lease_contract_detail["total_rent_paid"] = float(
-            total_rent_paid) if total_rent_paid else 0.0
+        lease_contract_detail["total_rent_paid"] = float(total_rent_paid)
         lease_contract_detail["rent_frequency"] = lease.frequency
         lease_contract_detail["rent_amount"] = rent_amount
         lease_contract_detail["last_paid_date"] = last_rent_paid
         lease_contract_detail["next_due_date"] = next_rent_due_date
 
-        # ✅ 2. Maintenance Details - FIXED LOGIC
+        # ✅ Maintenance details
         maintenance_query = (
             db.query(LeaseCharge)
             .filter(
@@ -191,11 +194,6 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
             charge.amount for charge in maintenance_charges) if maintenance_charges else 0
 
         next_maintenance_amount = None
-
-        # ✅ FIXED: Smart date logic that handles current ongoing periods
-        current_date = date.today()
-
-        # Find the most recent maintenance period (could be ongoing or completed)
         all_periods = (
             maintenance_query
             .order_by(LeaseCharge.period_end.desc())
@@ -206,92 +204,86 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
         next_due_date = None
 
         if all_periods:
-            # Find the current or most recent period
-            current_period = None
             for period in all_periods:
                 if period.period_start <= current_date <= period.period_end:
-                    current_period = period
+                    last_paid = period.period_start
+                    next_due_date = period.period_end + timedelta(days=1)
                     next_maintenance_amount = period.amount
                     break
-
-            if current_period:
-                last_paid = current_period.period_start  # Payment due at start of period
-                next_due_date = current_period.period_end + timedelta(days=1)
 
         maintenance_detail = {
             "last_paid": last_paid,
             "next_due_date": next_due_date,
-            "total_maintenance_paid": float(maintenance_amount) if maintenance_amount else 0,
-            "next_maintenance_amount": float(next_maintenance_amount) if next_maintenance_amount else 0,
+            "total_maintenance_paid": float(maintenance_amount),
+            "next_maintenance_amount": float(next_maintenance_amount or 0)
         }
 
-    # ✅ 3. Statistics with Actual Period Values
+    # ✅ Replace your existing “statistics” section with this:
+
+    # ✅ Statistics (using Ticket and TicketWorkOrder)
     current_time = datetime.now()
     period_start = current_time - timedelta(days=30)
     period_end = current_time
 
     closed_statuses = ["closed", "completed", "resolved"]
-    open_statuses = ["open", "in_progress",
-                     "in progress", "assigned", "pending", "active"]
+    open_statuses = ["open", "in_progress", "in progress", "assigned", "pending", "active"]
 
-    # Service Requests (Last 30 days)
-    sr_query = db.query(ServiceRequest).filter(
-        and_(
-            ServiceRequest.space_id == space_id,
-            ServiceRequest.is_deleted == False,
-            ServiceRequest.created_at >= period_start,
-            ServiceRequest.created_at <= period_end
+    ticket_query = (
+        db.query(Ticket)
+        .filter(
+            and_(
+                Ticket.space_id == space_id,
+                Ticket.created_at >= period_start,
+                Ticket.created_at <= period_end
+            )
         )
     )
 
-    # Work Orders (Last 30 days)
-    wo_query = db.query(WorkOrder).filter(
-        and_(
-            WorkOrder.space_id == space_id,
-            WorkOrder.is_deleted == False,
-            WorkOrder.created_at >= period_start,
-            WorkOrder.created_at <= period_end
+    work_order_query = (
+        db.query(TicketWorkOrder)
+        .join(Ticket, TicketWorkOrder.ticket_id == Ticket.id)
+        .filter(
+            and_(
+                Ticket.space_id == space_id,
+                TicketWorkOrder.created_at >= period_start,
+                TicketWorkOrder.created_at <= period_end
+            )
         )
     )
 
-    # Total Tickets
-    total_sr = sr_query.count()
-    total_wo = wo_query.count()
-    total_tickets = total_sr + total_wo
+    total_tickets = ticket_query.count()
+    total_work_orders = work_order_query.count()
+    total_combined = total_tickets + total_work_orders
 
-    # Closed Tickets
-    closed_sr = sr_query.filter(
-        ServiceRequest.status.in_(closed_statuses)).count()
-    closed_wo = wo_query.filter(WorkOrder.status.in_(closed_statuses)).count()
-    closed_tickets = closed_sr + closed_wo
+    closed_tickets = (
+        ticket_query.filter(Ticket.status.in_(closed_statuses)).count()
+        + work_order_query.filter(TicketWorkOrder.status.in_(closed_statuses)).count()
+    )
 
-    # Open Tickets
-    open_sr = sr_query.filter(ServiceRequest.status.in_(open_statuses)).count()
-    open_wo = wo_query.filter(WorkOrder.status.in_(open_statuses)).count()
-    open_tickets = open_sr + open_wo
+    open_tickets = (
+        ticket_query.filter(Ticket.status.in_(open_statuses)).count()
+        + work_order_query.filter(TicketWorkOrder.status.in_(open_statuses)).count()
+    )
 
-    # Overdue Tickets
-    overdue_wo = wo_query.filter(
-        and_(
-            WorkOrder.due_at.isnot(None),
-            WorkOrder.due_at < current_time,
-            WorkOrder.status.in_(open_statuses)
-        )
-    ).count()
-
-    # Service Requests older than 7 days considered overdue
     overdue_threshold = current_time - timedelta(days=7)
-    overdue_sr = sr_query.filter(
-        and_(
-            ServiceRequest.created_at < overdue_threshold,
-            ServiceRequest.status.in_(open_statuses)
-        )
-    ).count()
 
-    overdue_tickets = overdue_wo + overdue_sr
+    overdue_tickets = (
+        ticket_query.filter(
+            and_(
+                Ticket.created_at < overdue_threshold,
+                Ticket.status.in_(open_statuses)
+            )
+        ).count()
+        + work_order_query.filter(
+            and_(
+                TicketWorkOrder.created_at < overdue_threshold,
+                TicketWorkOrder.status.in_(open_statuses)
+            )
+        ).count()
+    )
 
     statistics = {
-        "total_tickets": total_tickets,
+        "total_tickets": total_combined,
         "closed_tickets": closed_tickets,
         "open_tickets": open_tickets,
         "overdue_tickets": overdue_tickets,
@@ -301,7 +293,7 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
         }
     }
 
-    # notifications
+
     notifications = (
         db.query(Notification)
         .filter(and_(Notification.user_id == user.user_id, Notification.read == False))
@@ -310,7 +302,8 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
         .all()
     )
 
-    notfication_list = [NotificationOut(**n.__dict__) for n in notifications]#added **dict to convert from orm object to pydantic model
+    notfication_list = [NotificationOut(**n.__dict__) for n in notifications]
+
 
     return {
         "lease_contract_detail": lease_contract_detail | {},

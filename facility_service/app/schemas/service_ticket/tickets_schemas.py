@@ -130,6 +130,7 @@ class TicketDetailsResponse(EmptyStringModel):
     assigned_to: Optional[UUID] = None
     assigned_to_name: Optional[str] = None
     request_type: Optional[str] = None
+    is_overdue: Optional[bool] = False
 
     class Config:
         from_attributes = True

@@ -1,10 +1,12 @@
 from datetime import datetime
-import select
+from sqlalchemy import select
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from sqlalchemy import and_, func
 from auth_service.app.models.users import Users
+from ...schemas.system.notifications_schemas import NotificationType, PriorityType
+from ...models.system.notifications import Notification
 from ...enum.ticket_service_enum import TicketStatus
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.service_ticket.tickets_category import TicketCategory
@@ -169,7 +171,10 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
             "site_name": service_req.site.name if service_req.site else None,
             "closed_date": closed_date,
             "assigned_to_name": assigned_to_name,
-            "logs": all_logs
+            "logs": all_logs,
+            "can_escalate": service_req.can_escalate,
+            "can_reopen": service_req.can_reopen,
+            "is_overdue": service_req.is_overdue,
         }
     )
 
@@ -221,23 +226,23 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
         title=title,
         description=data.description,
         status=TicketStatus.OPEN,
-        created_by=data.created_by,
-        created_date=datetime.utcnow(),
+        created_by=user.user_id,
+        created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
-        prefered_time=data.prefered_time
+        preferred_time=data.preferred_time
     )
     session.add(new_ticket)
     session.flush()  # needed to get ticket_id
 
     # Fetch SLA Policy for auto-assignment
     created_by_name = (
-        auth_db.query(Users.name)
+        auth_db.query(Users.full_name)
         .filter(Users.id == user.user_id)
         .scalar()
     )
 
     sla = session.execute(
-        select(SlaPolicy).where(SlaPolicy.sla_id == data.category_id)
+        select(SlaPolicy).where(SlaPolicy.service_category == data.category)
     ).scalar_one_or_none()
 
     assigned_to = sla.default_contact if sla else None
@@ -246,19 +251,31 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
         new_ticket.assigned_to = assigned_to
 
         assignment_log = TicketAssignment(
-            ticket_id=new_ticket.ticket_id,
+            ticket_id=new_ticket.id,
             assigned_from=user.user_id,
             assigned_to=assigned_to,
             reason="Auto-assigned via SLA"
         )
         session.add(assignment_log)
 
+        notification = Notification(
+            user_id=assigned_to,
+            type=NotificationType.alert,
+            title="New Ticket Assigned",
+            message=f"You have been assigned ticket {new_ticket.ticket_no}: {title}",
+            posted_date=datetime.utcnow(),
+            priority=PriorityType.medium,
+            read=False,
+            is_deleted=False
+        )
+        session.add(notification)
+
     # Log Workflow History
     workflow_log = TicketWorkflow(
-        ticket_id=new_ticket.ticket_id,
+        ticket_id=new_ticket.id,
         action_by=user.user_id,
         old_status=None,
-        new_status=TicketStatus.OPEN,
+        new_status=TicketStatus.OPEN.value,
         action_taken=f"Ticket Created by {created_by_name}"
     )
     session.add(workflow_log)

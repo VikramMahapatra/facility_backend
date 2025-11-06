@@ -54,14 +54,13 @@ def create_tenant_endpoint(
 
 
 # ----------------- Update Tenant -----------------
-@router.put("/{tenant_id}", response_model=None) 
+@router.put("/", response_model=None)
 def update_tenant(
-    tenant_id: UUID,  # Get from URL path
-    update_data: TenantUpdate,  # Get from request body
+    update_data: TenantUpdate,  # Get full payload (includes id)
     db: Session = Depends(get_db)
 ):
-    
-    return crud.update_tenant(db, tenant_id, update_data)
+    return crud.update_tenant(db, update_data.id, update_data)
+
 
 # ---------------- Delete Tenant ----------------
 @router.delete("/{tenant_id}")

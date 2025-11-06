@@ -1,4 +1,5 @@
 
+from sqlalchemy import Enum
 from typing import Optional
 from pydantic import computed_field
 from sqlalchemy.dialects.postgresql import UUID
@@ -6,6 +7,7 @@ from sqlalchemy import TIMESTAMP, Boolean, Column, String, ForeignKey, Text, fun
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
+from ...enum.ticket_service_enum import TicketStatus
 from shared.database import Base
 from shared.database import Base  # adjust the import to your Base
 from datetime import datetime, timezone, timedelta
@@ -24,7 +26,16 @@ class Ticket(Base):
 
     title = Column(String(255), nullable=False)
     description = Column(Text)
-    status = Column(String(50), default="open")
+    status = Column(
+        Enum(
+            TicketStatus,
+            name="ticket_status_enum",
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        default=TicketStatus.OPEN,
+        nullable=False,
+    )
     priority = Column(String(20), default="medium")
     created_by = Column(UUID(as_uuid=True))
     assigned_to = Column(UUID(as_uuid=True))
@@ -34,7 +45,7 @@ class Ticket(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True),
                         server_default=func.now(), onupdate=func.now())
-    closed_date = Column(TIMESTAMP(timezone=True))
+    closed_date = Column(TIMESTAMP(timezone=True), nullable=True)
 
     org = relationship("Org", back_populates="tickets")
     site = relationship("Site", back_populates="tickets")

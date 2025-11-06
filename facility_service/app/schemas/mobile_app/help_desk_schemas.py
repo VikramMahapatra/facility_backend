@@ -14,7 +14,7 @@ class ComplaintOut(EmptyStringModel):
     status: str
     description: Optional[str] = None
     preferred_time: Optional[str] = None
-    created_at: Optional[datetime] = None
+    created_at: datetime
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
     closed_date: Optional[datetime] = None
@@ -84,7 +84,7 @@ class ComplaintDetailsResponse(EmptyStringModel):
     description: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    closed_date: Optional[datetime] = None
+    closed_date: Optional[str] = None
     space_id: Optional[UUID] = None
     space_name: Optional[str] = None
     building_name: Optional[str] = None

@@ -116,7 +116,7 @@ class TicketDetailsResponse(EmptyStringModel):
     description: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    closed_date: Optional[datetime] = None
+    closed_date: Optional[str] = None
     space_id: Optional[UUID] = None
     space_name: Optional[str] = None
     building_name: Optional[str] = None

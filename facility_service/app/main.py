@@ -39,7 +39,7 @@ from .models.financials import invoices
 from .models.leasing_tenants import commercial_partners, leases, lease_charges, tenants
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.system import notifications, notification_settings
-from .models.common import comments, attachments
+from .models.common import comments, attachments ,staff_sites
 from .models import (
     purchase_order_lines, purchase_orders
 )

@@ -40,10 +40,31 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
         filters.append(Ticket.space_id == params.space_id)
 
     if params.status and params.status.lower() != "all":
-        filters.append(func.lower(Ticket.status)
-                       == params.status.lower())
+        status = params.status.lower()
 
-    base_query = db.query(Ticket).filter(*filters)
+        if status == "overdue":
+            # Join TicketCategory -> SlaPolicy to compute overdue tickets
+            filters.append(
+                and_(
+                    Ticket.status != "closed",
+                    func.extract('epoch', func.now() - Ticket.created_at) / 60 >
+                    func.coalesce(SlaPolicy.resolution_time_mins, 0)
+                )
+            )
+
+            base_query = (
+                db.query(Ticket)
+                .join(Ticket.category)
+                .join(TicketCategory.sla_policy)
+                .filter(*filters)
+            )
+
+        else:
+            filters.append(func.lower(Ticket.status) == status)
+            base_query = db.query(Ticket).filter(*filters)
+
+    else:
+        base_query = db.query(Ticket).filter(*filters)
 
     total = base_query.with_entities(func.count(Ticket.id)).scalar()
 
@@ -63,6 +84,9 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
         complaint_data = {
             **t.__dict__,
             "category": category_name,  # override with name
+            "can_escalate": t.can_escalate,
+            "can_reopen": t.can_reopen,
+            "is_overdue": t.is_overdue,
         }
 
         results.append(TicketOut.model_validate(complaint_data))

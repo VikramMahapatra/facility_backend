@@ -47,6 +47,7 @@ class TicketOut(BaseModel):
     closed_date: Optional[datetime] = None
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
+    is_overdue: Optional[bool] = False
 
     class Config:
         from_attributes = True

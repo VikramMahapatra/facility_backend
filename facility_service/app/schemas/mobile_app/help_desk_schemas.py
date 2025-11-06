@@ -18,6 +18,7 @@ class ComplaintOut(EmptyStringModel):
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
     closed_date: Optional[datetime] = None
+    is_overdue: Optional[bool] = False
 
     model_config = {"from_attributes": True}
 

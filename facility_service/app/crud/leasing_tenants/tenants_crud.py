@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Dict, Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func, literal, or_
+from sqlalchemy import and_, desc, func, literal, or_
 from uuid import UUID
 
 from shared.app_status_code import AppStatusCode
@@ -86,9 +86,11 @@ def get_tenants_overview(db: Session, org_id) -> dict:
         "individualTenants": total_individual
     }
 
-# ----------------- Get All Tenants -----------------
+
+
+
 def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListResponse:
-    # residential query - get space_id from tenant
+    # ------------------ Residential Query ------------------
     tenant_query = (
         db.query(
             Tenant.id.label("id"),
@@ -103,10 +105,9 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
             Tenant.status.label("status"),
             Tenant.address.label("address"),
             literal(None).label("contact"),
-            # Get space_id from tenant model
             Tenant.space_id.label("space_id"),
-            # Building block ID will be derived from space
-            literal(None).label("building_block_id"),  # Placeholder
+            literal(None).label("building_block_id"),
+            Tenant.updated_at.label("sort_field"),  # ← newest first
         )
         .join(Site, Site.id == Tenant.site_id)
         .filter(
@@ -114,14 +115,10 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
             Tenant.is_deleted == False,
             Site.is_deleted == False
         )
-        .order_by(Tenant.updated_at.desc())
     )
 
-    # FIXED: Proper status filter for individual tenants
     if params.status and params.status.lower() != "all":
-        tenant_query = tenant_query.filter(
-            func.lower(Tenant.status) == params.status.lower()
-        )
+        tenant_query = tenant_query.filter(func.lower(Tenant.status) == params.status.lower())
 
     if params.search:
         search_term = f"%{params.search}%"
@@ -134,7 +131,7 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
             )
         )
 
-    # commercial query - include space_id and building_block_id for commercial partners
+    # ------------------ Commercial Query ------------------
     partner_query = (
         db.query(
             CommercialPartner.id.label("id"),
@@ -149,10 +146,9 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
             CommercialPartner.status.label("status"),
             literal(None).label("address"),
             CommercialPartner.contact.label("contact"),
-            # Commercial partners have space_id
             CommercialPartner.space_id.label("space_id"),
-            # Building block ID will be derived from space
-            literal(None).label("building_block_id"),  # Placeholder
+            literal(None).label("building_block_id"),
+            CommercialPartner.updated_at.label("sort_field"),  # ← newest first
         )
         .join(Site, Site.id == CommercialPartner.site_id)
         .filter(
@@ -163,16 +159,12 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
     )
 
     if params.status and params.status.lower() != "all":
-        partner_query = partner_query.filter(
-            func.lower(CommercialPartner.status) == params.status.lower()
-        )
+        partner_query = partner_query.filter(func.lower(CommercialPartner.status) == params.status.lower())
 
     if params.search:
-        partner_query = partner_query.filter(
-            CommercialPartner.legal_name.ilike(f"%{params.search}%")
-        )
+        partner_query = partner_query.filter(CommercialPartner.legal_name.ilike(f"%{params.search}%"))
 
-    # choose query
+    # ------------------ Final Query ------------------
     if params.type and params.type.lower() == "individual":
         final_query = tenant_query
     elif params.type and params.type.lower() == "commercial":
@@ -180,73 +172,55 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
     else:
         final_query = tenant_query.union_all(partner_query)
 
-    # total count
+    # ------------------ Total Count ------------------
     subq = final_query.subquery()
     total = db.query(func.count()).select_from(subq).scalar()
 
-    # paginate
+    # ------------------ Pagination ------------------
     rows = (
         db.query(final_query.subquery())
-        .order_by("name")
+        .order_by(desc("sort_field"))  # ← newest on top
         .offset(params.skip)
         .limit(params.limit)
         .all()
     )
 
+    # ------------------ Prepare Results ------------------
     results = []
     for r in rows:
         record = dict(r._mapping)
 
         if record.get("tenant_type") == "individual":
-            # Build contact_info from tenant fields
             record["contact_info"] = {
                 "name": record["name"],
                 "email": record["email"],
                 "phone": record["phone"],
                 "address": record.get("address"),
             }
-            
-            # GET BUILDING BLOCK ID FROM SPACE
+
             space_id = record.get("space_id")
             if space_id:
-                space = db.query(Space).filter(
-                    Space.id == space_id,
-                    Space.is_deleted == False
-                ).first()
+                space = db.query(Space).filter(Space.id == space_id, Space.is_deleted == False).first()
                 if space and space.building:
                     record["building_block_id"] = space.building_block_id
 
         else:
-            # Commercial already has contact JSON
             contact = record.get("contact") or {}
-            # Ensure address structure exists
             if contact.get("address") is None:
-                contact["address"] = {
-                    "line1": "",
-                    "line2": "",
-                    "city": "",
-                    "state": "",
-                    "pincode": "",
-                }
+                contact["address"] = {"line1": "", "line2": "", "city": "", "state": "", "pincode": ""}
             record["contact_info"] = contact
-            
-            # GET BUILDING BLOCK ID FROM SPACE FOR COMMERCIAL PARTNERS TOO
+
             space_id = record.get("space_id")
             if space_id:
-                space = db.query(Space).filter(
-                    Space.id == space_id,
-                    Space.is_deleted == False
-                ).first()
+                space = db.query(Space).filter(Space.id == space_id, Space.is_deleted == False).first()
                 if space and space.building:
                     record["building_block_id"] = space.building_block_id
 
-        # Get tenant leases - SHOWS ACTIVE LEASES
-        record["tenant_leases"] = get_tenant_leases(
-            db, org_id, record.get("id"), record.get("tenant_type"))
-
+        record["tenant_leases"] = get_tenant_leases(db, org_id, record.get("id"), record.get("tenant_type"))
         results.append(TenantOut.model_validate(record))
 
     return {"tenants": results, "total": total}
+
 
 def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str, tenant_type: str) -> List[LeaseOut]:
     # SHOW ACTIVE LEASES ONLY

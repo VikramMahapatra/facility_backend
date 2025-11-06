@@ -16,7 +16,10 @@ class TicketCategory(Base):
     sla_hours = Column(Integer, default=24)
     is_active = Column(Boolean, default=True)
     sla_id = Column(UUID(as_uuid=True), ForeignKey("sla_policies.id"))
- 
+    # New column
+    site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"), nullable=True)
+
+
     sla_policy = relationship("SlaPolicy", back_populates="categories")
     tickets = relationship("Ticket", back_populates="category")
- 
+    site = relationship("Site", back_populates="ticket_categories")  # New relationship

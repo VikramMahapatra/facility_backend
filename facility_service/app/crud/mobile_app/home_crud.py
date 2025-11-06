@@ -5,6 +5,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
+from ...models.common.staff_sites import StaffSite
+
 from ...enum.ticket_service_enum import TicketStatus
 from ...models.service_ticket.sla_policy import SlaPolicy
 from ...models.service_ticket.tickets import Ticket
@@ -20,57 +22,69 @@ from shared.schemas import UserToken
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.space_sites.spaces import Space
 from sqlalchemy.orm import joinedload
+from shared.enums import UserAccountType
 
 
 def get_home_spaces(db: Session, user: UserToken):
-    tenant = (
-        db.query(Tenant)
-        .options(
-            joinedload(Tenant.space)
-            .joinedload(Space.site),
-            joinedload(Tenant.space)
-            .joinedload(Space.building),
-            joinedload(Tenant.leases)
-            .joinedload(Lease.space)
-            .joinedload(Space.site),
-            joinedload(Tenant.leases)
-            .joinedload(Lease.space)
-            .joinedload(Space.building),
-        )
-        .filter(Tenant.user_id == user.user_id)
-        .first()
-    )
-
-    if not tenant:
-        return []
-
     results = {}
 
-    # ✅ 1. Registered space (always included)
-    if tenant.space:
-        results[tenant.space.id] = {
-            "tenant_id": tenant.id,
-            "space_id": tenant.space.id,
-            "is_primary": True,
-            "space_name": tenant.space.name,
-            "site_name": tenant.space.site.name if tenant.space.site else None,
-            "building_name": tenant.space.building.name if tenant.space.building else None
-        }
+    if user.account_type.lower() in (UserAccountType.TENANT, UserAccountType.FLAT_OWNER):
+        tenant = (
+            db.query(Tenant)
+            .options(
+                joinedload(Tenant.space)
+                .joinedload(Space.site),
+                joinedload(Tenant.space)
+                .joinedload(Space.building),
+                joinedload(Tenant.leases)
+                .joinedload(Lease.space)
+                .joinedload(Space.site),
+                joinedload(Tenant.leases)
+                .joinedload(Lease.space)
+                .joinedload(Space.building),
+            )
+            .filter(Tenant.user_id == user.user_id)
+            .first()
+        )
 
-    # ✅ 2. Leased spaces
-    for lease in tenant.leases:
-        space = lease.space
-        if not space:
-            continue
-        # Avoid duplicates (registered space may also be leased)
-        if space.id not in results:
-            results[space.id] = {
+        if not tenant:
+            return []
+
+        # ✅ 1. Registered space (always included)
+        if tenant.space:
+            results[tenant.space.id] = {
                 "tenant_id": tenant.id,
-                "space_id": space.id,
-                "is_primary": False,
-                "space_name": space.name,
-                "site_name": space.site.name if space.site else None,
-                "building_name": space.building.name if space.building else None
+                "space_id": tenant.space.id,
+                "is_primary": True,
+                "space_name": tenant.space.name,
+                "site_id": tenant.site_id,
+                "site_name": tenant.space.site.name if tenant.space.site else None,
+                "building_name": tenant.space.building.name if tenant.space.building else None
+            }
+
+        # ✅ 2. Leased spaces
+        for lease in tenant.leases:
+            space = lease.space
+            if not space:
+                continue
+            # Avoid duplicates (registered space may also be leased)
+            if space.id not in results:
+                results[space.id] = {
+                    "tenant_id": tenant.id,
+                    "space_id": space.id,
+                    "is_primary": False,
+                    "space_name": space.name,
+                    "site_id": space.site_id,
+                    "site_name": space.site.name if space.site else None,
+                    "building_name": space.building.name if space.building else None
+                }
+    elif user.account_type.lower() == UserAccountType.STAFF:
+        staff_site_list = db.query(StaffSite).filter(
+            StaffSite.user_id == user.user_id)
+        for site in staff_site_list:
+            results[site.id] = {
+                "site_id": site.site_id,
+                "site_name": site.site.name
             }
 
     return {

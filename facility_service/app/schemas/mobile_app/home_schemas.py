@@ -10,9 +10,10 @@ from shared.schemas import CommonQueryParams, EmptyStringModel
 
 
 class SpaceDetailResponse(EmptyStringModel):
-    tenant_id: UUID
-    space_id: UUID
-    is_primary: bool
+    tenant_id: Optional[UUID] = None
+    space_id:  Optional[UUID] = None
+    site_id: UUID
+    is_primary: Optional[bool] = False
     space_name: Optional[str] = None
     site_name: Optional[str] = None
     building_name: Optional[str] = None

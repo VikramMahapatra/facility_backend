@@ -61,7 +61,7 @@ def get_complaint_details(
     )
 
 
-@router.post("/ticket-escalation", response_model=ComplaintResponse)
+@router.post("/ticket-escalation", response_model=None)
 def escalate_ticket(
     request: TicketActionRequest,
     db: Session = Depends(get_db),
@@ -72,7 +72,7 @@ def escalate_ticket(
     return tickets_crud.escalate_ticket(db, auth_db, request)
 
 
-@router.post("/ticket-resolved", response_model=ComplaintResponse)
+@router.post("/ticket-resolved", response_model=None)
 def resolved_ticket(
     request: TicketActionRequest,
     db: Session = Depends(get_db),
@@ -83,7 +83,7 @@ def resolved_ticket(
     return tickets_crud.resolve_ticket(db, auth_db, request)
 
 
-@router.post("/ticket-reopened", response_model=ComplaintResponse)
+@router.post("/ticket-reopened", response_model=None)
 def reopen_ticket(
     request: TicketActionRequest,
     db: Session = Depends(get_db),
@@ -94,7 +94,7 @@ def reopen_ticket(
     return tickets_crud.reopen_ticket(db, auth_db, request)
 
 
-@router.post("/ticket-returned", response_model=ComplaintResponse)
+@router.post("/ticket-returned", response_model=None)
 def return_ticket(
     request: TicketActionRequest,
     db: Session = Depends(get_db),

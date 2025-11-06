@@ -23,7 +23,7 @@ from ...models.service_ticket.ticket_assignment import TicketAssignment
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.app_status_code import AppStatusCode
-from shared.json_response_helper import error_response
+from shared.json_response_helper import error_response, success_response
 
 from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest, TicketOut
 
@@ -390,7 +390,10 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     db.commit()
     db.refresh(ticket)
 
-    return ticket
+    return success_response(
+        data=True,
+        message="Ticket escalated successfully"
+    )
 
 
 def resolve_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
@@ -415,7 +418,11 @@ def resolve_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
 
     db.commit()
     db.refresh(ticket)
-    return ticket
+
+    return success_response(
+        data=True,
+        message="Ticket closed successfully"
+    )
 
 
 def reopen_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
@@ -455,7 +462,10 @@ def reopen_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
 
     db.commit()
     db.refresh(ticket)
-    return ticket
+    return success_response(
+        data=True,
+        message="Ticket reopened successfully"
+    )
 
 
 def return_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
@@ -495,7 +505,10 @@ def return_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
 
     db.commit()
     db.refresh(ticket)
-    return ticket
+    return success_response(
+        data=True,
+        message="Ticket returned successfully"
+    )
 
 
 def add_comment(payload: AddCommentRequest, db: Session):

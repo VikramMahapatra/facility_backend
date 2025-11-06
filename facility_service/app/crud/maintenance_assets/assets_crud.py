@@ -220,42 +220,46 @@ def create_asset(db: Session, asset: AssetCreate):
     db.refresh(db_asset)
     return db_asset
 
-def update_asset(db: Session, asset_id: UUID, asset_update: AssetUpdate):
-    db_asset = get_asset_by_id(db, asset_id)
+def update_asset(db: Session, asset_update: AssetUpdate):
+    # Ensure asset_id is provided in body
+    if not asset_update.id:
+        return error_response(
+            message="Asset ID is required in request body",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
+    db_asset = get_asset_by_id(db, asset_update.id)
     if not db_asset:
         return error_response(
             message="Asset not found",
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=404
         )
-    
-    # Extract update data
+
     update_data = asset_update.model_dump(exclude_unset=True)
-    
+
     # Only validate if tag, name, or serial_no are being updated
     if any(field in update_data for field in ['tag', 'name', 'serial_no']):
-        # Build duplicate check query (exclude current asset)
         duplicate_filters = [
             Asset.org_id == db_asset.org_id,
             Asset.site_id == db_asset.site_id,
-            Asset.id != asset_id,
+            Asset.id != db_asset.id,
             Asset.is_deleted == False
         ]
-        
+
         duplicate_conditions = []
         if 'tag' in update_data:
-            duplicate_conditions.append(Asset.tag == update_data['tag'])  # Case-sensitive for tags
+            duplicate_conditions.append(Asset.tag == update_data['tag'])
         if 'name' in update_data:
-            duplicate_conditions.append(func.lower(Asset.name) == func.lower(update_data['name']))  # Case-insensitive for names
+            duplicate_conditions.append(func.lower(Asset.name) == func.lower(update_data['name']))
         if 'serial_no' in update_data and update_data['serial_no']:
-            duplicate_conditions.append(Asset.serial_no == update_data['serial_no'])  # Case-sensitive for serial numbers
-        
+            duplicate_conditions.append(Asset.serial_no == update_data['serial_no'])
+
         if duplicate_conditions:
             duplicate_filters.append(or_(*duplicate_conditions))
-            
-            # Check for existing assets with same values
             existing_asset = db.query(Asset).filter(*duplicate_filters).first()
-            
+
             if existing_asset:
                 if 'tag' in update_data and existing_asset.tag == update_data['tag']:
                     return error_response(
@@ -275,11 +279,11 @@ def update_asset(db: Session, asset_id: UUID, asset_update: AssetUpdate):
                         status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                         http_status=400
                     )
-    
-    # Update the asset
+
+    # Perform update
     for field, value in update_data.items():
         setattr(db_asset, field, value)
-    
+
     try:
         db.commit()
         db.refresh(db_asset)
@@ -297,6 +301,7 @@ def update_asset(db: Session, asset_id: UUID, asset_update: AssetUpdate):
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )
+
 
 
 def delete_asset(db: Session, asset_id: str, org_id: str) -> bool:

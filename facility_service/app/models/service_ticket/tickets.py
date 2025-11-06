@@ -123,9 +123,6 @@ class Ticket(Base):
         elapsed_mins = (datetime.now(timezone.utc) -
                         self.created_at).total_seconds() / 60
 
-        print(
-            f"[DEBUG] Ticket {self.id}, status {self.status} → Elapsed: {elapsed_mins:.2f} mins, SLA limit: {sla.resolution_time_mins} mins"
-        )
         return elapsed_mins > sla.resolution_time_mins
 
 

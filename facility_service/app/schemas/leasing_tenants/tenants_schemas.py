@@ -25,7 +25,7 @@ class TenantCreate(TenantBase):
 
 
 class TenantUpdate(TenantBase):
-    id: str
+    id: UUID
 
 
 class TenantRequest(BaseModel):

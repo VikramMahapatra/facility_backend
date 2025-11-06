@@ -157,10 +157,6 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
     user_map = {uid: uname for uid, uname in users}
     all_logs.sort(key=lambda x: x.created_at, reverse=True)
 
-    closed_date = service_req.closed_date
-    if closed_date == "" or closed_date is None:
-        closed_date = None
-
     # Step 5: Return as schema
     return TicketDetailsResponse.model_validate(
         {
@@ -169,7 +165,7 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
             "space_name": service_req.space.name if service_req.space else None,
             "building_name": service_req.space.building.name if service_req.space and service_req.space.building else None,
             "site_name": service_req.site.name if service_req.site else None,
-            "closed_date": closed_date,
+            "closed_date": service_req.closed_date.isoformat() if service_req.closed_date else None,
             "assigned_to_name": assigned_to_name,
             "logs": all_logs,
             "can_escalate": service_req.can_escalate,

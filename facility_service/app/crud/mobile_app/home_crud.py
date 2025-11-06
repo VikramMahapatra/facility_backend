@@ -2,15 +2,15 @@ from operator import or_
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, and_, distinct, case
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
-from facility_service.app.models.service_ticket.tickets import Ticket
-from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
+from ...enum.ticket_service_enum import TicketStatus
+from ...models.service_ticket.sla_policy import SlaPolicy
+from ...models.service_ticket.tickets import Ticket
+from ...models.service_ticket.tickets_category import TicketCategory
 
 from ...models.leasing_tenants.lease_charges import LeaseCharge
-from ...models.maintenance_assets.service_request import ServiceRequest
-from ...models.maintenance_assets.work_order import WorkOrder
 from ...models.system.notifications import Notification
 from ...schemas.system.notifications_schemas import NotificationOut
 
@@ -78,10 +78,6 @@ def get_home_spaces(db: Session, user: UserToken):
         "account_type": user.account_type,
         "status": user.status,
     }
-
-
-
-
 
 
 def get_home_details(db: Session, space_id: UUID, user: UserToken):
@@ -218,81 +214,54 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
             "next_maintenance_amount": float(next_maintenance_amount or 0)
         }
 
-    # ✅ Replace your existing “statistics” section with this:
+    # Current UTC time
+    now = datetime.now(timezone.utc)
 
-    # ✅ Statistics (using Ticket and TicketWorkOrder)
+    # Statistics (using Ticket and TicketWorkOrder)
+    tenant_id = db.query(Tenant.id).filter(and_(
+        Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
+
     current_time = datetime.now()
-    period_start = current_time - timedelta(days=30)
-    period_end = current_time
-
-    closed_statuses = ["closed", "completed", "resolved"]
-    open_statuses = ["open", "in_progress", "in progress", "assigned", "pending", "active"]
-
     ticket_query = (
         db.query(Ticket)
         .filter(
             and_(
                 Ticket.space_id == space_id,
-                Ticket.created_at >= period_start,
-                Ticket.created_at <= period_end
-            )
-        )
-    )
-
-    work_order_query = (
-        db.query(TicketWorkOrder)
-        .join(Ticket, TicketWorkOrder.ticket_id == Ticket.id)
-        .filter(
-            and_(
-                Ticket.space_id == space_id,
-                TicketWorkOrder.created_at >= period_start,
-                TicketWorkOrder.created_at <= period_end
+                Ticket.tenant_id == tenant_id
             )
         )
     )
 
     total_tickets = ticket_query.count()
-    total_work_orders = work_order_query.count()
-    total_combined = total_tickets + total_work_orders
 
-    closed_tickets = (
-        ticket_query.filter(Ticket.status.in_(closed_statuses)).count()
-        + work_order_query.filter(TicketWorkOrder.status.in_(closed_statuses)).count()
-    )
+    closed_tickets = ticket_query.filter(
+        Ticket.status == TicketStatus.CLOSED).count()
 
-    open_tickets = (
-        ticket_query.filter(Ticket.status.in_(open_statuses)).count()
-        + work_order_query.filter(TicketWorkOrder.status.in_(open_statuses)).count()
-    )
+    open_tickets = ticket_query.filter(
+        Ticket.status == TicketStatus.OPEN).count()
 
     overdue_threshold = current_time - timedelta(days=7)
 
+    # Overdue tickets according to SLA
     overdue_tickets = (
-        ticket_query.filter(
-            and_(
-                Ticket.created_at < overdue_threshold,
-                Ticket.status.in_(open_statuses)
-            )
-        ).count()
-        + work_order_query.filter(
-            and_(
-                TicketWorkOrder.created_at < overdue_threshold,
-                TicketWorkOrder.status.in_(open_statuses)
-            )
-        ).count()
+        ticket_query
+        .join(Ticket.category)
+        .join(TicketCategory.sla_policy)
+        .filter(
+            Ticket.status != TicketStatus.CLOSED,
+            func.extract(
+                "epoch", now - Ticket.created_at
+            ) / 60 > func.coalesce(SlaPolicy.resolution_time_mins, 0)
+        )
+        .count()
     )
 
     statistics = {
-        "total_tickets": total_combined,
+        "total_tickets": total_tickets,
         "closed_tickets": closed_tickets,
         "open_tickets": open_tickets,
-        "overdue_tickets": overdue_tickets,
-        "period": {
-            "start": period_start.date(),
-            "end": period_end.date()
-        }
+        "overdue_tickets": overdue_tickets
     }
-
 
     notifications = (
         db.query(Notification)
@@ -303,7 +272,6 @@ def get_home_details(db: Session, space_id: UUID, user: UserToken):
     )
 
     notfication_list = [NotificationOut(**n.__dict__) for n in notifications]
-
 
     return {
         "lease_contract_detail": lease_contract_detail | {},

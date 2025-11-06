@@ -114,6 +114,7 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
             Tenant.is_deleted == False,
             Site.is_deleted == False
         )
+        .order_by(Tenant.updated_at.desc())
     )
 
     # FIXED: Proper status filter for individual tenants

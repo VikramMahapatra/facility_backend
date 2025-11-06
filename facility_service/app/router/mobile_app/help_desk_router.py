@@ -36,10 +36,12 @@ def get_complaints(
 def raise_complaint(
     complaint_data: ComplaintCreate,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return tickets_crud.create_ticket(
         db,
+        auth_db,
         complaint_data,
         current_user
     )

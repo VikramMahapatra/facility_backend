@@ -133,8 +133,7 @@ class Ticket(Base):
 @event.listens_for(Ticket, "before_insert")
 def generate_ticket_no(mapper, connection, target):
     # Get next number from sequence
-    next_val = connection.execute(Sequence('ticket_number_seq'))
-    next_number = next_val.scalar()
+    next_number = connection.execute(ticket_seq)
 
     # Format as TKT-001, TKT-002, ...
     target.ticket_no = f"TKT-{next_number:03}"

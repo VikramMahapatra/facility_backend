@@ -36,12 +36,10 @@ class ComplaintCreate(EmptyStringModel):
 class ComplaintResponse(EmptyStringModel):
     id: UUID
     space_id: UUID
-    category: str
     request_type: str
     description: str
     preferred_time: Optional[str] = None
-    created_at: Optional[str] = None
-
+    created_at: datetime
     model_config = {"from_attributes": True}
 
 
@@ -98,6 +96,7 @@ class ComplaintDetailsResponse(EmptyStringModel):
     assigned_to: Optional[UUID] = None
     assigned_to_name: Optional[str] = None
     request_type: Optional[str] = None
+    is_overdue: Optional[bool] = False
 
     class Config:
         from_attributes = True

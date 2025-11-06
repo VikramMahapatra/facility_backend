@@ -46,15 +46,13 @@ def create_asset(
     return crud.create_asset(db, asset)
     
 
-@router.put("/{asset_id}", response_model=None)
+@router.put("/", response_model=None)
 def update_asset(
-        asset_id: UUID,
         asset_update: AssetUpdate,
         db: Session = Depends(get_db),
-        current_user: UserToken = Depends(validate_current_token)):
-    return crud.update_asset(db, asset_id, asset_update)
-    
-
+        current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.update_asset(db, asset_update)
 
 
 # ---------------- Delete Asset (Soft Delete) ----------------

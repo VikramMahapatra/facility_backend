@@ -1,12 +1,15 @@
 from datetime import datetime
 import select
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from sqlalchemy import and_, func
 from auth_service.app.models.users import Users
-from facility_service.app.models.leasing_tenants.tenants import Tenant
-from facility_service.app.schemas.mobile_app.help_desk_schemas import TicketWorkFlowOut
+from ...enum.ticket_service_enum import TicketStatus
+from ...models.leasing_tenants.tenants import Tenant
+from ...models.service_ticket.tickets_category import TicketCategory
+from ...models.space_sites.spaces import Space
+from ...schemas.mobile_app.help_desk_schemas import TicketWorkFlowOut
 
 from ...models.service_ticket.sla_policy import SlaPolicy
 from ...models.service_ticket.tickets_commets import TicketComment
@@ -33,11 +36,35 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
             Tenant.user_id == current_user.user_id, Tenant.is_deleted == False)).scalar()
         filters = [Ticket.tenant_id == tenant_id]
 
-    if params.status and params.status.lower() != "all":
-        filters.append(func.lower(Ticket.status)
-                       == params.status.lower())
+    if params.space_id:
+        filters.append(Ticket.space_id == params.space_id)
 
-    base_query = db.query(Ticket).filter(*filters)
+    if params.status and params.status.lower() != "all":
+        status = params.status.lower()
+
+        if status == "overdue":
+            # Join TicketCategory -> SlaPolicy to compute overdue tickets
+            filters.append(
+                and_(
+                    Ticket.status != "closed",
+                    func.extract('epoch', func.now() - Ticket.created_at) / 60 >
+                    func.coalesce(SlaPolicy.resolution_time_mins, 0)
+                )
+            )
+
+            base_query = (
+                db.query(Ticket)
+                .join(Ticket.category)
+                .join(TicketCategory.sla_policy)
+                .filter(*filters)
+            )
+
+        else:
+            filters.append(func.lower(Ticket.status) == status)
+            base_query = db.query(Ticket).filter(*filters)
+
+    else:
+        base_query = db.query(Ticket).filter(*filters)
 
     total = base_query.with_entities(func.count(Ticket.id)).scalar()
 
@@ -57,6 +84,9 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
         complaint_data = {
             **t.__dict__,
             "category": category_name,  # override with name
+            "can_escalate": t.can_escalate,
+            "can_reopen": t.can_reopen,
+            "is_overdue": t.is_overdue,
         }
 
         results.append(TicketOut.model_validate(complaint_data))
@@ -80,14 +110,10 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
             status_code=404, detail="Service request not found")
 
     # Step 2: Get assigned_to from SLA policies based on category - FIXED
+    category_name = service_req.category.category_name if service_req.category else None
 
     assigned_to_name = None
-
-    if service_req.category:
-        # Get the category name from the TicketCategory relationship
-        category_name = service_req.category.category_name if service_req.category.category_name else None
-
-        # Fetch assigned user full_name from auth.db user table
+    # Fetch assigned user full_name from auth.db user table
     assigned_user = (
         auth_db.query(Users)
         .filter(Users.id == service_req.assigned_to)
@@ -129,39 +155,72 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
     user_map = {uid: uname for uid, uname in users}
     all_logs.sort(key=lambda x: x.created_at, reverse=True)
 
+    closed_date = service_req.closed_date
+    if closed_date == "" or closed_date is None:
+        closed_date = None
+
     # Step 5: Return as schema
     return TicketDetailsResponse.model_validate(
         {
             **service_req.__dict__,
-            "category": service_req.category.category_name if service_req.category else None,
+            "category": category_name,
             "space_name": service_req.space.name if service_req.space else None,
             "building_name": service_req.space.building.name if service_req.space and service_req.space.building else None,
             "site_name": service_req.site.name if service_req.site else None,
-            "closed_date": service_req.closed_date if service_req.closed_date else None,
+            "closed_date": closed_date,
             "assigned_to_name": assigned_to_name,
-            "can_escalate": False,
-            "can_reopen": False,
             "logs": all_logs
         }
     )
 
 
-def create_ticket(session: Session, data: TicketCreate, user: UserToken):
+def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: UserToken):
     # Create Ticket (defaults to OPEN)
+    space = (
+        session.query(Space)
+        .options(joinedload(Space.org))
+        .filter(Space.id == data.space_id)
+        .first()
+    )
 
-    # site_id
-    # tenant_id
-    # title
+    if not space:
+        return error_response(
+            message=f"Invalid space",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+
+    tenant_id = session.query(Tenant.id).filter(and_(
+        Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
+
+    if not tenant_id:
+        return error_response(
+            message=f"Invalid tenant",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+
+    category_id = session.query(TicketCategory.id).filter(
+        TicketCategory.category_name == data.category).scalar()
+
+    if not category_id:
+        return error_response(
+            message=f"Invalid category",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+
+    title = f"{data.category} - {space.name}"
 
     new_ticket = Ticket(
-        org_id=data.org_id,
-        site_id=data.site_id,
+        org_id=space.org_id,
+        site_id=space.site_id if space.site_id else data.site_id,
         space_id=data.space_id,
-        tenant_id=data.tenant_id,
-        category_id=data.category_id,
-        title=data.title,
+        tenant_id=tenant_id,
+        category_id=category_id,
+        title=title,
         description=data.description,
-        status="open",
+        status=TicketStatus.OPEN,
         created_by=data.created_by,
         created_date=datetime.utcnow(),
         updated_at=datetime.utcnow(),
@@ -171,6 +230,12 @@ def create_ticket(session: Session, data: TicketCreate, user: UserToken):
     session.flush()  # needed to get ticket_id
 
     # Fetch SLA Policy for auto-assignment
+    created_by_name = (
+        auth_db.query(Users.name)
+        .filter(Users.id == user.user_id)
+        .scalar()
+    )
+
     sla = session.execute(
         select(SlaPolicy).where(SlaPolicy.sla_id == data.category_id)
     ).scalar_one_or_none()
@@ -182,7 +247,7 @@ def create_ticket(session: Session, data: TicketCreate, user: UserToken):
 
         assignment_log = TicketAssignment(
             ticket_id=new_ticket.ticket_id,
-            assigned_from=data.created_by,
+            assigned_from=user.user_id,
             assigned_to=assigned_to,
             reason="Auto-assigned via SLA"
         )
@@ -191,10 +256,10 @@ def create_ticket(session: Session, data: TicketCreate, user: UserToken):
     # Log Workflow History
     workflow_log = TicketWorkflow(
         ticket_id=new_ticket.ticket_id,
-        action_by=data.created_by,
+        action_by=user.user_id,
         old_status=None,
-        new_status="open",
-        action_taken="Ticket Created"
+        new_status=TicketStatus.OPEN,
+        action_taken=f"Ticket Created by {created_by_name}"
     )
     session.add(workflow_log)
 
@@ -223,7 +288,7 @@ def escalate_ticket(db: Session, data: TicketActionRequest):
     old_status = ticket.status
 
     # Update ticket
-    ticket.status = "escalated"
+    ticket.status = TicketStatus.ESCALATED
     ticket.assigned_to = sla.escalation_contact
     ticket.updated_at = datetime.utcnow()
 
@@ -241,7 +306,7 @@ def escalate_ticket(db: Session, data: TicketActionRequest):
         ticket_id=ticket.ticket_id,
         action_by=data.action_by,
         old_status=old_status,
-        new_status="escalated",
+        new_status=TicketStatus.ESCALATED,
         action_taken="Manual Escalation Triggered"
     )
     db.add(workflow_log)
@@ -259,7 +324,7 @@ def resolve_ticket(db: Session, data: TicketActionRequest):
         raise Exception("Ticket not found")
 
     old_status = ticket.status
-    ticket.status = "closed"
+    ticket.status = TicketStatus.CLOSED
     ticket.closed_at = datetime.utcnow()
     ticket.updated_at = datetime.utcnow()
 
@@ -267,7 +332,7 @@ def resolve_ticket(db: Session, data: TicketActionRequest):
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status,
-        new_status="closed",
+        new_status=TicketStatus.CLOSED,
         action_taken=data.comment or "Ticket Resolved/Closed"
     )
     db.add(workflow)
@@ -286,14 +351,14 @@ def reopen_ticket(db: Session, data: TicketActionRequest):
         raise Exception("Only closed tickets can be reopened")
 
     old_status = ticket.status
-    ticket.status = "reopened"
+    ticket.status = TicketStatus.REOPENED
     ticket.updated_at = datetime.utcnow()
 
     workflow = TicketWorkflow(
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status,
-        new_status="reopened",
+        new_status=TicketStatus.REOPENED,
         action_taken=data.comment or "Ticket Reopened"
     )
     db.add(workflow)
@@ -317,7 +382,7 @@ def return_ticket(db: Session, data: TicketActionRequest):
     assigned_to = sla.default_contact if sla else None
 
     old_status = ticket.status
-    ticket.status = "returned"
+    ticket.status = TicketStatus.RETURNED
     ticket.assigned_to = assigned_to
     ticket.updated_at = datetime.utcnow()
 
@@ -333,7 +398,7 @@ def return_ticket(db: Session, data: TicketActionRequest):
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status,
-        new_status="returned",
+        new_status=TicketStatus.RETURNED,
         action_taken=data.comment or "Ticket Returned to Another User"
     )
     db.add(workflow)

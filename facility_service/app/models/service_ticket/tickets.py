@@ -1,4 +1,5 @@
 
+from sqlalchemy import Enum
 from typing import Optional
 from pydantic import computed_field
 from sqlalchemy.dialects.postgresql import UUID
@@ -6,15 +7,22 @@ from sqlalchemy import TIMESTAMP, Boolean, Column, String, ForeignKey, Text, fun
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
+from ...enum.ticket_service_enum import TicketStatus
 from shared.database import Base
 from shared.database import Base  # adjust the import to your Base
 from datetime import datetime, timezone, timedelta
+from sqlalchemy import Sequence
+from sqlalchemy import event
+
+ticket_seq = Sequence('ticket_number_seq', start=1, increment=1)
 
 
 class Ticket(Base):
     __tablename__ = "tickets"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_no = Column(String(20), unique=True, nullable=False,
+                       default=lambda: f"TKT-{next(ticket_seq):03}")
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"))
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"))
     space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"))
@@ -24,7 +32,16 @@ class Ticket(Base):
 
     title = Column(String(255), nullable=False)
     description = Column(Text)
-    status = Column(String(50), default="open")
+    status = Column(
+        Enum(
+            TicketStatus,
+            name="ticket_status_enum",
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        default=TicketStatus.OPEN,
+        nullable=False,
+    )
     priority = Column(String(20), default="medium")
     created_by = Column(UUID(as_uuid=True))
     assigned_to = Column(UUID(as_uuid=True))
@@ -34,7 +51,7 @@ class Ticket(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True),
                         server_default=func.now(), onupdate=func.now())
-    closed_date = Column(TIMESTAMP(timezone=True))
+    closed_date = Column(TIMESTAMP(timezone=True), nullable=True)
 
     org = relationship("Org", back_populates="tickets")
     site = relationship("Site", back_populates="tickets")
@@ -63,7 +80,7 @@ class Ticket(Base):
             return False
 
         # Can't escalate if already closed or escalated
-        if self.status.lower() in ("closed", "escalated"):
+        if self.status in (TicketStatus.CLOSED, TicketStatus.ESCALATED):
             return False
 
         # check if escalation window exceeded
@@ -74,7 +91,7 @@ class Ticket(Base):
     @property
     def can_reopen(self) -> bool:
         """A ticket can be reopened if it's closed recently (within 24h)."""
-        if self.status.lower() not in ("closed", "escalated"):
+        if self.status not in (TicketStatus.CLOSED, TicketStatus.ESCALATED):
             return False
 
         if not self.closed_date:
@@ -83,3 +100,41 @@ class Ticket(Base):
         elapsed = (datetime.now(timezone.utc) -
                    self.closed_date).total_seconds() / 3600
         return elapsed <= 24  # can reopen within 24 hours
+
+    @property
+    def is_overdue(self) -> bool:
+        """
+        A ticket is overdue if:
+        - It has an SLA resolution time,
+        - It's not closed yet,
+        - The elapsed time since creation exceeds resolution_time_mins.
+        """
+        if not self.category or not self.category.sla_policy:
+            return False
+
+        sla = self.category.sla_policy
+        if not sla.resolution_time_mins:
+            return False
+
+        # Closed tickets are not overdue
+        if self.status == TicketStatus.CLOSED:
+            return False
+
+        elapsed_mins = (datetime.now(timezone.utc) -
+                        self.created_at).total_seconds() / 60
+
+        print(
+            f"[DEBUG] Ticket {self.id}, status {self.status} → Elapsed: {elapsed_mins:.2f} mins, SLA limit: {sla.resolution_time_mins} mins"
+        )
+        return elapsed_mins > sla.resolution_time_mins
+
+
+# Auto-generate ticket number
+@event.listens_for(Ticket, "before_insert")
+def generate_ticket_no(mapper, connection, target):
+    # Get next number from sequence
+    next_val = connection.execute(Sequence('ticket_number_seq'))
+    next_number = next_val.scalar()
+
+    # Format as TKT-001, TKT-002, ...
+    target.ticket_no = f"TKT-{next_number:03}"

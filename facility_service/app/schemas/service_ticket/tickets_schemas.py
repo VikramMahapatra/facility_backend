@@ -47,6 +47,7 @@ class TicketOut(BaseModel):
     closed_date: Optional[datetime] = None
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
+    is_overdue: Optional[bool] = False
 
     class Config:
         from_attributes = True
@@ -116,7 +117,7 @@ class TicketDetailsResponse(EmptyStringModel):
     description: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    closed_date: Optional[datetime] = None
+    closed_date: Optional[str] = None
     space_id: Optional[UUID] = None
     space_name: Optional[str] = None
     building_name: Optional[str] = None

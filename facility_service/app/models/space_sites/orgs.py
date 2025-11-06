@@ -37,3 +37,5 @@ class Org(Base):
     bookings = relationship("Booking", backref="org")
     housekeeping_tasks = relationship("HousekeepingTask", back_populates="org", cascade="all, delete-orphan")
     tickets = relationship("Ticket", back_populates="org")
+
+    staff_sites = relationship("StaffSite", back_populates="org", cascade="all, delete-orphan")

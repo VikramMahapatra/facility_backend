@@ -14,7 +14,8 @@ from ...schemas.access_control.role_management_schemas import (
 
 def get_all_notifications(db: Session, user_id: str, params: CommonQueryParams):
     notification_query = db.query(Notification).filter(
-        Notification.user_id == user_id
+        Notification.user_id == user_id,
+        Notification.is_deleted == False  # ✅ ADD THIS
     )
 
     if params.search:
@@ -24,11 +25,10 @@ def get_all_notifications(db: Session, user_id: str, params: CommonQueryParams):
 
     total = notification_query.with_entities(
         func.count(Notification.id.distinct())).scalar()
-    roles = notification_query.offset(params.skip).limit(params.limit).all()
+    notifications = notification_query.offset(params.skip).limit(params.limit).all()
 
-    result = [NotificationOut.model_validate(role) for role in roles]
+    result = [NotificationOut.model_validate(notification) for notification in notifications]
     return {"notifications": result, "total": total}
-
 
 
 def mark_notification_as_read(db: Session, notification_id: str):

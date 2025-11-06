@@ -17,7 +17,10 @@ from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, In
 # ----------------------------------------------------------------------
 
 def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
-    filters = [Invoice.org_id == org_id]
+    filters = [
+        Invoice.org_id == org_id,
+        Invoice.is_deleted == False  # ✅ ADD THIS: Exclude soft-deleted invoices
+    ]
      
     if params.kind and params.kind.lower() != "all":
         filters.append(Invoice.customer_kind == params.kind)
@@ -38,7 +41,7 @@ def get_invoices_query(db: Session, org_id: UUID, params: InvoicesRequest):
     return db.query(Invoice).filter(*filters)
 
 def get_invoices_overview(db: Session, org_id: UUID, params: InvoicesRequest):
-    filters = build_invoices_filters(org_id, params)
+    filters = build_invoices_filters(org_id, params)  # ✅ This now includes is_deleted == False
     
     # Alias for convenience
     grand_amount = cast(func.jsonb_extract_path_text(Invoice.totals, "grand"), Numeric)
@@ -104,15 +107,23 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
     total = (
         db.query(func.count(PaymentAR.id))
         .join(Invoice, PaymentAR.invoice_id == Invoice.id)
-        .filter(PaymentAR.org_id == org_id)
+        .filter(
+            PaymentAR.org_id == org_id,
+            Invoice.is_deleted == False  # ✅ ADD THIS
+        )
         .scalar()
     )
     
     base_query  = (
         db.query(PaymentAR, Invoice)
         .join(Invoice, PaymentAR.invoice_id == Invoice.id)
-        .filter(PaymentAR.org_id == org_id)
+        .filter(
+            PaymentAR.org_id == org_id,
+            Invoice.is_deleted == False  # ✅ ADD THIS
+        )
     )
+    
+    # ... rest of the function
     
     payments = base_query.offset(params.skip).limit(params.limit).all()
     
@@ -139,13 +150,11 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
         
     return {"payments": results, "total": total}
 
-
 def get_invoice_by_id(db: Session, invoice_id: str):
     return db.query(Invoice).filter(
         Invoice.id == invoice_id,
         Invoice.is_deleted == False
-    ).first()
- # ✅ Add this).first()
+    ).first()  # ✅ Returns None if not found, no exception
 
 
 def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_user):
@@ -197,10 +206,11 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
 def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     db_invoice = get_invoice_by_id(db, invoice_update.id)
     if not db_invoice:
-        return None
-
-    # Apply updates
-    for k, v in invoice_update.model_dump(exclude_unset=True).items():
+        return None  # ✅ Follow the same pattern as update_tax_code
+    
+    # Apply updates - exclude 'id' since we're using it for lookup
+    update_data = invoice_update.model_dump(exclude_unset=True, exclude={"id"})
+    for k, v in update_data.items():
         setattr(db_invoice, k, v)
 
     db.commit()
@@ -230,7 +240,7 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     invoice_out = InvoiceOut.model_validate(invoice_dict)
     return invoice_out
 
-
+# ----------------- Soft Delete Invoice -----------------
 # ----------------- Soft Delete Invoice -----------------
 def delete_invoice_soft(db: Session, invoice_id: str, org_id: UUID) -> bool:
     """
@@ -244,7 +254,7 @@ def delete_invoice_soft(db: Session, invoice_id: str, org_id: UUID) -> bool:
     ).first()
     
     if not db_invoice:
-        return False
+        return False  # ✅ FIXED: Return False like work_order function
     
     # ✅ Soft delete
     db_invoice.is_deleted = True

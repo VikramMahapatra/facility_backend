@@ -66,4 +66,8 @@ def delete_invoice_soft(
     invoice_id: str, 
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-): return  crud.delete_invoice_soft(db, invoice_id, current_user.org_id)
+):
+    success = crud.delete_invoice_soft(db, invoice_id, current_user.org_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return {"message": "Invoice deleted successfully"}

@@ -61,6 +61,17 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
                 .filter(*filters)
             )
 
+        elif status == TicketStatus.OPEN.value:
+            open_statuses = [
+                TicketStatus.OPEN.value,
+                TicketStatus.ESCALATED.value,
+                TicketStatus.RETURNED.value,
+                TicketStatus.REOPENED.value,
+                TicketStatus.IN_PROGRESS.value,
+            ]
+            filters.append(Ticket.status.in_(open_statuses))
+            base_query = db.query(Ticket).filter(*filters)
+
         else:
             filters.append(func.lower(Ticket.status) == status)
             base_query = db.query(Ticket).filter(*filters)
@@ -138,14 +149,14 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
         ))
 
     # Add assignment logs
-    for log in service_req.assignments:
+    for log in service_req.workflows:
         all_logs.append(TicketWorkFlowOut(
             id=log.id,
             ticket_id=log.ticket_id,
             type="audit",
-            action_taken=log.reason,
-            created_at=log.assigned_at,
-            action_by=log.assigned_from
+            action_taken=log.action_taken,
+            created_at=log.action_time,
+            action_by=log.action_by
         ))
 
     # Sort all logs by created_at
@@ -155,6 +166,10 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
     users = auth_db.query(Users.id, Users.full_name).filter(
         Users.id.in_(user_ids)).all()
     user_map = {uid: uname for uid, uname in users}
+
+    for l in all_logs:
+        l.action_by_name = user_map.get(l.action_by, "Unknown User")
+
     all_logs.sort(key=lambda x: x.created_at, reverse=True)
 
     # Step 5: Return as schema
@@ -281,46 +296,93 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
     return new_ticket
 
 
-def escalate_ticket(db: Session, data: TicketActionRequest):
+def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     # Fetch ticket
     ticket = db.execute(
-        select(Ticket).where(Ticket.ticket_id == data.ticket_id)
+        select(Ticket).where(Ticket.id == data.ticket_id)
     ).scalar_one_or_none()
 
     if not ticket:
-        raise Exception("Ticket not found")
+        return error_response(
+            message=f"Invalid Ticket",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+
+    if not ticket.can_escalate:
+        return error_response(
+            message=f"Not authorize to perform this action",
+            status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
+            http_status=400
+        )
 
     # Fetch SLA Policy using category_id
-    sla = db.execute(
-        select(SlaPolicy).where(SlaPolicy.sla_id == ticket.category_id)
-    ).scalar_one_or_none()
 
-    if not sla or not sla.escalation_contact:
-        raise Exception("No escalation contact configured for SLA")
+    if not ticket.category or not ticket.category.sla_policy or not ticket.category.sla_policy.escalation_contact:
+        return error_response(
+            message="No escalation contact configured for SLA",
+            status_code=str(AppStatusCode.INVALID_INPUT),
+            http_status=400
+        )
 
     old_status = ticket.status
+    sla = ticket.category.sla_policy
 
     # Update ticket
     ticket.status = TicketStatus.ESCALATED
     ticket.assigned_to = sla.escalation_contact
     ticket.updated_at = datetime.utcnow()
 
+    assigned_to_name = (
+        auth_db.query(Users.full_name)
+        .filter(Users.id == sla.escalation_contact)
+        .scalar()
+    )
+
+    if not assigned_to_name:
+        return error_response(
+            message="User doesnt exist in the system",
+            status_code=str(AppStatusCode.USER_USERNAME_IS_NOTREGISTERED),
+            http_status=400
+        )
+
     # Assignment Log
     assignment_log = TicketAssignment(
-        ticket_id=ticket.ticket_id,
+        ticket_id=ticket.id,
         assigned_from=data.action_by,
         assigned_to=sla.escalation_contact,
         reason=data.comment
     )
     db.add(assignment_log)
 
+    # Notification Log
+    notification = Notification(
+        user_id=sla.escalation_contact,
+        type=NotificationType.alert,
+        title="Ticket Escalated",
+        message=f"Ticket {ticket.ticket_no} have been escalated & assigned to you",
+        posted_date=datetime.utcnow(),
+        priority=PriorityType.medium,
+        read=False,
+        is_deleted=False
+    )
+    db.add(notification)
+
+    # Comment Log
+    new_comment = TicketComment(
+        ticket_id=ticket.id,
+        user_id=data.action_by,
+        comment_text=data.comment
+    )
+    db.add(new_comment)
+
     # Workflow Log
     workflow_log = TicketWorkflow(
-        ticket_id=ticket.ticket_id,
+        ticket_id=ticket.id,
         action_by=data.action_by,
-        old_status=old_status,
+        old_status=old_status.value if old_status else None,
         new_status=TicketStatus.ESCALATED,
-        action_taken="Manual Escalation Triggered"
+        action_taken=f"Ticket escalated & assigned to {assigned_to_name}"
     )
     db.add(workflow_log)
 
@@ -330,7 +392,7 @@ def escalate_ticket(db: Session, data: TicketActionRequest):
     return ticket
 
 
-def resolve_ticket(db: Session, data: TicketActionRequest):
+def resolve_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
         Ticket.ticket_id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
@@ -344,7 +406,7 @@ def resolve_ticket(db: Session, data: TicketActionRequest):
     workflow = TicketWorkflow(
         ticket_id=data.ticket_id,
         action_by=data.action_by,
-        old_status=old_status,
+        old_status=old_status.value if old_status else None,
         new_status=TicketStatus.CLOSED,
         action_taken=data.comment or "Ticket Resolved/Closed"
     )
@@ -355,7 +417,7 @@ def resolve_ticket(db: Session, data: TicketActionRequest):
     return ticket
 
 
-def reopen_ticket(db: Session, data: TicketActionRequest):
+def reopen_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
         Ticket.ticket_id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
@@ -370,7 +432,7 @@ def reopen_ticket(db: Session, data: TicketActionRequest):
     workflow = TicketWorkflow(
         ticket_id=data.ticket_id,
         action_by=data.action_by,
-        old_status=old_status,
+        old_status=old_status.value if old_status else None,
         new_status=TicketStatus.REOPENED,
         action_taken=data.comment or "Ticket Reopened"
     )
@@ -381,7 +443,7 @@ def reopen_ticket(db: Session, data: TicketActionRequest):
     return ticket
 
 
-def return_ticket(db: Session, data: TicketActionRequest):
+def return_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
         Ticket.ticket_id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
@@ -410,7 +472,7 @@ def return_ticket(db: Session, data: TicketActionRequest):
     workflow = TicketWorkflow(
         ticket_id=data.ticket_id,
         action_by=data.action_by,
-        old_status=old_status,
+        old_status=old_status.value if old_status else None,
         new_status=TicketStatus.RETURNED,
         action_taken=data.comment or "Ticket Returned to Another User"
     )

@@ -65,37 +65,41 @@ def get_complaint_details(
 def escalate_ticket(
     request: TicketActionRequest,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.escalate_ticket(db, request)
+    return tickets_crud.escalate_ticket(db, auth_db, request)
 
 
 @router.post("/ticket-resolved", response_model=ComplaintResponse)
 def resolved_ticket(
     request: TicketActionRequest,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.resolve_ticket(db, request)
+    return tickets_crud.resolve_ticket(db, auth_db, request)
 
 
 @router.post("/ticket-reopened", response_model=ComplaintResponse)
 def reopen_ticket(
     request: TicketActionRequest,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.reopen_ticket(db, request)
+    return tickets_crud.reopen_ticket(db, auth_db, request)
 
 
 @router.post("/ticket-returned", response_model=ComplaintResponse)
 def return_ticket(
     request: TicketActionRequest,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.return_ticket(db, request)
+    return tickets_crud.return_ticket(db, auth_db, request)

@@ -97,9 +97,13 @@ class Ticket(Base):
         if not self.closed_date:
             return False
 
-        elapsed = (datetime.now(timezone.utc) -
-                   self.closed_date).total_seconds() / 3600
-        return elapsed <= 24  # can reopen within 24 hours
+        sla = self.category.sla_policy
+        if not sla.reopen_time_mins:
+            return False
+
+        elapsed_mins = (datetime.now(timezone.utc) -
+                        self.closed_date).total_seconds() / 60
+        return elapsed_mins <= sla.reopen_time_mins  # can reopen within 24 hours
 
     @property
     def is_overdue(self) -> bool:

@@ -369,12 +369,13 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     db.add(notification)
 
     # Comment Log
-    new_comment = TicketComment(
-        ticket_id=ticket.id,
-        user_id=data.action_by,
-        comment_text=data.comment
-    )
-    db.add(new_comment)
+    if data.comment:
+        new_comment = TicketComment(
+            ticket_id=ticket.id,
+            user_id=data.action_by,
+            comment_text=data.comment
+        )
+        db.add(new_comment)
 
     # Workflow Log
     workflow_log = TicketWorkflow(
@@ -394,7 +395,7 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
 
 def resolve_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
-        Ticket.ticket_id == data.ticket_id)).scalar_one_or_none()
+        Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
         raise Exception("Ticket not found")
 
@@ -419,22 +420,36 @@ def resolve_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
 
 def reopen_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
-        Ticket.ticket_id == data.ticket_id)).scalar_one_or_none()
+        Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
         raise Exception("Ticket not found")
-    if ticket.status != "closed":
+    if ticket.status != TicketStatus.CLOSED:
         raise Exception("Only closed tickets can be reopened")
+    if not ticket.can_reopen:
+        return error_response(
+            message=f"Not authorize to perform this action",
+            status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
+            http_status=400
+        )
 
     old_status = ticket.status
     ticket.status = TicketStatus.REOPENED
     ticket.updated_at = datetime.utcnow()
+
+    if data.comment:
+        new_comment = TicketComment(
+            ticket_id=ticket.id,
+            user_id=data.action_by,
+            comment_text=data.comment
+        )
+        db.add(new_comment)
 
     workflow = TicketWorkflow(
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status.value if old_status else None,
         new_status=TicketStatus.REOPENED,
-        action_taken=data.comment or "Ticket Reopened"
+        action_taken="Ticket Reopened"
     )
     db.add(workflow)
 
@@ -445,7 +460,7 @@ def reopen_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
 
 def return_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
-        Ticket.ticket_id == data.ticket_id)).scalar_one_or_none()
+        Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
         raise Exception("Ticket not found")
 

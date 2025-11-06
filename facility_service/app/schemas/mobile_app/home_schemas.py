@@ -53,7 +53,7 @@ class Statistics(EmptyStringModel):
     closed_tickets: int = 0
     open_tickets: int = 0
     overdue_tickets: int = 0
-    period: Period  # Now contains actual date range
+    period: Optional[Period] = None  # Now contains actual date range
 
 
 class HomeDetailsResponse(EmptyStringModel):

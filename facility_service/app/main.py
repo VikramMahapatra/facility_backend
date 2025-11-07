@@ -1,4 +1,4 @@
-from .router.service_ticket import tickets_router
+from .router.service_ticket import tickets_router , ticket_category_router
 from .router.energy_iot import meter_readings_router, meters_router, consumption_report_router
 from .router.overview import analytics_router, dashboard_router
 from .router.hospitality import bookings_router, rate_plans_router, housekeeping_tasks_router
@@ -128,3 +128,4 @@ app.include_router(notifications_router.router)
 app.include_router(user_profile_router.router)
 app.include_router(tickets_router.router)
 app.include_router(notifiaction_settings_router.router)
+app.include_router(ticket_category_router.router)

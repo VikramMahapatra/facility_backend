@@ -36,6 +36,7 @@ class ComplaintCreate(EmptyStringModel):
 class ComplaintResponse(EmptyStringModel):
     id: UUID
     space_id: UUID
+    category: str
     request_type: str
     description: str
     preferred_time: Optional[str] = None

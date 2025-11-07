@@ -240,7 +240,8 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
         created_by=user.user_id,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
-        preferred_time=data.preferred_time
+        preferred_time=data.preferred_time,
+        request_type=data.request_type
     )
     session.add(new_ticket)
     session.flush()  # needed to get ticket_id
@@ -293,7 +294,12 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
 
     session.commit()
     session.refresh(new_ticket)
-    return new_ticket
+    return TicketOut.model_validate(
+        {
+            **new_ticket.__dict__,
+            "category": new_ticket.category.category_name
+        }
+    )
 
 
 def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):

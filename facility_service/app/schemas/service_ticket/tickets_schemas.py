@@ -68,6 +68,7 @@ class TicketCreate(BaseModel):
     title: Optional[UUID]
     description: str
     preferred_time: Optional[str] = None
+    request_type: str
 
 # For Comment/Reaction/Feedback ADD
 

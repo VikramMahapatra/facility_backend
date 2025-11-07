@@ -2,7 +2,7 @@ from datetime import datetime
 from sqlalchemy import Column, String, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
-from shared.database import Base
+from shared.core.database import Base
 
 
 class EmailTemplate(Base):
@@ -14,4 +14,5 @@ class EmailTemplate(Base):
 
     is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow,
+                        onupdate=datetime.utcnow, nullable=False)

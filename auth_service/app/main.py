@@ -1,10 +1,10 @@
 # app/main.py
 from fastapi import FastAPI
-from shared.database import AuthBase, auth_engine
+from shared.core.database import AuthBase, auth_engine
 from fastapi.middleware.cors import CORSMiddleware
 
-from shared.exception_handler import setup_exception_handlers
-from shared.response_wrapper import JsonResponseMiddleware
+from shared.helpers.exception_handler import setup_exception_handlers
+from shared.wrappers.response_wrapper import JsonResponseMiddleware
 from .routers import authrouter, userrouter
 from .models import users, roles, userroles, rolepolicy, user_otps, user_login_session, refresh_token
 

@@ -3,7 +3,7 @@ from sqlalchemy import TIMESTAMP, Boolean, Column, Integer, String, ForeignKey, 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
-from shared.database import Base
+from shared.core.database import Base
 
 
 class SlaPolicy(Base):
@@ -21,11 +21,9 @@ class SlaPolicy(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True),
                         server_default=func.now(), onupdate=func.now())
-        # ✅ New column
+    # ✅ New column
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"), nullable=True)
 
-    
-
     categories = relationship("TicketCategory", back_populates="sla_policy")
-       # Optional relationship with Site (if you have a Site model)
+    # Optional relationship with Site (if you have a Site model)
     site = relationship("Site", back_populates="sla_policies", lazy="joined")

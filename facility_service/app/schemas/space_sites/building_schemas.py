@@ -3,7 +3,8 @@ from typing import Any, List, Optional, Dict
 from datetime import date, datetime
 from uuid import UUID
 
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
+
 
 class BuildingOut(BaseModel):
     id: UUID
@@ -17,15 +18,19 @@ class BuildingOut(BaseModel):
     attributes: Optional[Any] = None
 
     class Config:
-        from_attributes = True  # Change from_attribute to from_attributes FOR CREATE AND UPDATE VALIDATION
-        
+        # Change from_attribute to from_attributes FOR CREATE AND UPDATE VALIDATION
+        from_attributes = True
+
+
 class BuildingRequest(CommonQueryParams):
     site_id: Optional[str] = None
-    
+
+
 class BuildingListResponse(BaseModel):
     buildings: List[BuildingOut]
     total: int
-    
+
+
 class BuildingBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
@@ -33,10 +38,12 @@ class BuildingBase(BaseModel):
     floors: Optional[int]
     status: Optional[str] = "active"
     attributes: Optional[Any] = None
-    
+
+
 class BuildingCreate(BuildingBase):
     pass
 
+
 class BuildingUpdate(BuildingBase):
-    id:str
+    id: str
     pass

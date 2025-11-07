@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from shared.database import get_facility_db as get_db
+from shared.core.database import get_facility_db as get_db
 from ...schemas.leases_schemas import (
     LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse,
 )
 from ...crud.leasing_tenants import leases_crud as crud
-from shared.auth import validate_current_token
-from shared.schemas import Lookup, UserToken
+from shared.core.auth import validate_current_token
+from shared.core.schemas import Lookup, UserToken
 from typing import List, Optional
 from uuid import UUID
 
@@ -50,7 +50,7 @@ def create_lease(
 
 @router.put("/", response_model=None)
 def update_lease(
-    payload: LeaseUpdate, 
+    payload: LeaseUpdate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
@@ -65,10 +65,10 @@ def update_lease(
 
 @router.delete("/{lease_id}", response_model=None)
 def delete_lease(
-    lease_id: str, 
+    lease_id: str,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):return crud.delete(db, lease_id, current_user.org_id)
+): return crud.delete(db, lease_id, current_user.org_id)
 
 
 @router.get("/lease-lookup", response_model=List[Lookup])

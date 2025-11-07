@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy import Boolean, Column, String, Numeric, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
 
 
 class Meter(Base):
@@ -22,7 +22,8 @@ class Meter(Base):
     unit = Column(String(16), nullable=False)  # kWh, m3, L, CFM
     multiplier = Column(Numeric(10, 4), default=1)
     status = Column(String(16), nullable=False, default='active')
-    is_deleted = Column(Boolean, default=False, nullable=False)  # ADD THIS LINE
+    is_deleted = Column(Boolean, default=False,
+                        nullable=False)  # ADD THIS LINE
 
     __table_args__ = (
         UniqueConstraint("org_id", "site_id", "code",

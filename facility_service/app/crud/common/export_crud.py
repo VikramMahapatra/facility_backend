@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_
 from uuid import UUID
 from datetime import datetime
-from shared.exporthelper import export_to_excel
-from shared.schemas import ExportResponse
+from shared.helpers.exporthelper import export_to_excel
+from shared.core.schemas import ExportResponse
 from ...crud.energy_iot import meters_crud, meter_readings_crud
 
 

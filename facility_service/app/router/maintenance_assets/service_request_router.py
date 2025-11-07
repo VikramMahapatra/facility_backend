@@ -2,12 +2,12 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
-from shared.json_response_helper import success_response
-from shared.schemas import Lookup
+from shared.helpers.json_response_helper import success_response
+from shared.core.schemas import Lookup
 from ...schemas.maintenance_assets.service_requests_schemas import (
     ServiceRequestCreate, ServiceRequestListResponse, ServiceRequestOut, ServiceRequestRequest, ServiceRequestUpdate, ServiceRequestOverviewResponse)
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token, UserToken
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token, UserToken
 from uuid import UUID
 from ...crud.maintenance_assets import service_request_crud as crud
 
@@ -20,7 +20,7 @@ def service_request_overview(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_service_request_overview(db, current_user.org_id,params)
+    return crud.get_service_request_overview(db, current_user.org_id, params)
 
 
 # ---------------- List Service Requests ----------------
@@ -46,6 +46,8 @@ def update_request_route(
     )
 
 # ----------------- Create Service Request -----------------
+
+
 @router.post("/", response_model=ServiceRequestOut)
 def create_request_route(
     request: ServiceRequestCreate,
@@ -60,13 +62,15 @@ def create_request_route(
     )
 
 # ---------------- Delete Service Request (Soft Delete) ----------------
+
+
 @router.delete("/{request_id}")
 def delete_service_request_soft(
     request_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ): return crud.delete_service_request_soft(db, request_id, current_user.org_id)
-       
+
 
 @router.get("/service-request-lookup", response_model=List[Lookup])
 def service_request_lookup(
@@ -144,10 +148,12 @@ def service_request_priority_lookup_endpoint(
     return crud.service_request_priority_lookup(db, current_user.org_id)
 
 # ----------------filter  workorder Lookup ----------------
+
+
 @router.get("/filter-workorderid-lookup", response_model=List[Lookup])
 def service_request_filter_workorder_lookup_endpoint(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-   
+
     return crud.service_request_filter_workorder_lookup(db, current_user.org_id)

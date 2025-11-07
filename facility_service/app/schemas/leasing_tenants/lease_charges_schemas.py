@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class LeaseChargeBase(BaseModel):

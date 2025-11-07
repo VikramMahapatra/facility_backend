@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import UUID, CHAR
 from sqlalchemy.orm import relationship
 import uuid
 from datetime import datetime
-from shared.database import Base
+from shared.core.database import Base
 
 
 class TaxReport(Base):

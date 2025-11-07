@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy import Column, String, Numeric, Integer, ForeignKey, JSON, CHAR, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
 
 
 class TaxCode(Base):

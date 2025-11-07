@@ -4,7 +4,7 @@ from sqlalchemy import Boolean, Column, String, Integer, Numeric, DateTime, Fore
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
-from shared.database import Base
+from shared.core.database import Base
 
 
 class Space(Base):
@@ -54,4 +54,3 @@ class Space(Base):
     meters = relationship("Meter", back_populates="space",
                           cascade="all, delete-orphan")
     tickets = relationship("Ticket", back_populates="space")
-

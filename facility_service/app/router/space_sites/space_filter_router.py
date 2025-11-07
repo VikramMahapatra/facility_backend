@@ -1,16 +1,17 @@
 # app/router/space_sites/space_filter_router.py
-from fastapi import APIRouter, Depends 
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from uuid import UUID
-from typing import List , Optional
+from typing import List, Optional
 
-from shared.schemas import UserToken
+from shared.core.schemas import UserToken
 from ...schemas.space_sites.spaces_schemas import SpaceListResponse
 from ...crud.space_sites import space_filters_crud as crud
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token #for dependicies
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token  # for dependicies
 
-router = APIRouter(prefix="/api/space_kind", tags=["spaces"],dependencies=[Depends(validate_current_token)],)
+router = APIRouter(prefix="/api/space_kind",
+                   tags=["spaces"], dependencies=[Depends(validate_current_token)],)
 
 
 @router.get("/", response_model=List[SpaceListResponse])
@@ -24,13 +25,13 @@ def list_spaces(
     return crud.get_spaces_by_kind(db, org_id=org_id, site_id=site_id, kind=kind)
 
 
-
 # Specific kinds (shortcut endpoints)
 @router.get("/apartments", response_model=List[SpaceListResponse])
 def list_apartments(
     site_id: Optional[UUID] = None,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token),#Query(..., description="Organization ID"),#Depends(validate_current_token),
+    # Query(..., description="Organization ID"),#Depends(validate_current_token),
+    current_user: UserToken = Depends(validate_current_token),
 ):
     org_id = current_user.org_id  # extract UUID
     return crud.get_spaces_by_kind(db, org_id=org_id, site_id=site_id, kind="apartment")
@@ -38,7 +39,7 @@ def list_apartments(
 
 @router.get("/shops", response_model=List[SpaceListResponse])
 def list_shops(
-    site_id: Optional[UUID] = None, 
+    site_id: Optional[UUID] = None,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
@@ -69,7 +70,7 @@ def list_parking(
 @router.get("/hotel_rooms", response_model=List[SpaceListResponse])
 def list_hotel_rooms(
     site_id: Optional[UUID] = None,
-    db: Session = Depends(get_db), 
+    db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     org_id = current_user.org_id  # extract UUID
@@ -81,6 +82,6 @@ def list_meeting_rooms(
     site_id: Optional[UUID] = None,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
-):  
+):
     org_id = current_user.org_id  # extract UUID
     return crud.get_spaces_by_kind(db, org_id=org_id, site_id=site_id, kind="meeting_room")

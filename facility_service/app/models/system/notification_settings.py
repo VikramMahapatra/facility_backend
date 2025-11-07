@@ -1,4 +1,4 @@
-from shared.database import Base
+from shared.core.database import Base
 from sqlalchemy import Boolean, Column, String, Integer, Numeric, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
 import uuid

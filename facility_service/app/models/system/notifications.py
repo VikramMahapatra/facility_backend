@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Boolean, Column, String, Integer, Numeric, DateTime, ForeignKey, func, Enum
 from sqlalchemy.dialects.postgresql import JSONB
 import uuid
-from shared.database import Base
+from shared.core.database import Base
 
 
 class NotificationType(PyEnum):
@@ -36,5 +36,5 @@ class Notification(Base):
     priority = Column(Enum(PriorityType), default=PriorityType.medium)
     # In your Notification model
     is_deleted = Column(Boolean, default=False)
-        # ✅ New column
+    # ✅ New column
     is_email = Column(Boolean, default=False, nullable=False)

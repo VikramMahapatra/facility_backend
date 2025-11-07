@@ -7,11 +7,12 @@ from ...schemas.overview.analytics_schema import AnalyticsRequest
 
 
 from ...crud.overview import analytics_crud
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token
-from shared.schemas import  UserToken
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token
+from shared.core.schemas import UserToken
 
-router = APIRouter(prefix="/api/analytics", tags=["Analytics"])#, dependencies=[Depends(validate_current_token)])
+# , dependencies=[Depends(validate_current_token)])
+router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 
 
 @router.get("/by-month", summary="Get site open month lookup")
@@ -25,6 +26,7 @@ def get_site_month_lookup(
     """
     return analytics_crud.site_open_month_lookup(db, current_user.org_id)
 
+
 @router.get("/", summary="Get site/property name lookup")
 def get_site_lookup(
     db: Session = Depends(get_db),
@@ -34,7 +36,6 @@ def get_site_lookup(
     Returns a list of properties/sites (id and name) for the user's organization.
     """
     return analytics_crud.site_name_filter_lookup(db, current_user.org_id)
-
 
 
 # ---------------- Advance Analytics ----------------
@@ -74,7 +75,9 @@ def collection_performance(
 ):
     return analytics_crud.get_collection_performance(db, current_user.org_id, params)
 
-#------------------occupancy----------------------------
+# ------------------occupancy----------------------------
+
+
 @router.get("/occupancy/occupancy-trends")
 def occupancy_analytics(
     params: AnalyticsRequest = Depends(),
@@ -92,6 +95,7 @@ def space_type_performance(
 ):
     return analytics_crud.get_space_type_performance(db, current_user.org_id, params)
 
+
 @router.get("/occupancy/portfolio-distribution")
 def portfolio_distribution(
     params: AnalyticsRequest = Depends(),
@@ -100,15 +104,17 @@ def portfolio_distribution(
 ):
     return analytics_crud.get_portfolio_distribution(db, current_user.org_id, params)
 
-#--------------finacial--------------------------------------------------------------------
+# --------------finacial--------------------------------------------------------------------
+
+
 @router.get("/financial/yoy-performance")
 def yoy_performance(
     params: AnalyticsRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return  analytics_crud.get_yoy_performance(db, current_user.org_id, params)
- 
+    return analytics_crud.get_yoy_performance(db, current_user.org_id, params)
+
 
 @router.get("/financial/site-comparison")
 def site_comparison(
@@ -116,10 +122,10 @@ def site_comparison(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return  analytics_crud.get_site_comparison(db, current_user.org_id, params)
-   
+    return analytics_crud.get_site_comparison(db, current_user.org_id, params)
 
-#------------------------------operations-------------------
+
+# ------------------------------operations-------------------
 @router.get("/operations/maintenance-efficiency")
 def maintenance_efficiency(
     params: AnalyticsRequest = Depends(),
@@ -127,7 +133,7 @@ def maintenance_efficiency(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return analytics_crud. get_maintenance_efficiency(db, current_user.org_id, params)
-   
+
 
 @router.get("/operations/energy-consumption")
 def energy_consumption(
@@ -135,10 +141,10 @@ def energy_consumption(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-   return analytics_crud. get_energy_consumption(db, current_user.org_id, params)
-  
+    return analytics_crud. get_energy_consumption(db, current_user.org_id, params)
 
-#---------------------------tenant----------------------------
+
+# ---------------------------tenant----------------------------
 @router.get("/tenant/tenant-satisfaction")
 def tenant_satisfaction(
     params: AnalyticsRequest = Depends(),
@@ -146,7 +152,7 @@ def tenant_satisfaction(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return analytics_crud.get_tenant_satisfaction(db, current_user.org_id, params)
-    
+
 
 @router.get("/tenant/tenant-retention")
 def tenant_retention(
@@ -155,9 +161,9 @@ def tenant_retention(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return analytics_crud.get_tenant_retention(db, current_user.org_id, params)
-    
 
-#-----------------access-----------------------------------
+
+# -----------------access-----------------------------------
 
 @router.get("/access/daily-visitor-trends")
 def daily_visitor_trends(
@@ -166,7 +172,7 @@ def daily_visitor_trends(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return analytics_crud.get_daily_visitor_trends(db, current_user.org_id, params)
-   
+
 
 @router.get("/access/hourly-access-pattern")
 def hourly_access_pattern(
@@ -175,7 +181,6 @@ def hourly_access_pattern(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return analytics_crud.get_hourly_access_patterns(db, current_user.org_id, params)
-    
 
 
 @router.get("/portfolio/portfolio-heatmap")
@@ -185,7 +190,7 @@ def portfolio_heatmap(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return analytics_crud.get_portfolio_heatmap(db, current_user.org_id, params)
-    
+
 
 @router.get("/portfolio/performance-summary")
 def performance_summary(
@@ -194,4 +199,3 @@ def performance_summary(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return analytics_crud.get_performance_summary(db, current_user.org_id, params)
-   

@@ -3,24 +3,23 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ...schemas.hospitality.bookings_schemas import (
-    BookingCreate, 
-    BookingUpdate, 
-    BookingOut, 
+    BookingCreate,
+    BookingUpdate,
+    BookingOut,
     BookingRequest,
     BookingListResponse,
     BookingOverview
 )
 from uuid import UUID
 from ...crud.hospitality import bookings_crud as crud
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token  
-from shared.schemas import Lookup, UserToken
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token
+from shared.core.schemas import Lookup, UserToken
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 
 router = APIRouter(prefix="/api/bookings", tags=["Bookings Management"])
-
 
 
 # ---------------- List Bookings ----------------
@@ -41,6 +40,8 @@ def get_booking_overview(
     return crud.get_booking_overview(db, current_user.org_id)
 
 # ----------------- Update Booking -----------------
+
+
 @router.put("/", response_model=None)
 def update_booking_route(
     booking_update: BookingUpdate,
@@ -64,14 +65,18 @@ def create_booking_route(
     )
 
 # ---------------- Delete Booking ----------------
+
+
 @router.delete("/{booking_id}")
 def delete_booking_route(
     booking_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):return crud.delete_booking(db, booking_id, current_user.org_id)
+): return crud.delete_booking(db, booking_id, current_user.org_id)
 
 # ----------------filter(DB)  Status  ----------------
+
+
 @router.get("/filter-status-lookup", response_model=List[Lookup])
 def booking_filter_status_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -80,6 +85,8 @@ def booking_filter_status_lookup_endpoint(
     return crud.booking_filter_status_lookup(db, current_user.org_id)
 
 # ----------------channel Lookup by enum ----------------
+
+
 @router.get("/channel-lookup", response_model=List[Lookup])
 def booking_channel_lookup(
     db: Session = Depends(get_db),
@@ -88,6 +95,8 @@ def booking_channel_lookup(
     return crud.Booking_channel_lookup(db, current_user.org_id)
 
 # ----------------status Lookup by enum ----------------
+
+
 @router.get("/status-lookup", response_model=List[Lookup])
 def booking_status_lookup(
     db: Session = Depends(get_db),

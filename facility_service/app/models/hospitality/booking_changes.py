@@ -2,7 +2,8 @@ import uuid
 from sqlalchemy import Column, String, JSON, TIMESTAMP, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
+
 
 class BookingChange(Base):
     __tablename__ = "booking_changes"

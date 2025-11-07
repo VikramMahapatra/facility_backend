@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from io import BytesIO
 import pandas as pd
 
-from shared.schemas import ExportResponse
+from shared.core.schemas import ExportResponse
 
 
 def export_to_excel(

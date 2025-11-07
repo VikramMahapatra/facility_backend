@@ -3,7 +3,7 @@ from datetime import date
 from sqlalchemy import Column, String, Integer, Date, ForeignKey, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
 
 
 class ParkingPass(Base):

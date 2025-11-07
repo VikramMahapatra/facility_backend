@@ -4,7 +4,7 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel
 from typing import List, Optional, Any
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class TaxCodeBase(BaseModel):

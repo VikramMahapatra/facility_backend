@@ -4,7 +4,7 @@ from typing import Optional, List, Any
 from datetime import date
 from pydantic import BaseModel
 from ...schemas.leases_schemas import LeaseOut
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class TenantBase(BaseModel):
@@ -50,7 +50,7 @@ class TenantOut(BaseModel):
     status: str
     contact_info: Optional[Any] = None
     tenant_leases: Optional[List[LeaseOut]] = None
-    
+
     # ADD ONLY THESE - frontend will handle name lookups
     space_id: Optional[UUID] = None
     building_block_id: Optional[UUID] = None  # ✅ Correct name

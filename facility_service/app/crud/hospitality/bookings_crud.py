@@ -3,17 +3,18 @@ from typing import Dict, List, Optional
 from sqlalchemy import Text, distinct, func, case, cast, Date, or_
 from sqlalchemy.orm import Session
 from ...enum.hospitality_enum import BookingChannel, BookingStatus
-from shared.schemas import Lookup, UserToken
+from shared.core.schemas import Lookup, UserToken
 from ...models.hospitality.bookings import Booking
 from ...models.hospitality.booking_cancellations import BookingCancellation
 from ...models.hospitality.folios import Folio
 from ...models.hospitality.folios_charges import FolioCharge
 from sqlalchemy.dialects.postgresql import UUID
-from ...schemas.hospitality.bookings_schemas import BookingCreate, BookingUpdate, BookingRequest, BookingListResponse , BookingOut
+from ...schemas.hospitality.bookings_schemas import BookingCreate, BookingUpdate, BookingRequest, BookingListResponse, BookingOut
+
 
 def get_booking_overview(
-    db: Session, 
-    org_id: UUID, 
+    db: Session,
+    org_id: UUID,
     site_id: UUID = None,
     start_date: date = None,
     end_date: date = None
@@ -42,21 +43,22 @@ def get_booking_overview(
     # Total Revenue (net of refunds, with taxes)
     revenue_subquery = db.query(
         Folio.booking_id,
-        (func.sum(FolioCharge.amount) - 
+        (func.sum(FolioCharge.amount) -
          func.coalesce(func.sum(BookingCancellation.refund_amount), 0)
-        ).label('net_revenue')
+         ).label('net_revenue')
     ).join(FolioCharge, FolioCharge.folio_id == Folio.id)\
      .join(Booking, Folio.booking_id == Booking.id)\
-     .outerjoin(BookingCancellation, 
+     .outerjoin(BookingCancellation,
                 BookingCancellation.booking_id == Booking.id)\
      .filter(
         *filters,
         Folio.status == 'settled',
         FolioCharge.code == 'ROOM'
-     ).group_by(Folio.booking_id).subquery()
+    ).group_by(Folio.booking_id).subquery()
 
     total_revenue = db.query(
-        func.coalesce(func.sum(revenue_subquery.c.net_revenue), 0) #net_revenue = Total Room Charges - Total Refunds Given = Actual Money Earned
+        # net_revenue = Total Room Charges - Total Refunds Given = Actual Money Earned
+        func.coalesce(func.sum(revenue_subquery.c.net_revenue), 0)
     ).scalar() or 0
 
     # Average Booking Value (net)
@@ -73,6 +75,7 @@ def get_booking_overview(
         "avgBookingValue": float(avg_booking_value)
     }
 
+
 def booking_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
     query = (
         db.query(
@@ -88,6 +91,7 @@ def booking_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
 
 # --------------------Booking channel lookup(hardcode) by Enum -----------
 
+
 def Booking_channel_lookup(org_id: UUID, db: Session):
     return [
         Lookup(id=channel.value, name=channel.name.capitalize())
@@ -102,6 +106,8 @@ def Booking_status_lookup(org_id: UUID, db: Session):
     ]
 
 # ----------------- Build Filters -----------------
+
+
 def build_booking_filters(org_id: UUID, params: BookingRequest):
     filters = [Booking.org_id == org_id]
 
@@ -173,6 +179,8 @@ def create_booking(db: Session, org_id: UUID, booking: BookingCreate) -> Booking
     return db_booking
 
 # ----------------- Update Booking -----------------
+
+
 def update_booking(db: Session, booking_update: BookingUpdate, current_user: UserToken) -> Optional[Booking]:
     db_booking = db.query(Booking).filter(
         Booking.id == booking_update.id,
@@ -192,15 +200,17 @@ def update_booking(db: Session, booking_update: BookingUpdate, current_user: Use
     return db_booking
 
 # ----------------- Delete Booking -----------------
+
+
 def delete_booking(db: Session, booking_id: UUID, org_id: UUID) -> bool:
     db_booking = db.query(Booking).filter(
         Booking.id == booking_id,
         Booking.org_id == org_id
     ).first()
-    
+
     if not db_booking:
         return False
-        
+
     db.delete(db_booking)
     db.commit()
     return True

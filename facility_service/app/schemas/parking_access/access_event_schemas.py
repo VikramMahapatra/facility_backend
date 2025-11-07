@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict
 from uuid import UUID
 from datetime import date, datetime
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class AccessEventRequest(CommonQueryParams):

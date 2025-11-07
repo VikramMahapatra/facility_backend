@@ -3,7 +3,7 @@ from sqlalchemy import Boolean, Column, Float, String, Text, ForeignKey, JSON, T
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from shared.database import Base  # adjust the import to your Base
+from shared.core.database import Base  # adjust the import to your Base
 
 
 class ServiceRequest(Base):
@@ -62,15 +62,13 @@ class ServiceRequest(Base):
         lazy="dynamic"
     )
 
-
     attachments = relationship(
-    "Attachment",
-    primaryjoin="and_("
+        "Attachment",
+        primaryjoin="and_("
         "foreign(Attachment.entity_id) == ServiceRequest.id, "
         "Attachment.module_name == 'service_request', "
         "Attachment.is_deleted == False"
-    ")",
-    viewonly=True,
-    lazy="dynamic"
-)
-
+        ")",
+        viewonly=True,
+        lazy="dynamic"
+    )

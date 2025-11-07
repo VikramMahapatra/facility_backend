@@ -7,19 +7,27 @@ from ...schemas.system.notification_settings_schema import (
     NotificationSettingOut,
     NotificationSettingUpdate
 )
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
+
 
 def create_default_settings_for_user(db: Session, user_id: str):
     """Create default settings when user first opens the settings page"""
     defaults = [
         {"label": "System Alerts", "description": "Critical system failures and issues"},
-        {"label": "Maintenance Reminders", "description": "Scheduled and preventive maintenance notifications"},
-        {"label": "Lease Updates", "description": "Lease renewals, expirations, and changes"},
-        {"label": "Financial Notifications", "description": "Payment confirmations and financial alerts"},
-        {"label": "Visitor Management", "description": "VIP visits and security notifications"},
-        {"label": "AI Predictions", "description": "AI-generated insights and predictions"},
-        {"label": "Daily Email Digest", "description": "Summary of daily activities and alerts"},
-        {"label": "Mobile Push Notifications", "description": "Real-time notifications on mobile devices"},
+        {"label": "Maintenance Reminders",
+            "description": "Scheduled and preventive maintenance notifications"},
+        {"label": "Lease Updates",
+            "description": "Lease renewals, expirations, and changes"},
+        {"label": "Financial Notifications",
+            "description": "Payment confirmations and financial alerts"},
+        {"label": "Visitor Management",
+            "description": "VIP visits and security notifications"},
+        {"label": "AI Predictions",
+            "description": "AI-generated insights and predictions"},
+        {"label": "Daily Email Digest",
+            "description": "Summary of daily activities and alerts"},
+        {"label": "Mobile Push Notifications",
+            "description": "Real-time notifications on mobile devices"},
     ]
 
     for setting in defaults:
@@ -37,6 +45,7 @@ def create_default_settings_for_user(db: Session, user_id: str):
             db.add(new_setting)
     db.commit()
 
+
 def get_all_settings(db: Session, user_id: str, params: CommonQueryParams):
     settings_query = db.query(NotificationSetting).filter(
         NotificationSetting.user_id == user_id
@@ -51,19 +60,21 @@ def get_all_settings(db: Session, user_id: str, params: CommonQueryParams):
         func.count(NotificationSetting.id.distinct())).scalar()
     settings = settings_query.offset(params.skip).limit(params.limit).all()
 
-    result = [NotificationSettingOut.model_validate(setting) for setting in settings]
+    result = [NotificationSettingOut.model_validate(
+        setting) for setting in settings]
     return {"settings": result, "total": total}
+
 
 def update_setting(db: Session, setting_id: str, user_id: str, update_data: NotificationSettingUpdate):
     # Convert string IDs to UUID for proper database comparison
     setting_uuid = UUID(setting_id)
     user_uuid = UUID(user_id)
-    
+
     setting = db.query(NotificationSetting).filter(
         NotificationSetting.id == setting_uuid,
         NotificationSetting.user_id == user_uuid
     ).first()
-    
+
     if not setting:
         return None
 

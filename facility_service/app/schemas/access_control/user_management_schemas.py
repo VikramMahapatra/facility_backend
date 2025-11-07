@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 from enum import Enum
 from ...schemas.access_control.role_management_schemas import RoleOut
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class UserBase(BaseModel):

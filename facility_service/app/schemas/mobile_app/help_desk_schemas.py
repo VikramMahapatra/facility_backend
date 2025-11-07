@@ -3,8 +3,9 @@ from uuid import UUID
 from typing import Optional, List, Any
 from datetime import date, datetime
 from pydantic import UUID4, BaseModel, Field
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from ...schemas.leases_schemas import LeaseOut
-from shared.schemas import CommonQueryParams, EmptyStringModel
+from shared.core.schemas import CommonQueryParams
 
 
 class ComplaintOut(EmptyStringModel):

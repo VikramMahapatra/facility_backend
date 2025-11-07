@@ -4,8 +4,8 @@ from sqlalchemy import func, and_, or_
 from uuid import UUID
 from datetime import datetime
 
-from shared.app_status_code import AppStatusCode
-from shared.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response
 
 from ...models.maintenance_assets.assets import Asset
 
@@ -127,7 +127,8 @@ def bulk_update_meters(db: Session, request: BulkMeterRequest):
     bulk_error_list = []
     for m in request.meters:
         errors = []
-        obj = db.query(Meter).filter(Meter.code == m.code, Meter.is_deleted == False).first()
+        obj = db.query(Meter).filter(Meter.code == m.code,
+                                     Meter.is_deleted == False).first()
 
         site_id = db.query(Site.id).filter(
             Site.name == m.siteName).scalar()
@@ -175,29 +176,31 @@ def create(db: Session, payload: MeterCreate) -> Meter:
         and_(
             Meter.org_id == payload.org_id,
             Meter.space_id == payload.space_id,  # Same space
-            func.lower(Meter.code) == func.lower(payload.code),  # Case-insensitive
+            func.lower(Meter.code) == func.lower(
+                payload.code),  # Case-insensitive
             Meter.is_deleted == False
         )
     ).first()
-    
+
     if existing_meter:
         return error_response(
             message=f"Meter with code '{payload.code}' already exists in this space",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
-    
+
     obj = Meter(**payload.model_dump())
     db.add(obj)
     db.commit()
     db.refresh(obj)
-    
+
     # Use your Pydantic model for serialization
     return MeterOut.model_validate(obj)
 
 
 def update(db: Session, payload: MeterUpdate) -> Optional[Meter]:
-    obj = db.query(Meter).filter(Meter.id == payload.id, Meter.is_deleted == False).first()
+    obj = db.query(Meter).filter(Meter.id == payload.id,
+                                 Meter.is_deleted == False).first()
     if not obj:
         return None
 
@@ -206,8 +209,10 @@ def update(db: Session, payload: MeterUpdate) -> Optional[Meter]:
     target_code = getattr(payload, 'code', obj.code)
 
     # Check if code OR space is being changed (case-insensitive)
-    code_changed = hasattr(payload, 'code') and payload.code is not None and payload.code.lower() != obj.code.lower()
-    space_changed = hasattr(payload, 'space_id') and payload.space_id is not None and payload.space_id != obj.space_id
+    code_changed = hasattr(
+        payload, 'code') and payload.code is not None and payload.code.lower() != obj.code.lower()
+    space_changed = hasattr(
+        payload, 'space_id') and payload.space_id is not None and payload.space_id != obj.space_id
 
     # If either code or space is changing, check for duplicates in the TARGET space
     if code_changed or space_changed:
@@ -215,12 +220,13 @@ def update(db: Session, payload: MeterUpdate) -> Optional[Meter]:
             and_(
                 Meter.org_id == obj.org_id,
                 Meter.space_id == target_space_id,  # Check in TARGET space
-                func.lower(Meter.code) == func.lower(target_code),  # Check TARGET code
+                func.lower(Meter.code) == func.lower(
+                    target_code),  # Check TARGET code
                 Meter.id != payload.id,  # Exclude current meter
                 Meter.is_deleted == False
             )
         ).first()
-        
+
         if existing_meter:
             return error_response(
                 message=f"Meter with code '{target_code}' already exists in this space",
@@ -235,18 +241,19 @@ def update(db: Session, payload: MeterUpdate) -> Optional[Meter]:
 
     db.commit()
     db.refresh(obj)
-    
+
     # Use your Pydantic model for serialization
     return MeterOut.model_validate(obj)
 
 
 def delete(db: Session, meter_id: UUID) -> Optional[Meter]:
-    obj = db.query(Meter).filter(Meter.id == meter_id, Meter.is_deleted == False).first()
+    obj = db.query(Meter).filter(Meter.id == meter_id,
+                                 Meter.is_deleted == False).first()
     if not obj:
         return None
-    
+
     # SOFT DELETE - Change from hard delete to soft delete
     obj.is_deleted = True
     db.commit()
-    
+
     return obj

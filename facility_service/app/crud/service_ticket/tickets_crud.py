@@ -1,12 +1,13 @@
 from datetime import datetime
 from sqlalchemy import select
-from fastapi import HTTPException
+from fastapi import HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from sqlalchemy import and_, func
 from auth_service.app.models.users import Users
-from shared.config import Settings
-from shared.enums import UserAccountType
+from shared.core.config import Settings
+from shared.helpers.email_helper import EmailHelper
+from shared.utils.enums import UserAccountType
 from ...schemas.system.notifications_schemas import NotificationType, PriorityType
 from ...models.system.notifications import Notification
 from ...enum.ticket_service_enum import TicketStatus
@@ -19,17 +20,13 @@ from ...models.service_ticket.sla_policy import SlaPolicy
 from ...models.service_ticket.tickets_commets import TicketComment
 from ...models.service_ticket.tickets_feedback import TicketFeedback
 from ...models.service_ticket.tickets_reaction import TicketReaction
-from shared.schemas import UserToken
-
+from shared.core.schemas import UserToken
 from ...models.service_ticket.ticket_assignment import TicketAssignment
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
-from shared.app_status_code import AppStatusCode
-from shared.json_response_helper import error_response, success_response
-
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response, success_response
 from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest, TicketOut
-from facility_service.util.mail_service import EmailClient
-from shared.config import settings
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
@@ -87,7 +84,7 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
     return base_query
 
 
-def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToken):
+def get_tickets(background_tasks: BackgroundTasks, db: Session, params: TicketFilterRequest, current_user: UserToken):
     """Get all tickets with pagination"""
 
     base_query = build_ticket_filters(db, params, current_user)
@@ -203,7 +200,7 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
     )
 
 
-def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: UserToken):
+def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketCreate, user: UserToken):
     account_type = user.account_type.lower()
     # Create Ticket (defaults to OPEN)
     space = (
@@ -268,11 +265,13 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
     session.flush()  # needed to get ticket_id
 
     # Fetch SLA Policy for auto-assignment
-    created_by_name = (
-        auth_db.query(Users.full_name)
+    created_by_user = (
+        auth_db.query(Users)
         .filter(Users.id == user.user_id)
         .scalar()
     )
+
+    assigned_to_user = None
 
     sla = session.execute(
         select(SlaPolicy).where(SlaPolicy.service_category == data.category)
@@ -281,8 +280,8 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
     assigned_to = sla.default_contact if sla else None
 
     if assigned_to:
-        assigned_to_name = (
-            auth_db.query(Users.full_name)
+        assigned_to_user = (
+            auth_db.query(Users)
             .filter(Users.id == assigned_to)
             .scalar()
         )
@@ -314,46 +313,17 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
         action_by=user.user_id,
         old_status=None,
         new_status=TicketStatus.OPEN.value,
-        action_taken=f"Ticket Created by {created_by_name}"
+        action_taken=f"Ticket Created by {created_by_user.full_name}"
     )
     session.add(workflow_log)
 
     session.commit()
     session.refresh(new_ticket)
-    #email
-    mailer = EmailClient(
-    smtp_host=settings.SMTP_HOST,
-    smtp_port=settings.SMTP_PORT,
-    username=settings.SMTP_USERNAME,
-    password=settings.SMTP_PASSWORD,
-    use_ssl=settings.SMTP_USE_SSL
-    )
 
-    mailer.send_email(
-        sender=settings.EMAIL_SENDER,
-        recipients=["chiranjibi.das@zentrixel.com", "vikram.mahapatra@zentrixel.com","bhushan.dhonge@zentrixel.com","prachibangre100@gmail.com","sagar.kale@zentrixel.co.in" ],
-        subject="Welcome from Zentrixel FMS",
-        text_body="Hello, This is testing mail .",
-        # html_body="<h2 style='color:blue'>Hello, This is testing mail</h2>",
-        html_body = f"""
-                <html>
-                <body>
-                    <p>Hello Team,</p>
+    # email
+    send_ticket_created_email(
+        background_tasks, session, new_ticket, created_by_user, assigned_to_user)
 
-                    <p>The Status of the ticket is {TicketStatus.OPEN.value} and it is assigned to {assigned_to_name} </b>.<br>
-                The ticket number is <b>{new_ticket.ticket_no}</b>.This ticket is created by {created_by_name}.</p>
-
-                    <p>Regards,<br>
-                    Zentrixel IT Systems</p>
-
-                    <hr>
-                    <small>This is an automated email; please do not reply.</small>
-                </body>
-                </html>
-                """
-
-        # attachments=["/path/to/file1.pdf", "/path/to/imae.png"]
-    )
     return TicketOut.model_validate(
         {
             **new_ticket.__dict__,
@@ -596,8 +566,8 @@ def on_hold_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     ticket.status = TicketStatus.ON_HOLD
     ticket.updated_at = datetime.utcnow()
 
-    action_by_name = (
-        auth_db.query(Users.full_name)
+    action_by_user = (
+        auth_db.query(Users)
         .filter(Users.id == data.action_by)
         .scalar()
     )
@@ -607,7 +577,7 @@ def on_hold_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
         action_by=data.action_by,
         old_status=old_status.value if old_status else None,
         new_status=TicketStatus.ON_HOLD,
-        action_taken=f"Ticket {ticket.ticket_no} put on hold by {action_by_name}"
+        action_taken=f"Ticket {ticket.ticket_no} put on hold by {action_by_user.full_name}"
     )
     db.add(workflow)
 
@@ -616,7 +586,7 @@ def on_hold_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
         user_id=ticket.tenant_id,
         type=NotificationType.alert,
         title="Ticket On hold",
-        message=f"Ticket {ticket.ticket_no} put on hold by {action_by_name}",
+        message=f"Ticket {ticket.ticket_no} put on hold by {action_by_user.full_name}",
         posted_date=datetime.utcnow(),
         priority=PriorityType(ticket.priority),
         read=False,
@@ -729,3 +699,25 @@ def add_feedback(payload: AddFeedbackRequest, db: Session):
     db.commit()
     db.refresh(feedback)
     return {"message": "Feedback recorded", "feedback_id": feedback.id}
+
+
+def send_ticket_created_email(background_tasks, db, new_ticket, created_by_user, assigned_to_user):
+    email_helper = EmailHelper()
+
+    recipients = [created_by_user.email, assigned_to_user.email]
+
+    context = {
+        "status": TicketStatus.OPEN.value,
+        "assigned_to": assigned_to_user.full_name,
+        "ticket_no": new_ticket.ticket_no,
+        "created_by_name": created_by_user.full_name,
+    }
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="ticket_created",
+        recipients=recipients,
+        subject=f"New Ticket Created - {new_ticket.ticket_no}",
+        context=context,
+    )

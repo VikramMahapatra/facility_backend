@@ -9,7 +9,7 @@ from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant
 from ...crud.access_control import user_management_crud
 from ...schemas.access_control.role_management_schemas import RoleOut
-from shared.schemas import Lookup
+from shared.core.schemas import Lookup
 from ...enum.access_control_enum import UserRoleEnum, UserStatusEnum
 from ...schemas.access_control.user_management_schemas import (
     ApprovalStatus, ApprovalStatusRequest, UserCreate, UserOut, UserRequest, UserUpdate

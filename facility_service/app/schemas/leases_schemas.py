@@ -4,7 +4,7 @@ from typing import Optional, List, Any
 from decimal import Decimal
 from pydantic import BaseModel
 
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class LeaseBase(BaseModel):

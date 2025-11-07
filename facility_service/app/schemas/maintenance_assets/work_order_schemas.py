@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 from uuid import UUID
 
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class WorkOrderBase(BaseModel):
@@ -16,7 +16,7 @@ class WorkOrderBase(BaseModel):
     due_at: Optional[datetime]
     wo_no: Optional[str] = None
 
-    model_config = {"from_attributes": True} 
+    model_config = {"from_attributes": True}
 # ---------------- Overview Response ----------------
 
 
@@ -48,7 +48,8 @@ class WorkOrderCreate(BaseModel):
     sla: Optional[Dict[str, Any]] = None
     request_id: Optional[UUID]
 
-    model_config = {"from_attributes": True} 
+    model_config = {"from_attributes": True}
+
 
 class WorkOrderUpdate(WorkOrderCreate):
     id: str

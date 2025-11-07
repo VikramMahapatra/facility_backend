@@ -19,12 +19,12 @@ from ...models.system.notifications import Notification
 from ...schemas.system.notifications_schemas import NotificationOut
 
 from ...models.leasing_tenants.leases import Lease
-from shared.schemas import MasterQueryParams, UserToken
+from shared.core.schemas import MasterQueryParams, UserToken
 
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.space_sites.spaces import Space
 from sqlalchemy.orm import joinedload
-from shared.enums import UserAccountType
+from shared.utils.enums import UserAccountType
 
 
 def get_home_spaces(db: Session, user: UserToken):

@@ -4,21 +4,21 @@ from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func
 
-from shared.app_status_code import AppStatusCode
-from shared.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response
 
 from ..models.user_login_session import UserLoginSession
 from ..schemas.authchemas import AuthenticationResponse
 from ..models.sites_safe import SiteSafe
 from ..models.commercial_partner_safe import CommercialPartnerSafe
 from ..models.tenants_safe import TenantSafe
-from shared import auth
+from shared.core import auth
 from ..models.orgs_safe import OrgSafe
 from ..models.roles import Roles
 from ..models.userroles import UserRoles
 from ..models.users import Users
 from ..schemas.userschema import RoleOut, UserCreate
-from shared.config import settings
+from shared.core.config import settings
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
 

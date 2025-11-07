@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from shared.config import AUTH_DATABASE_URL, FACILITY_DATABASE_URL
+from shared.core.config import AUTH_DATABASE_URL, FACILITY_DATABASE_URL
 
 # Separate bases
 AuthBase = declarative_base()

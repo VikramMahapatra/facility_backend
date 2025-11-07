@@ -1,14 +1,14 @@
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from shared.database import get_auth_db as get_db, get_facility_db
-from shared.schemas import UserToken
+from shared.core.database import get_auth_db as get_db, get_facility_db
+from shared.core.schemas import UserToken
 from ...schemas.access_control.user_management_schemas import (
     ApprovalStatusRequest, UserListResponse, UserOut, UserRequest
 )
 from ...crud.access_control import pending_approval_crud as crud
 
-from shared.auth import validate_current_token
+from shared.core.auth import validate_current_token
 
 
 router = APIRouter(prefix="/api/pending-approval",

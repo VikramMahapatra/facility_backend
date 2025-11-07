@@ -11,7 +11,7 @@ from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.tenants import Tenant
 from ...enum.leasing_tenants_enum import LeaseChargeCode
-from shared.schemas import Lookup
+from shared.core.schemas import Lookup
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.leasing_tenants.leases import Lease
 from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeOut, LeaseChargeUpdate, LeaseChargeRequest
@@ -181,7 +181,7 @@ def delete_lease_charge(db: Session, charge_id: UUID, org_id: UUID) -> Dict:
     obj = get_lease_charge_by_id(db, charge_id)
     if not obj:
         return {"success": False, "message": "Lease charge not found"}
-    
+
     # Verify organization ownership through the associated lease
     if org_id is not None:
         lease = db.query(Lease).filter(
@@ -194,7 +194,7 @@ def delete_lease_charge(db: Session, charge_id: UUID, org_id: UUID) -> Dict:
     # Perform soft delete - no dependency checks needed as lease charges are leaf nodes
     obj.is_deleted = True
     db.commit()
-    
+
     return {"success": True, "message": "Lease charge deleted successfully"}
 
 
@@ -207,7 +207,7 @@ def lease_charge_month_lookup(
         for i in range(1, 13)
     ]
     return months
-    
+
     # If you want to use database-driven lookup with soft delete filters:
     # query = (
     #     db.query(
@@ -234,7 +234,7 @@ def lease_charge_code_lookup(
         Lookup(id=code.value, name=code.name.capitalize())
         for code in LeaseChargeCode
     ]
-    
+
     # If you want to use database-driven lookup with soft delete filters:
     # query = (
     #     db.query(

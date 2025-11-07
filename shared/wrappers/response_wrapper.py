@@ -1,6 +1,6 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse, Response
-from shared.schemas import JsonOutResult
+from shared.core.schemas import JsonOutResult
 import json
 from typing import Callable
 

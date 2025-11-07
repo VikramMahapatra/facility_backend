@@ -4,8 +4,8 @@ from typing import Dict, List, Optional
 
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.role_approval_rules import RoleApprovalRule
-from facility_service.app.enum.access_control_enum import ApproverRoleEnum , CanApproveRoleEnum
-from shared.schemas import Lookup
+from facility_service.app.enum.access_control_enum import ApproverRoleEnum, CanApproveRoleEnum
+from shared.core.schemas import Lookup
 
 from ...schemas.access_control.role_approval_rules_schemas import (
     RoleApprovalRuleCreate, RoleApprovalRuleOut
@@ -28,10 +28,12 @@ def get_all_rules(db: Session, org_id: str):
     rules_out = []
     for rule in rules:
         # Get approver role name
-        approver_role = db.query(Roles).filter(Roles.id == rule.approver_role_id).first()
+        approver_role = db.query(Roles).filter(
+            Roles.id == rule.approver_role_id).first()
         # Get can_approve role name
-        can_approve_role = db.query(Roles).filter(Roles.id == rule.can_approve_role_id).first()
-        
+        can_approve_role = db.query(Roles).filter(
+            Roles.id == rule.can_approve_role_id).first()
+
         rule_out = RoleApprovalRuleOut(
             id=rule.id,
             org_id=rule.org_id,
@@ -78,13 +80,17 @@ def create_rule(db: Session, rule_data: dict, org_id: str):
             raise ValueError("A similar role approval rule already exists")
 
         # Check if both roles exist and get their details
-        approver_role = db.query(Roles).filter(Roles.id == rule_data['approver_role_id']).first()
-        can_approve_role = db.query(Roles).filter(Roles.id == rule_data['can_approve_role_id']).first()
+        approver_role = db.query(Roles).filter(
+            Roles.id == rule_data['approver_role_id']).first()
+        can_approve_role = db.query(Roles).filter(
+            Roles.id == rule_data['can_approve_role_id']).first()
 
         if not approver_role:
-            raise ValueError(f"Approver role with ID {rule_data['approver_role_id']} does not exist")
+            raise ValueError(
+                f"Approver role with ID {rule_data['approver_role_id']} does not exist")
         if not can_approve_role:
-            raise ValueError(f"Can approve role with ID {rule_data['can_approve_role_id']} does not exist")
+            raise ValueError(
+                f"Can approve role with ID {rule_data['can_approve_role_id']} does not exist")
 
         db_rule = RoleApprovalRule(**rule_data)
         db.add(db_rule)
@@ -103,7 +109,7 @@ def create_rule(db: Session, rule_data: dict, org_id: str):
             is_deleted=db_rule.is_deleted,
             deleted_at=db_rule.deleted_at
         )
-        
+
     except Exception as e:
         db.rollback()
         raise e
@@ -126,7 +132,7 @@ def soft_delete_rule(db: Session, rule_id: str) -> Dict:
     except Exception as e:
         db.rollback()
         return {"success": False, "message": f"Failed to delete rule: {str(e)}"}
-    
+
 
 def approver_roles_lookup(db: Session, org_id: str):
     """
@@ -136,6 +142,7 @@ def approver_roles_lookup(db: Session, org_id: str):
         Lookup(id=role.value, name=role.value.capitalize())
         for role in ApproverRoleEnum
     ]
+
 
 def can_approve_roles_lookup(db: Session, org_id: str):
     """

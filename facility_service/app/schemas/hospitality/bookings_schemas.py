@@ -5,7 +5,7 @@ from datetime import datetime, date
 from uuid import UUID
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 # ----------------- Base -----------------
@@ -62,7 +62,9 @@ class BookingListResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
-#------------overview ------------------
+# ------------overview ------------------
+
+
 class BookingOverview(BaseModel):
     totalBookings: int
     activeBookings: int

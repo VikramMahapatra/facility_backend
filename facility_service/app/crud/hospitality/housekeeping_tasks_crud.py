@@ -4,14 +4,14 @@ from sqlalchemy import func, or_, cast, String, case
 from uuid import UUID
 from typing import Dict, Optional, List
 
-from shared.schemas import Lookup
+from shared.core.schemas import Lookup
 
 from ...models.hospitality.housekeeping_tasks import HousekeepingTask
 from ...schemas.hospitality.housekeeping_tasks_schemas import (
     HousekeepingTaskCreate,
-    HousekeepingTaskOut, 
-    HousekeepingTaskUpdate, 
-    HousekeepingTaskRequest, 
+    HousekeepingTaskOut,
+    HousekeepingTaskUpdate,
+    HousekeepingTaskRequest,
     HousekeepingTaskListResponse,
     HousekeepingTaskOverview
 )
@@ -19,17 +19,22 @@ from ...schemas.hospitality.housekeeping_tasks_schemas import (
 from ...enum.hospitality_enum import HousekeepingTaskPriority
 
 # ----------------- Overview Calculation -----------------
+
+
 def get_housekeeping_overview(db: Session, org_id: UUID) -> HousekeepingTaskOverview:
-    
+
     counts = (
         db.query(
             func.count(HousekeepingTask.id).label("total_tasks"),
-            func.count(case((HousekeepingTask.status == "clean", 1))).label("clean_rooms"),
-            func.count(case((HousekeepingTask.status.in_(["cleaning", "inspected"]), 1))).label("in_progress"),
+            func.count(case((HousekeepingTask.status == "clean", 1))
+                       ).label("clean_rooms"),
+            func.count(case((HousekeepingTask.status.in_(
+                ["cleaning", "inspected"]), 1))).label("in_progress"),
             func.avg(
                 case(
-                    (HousekeepingTask.status == "clean" and HousekeepingTask.completed_at.isnot(None), 
-                     func.extract('epoch', HousekeepingTask.completed_at - HousekeepingTask.created_at) / 3600),  # hours
+                    (HousekeepingTask.status == "clean" and HousekeepingTask.completed_at.isnot(None),
+                     # hours
+                     func.extract('epoch', HousekeepingTask.completed_at - HousekeepingTask.created_at) / 3600),
                     else_=None
                 )
             ).label("avg_time")
@@ -53,7 +58,7 @@ def build_housekeeping_filters(org_id: UUID, params: HousekeepingTaskRequest):
     if params.status and params.status.lower() != "all":
         filters.append(HousekeepingTask.status == params.status)
 
-    if params.priority and params.priority.lower() != "all":  
+    if params.priority and params.priority.lower() != "all":
         filters.append(HousekeepingTask.priority == params.priority)
 
     if params.task_date:
@@ -106,15 +111,14 @@ def get_housekeeping_tasks(db: Session, org_id: UUID, params: HousekeepingTaskRe
     return {"tasks": results, "total": total}
 
 
-
 # ----------------- Create Task -----------------
 def create_housekeeping_task(db: Session, org_id: UUID, task: HousekeepingTaskCreate) -> HousekeepingTask:
     task_data = task.model_dump(exclude={"org_id"})
-    
+
     # AUTO-SET completed_at IF TASK IS CREATED AS "clean"
     if task_data.get('status') == 'clean' and 'completed_at' not in task_data:
         task_data['completed_at'] = func.now()
-    
+
     db_task = HousekeepingTask(
         org_id=org_id,
         **task_data
@@ -136,14 +140,14 @@ def update_housekeeping_task(db: Session, task_update: HousekeepingTaskUpdate, c
         return None
 
     #  AUTO-SET completed_at WHEN STATUS CHANGES TO "clean"
-    if (task_update.status == "clean" and 
-        db_task.status != "clean" and 
-        db_task.completed_at is None):
+    if (task_update.status == "clean" and
+        db_task.status != "clean" and
+            db_task.completed_at is None):
         db_task.completed_at = func.now()  # Set completion time to current time
-    
+
     #  AUTO-CLEAR completed_at IF STATUS CHANGES FROM "clean"
-    elif (task_update.status != "clean" and 
-          db_task.status == "clean" and 
+    elif (task_update.status != "clean" and
+          db_task.status == "clean" and
           db_task.completed_at is not None):
         db_task.completed_at = None
 
@@ -163,15 +167,16 @@ def delete_housekeeping_task(db: Session, task_id: UUID, org_id: UUID) -> bool:
         HousekeepingTask.id == task_id,
         HousekeepingTask.org_id == org_id
     ).first()
-    
+
     if not db_task:
         return False
-        
+
     db.delete(db_task)
     db.commit()
     return True
 
-#-----------filter status----------------
+# -----------filter status----------------
+
 
 def housekeeping_tasks_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
     query = (
@@ -186,7 +191,8 @@ def housekeeping_tasks_filter_status_lookup(db: Session, org_id: str) -> List[Di
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
 
-#------------------priority lookup enum 
+# ------------------priority lookup enum
+
 
 def housekeeping_tasks_priority_lookup(org_id: UUID, db: Session):
     return [

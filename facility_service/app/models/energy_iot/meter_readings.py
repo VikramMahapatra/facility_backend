@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy import Boolean, Column, String, Numeric, ForeignKey, UniqueConstraint, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
 
 
 class MeterReading(Base):
@@ -16,9 +16,9 @@ class MeterReading(Base):
     delta = Column(Numeric(18, 6))
     source = Column(String(16), default="manual")  # manual | iot
     metadata_json = Column("metadata", JSONB)
-    is_deleted = Column(Boolean, default=False, nullable=False)  # ADD THIS LINE
+    is_deleted = Column(Boolean, default=False,
+                        nullable=False)  # ADD THIS LINE
 
-    
     __table_args__ = (
         UniqueConstraint("meter_id", "ts", name="uq_meter_readings_meter_ts"),
     )

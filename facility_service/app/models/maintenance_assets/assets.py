@@ -4,7 +4,7 @@ from sqlalchemy import Boolean, Column, String, Date, Numeric, ForeignKey, JSON,
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
 
 
 class Asset(Base):
@@ -35,8 +35,8 @@ class Asset(Base):
                         server_default=func.now(), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(
     ), onupdate=func.now(), nullable=False)
-    is_deleted = Column(Boolean, default=False, nullable=False)  # ✅ Add soft delete column
-
+    # ✅ Add soft delete column
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     site = relationship("Site", back_populates="assets")
     space = relationship("Space", back_populates="assets")

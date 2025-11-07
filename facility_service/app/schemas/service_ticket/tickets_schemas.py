@@ -3,10 +3,10 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 
-from shared.empty_string_model_wrapper import EmptyStringModel
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 
 from ...schemas.mobile_app.help_desk_schemas import CommentOut, TicketWorkFlowOut
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class TicketBase(BaseModel):

@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, Column, String, DateTime, Enum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 
-from shared.database import Base
+from shared.core.database import Base
 
 
 class Visitor(Base):

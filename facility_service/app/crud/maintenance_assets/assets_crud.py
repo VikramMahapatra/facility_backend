@@ -8,12 +8,12 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy.dialects.postgresql import UUID
 from dateutil.relativedelta import relativedelta
 from ...models.space_sites.sites import Site
-from shared.app_status_code import AppStatusCode
-from shared.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response
 from ...models.space_sites.buildings import Building
 from ...models.space_sites.spaces import Space
 from ...enum.maintenance_assets_enum import AssetStatus
-from shared.schemas import Lookup
+from shared.core.schemas import Lookup
 from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.maintenance_assets.assets import Asset
 from ...schemas.maintenance_assets.assets_schemas import AssetCreate, AssetOut, AssetUpdate, AssetsRequest, AssetsResponse
@@ -31,7 +31,7 @@ def build_asset_filters(org_id: UUID, params: AssetsRequest):
     if params.status and params.status.lower() != "all":
         # ✅ CASE-INSENSITIVE: Use ilike for status too
         filters.append(Asset.status.ilike(params.status))
-        
+
     if params.search:
         search_term = f"%{params.search}%"
         filters.append(or_(
@@ -41,23 +41,25 @@ def build_asset_filters(org_id: UUID, params: AssetsRequest):
 
     return filters
 
+
 def get_assets_query(db: Session, org_id: UUID, params: AssetsRequest):
     filters = build_asset_filters(org_id, params)
-    
+
     # ✅ FIXED: Always join with AssetCategory to get category name
-    query = db.query(Asset).join(AssetCategory, Asset.category_id == AssetCategory.id)
-    
+    query = db.query(Asset).join(
+        AssetCategory, Asset.category_id == AssetCategory.id)
+
     # ✅ FIXED: Add category filter if provided
     if params.category and params.category.lower() != "all":
         # Filter by category name (from AssetCategory table)
         query = query.filter(AssetCategory.name == params.category)
-    
+
     return query.filter(*filters)
 
 
 def get_asset_overview(db: Session, org_id: UUID, params: AssetsRequest):
     today = datetime.utcnow()
-    
+
     # ✅ Cleaner date calculation
     first_day_this_month = datetime(today.year, today.month, 1)
     first_day_last_month = first_day_this_month - relativedelta(months=1)
@@ -65,7 +67,7 @@ def get_asset_overview(db: Session, org_id: UUID, params: AssetsRequest):
 
     # ✅ FIXED: Define base_query FIRST, then use it
     filters = build_asset_filters(org_id, params)
-    
+
     # Base query with all filters applied
     base_query = db.query(Asset).filter(*filters)
 
@@ -106,7 +108,6 @@ def get_asset_overview(db: Session, org_id: UUID, params: AssetsRequest):
         "assetsNeedingMaintenance": int(asset_fields.assets_need_maintenance or 0),
         "lastMonthAssetPercentage": float(last_month_assets_percent)
     }
-
 
 
 def get_assets(db: Session, org_id: UUID, params: AssetsRequest) -> AssetsResponse:
@@ -155,6 +156,7 @@ def get_assets(db: Session, org_id: UUID, params: AssetsRequest) -> AssetsRespon
 
     return {"assets": assets, "total": total}
 
+
 def get_asset_by_id(db: Session, asset_id: str):
     # ✅ FIXED: Use joinedload to include category data
     return (
@@ -163,7 +165,6 @@ def get_asset_by_id(db: Session, asset_id: str):
         .filter(Asset.id == asset_id, Asset.is_deleted == False)
         .first()
     )
-
 
 
 def create_asset(db: Session, asset: AssetCreate):
@@ -188,7 +189,8 @@ def create_asset(db: Session, asset: AssetCreate):
             Asset.org_id == asset.org_id,
             Asset.site_id == asset.site_id,
             Asset.is_deleted == False,
-            func.lower(Asset.serial_no) == func.lower(asset.serial_no)  # Case-insensitive
+            func.lower(Asset.serial_no) == func.lower(
+                asset.serial_no)  # Case-insensitive
         ).first()
 
         if existing_serial:
@@ -219,6 +221,7 @@ def create_asset(db: Session, asset: AssetCreate):
     db.commit()
     db.refresh(db_asset)
     return db_asset
+
 
 def update_asset(db: Session, asset_update: AssetUpdate):
     # Ensure asset_id is provided in body
@@ -252,9 +255,11 @@ def update_asset(db: Session, asset_update: AssetUpdate):
         if 'tag' in update_data:
             duplicate_conditions.append(Asset.tag == update_data['tag'])
         if 'name' in update_data:
-            duplicate_conditions.append(func.lower(Asset.name) == func.lower(update_data['name']))
+            duplicate_conditions.append(func.lower(
+                Asset.name) == func.lower(update_data['name']))
         if 'serial_no' in update_data and update_data['serial_no']:
-            duplicate_conditions.append(Asset.serial_no == update_data['serial_no'])
+            duplicate_conditions.append(
+                Asset.serial_no == update_data['serial_no'])
 
         if duplicate_conditions:
             duplicate_filters.append(or_(*duplicate_conditions))
@@ -303,7 +308,6 @@ def update_asset(db: Session, asset_update: AssetUpdate):
         )
 
 
-
 def delete_asset(db: Session, asset_id: str, org_id: str) -> bool:
     """
     Soft delete an asset
@@ -314,15 +318,15 @@ def delete_asset(db: Session, asset_id: str, org_id: str) -> bool:
         Asset.org_id == org_id,
         Asset.is_deleted == False
     ).first()
-    
+
     if not db_asset:
         return False
-    
+
     # Perform soft delete
     db_asset.is_deleted = True
     db_asset.deleted_at = func.now()
     db.commit()
-    
+
     return True
 
 
@@ -338,6 +342,7 @@ def asset_lookup(db: Session, org_id: UUID):
     )
     return assets
 
+
 def asset_filter_status_lookup(db: Session, org_id: UUID):
     statuses = (
         db.query(
@@ -351,11 +356,13 @@ def asset_filter_status_lookup(db: Session, org_id: UUID):
     )
     return statuses
 
+
 def asset_status_lookup(org_id: UUID, db: Session):
     return [
         Lookup(id=status.value, name=status.name.capitalize())
         for status in AssetStatus
     ]
+
 
 def assets_category_lookup(db: Session, org_id: UUID) -> List[Dict]:
     query = (

@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import JSON, Column, ForeignKey, String
-from shared.database import AuthBase
+from shared.core.database import AuthBase
 from sqlalchemy.orm import relationship
 
 
@@ -10,7 +10,8 @@ class RolePolicy(AuthBase):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), nullable=False)
-    role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), nullable=False)
+    role_id = Column(UUID(as_uuid=True), ForeignKey(
+        "roles.id", ondelete="CASCADE"), nullable=False)
 
     resource = Column(String(64), nullable=False)  # e.g. asset, work_order
     action = Column(String(32), nullable=False)    # read, write, etc.

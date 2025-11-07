@@ -2,10 +2,10 @@ from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from shared.auth import validate_current_token #for dependicies 
-from shared.database import get_facility_db as get_db
-from shared.json_response_helper import success_response
-from shared.schemas import Lookup, UserToken
+from shared.core.auth import validate_current_token  # for dependicies
+from shared.core.database import get_facility_db as get_db
+from shared.helpers.json_response_helper import success_response
+from shared.core.schemas import Lookup, UserToken
 from ...schemas.maintenance_assets.pm_templates_schemas import (
     PMTemplateCreate,
     PMTemplateOverviewResponse,
@@ -29,15 +29,19 @@ def get_pm_templates(
     return crud.get_pm_templates(db, current_user.org_id, params)
 
 # ---------------- Overview ----------------
+
+
 @router.get("/overview", response_model=PMTemplateOverviewResponse)
 def overview(
     params: PMTemplateRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_pm_templates_overview(db, current_user.org_id, params )
+    return crud.get_pm_templates_overview(db, current_user.org_id, params)
 
 # ---------------- Update template ----------------
+
+
 @router.put("/", response_model=None)
 def update_pm_template(
     template: PMTemplateUpdate,
@@ -64,8 +68,8 @@ def delete_pm_template_soft(
     template_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):return crud.delete_pm_template_soft(db, template_id, current_user.org_id)
-       
+): return crud.delete_pm_template_soft(db, template_id, current_user.org_id)
+
 
 # ---------------- Frequency Lookup ----------------
 @router.get("/frequency-lookup", response_model=List[Lookup])
@@ -85,6 +89,8 @@ def pm_template_category_lookup(
     return crud.pm_templates_category_lookup(db, current_user.org_id)
 
 # ----------------  Status Lookup ----------------
+
+
 @router.get("/status-lookup", response_model=List[Lookup])
 def pm_templates_status_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -93,6 +99,8 @@ def pm_templates_status_lookup_endpoint(
     return crud.pm_templates_status_lookup(db, current_user.org_id)
 
 # ----------------filter Frequency Lookup ----------------
+
+
 @router.get("/filter-frequency-lookup", response_model=List[Lookup])
 def pm_templates_filter_frequency_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -108,5 +116,3 @@ def pm_templates_filter_status_lookup_endpoint(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.pm_templates_filter_status_lookup(db, current_user.org_id)
-
-

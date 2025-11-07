@@ -36,3 +36,5 @@ class Notification(Base):
     priority = Column(Enum(PriorityType), default=PriorityType.medium)
     # In your Notification model
     is_deleted = Column(Boolean, default=False)
+        # ✅ New column
+    is_email = Column(Boolean, default=False, nullable=False)

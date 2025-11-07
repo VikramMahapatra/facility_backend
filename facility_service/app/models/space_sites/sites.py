@@ -57,3 +57,4 @@ class Site(Base):
     staff_sites = relationship("StaffSite", back_populates="site", cascade="all, delete-orphan")
      # Back-reference to ticket categories
     ticket_categories = relationship("TicketCategory", back_populates="site")
+    sla_policies = relationship("SlaPolicy", back_populates="site")

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from sqlalchemy import and_, func
 from auth_service.app.models.users import Users
+from shared.enums import UserAccountType
 from ...schemas.system.notifications_schemas import NotificationType, PriorityType
 from ...models.system.notifications import Notification
 from ...enum.ticket_service_enum import TicketStatus
@@ -28,15 +29,16 @@ from shared.json_response_helper import error_response, success_response
 from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest, TicketOut
 
 
-def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToken):
-    """Get all tickets with pagination"""
-
-    if (current_user.account_type == "organization"):
+def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
+    if (current_user.account_type in (UserAccountType.ORGANIZATION, UserAccountType.STAFF)):
         filters = [Ticket.org_id == current_user.org_id]
     else:
         tenant_id = db.query(Tenant.id).filter(and_(
             Tenant.user_id == current_user.user_id, Tenant.is_deleted == False)).scalar()
         filters = [Ticket.tenant_id == tenant_id]
+
+    if params.site_id:
+        filters.append(Ticket.site_id == params.site_id)
 
     if params.space_id:
         filters.append(Ticket.space_id == params.space_id)
@@ -78,6 +80,12 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
 
     else:
         base_query = db.query(Ticket).filter(*filters)
+
+
+def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToken):
+    """Get all tickets with pagination"""
+
+    base_query = build_ticket_filters(db, params, current_user)
 
     total = base_query.with_entities(func.count(Ticket.id)).scalar()
 
@@ -240,7 +248,8 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
         created_by=user.user_id,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
-        preferred_time=data.preferred_time
+        preferred_time=data.preferred_time,
+        request_type=data.request_type
     )
     session.add(new_ticket)
     session.flush()  # needed to get ticket_id
@@ -293,7 +302,12 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
 
     session.commit()
     session.refresh(new_ticket)
-    return new_ticket
+    return TicketOut.model_validate(
+        {
+            **new_ticket.__dict__,
+            "category": new_ticket.category.category_name
+        }
+    )
 
 
 def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
@@ -383,7 +397,7 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
         action_by=data.action_by,
         old_status=old_status.value if old_status else None,
         new_status=TicketStatus.ESCALATED,
-        action_taken=f"Ticket escalated & assigned to {assigned_to_name}"
+        action_taken=f"Ticket {ticket.ticket_no} escalated & assigned to {assigned_to_name}"
     )
     db.add(workflow_log)
 
@@ -399,20 +413,40 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
 def resolve_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
+
     if not ticket:
-        raise Exception("Ticket not found")
+        return error_response(
+            message=f"Ticket not found",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
 
     old_status = ticket.status
     ticket.status = TicketStatus.CLOSED
     ticket.closed_at = datetime.utcnow()
     ticket.updated_at = datetime.utcnow()
 
+    action_by_name = (
+        auth_db.query(Users.full_name)
+        .filter(Users.id == data.action_by)
+        .scalar()
+    )
+
+    # Comment Log
+    if data.comment:
+        new_comment = TicketComment(
+            ticket_id=ticket.id,
+            user_id=data.action_by,
+            comment_text=data.comment
+        )
+        db.add(new_comment)
+
     workflow = TicketWorkflow(
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status.value if old_status else None,
         new_status=TicketStatus.CLOSED,
-        action_taken=data.comment or "Ticket Resolved/Closed"
+        action_taken=f"Ticket {ticket.ticket_no} closed by {action_by_name}"
     )
     db.add(workflow)
 
@@ -443,6 +477,12 @@ def reopen_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     ticket.status = TicketStatus.REOPENED
     ticket.updated_at = datetime.utcnow()
 
+    action_by_name = (
+        auth_db.query(Users.full_name)
+        .filter(Users.id == data.action_by)
+        .scalar()
+    )
+
     if data.comment:
         new_comment = TicketComment(
             ticket_id=ticket.id,
@@ -456,7 +496,7 @@ def reopen_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
         action_by=data.action_by,
         old_status=old_status.value if old_status else None,
         new_status=TicketStatus.REOPENED,
-        action_taken="Ticket Reopened"
+        action_taken=f"Ticket {ticket.ticket_no} reopened by {action_by_name}"
     )
     db.add(workflow)
 

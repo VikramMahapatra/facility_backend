@@ -56,6 +56,7 @@ class TicketOut(BaseModel):
 class TicketFilterRequest(CommonQueryParams):
     status: Optional[str] = None
     space_id: Optional[UUID] = None
+    site_id: Optional[UUID] = None
 
 
 class TicketCreate(BaseModel):
@@ -68,6 +69,7 @@ class TicketCreate(BaseModel):
     title: Optional[UUID]
     description: str
     preferred_time: Optional[str] = None
+    request_type: str
 
 # For Comment/Reaction/Feedback ADD
 

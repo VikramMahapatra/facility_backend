@@ -66,7 +66,7 @@ class TicketCreate(BaseModel):
     tenant_id: Optional[UUID]
     category: Optional[str]
     category_id: Optional[UUID]
-    title: Optional[UUID]
+    title: Optional[str]
     description: str
     preferred_time: Optional[str] = None
     request_type: str

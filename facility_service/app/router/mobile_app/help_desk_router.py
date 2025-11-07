@@ -103,3 +103,14 @@ def return_ticket(
 ):
     request.action_by = current_user.user_id
     return tickets_crud.return_ticket(db, auth_db, request)
+
+
+@router.post("/ticket-onhold", response_model=None)
+def return_ticket(
+    request: TicketActionRequest,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    request.action_by = current_user.user_id
+    return tickets_crud.on_hold_ticket(db, auth_db, request)

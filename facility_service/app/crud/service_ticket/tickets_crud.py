@@ -81,6 +81,8 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
     else:
         base_query = db.query(Ticket).filter(*filters)
 
+    return base_query
+
 
 def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToken):
     """Get all tickets with pagination"""
@@ -199,6 +201,7 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
 
 
 def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: UserToken):
+    account_type = user.account_type.lower()
     # Create Ticket (defaults to OPEN)
     space = (
         session.query(Space)
@@ -214,8 +217,20 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
             http_status=400
         )
 
-    tenant_id = session.query(Tenant.id).filter(and_(
-        Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
+    tenant_id = None
+    title = None
+    category_id = None
+
+    if account_type == UserAccountType.ORGANIZATION:
+        tenant_id = data.tenant_id
+        title = data.title
+        category_id = data.category_id
+    else:
+        tenant_id = session.query(Tenant.id).filter(and_(
+            Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
+        title = f"{data.category} - {space.name}"
+        category_id = session.query(TicketCategory.id).filter(
+            TicketCategory.category_name == data.category).scalar()
 
     if not tenant_id:
         return error_response(
@@ -224,17 +239,12 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
             http_status=400
         )
 
-    category_id = session.query(TicketCategory.id).filter(
-        TicketCategory.category_name == data.category).scalar()
-
     if not category_id:
         return error_response(
             message=f"Invalid category",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
-
-    title = f"{data.category} - {space.name}"
 
     new_ticket = Ticket(
         org_id=space.org_id,
@@ -284,7 +294,7 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
             title="New Ticket Assigned",
             message=f"You have been assigned ticket {new_ticket.ticket_no}: {title}",
             posted_date=datetime.utcnow(),
-            priority=PriorityType.medium,
+            priority=PriorityType(new_ticket.priority),
             read=False,
             is_deleted=False
         )
@@ -376,7 +386,7 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
         title="Ticket Escalated",
         message=f"Ticket {ticket.ticket_no} have been escalated & assigned to you",
         posted_date=datetime.utcnow(),
-        priority=PriorityType.medium,
+        priority=PriorityType(ticket.priority),
         read=False,
         is_deleted=False
     )
@@ -450,6 +460,19 @@ def resolve_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     )
     db.add(workflow)
 
+    # Notification Log
+    notification = Notification(
+        user_id=ticket.tenant_id,
+        type=NotificationType.alert,
+        title="Ticket Closed",
+        message=f"Ticket {ticket.ticket_no} closed by {action_by_name}",
+        posted_date=datetime.utcnow(),
+        priority=PriorityType(ticket.priority),
+        read=False,
+        is_deleted=False
+    )
+    db.add(notification)
+
     db.commit()
     db.refresh(ticket)
 
@@ -500,11 +523,70 @@ def reopen_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     )
     db.add(workflow)
 
+    # Notification Log
+    notification = Notification(
+        user_id=ticket.assigned_to,
+        type=NotificationType.alert,
+        title="Ticket Reopened",
+        message=f"Ticket {ticket.ticket_no} reopened by {action_by_name}",
+        posted_date=datetime.utcnow(),
+        priority=PriorityType(ticket.priority),
+        read=False,
+        is_deleted=False
+    )
+    db.add(notification)
+
     db.commit()
     db.refresh(ticket)
     return success_response(
         data=True,
         message="Ticket reopened successfully"
+    )
+
+
+def on_hold_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
+    ticket = db.execute(select(Ticket).where(
+        Ticket.id == data.ticket_id)).scalar_one_or_none()
+    if not ticket:
+        raise Exception("Ticket not found")
+
+    old_status = ticket.status
+    ticket.status = TicketStatus.ON_HOLD
+    ticket.updated_at = datetime.utcnow()
+
+    action_by_name = (
+        auth_db.query(Users.full_name)
+        .filter(Users.id == data.action_by)
+        .scalar()
+    )
+
+    workflow = TicketWorkflow(
+        ticket_id=data.ticket_id,
+        action_by=data.action_by,
+        old_status=old_status.value if old_status else None,
+        new_status=TicketStatus.ON_HOLD,
+        action_taken=f"Ticket {ticket.ticket_no} put on hold by {action_by_name}"
+    )
+    db.add(workflow)
+
+    # Notification Log
+    notification = Notification(
+        user_id=ticket.tenant_id,
+        type=NotificationType.alert,
+        title="Ticket On hold",
+        message=f"Ticket {ticket.ticket_no} put on hold by {action_by_name}",
+        posted_date=datetime.utcnow(),
+        priority=PriorityType(ticket.priority),
+        read=False,
+        is_deleted=False
+    )
+    db.add(notification)
+
+    db.commit()
+    db.refresh(ticket)
+    return success_response(
+        data=True,
+        message="Ticket put on hold successfully"
     )
 
 

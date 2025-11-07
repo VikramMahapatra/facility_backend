@@ -201,6 +201,7 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
 
 
 def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: UserToken):
+    account_type = user.account_type.lower()
     # Create Ticket (defaults to OPEN)
     space = (
         session.query(Space)
@@ -216,8 +217,20 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
             http_status=400
         )
 
-    tenant_id = session.query(Tenant.id).filter(and_(
-        Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
+    tenant_id = None
+    title = None
+    category_id = None
+
+    if account_type == UserAccountType.ORGANIZATION:
+        tenant_id = data.tenant_id
+        title = data.title
+        category_id = data.category_id
+    else:
+        tenant_id = session.query(Tenant.id).filter(and_(
+            Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
+        title = f"{data.category} - {space.name}"
+        category_id = session.query(TicketCategory.id).filter(
+            TicketCategory.category_name == data.category).scalar()
 
     if not tenant_id:
         return error_response(
@@ -226,17 +239,12 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
             http_status=400
         )
 
-    category_id = session.query(TicketCategory.id).filter(
-        TicketCategory.category_name == data.category).scalar()
-
     if not category_id:
         return error_response(
             message=f"Invalid category",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
-
-    title = f"{data.category} - {space.name}"
 
     new_ticket = Ticket(
         org_id=space.org_id,

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from sqlalchemy import and_, func
 from auth_service.app.models.users import Users
+from shared.config import Settings
 from shared.enums import UserAccountType
 from ...schemas.system.notifications_schemas import NotificationType, PriorityType
 from ...models.system.notifications import Notification
@@ -27,6 +28,8 @@ from shared.app_status_code import AppStatusCode
 from shared.json_response_helper import error_response, success_response
 
 from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest, TicketOut
+from facility_service.util.mail_service import EmailClient
+from shared.config import settings
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
@@ -278,6 +281,11 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
     assigned_to = sla.default_contact if sla else None
 
     if assigned_to:
+        assigned_to_name = (
+            auth_db.query(Users.full_name)
+            .filter(Users.id == assigned_to)
+            .scalar()
+        )
         new_ticket.assigned_to = assigned_to
 
         assignment_log = TicketAssignment(
@@ -312,6 +320,40 @@ def create_ticket(session: Session, auth_db: Session, data: TicketCreate, user: 
 
     session.commit()
     session.refresh(new_ticket)
+    #email
+    mailer = EmailClient(
+    smtp_host=settings.SMTP_HOST,
+    smtp_port=settings.SMTP_PORT,
+    username=settings.SMTP_USERNAME,
+    password=settings.SMTP_PASSWORD,
+    use_ssl=settings.SMTP_USE_SSL
+    )
+
+    mailer.send_email(
+        sender=settings.EMAIL_SENDER,
+        recipients=["chiranjibi.das@zentrixel.com", "vikram.mahapatra@zentrixel.com","bhushan.dhonge@zentrixel.com","prachibangre100@gmail.com","sagar.kale@zentrixel.co.in" ],
+        subject="Welcome from Zentrixel FMS",
+        text_body="Hello, This is testing mail .",
+        # html_body="<h2 style='color:blue'>Hello, This is testing mail</h2>",
+        html_body = f"""
+                <html>
+                <body>
+                    <p>Hello Team,</p>
+
+                    <p>The Status of the ticket is {TicketStatus.OPEN.value} and it is assigned to {assigned_to_name} </b>.<br>
+                The ticket number is <b>{new_ticket.ticket_no}</b>.This ticket is created by {created_by_name}.</p>
+
+                    <p>Regards,<br>
+                    Zentrixel IT Systems</p>
+
+                    <hr>
+                    <small>This is an automated email; please do not reply.</small>
+                </body>
+                </html>
+                """
+
+        # attachments=["/path/to/file1.pdf", "/path/to/imae.png"]
+    )
     return TicketOut.model_validate(
         {
             **new_ticket.__dict__,

@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     AUTH_DB_NAME: str = os.getenv("AUTH_DB_NAME")
     FACILITY_DB_NAME: str = os.getenv("FACILITY_DB_NAME")
 
+    # Email Configuration FOR TICKETS CHANGES 
+    SMTP_HOST: str | None = os.getenv("SMTP_HOST")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", 587))
+    SMTP_USERNAME: str | None = os.getenv("SMTP_USERNAME")
+    SMTP_PASSWORD: str | None = os.getenv("SMTP_PASSWORD")
+    SMTP_USE_SSL: bool = os.getenv("SMTP_USE_SSL", "False").lower() == "true"
+    EMAIL_SENDER: str = os.getenv("EMAIL_SENDER", "noreply@sales-arm.com")
+
     class Config:
         env_file = ".env"   # 👈 important
         env_file_encoding = "utf-8"

@@ -27,7 +27,7 @@ from shared.app_status_code import AppStatusCode
 from shared.json_response_helper import error_response, success_response
 
 from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest, TicketOut
-
+from facility_service.util.mail_service import EmailClient
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
     if (current_user.account_type in (UserAccountType.ORGANIZATION, UserAccountType.STAFF)):

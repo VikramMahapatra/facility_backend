@@ -15,11 +15,13 @@ class GoogleAuthRequest(BaseModel):
 # -------- Mobile --------
 
 class MobileRequest(BaseModel):
-    mobile: str
+    mobile: Optional[str] = None
+    email: Optional[EmailStr] = None
 
 
 class OTPVerify(BaseModel):
-    mobile: str
+    mobile: Optional[str] = None
+    email: Optional[EmailStr] = None
     otp: str
 
 

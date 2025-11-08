@@ -30,8 +30,12 @@ from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeed
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
-    if (current_user.account_type in (UserAccountType.ORGANIZATION, UserAccountType.STAFF)):
+    account_type = current_user.account_type.lower()
+    if (account_type in (UserAccountType.ORGANIZATION, UserAccountType.STAFF)):
         filters = [Ticket.org_id == current_user.org_id]
+
+        if account_type == UserAccountType.STAFF:
+            filters.append(Ticket.assigned_to == current_user.user_id)
     else:
         tenant_id = db.query(Tenant.id).filter(and_(
             Tenant.user_id == current_user.user_id, Tenant.is_deleted == False)).scalar()
@@ -40,7 +44,7 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
     if params.site_id:
         filters.append(Ticket.site_id == params.site_id)
 
-    if params.space_id:
+    if params.space_id and account_type != UserAccountType.STAFF:
         filters.append(Ticket.space_id == params.space_id)
 
     if params.status and params.status.lower() != "all":
@@ -84,7 +88,7 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
     return base_query
 
 
-def get_tickets(background_tasks: BackgroundTasks, db: Session, params: TicketFilterRequest, current_user: UserToken):
+def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToken):
     """Get all tickets with pagination"""
 
     base_query = build_ticket_filters(db, params, current_user)
@@ -332,7 +336,7 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
     )
 
 
-def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
+def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
     # Fetch ticket
     ticket = db.execute(
         select(Ticket).where(Ticket.id == data.ticket_id)
@@ -345,7 +349,7 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
             http_status=400
         )
 
-    if not ticket.can_escalate:
+    if not ticket.can_escalate or ticket.created_by != data.action_by:
         return error_response(
             message=f"Not authorize to perform this action",
             status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
@@ -369,15 +373,15 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     ticket.assigned_to = sla.escalation_contact
     ticket.updated_at = datetime.utcnow()
 
-    assigned_to_name = (
+    assigned_to_user = (
         auth_db.query(Users.full_name)
         .filter(Users.id == sla.escalation_contact)
         .scalar()
     )
 
-    if not assigned_to_name:
+    if not assigned_to_user:
         return error_response(
-            message="User doesnt exist in the system",
+            message="Assigned user doesnt exist in the system",
             status_code=str(AppStatusCode.USER_USERNAME_IS_NOTREGISTERED),
             http_status=400
         )
@@ -385,11 +389,10 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     # Assignment Log
     assignment_log = TicketAssignment(
         ticket_id=ticket.id,
-        assigned_from=data.action_by,
+        assigned_from=sla.default_contact,
         assigned_to=sla.escalation_contact,
         reason=data.comment
     )
-    db.add(assignment_log)
 
     # Notification Log
     notification = Notification(
@@ -402,16 +405,6 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
         read=False,
         is_deleted=False
     )
-    db.add(notification)
-
-    # Comment Log
-    if data.comment:
-        new_comment = TicketComment(
-            ticket_id=ticket.id,
-            user_id=data.action_by,
-            comment_text=data.comment
-        )
-        db.add(new_comment)
 
     # Workflow Log
     workflow_log = TicketWorkflow(
@@ -419,12 +412,37 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
         action_by=data.action_by,
         old_status=old_status.value if old_status else None,
         new_status=TicketStatus.ESCALATED,
-        action_taken=f"Ticket {ticket.ticket_no} escalated & assigned to {assigned_to_name}"
+        action_taken=f"Ticket {ticket.ticket_no} escalated & assigned to {assigned_to_user}"
     )
-    db.add(workflow_log)
 
+    objects_to_add = [assignment_log, notification, workflow_log]
+
+    # Comment Log
+    if data.comment:
+        objects_to_add.append(TicketComment(
+            ticket_id=ticket.id,
+            user_id=data.action_by,
+            comment_text=data.comment
+        ))
+
+    db.add_all(objects_to_add)
     db.commit()
     db.refresh(ticket)
+
+    # email
+    recipient_ids = [
+        data.action_by,
+        sla.escalation_contact,
+        sla.default_contact
+    ]
+    emails = (
+        auth_db.query(Users.email)
+        .filter(Users.id.in_(recipient_ids))
+        .all()
+    )
+    email_list = [e[0] for e in emails]
+    send_ticket_escalated_email(
+        background_tasks, db, ticket, assigned_to_user, email_list)
 
     return success_response(
         data=True,
@@ -432,7 +450,7 @@ def escalate_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     )
 
 
-def resolve_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
+def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
 
@@ -443,50 +461,75 @@ def resolve_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
             http_status=400
         )
 
+    if ticket.status == TicketStatus.CLOSED or ticket.assigned_to != data.action_by:
+        return error_response(
+            message=f"Not authorize to perform this action",
+            status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
+            http_status=400
+        )
+
     old_status = ticket.status
     ticket.status = TicketStatus.CLOSED
     ticket.closed_at = datetime.utcnow()
     ticket.updated_at = datetime.utcnow()
 
-    action_by_name = (
-        auth_db.query(Users.full_name)
+    created_by_user = (
+        auth_db.query(Users)
+        .filter(Users.id == ticket.created_by)
+        .scalar()
+    )
+
+    action_by_user = (
+        auth_db.query(Users)
         .filter(Users.id == data.action_by)
         .scalar()
     )
 
-    # Comment Log
-    if data.comment:
-        new_comment = TicketComment(
-            ticket_id=ticket.id,
-            user_id=data.action_by,
-            comment_text=data.comment
-        )
-        db.add(new_comment)
-
-    workflow = TicketWorkflow(
+    workflow_log = TicketWorkflow(
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status.value if old_status else None,
         new_status=TicketStatus.CLOSED,
-        action_taken=f"Ticket {ticket.ticket_no} closed by {action_by_name}"
+        action_taken=f"Ticket {ticket.ticket_no} closed by {action_by_user.full_name}"
     )
-    db.add(workflow)
 
     # Notification Log
     notification = Notification(
         user_id=ticket.tenant_id,
         type=NotificationType.alert,
         title="Ticket Closed",
-        message=f"Ticket {ticket.ticket_no} closed by {action_by_name}",
+        message=f"Ticket {ticket.ticket_no} closed by {action_by_user.full_name}",
         posted_date=datetime.utcnow(),
         priority=PriorityType(ticket.priority),
         read=False,
         is_deleted=False
     )
-    db.add(notification)
 
+    objects_to_add = [notification, workflow_log]
+
+    # Comment Log
+    if data.comment:
+        objects_to_add.append(TicketComment(
+            ticket_id=ticket.id,
+            user_id=data.action_by,
+            comment_text=data.comment
+        ))
+
+    db.add_all(objects_to_add)
     db.commit()
     db.refresh(ticket)
+
+    # email
+    context = {
+        "created_by_name": created_by_user.full_name,
+        "closed_by": action_by_user.full_name,
+        "ticket_no": ticket.ticket_no,
+        "feedback": data.comment if data.comment else 'NA'
+    }
+
+    email_list = [created_by_user.email, action_by_user.email]
+
+    send_ticket_closed_email(background_tasks, db, context, email_list)
 
     return success_response(
         data=True,
@@ -494,14 +537,12 @@ def resolve_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     )
 
 
-def reopen_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
+def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
         raise Exception("Ticket not found")
-    if ticket.status != TicketStatus.CLOSED:
-        raise Exception("Only closed tickets can be reopened")
-    if not ticket.can_reopen:
+    if not ticket.can_reopen or ticket.created_by != data.action_by:
         return error_response(
             message=f"Not authorize to perform this action",
             status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
@@ -556,7 +597,7 @@ def reopen_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     )
 
 
-def on_hold_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
+def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
@@ -602,7 +643,7 @@ def on_hold_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
     )
 
 
-def return_ticket(db: Session, auth_db: Session, data: TicketActionRequest):
+def return_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
@@ -720,4 +761,36 @@ def send_ticket_created_email(background_tasks, db, new_ticket, created_by_user,
         recipients=recipients,
         subject=f"New Ticket Created - {new_ticket.ticket_no}",
         context=context,
+    )
+
+
+def send_ticket_escalated_email(background_tasks, db, ticket, assigned_to_name, recipients):
+    email_helper = EmailHelper()
+
+    context = {
+        "priority": ticket.priority,
+        "assigned_to": assigned_to_name,
+        "ticket_no": ticket.ticket_no
+    }
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="ticket_escalated",
+        recipients=recipients,
+        subject=f"Ticket Escalated - {ticket.ticket_no}",
+        context=context,
+    )
+
+
+def send_ticket_closed_email(background_tasks, db, data, recipients):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="ticket_closed",
+        recipients=recipients,
+        subject=f"Ticket Escalated - {data["ticket_no"]}",
+        context=data,
     )

@@ -66,53 +66,58 @@ def get_complaint_details(
 @router.post("/ticket-escalation", response_model=None)
 def escalate_ticket(
     request: TicketActionRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.escalate_ticket(db, auth_db, request)
+    return tickets_crud.escalate_ticket(background_tasks, db, auth_db, request)
 
 
 @router.post("/ticket-resolved", response_model=None)
 def resolved_ticket(
     request: TicketActionRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.resolve_ticket(db, auth_db, request)
+    return tickets_crud.resolve_ticket(background_tasks, db, auth_db, request)
 
 
 @router.post("/ticket-reopened", response_model=None)
 def reopen_ticket(
     request: TicketActionRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.reopen_ticket(db, auth_db, request)
+    return tickets_crud.reopen_ticket(background_tasks, db, auth_db, request)
 
 
 @router.post("/ticket-returned", response_model=None)
 def return_ticket(
     request: TicketActionRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.return_ticket(db, auth_db, request)
+    return tickets_crud.return_ticket(background_tasks, db, auth_db, request)
 
 
 @router.post("/ticket-onhold", response_model=None)
-def return_ticket(
+def on_hold_ticket(
     request: TicketActionRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.on_hold_ticket(db, auth_db, request)
+    return tickets_crud.on_hold_ticket(background_tasks, db, auth_db, request)

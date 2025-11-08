@@ -30,7 +30,7 @@ def create_ticket_route(
 
 
 @router.get("/all", response_model=None)
-def get_tickets_route(
+def get_tickets(
     params: TicketFilterRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)

@@ -254,12 +254,15 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
     else:
         ticket_filters = [Ticket.org_id == user.org_id]
 
+        if account_type == UserAccountType.STAFF:
+            ticket_filters.append(Ticket.assigned_to == user.user_id)
+
     # ------------------------------
     # Ticket filters
     # ------------------------------
     if params.site_id:
         ticket_filters.append(Ticket.site_id == params.site_id)
-    if params.space_id:
+    if params.space_id and user.account_type != UserAccountType.STAFF:
         ticket_filters.append(Ticket.space_id == params.space_id)
 
     ticket_query = db.query(Ticket).filter(*ticket_filters)

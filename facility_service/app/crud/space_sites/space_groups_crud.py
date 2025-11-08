@@ -5,8 +5,8 @@ from typing import List, Optional, Dict
 from sqlalchemy import or_, func, literal
 from sqlalchemy.orm import Session
 
-from shared.app_status_code import AppStatusCode
-from shared.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.space_sites.space_groups import SpaceGroup
@@ -69,24 +69,24 @@ def get_space_response(sg: SpaceGroup) -> SpaceGroupOut:
     )
 
 
-
-
 def create_space_group(db: Session, group: SpaceGroupCreate):
     # Check for duplicate space group name within the same site (case-insensitive)
     existing_group = db.query(SpaceGroup).filter(
         SpaceGroup.site_id == group.site_id,
         SpaceGroup.is_deleted == False,
-        func.lower(SpaceGroup.name) == func.lower(group.name)  # Case-insensitive name within same site
+        # Case-insensitive name within same site
+        func.lower(SpaceGroup.name) == func.lower(group.name)
     ).first()
-    
+
     if existing_group:
-        site_name = db.query(Site.name).filter(Site.id == group.site_id).scalar()
+        site_name = db.query(Site.name).filter(
+            Site.id == group.site_id).scalar()
         return error_response(
             message=f"Space group with name '{group.name}' already exists in site '{site_name}'",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
-    
+
     # Create space group - exclude group_members field
     data = group.model_dump(exclude={"group_members"})
     sg = SpaceGroup(**data)
@@ -94,6 +94,7 @@ def create_space_group(db: Session, group: SpaceGroupCreate):
     db.commit()
     db.refresh(sg)
     return sg
+
 
 def update_space_group(db: Session, group: SpaceGroupUpdate):
     sg = get_space_group_by_id(db, group.id)
@@ -103,30 +104,33 @@ def update_space_group(db: Session, group: SpaceGroupUpdate):
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=404
         )
-    
-    update_data = group.model_dump(exclude_unset=True, exclude={"group_members"})
-    
+
+    update_data = group.model_dump(
+        exclude_unset=True, exclude={"group_members"})
+
     # Check for name duplicates within same site (if name is being updated)
     if 'name' in update_data:
         existing_group = db.query(SpaceGroup).filter(
             SpaceGroup.site_id == sg.site_id,  # Same site
             SpaceGroup.id != group.id,  # Different space group
             SpaceGroup.is_deleted == False,
-            func.lower(SpaceGroup.name) == func.lower(update_data.get('name', ''))  # Case-insensitive
+            func.lower(SpaceGroup.name) == func.lower(
+                update_data.get('name', ''))  # Case-insensitive
         ).first()
-        
+
         if existing_group:
-            site_name = db.query(Site.name).filter(Site.id == sg.site_id).scalar()
+            site_name = db.query(Site.name).filter(
+                Site.id == sg.site_id).scalar()
             return error_response(
                 message=f"Space group with name '{update_data['name']}' already exists in site '{site_name}'",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
-    
+
     # Update space group
     for key, value in update_data.items():
         setattr(sg, key, value)
-    
+
     try:
         db.commit()
         db.refresh(sg)
@@ -145,11 +149,11 @@ def delete_space_group(db: Session, group_id: str) -> Dict:
     sg = get_space_group_by_id(db, group_id)
     if not sg:
         return {"success": False, "message": "Space group not found"}
-    
+
     # Soft delete
     sg.is_deleted = True
     db.commit()
-    
+
     return {"success": True, "message": "Space group deleted successfully"}
 
 

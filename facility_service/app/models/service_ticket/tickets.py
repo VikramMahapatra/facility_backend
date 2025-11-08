@@ -8,8 +8,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
 from ...enum.ticket_service_enum import TicketStatus
-from shared.database import Base
-from shared.database import Base  # adjust the import to your Base
+from shared.core.database import Base
+from shared.core.database import Base  # adjust the import to your Base
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import Sequence
 from sqlalchemy import event
@@ -103,7 +103,7 @@ class Ticket(Base):
 
         elapsed_mins = (datetime.now(timezone.utc) -
                         self.closed_date).total_seconds() / 60
-        return elapsed_mins <= sla.reopen_time_mins  # can reopen within 24 hours
+        return elapsed_mins >= sla.reopen_time_mins
 
     @property
     def is_overdue(self) -> bool:
@@ -126,7 +126,6 @@ class Ticket(Base):
 
         elapsed_mins = (datetime.now(timezone.utc) -
                         self.created_at).total_seconds() / 60
-
         return elapsed_mins > sla.resolution_time_mins
 
 

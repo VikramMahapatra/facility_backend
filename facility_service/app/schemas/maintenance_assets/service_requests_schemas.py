@@ -2,14 +2,14 @@ from datetime import datetime
 from uuid import UUID
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 # ----------------- Base -----------------
 class ServiceRequestBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
-    sr_no:Optional[str] = None
+    sr_no: Optional[str] = None
     space_id: UUID
     requester_kind: Optional[str] = None
     requester_id: Optional[UUID] = None
@@ -28,7 +28,7 @@ class ServiceRequestBase(BaseModel):
 class ServiceRequestCreate(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
-   
+
     space_id: UUID
     requester_kind: Optional[str] = None
     requester_id: Optional[UUID] = None
@@ -43,11 +43,15 @@ class ServiceRequestCreate(BaseModel):
     model_config = {"from_attributes": True}
 
 # ----------------- Update -----------------
+
+
 class ServiceRequestUpdate(ServiceRequestBase):
     id: UUID
     pass
 
 # ----------------- Out -----------------
+
+
 class ServiceRequestOut(ServiceRequestBase):
     id: UUID
     requester_id: Optional[UUID] = None
@@ -55,12 +59,14 @@ class ServiceRequestOut(ServiceRequestBase):
     sr_no: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-     
+
     class Config:
         from_attributes = True
         arbitrary_types_allowed = True
 
 # ----------------- Request -----------------
+
+
 class ServiceRequestRequest(CommonQueryParams):
     category: Optional[str] = None
     status: Optional[str] = None

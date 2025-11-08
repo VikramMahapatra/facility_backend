@@ -1,25 +1,26 @@
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from shared.database import get_auth_db as get_db
-from shared.schemas import Lookup, UserToken
+from shared.core.database import get_auth_db as get_db
+from shared.core.schemas import Lookup, UserToken
 
 from ...schemas.access_control.user_management_schemas import (
-    UserListResponse, UserOut, UserCreate, UserRequest, 
+    UserListResponse, UserOut, UserCreate, UserRequest,
     UserUpdate
 )
 from ...crud.access_control import user_management_crud as crud
 
-from shared.auth import validate_current_token
+from shared.core.auth import validate_current_token
 
 
-router = APIRouter(prefix="/api/users", tags=["user management"], dependencies=[Depends(validate_current_token)])
+router = APIRouter(prefix="/api/users",
+                   tags=["user management"], dependencies=[Depends(validate_current_token)])
 
 
 @router.get("/all", response_model=UserListResponse)
 def get_all_users(
-    params: UserRequest = Depends(), 
-    db: Session = Depends(get_db), 
+    params: UserRequest = Depends(),
+    db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.get_users(db, current_user.org_id, params)
@@ -35,8 +36,8 @@ def update_user(user: UserUpdate, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=UserOut)
 def create_user(
-    user: UserCreate, 
-    db: Session = Depends(get_db), 
+    user: UserCreate,
+    db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     try:
@@ -51,10 +52,10 @@ def create_user(
 @router.delete("/{user_id}", response_model=Dict[str, Any])
 def delete_user(user_id: str, db: Session = Depends(get_db)):
     result = crud.delete_user(db, user_id)
-    
+
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
-    
+
     return result
 
 

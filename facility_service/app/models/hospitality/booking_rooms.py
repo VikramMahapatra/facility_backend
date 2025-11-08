@@ -3,7 +3,7 @@ from sqlalchemy import Column, String, Numeric, JSON, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
 
 
 class BookingRoom(Base):

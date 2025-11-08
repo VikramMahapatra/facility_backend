@@ -1,15 +1,18 @@
 from pydantic import BaseModel
 from uuid import UUID
 from typing import List, Optional
-from shared.empty_string_model_wrapper import EmptyStringModel
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
+
 
 class NotificationSettingBase(BaseModel):
     label: str
     description: str
     enabled: bool = True
 
+
 class NotificationSettingUpdate(BaseModel):
     enabled: bool
+
 
 class NotificationSettingOut(NotificationSettingBase):
     id: UUID
@@ -17,6 +20,7 @@ class NotificationSettingOut(NotificationSettingBase):
 
     class Config:
         from_attributes = True
+
 
 class NotificationSettingListResponse(EmptyStringModel):
     settings: List[NotificationSettingOut]

@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from shared.schemas import JsonOutResult
-from shared.app_status_code import AppStatusCode
+from shared.core.schemas import JsonOutResult
+from shared.utils.app_status_code import AppStatusCode
 import traceback
 
 

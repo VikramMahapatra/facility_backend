@@ -3,15 +3,17 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
-from shared.database import Base
+from shared.core.database import Base
 
 
 class StaffSite(Base):
     __tablename__ = "staff_sites"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True,
+                default=uuid.uuid4, index=True)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False)
-    site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"), nullable=False)
+    site_id = Column(UUID(as_uuid=True), ForeignKey(
+        "sites.id"), nullable=False)
     user_id = Column(UUID(as_uuid=True))
     is_deleted = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

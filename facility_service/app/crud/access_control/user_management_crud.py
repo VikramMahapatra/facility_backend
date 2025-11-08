@@ -6,7 +6,7 @@ from auth_service.app.models.roles import Roles
 from auth_service.app.models.users import Users
 from auth_service.app.models.userroles import UserRoles
 from ...schemas.access_control.role_management_schemas import RoleOut
-from shared.schemas import Lookup
+from shared.core.schemas import Lookup
 from ...enum.access_control_enum import UserRoleEnum, UserStatusEnum
 
 from ...schemas.access_control.user_management_schemas import (

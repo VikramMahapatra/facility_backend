@@ -3,10 +3,10 @@ from typing import Dict, List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token
-from shared.json_response_helper import success_response
-from shared.schemas import Lookup, UserToken
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token
+from shared.helpers.json_response_helper import success_response
+from shared.core.schemas import Lookup, UserToken
 
 from ...schemas.leasing_tenants.tenants_schemas import (
     TenantListResponse,
@@ -25,6 +25,8 @@ router = APIRouter(
 )
 
 # ------------all
+
+
 @router.get("/all", response_model=TenantListResponse)
 def tenants_all(
     params: TenantRequest = Depends(),
@@ -34,6 +36,8 @@ def tenants_all(
     return crud.get_all_tenants(db, current_user.org_id, params)
 
 # Overview
+
+
 @router.get("/overview", response_model=TenantOverviewResponse)
 def tenants_overview(
     db: Session = Depends(get_db),
@@ -42,6 +46,8 @@ def tenants_overview(
     return crud.get_tenants_overview(db, current_user.org_id)
 
 # ----------------- Create Tenant -----------------
+
+
 @router.post("/", response_model=None)
 def create_tenant_endpoint(
     tenant: TenantCreate,
@@ -68,9 +74,11 @@ def delete_tenant_route(
     tenant_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):return crud.delete_tenant(db, tenant_id)
+): return crud.delete_tenant(db, tenant_id)
 
 # ----------------  Type Lookup ----------------
+
+
 @router.get("/type-lookup", response_model=List[Lookup])
 def tenant_type_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -79,6 +87,8 @@ def tenant_type_lookup_endpoint(
     return crud.tenant_type_lookup(db, current_user.org_id)
 
 # ----------------  Status Lookup ----------------
+
+
 @router.get("/status-lookup", response_model=List[Lookup])
 def tenant_status_lookup_endpoint(
     db: Session = Depends(get_db),

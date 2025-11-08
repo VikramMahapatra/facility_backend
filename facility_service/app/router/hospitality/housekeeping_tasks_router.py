@@ -3,22 +3,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
 
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token  
-from shared.schemas import Lookup, UserToken
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token
+from shared.core.schemas import Lookup, UserToken
 from ...schemas.hospitality.housekeeping_tasks_schemas import (
-    HousekeepingTaskCreate, 
-    HousekeepingTaskUpdate, 
-    HousekeepingTaskOut, 
+    HousekeepingTaskCreate,
+    HousekeepingTaskUpdate,
+    HousekeepingTaskOut,
     HousekeepingTaskRequest,
     HousekeepingTaskListResponse,
     HousekeepingTaskOverview
 )
 from ...crud.hospitality import housekeeping_tasks_crud as crud
 
-router = APIRouter(prefix="/api/housekeeping-tasks", tags=[" Housekeeping Tasks Management"])
-
-
+router = APIRouter(prefix="/api/housekeeping-tasks",
+                   tags=[" Housekeeping Tasks Management"])
 
 
 # -------------------- CRUD Endpoints --------------------
@@ -34,12 +33,10 @@ def get_housekeeping_tasks_endpoint(
 # -------------------- Overview --------------------
 @router.get("/overview", response_model=HousekeepingTaskOverview)
 def get_housekeeping_overview_endpoint(
-    db: Session = Depends(get_db),  
+    db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_housekeeping_overview(db, current_user.org_id)  
-
-
+    return crud.get_housekeeping_overview(db, current_user.org_id)
 
 
 @router.post("/", response_model=HousekeepingTaskOut)
@@ -59,12 +56,13 @@ def update_housekeeping_task_endpoint(
 ):
     return crud.update_housekeeping_task(db, task_update, current_user)
 
+
 @router.delete("/{task_id}")
 def delete_housekeeping_task_endpoint(
     task_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):return crud.delete_housekeeping_task(db, task_id, current_user.org_id)
+): return crud.delete_housekeeping_task(db, task_id, current_user.org_id)
 
 
 # ----------------filter(DB)  Status  ----------------
@@ -76,6 +74,8 @@ def housekeeping_tasks_filter_status_lookup_endpoint(
     return crud.housekeeping_tasks_filter_status_lookup(db, current_user.org_id)
 
 # -------------------- Status Lookup --------------------
+
+
 @router.get("/status-lookup", response_model=list[Lookup])
 def housekeeping_tasks_priority_lookup_endpoint(
     db: Session = Depends(get_db),

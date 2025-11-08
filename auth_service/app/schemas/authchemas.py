@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator
 from typing import Annotated, Literal, Optional, Union
-from shared.empty_string_model_wrapper import EmptyStringModel
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from ..schemas.userschema import UserResponse
 
 AllowedRole = Literal["manager", "admin", "superadmin", "user", "default"]

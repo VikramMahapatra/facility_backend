@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
 from ...enum.ticket_service_enum import TicketStatus
-from shared.database import Base
+from shared.core.database import Base
 
 
 class TicketWorkflow(Base):

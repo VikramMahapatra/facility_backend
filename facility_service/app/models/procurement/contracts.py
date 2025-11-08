@@ -4,7 +4,8 @@ from sqlalchemy import Boolean, Column, DateTime, Numeric, String, Date, Foreign
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
+
 
 class Contract(Base):
     __tablename__ = "contracts"
@@ -21,10 +22,12 @@ class Contract(Base):
     documents = Column(JSONB)
     status = Column(String(16), default="active")
     value = Column(Numeric, default=0)  # <--- Add this line
-    is_deleted = Column(Boolean, default=False, nullable=False)  # Add this line
+    is_deleted = Column(Boolean, default=False,
+                        nullable=False)  # Add this line
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(DateTime(timezone=True),
+                        server_default=func.now(), onupdate=func.now())
 
     vendor = relationship("Vendor", back_populates="contracts")
-    site = relationship("Site", back_populates="contracts")  
+    site = relationship("Site", back_populates="contracts")

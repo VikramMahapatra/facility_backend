@@ -5,9 +5,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ...schemas.mobile_app.home_schemas import HomeDetailsResponse, MasterDetailResponse
-from shared.database import get_facility_db as get_db, get_auth_db
-from shared.auth import validate_token, validate_current_token
-from shared.schemas import MasterQueryParams, UserToken
+from shared.core.database import get_facility_db as get_db, get_auth_db
+from shared.core.auth import validate_token, validate_current_token
+from shared.core.schemas import MasterQueryParams, UserToken
 from ...crud.mobile_app import home_crud
 
 

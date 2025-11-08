@@ -9,7 +9,7 @@ from ...models.leasing_tenants.tenants import Tenant
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 
 from ...enum.leasing_tenants_enum import LeaseKind, LeaseStatus
-from shared.schemas import Lookup
+from shared.core.schemas import Lookup
 
 from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.sites import Site
@@ -238,19 +238,19 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
 
     # ✅ Soft delete the lease
     obj.is_deleted = True
-    
+
     # ✅ ALSO soft delete all associated charges
     db.query(LeaseCharge).filter(
         LeaseCharge.lease_id == lease_id,
         LeaseCharge.is_deleted == False
     ).update({"is_deleted": True})
-    
+
     db.commit()
-    
+
     # ✅ Return appropriate message
     if active_charges_count > 0:
         return {
-            "success": True, 
+            "success": True,
             "message": f"Lease and {active_charges_count} associated charge(s) deleted successfully"
         }
     else:
@@ -259,6 +259,8 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
 # ----------------------------------------------------
 # ✅ Lookup helpers
 # ----------------------------------------------------
+
+
 def lease_lookup(org_id: UUID, db: Session):
     leases = (
         db.query(Lease)

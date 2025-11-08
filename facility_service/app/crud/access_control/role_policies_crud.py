@@ -8,7 +8,7 @@ from auth_service.app.models.roles import Roles
 from auth_service.app.models.rolepolicy import RolePolicy
 from auth_service.app.models.userroles import UserRoles
 from facility_service.app.schemas.access_control.role_management_schemas import RoleCreate
-from shared.schemas import Lookup
+from shared.core.schemas import Lookup
 
 from ...schemas.access_control.role_policies_schemas import (
     RolePolicyCreate, RolePolicyOut, RolePolicyRequest, RolePolicyUpdate

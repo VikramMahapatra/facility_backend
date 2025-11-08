@@ -2,11 +2,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from shared.database import get_facility_db as get_db
+from shared.core.database import get_facility_db as get_db
 from ...schemas.space_sites.orgs_schemas import OrgOut, OrgCreate, OrgUpdate
 from ...crud.space_sites import orgs_crud as crud_orgs
-from shared.auth import validate_current_token
-from shared.schemas import UserToken
+from shared.core.auth import validate_current_token
+from shared.core.schemas import UserToken
 
 
 router = APIRouter(

@@ -1,7 +1,7 @@
 # auth_service/app/models/org.py
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import UUID
-from shared.database import Base
+from shared.core.database import Base
 import uuid
 
 

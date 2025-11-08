@@ -2,7 +2,7 @@ from sqlalchemy import Column, String, Boolean, DateTime, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from datetime import datetime
-from shared.database import Base
+from shared.core.database import Base
 
 
 class Attachment(Base):
@@ -16,4 +16,5 @@ class Attachment(Base):
     file_data = Column(LargeBinary, nullable=False)
     is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow,
+                        onupdate=datetime.utcnow)

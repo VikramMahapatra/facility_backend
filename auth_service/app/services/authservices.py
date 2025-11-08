@@ -7,12 +7,12 @@ from datetime import datetime, timedelta, timezone
 from auth_service.app.models.user_login_session import UserLoginSession
 from ..models.refresh_token import RefreshToken
 from ..schemas.userschema import UserCreate
-from shared.app_status_code import AppStatusCode
-from shared.config import settings
+from shared.utils.app_status_code import AppStatusCode
+from shared.core.config import settings
 from google.oauth2 import id_token
-from shared.database import get_auth_db as get_db
-from shared import auth
-from shared.json_response_helper import error_response
+from shared.core.database import get_auth_db as get_db
+from shared.core import auth
+from shared.helpers.json_response_helper import error_response
 from ..models.users import Users
 from ..schemas import authchemas
 from ..services import userservices

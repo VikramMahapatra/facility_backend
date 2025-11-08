@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from shared.database import get_auth_db, get_facility_db
-from shared.auth import validate_token
-from shared.schemas import UserToken
+from shared.core.database import get_auth_db, get_facility_db
+from shared.core.auth import validate_token
+from shared.core.schemas import UserToken
 from ...schemas.mobile_app.user_profile_schemas import UserProfileResponse
 from ...crud.mobile_app.user_profile_crud import get_user_profile_data
 
@@ -12,6 +12,7 @@ router = APIRouter(
     tags=["User Profile"],
     dependencies=[Depends(validate_token)]
 )
+
 
 @router.get("/getUserProfile", response_model=UserProfileResponse)
 def get_user_profile(

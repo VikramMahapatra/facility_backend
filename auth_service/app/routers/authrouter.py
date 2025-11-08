@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, Request
 from requests import Session
-from shared import auth
-from shared.database import get_auth_db as get_db, get_facility_db
-from shared.schemas import UserToken
+from shared.core import auth
+from shared.core.database import get_auth_db as get_db, get_facility_db
+from shared.core.schemas import UserToken
 from ..schemas import authchemas
 from ..services import authservices
 

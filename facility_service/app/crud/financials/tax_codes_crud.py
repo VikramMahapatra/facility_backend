@@ -7,8 +7,8 @@ from sqlalchemy import func, cast, or_, case, literal, Numeric
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.dialects.postgresql import UUID
 
-from shared.app_status_code import AppStatusCode
-from shared.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response
 from ...models.financials.tax_reports import TaxReport
 from ...models.financials.tax_codes import TaxCode
 from ...schemas.financials.tax_codes_schemas import TaxCodeCreate, TaxCodeOut, TaxCodeUpdate, TaxCodesRequest, TaxCodesResponse, TaxReturnOut
@@ -140,19 +140,19 @@ def create_tax_code(db: Session, tax_code: TaxCodeCreate):
             func.lower(TaxCode.code) == func.lower(tax_code.code)
         )
     ).first()
-    
+
     if existing_tax:
         return error_response(
             message=f"Tax code '{tax_code.code}' already exists in this organization",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
-    
+
     db_tax = TaxCode(**tax_code.model_dump())
     db.add(db_tax)
     db.commit()
     db.refresh(db_tax)
-    
+
     # Use your Pydantic model for serialization
     return TaxCodeOut.model_validate(db_tax)
 
@@ -162,7 +162,7 @@ def update_tax_code(db: Session, tax_code: TaxCodeUpdate):
     db_tax = get_code_by_id(db, tax_code.id)
     if not db_tax:
         return None
-    
+
     # Case-insensitive validation: Check if code is being updated and causes duplicates
     if hasattr(tax_code, 'code') and tax_code.code is not None and tax_code.code.lower() != db_tax.code.lower():
         existing_tax = db.query(TaxCode).filter(
@@ -172,20 +172,20 @@ def update_tax_code(db: Session, tax_code: TaxCodeUpdate):
                 TaxCode.id != tax_code.id
             )
         ).first()
-        
+
         if existing_tax:
             return error_response(
                 message=f"Tax code '{tax_code.code}' already exists in this organization",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
-    
+
     # Your original update logic
     for k, v in tax_code.dict(exclude_unset=True).items():
         setattr(db_tax, k, v)
     db.commit()
     db.refresh(db_tax)
-    
+
     # Use your Pydantic model for serialization
     return TaxCodeOut.model_validate(db_tax)
 

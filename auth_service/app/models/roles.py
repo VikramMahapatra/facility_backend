@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, String, Text, Boolean
-from shared.database import AuthBase
+from shared.core.database import AuthBase
 from sqlalchemy.orm import relationship
 
 

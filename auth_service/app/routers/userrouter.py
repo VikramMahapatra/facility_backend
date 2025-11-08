@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, File, UploadFile, Request
 from requests import Session
 from auth_service.app.schemas import authchemas
-from shared.database import get_auth_db, get_facility_db
+from shared.core.database import get_auth_db, get_facility_db
 from ..schemas import userschema
 from ..services import userservices
 

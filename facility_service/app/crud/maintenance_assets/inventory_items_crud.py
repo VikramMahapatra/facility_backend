@@ -6,12 +6,13 @@ import uuid
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from shared.app_status_code import AppStatusCode
-from shared.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response
 from ...models.maintenance_assets.inventory_items import InventoryItem
 from ...schemas.maintenance_assets.inventory_items_schemas import InventoryItemCreate, InventoryItemOut, InventoryItemUpdate
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
+
 
 def get_inventory_items(db: Session, org_id: UUID, skip: int = 0, limit: int = 100) -> List[InventoryItem]:
     # ✅ Filter by org_id and exclude deleted items
@@ -30,13 +31,13 @@ def get_inventory_item_by_id(db: Session, item_id: str, org_id: UUID) -> Optiona
     ).first()
 
 
-
 def create_inventory_item(db: Session, item: InventoryItemCreate, org_id: UUID) -> InventoryItem:
     # Check for duplicate name (case-insensitive) within the same organization
     existing_item = db.query(InventoryItem).filter(
         InventoryItem.org_id == org_id,
         InventoryItem.is_deleted == False,
-        func.lower(InventoryItem.name) == func.lower(item.name)  # Case-insensitive
+        func.lower(InventoryItem.name) == func.lower(
+            item.name)  # Case-insensitive
     ).first()
 
     if existing_item:
@@ -49,16 +50,16 @@ def create_inventory_item(db: Session, item: InventoryItemCreate, org_id: UUID) 
     # ✅ Use org_id from token instead of request body
     item_data = item.model_dump()
     item_data['org_id'] = org_id  # Override with token org_id
-    
+
     try:
         db_item = InventoryItem(**item_data)
         db.add(db_item)
         db.commit()
         db.refresh(db_item)
-        
+
         # Convert to InventoryItemOut for proper serialization
         return InventoryItemOut.model_validate(db_item)
-        
+
     except IntegrityError as e:
         db.rollback()
         return error_response(
@@ -66,6 +67,7 @@ def create_inventory_item(db: Session, item: InventoryItemCreate, org_id: UUID) 
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
+
 
 def update_inventory_item(db: Session, item: InventoryItemUpdate, org_id: UUID) -> Optional[InventoryItem]:
     # ✅ Get the item and verify it belongs to the organization
@@ -84,7 +86,7 @@ def update_inventory_item(db: Session, item: InventoryItemUpdate, org_id: UUID) 
 
     # Extract update data
     update_data = item.model_dump(exclude_unset=True, exclude={'id'})
-    
+
     # Only validate if name is being updated
     if 'name' in update_data:
         # Check for duplicate name (case-insensitive, exclude current item)
@@ -92,7 +94,8 @@ def update_inventory_item(db: Session, item: InventoryItemUpdate, org_id: UUID) 
             InventoryItem.org_id == org_id,
             InventoryItem.id != item.id,
             InventoryItem.is_deleted == False,
-            func.lower(InventoryItem.name) == func.lower(update_data['name'])  # Case-insensitive
+            func.lower(InventoryItem.name) == func.lower(
+                update_data['name'])  # Case-insensitive
         ).first()
 
         if existing_item:
@@ -109,10 +112,10 @@ def update_inventory_item(db: Session, item: InventoryItemUpdate, org_id: UUID) 
     try:
         db.commit()
         db.refresh(db_item)
-        
+
         # Convert to InventoryItemOut for proper serialization
         return InventoryItemOut.model_validate(db_item)
-        
+
     except IntegrityError as e:
         db.rollback()
         return error_response(

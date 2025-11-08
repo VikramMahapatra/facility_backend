@@ -2,7 +2,7 @@ from datetime import datetime, date
 from uuid import UUID
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 # ----------------- Base -----------------
@@ -13,8 +13,8 @@ class RatePlanBase(BaseModel):
     meal_plan: Optional[str] = None
     policies: Optional[dict] = None
     taxes: Optional[dict] = None
-    status: Optional[str] = "active" 
-    
+    status: Optional[str] = "active"
+
     model_config = {"from_attributes": True}
 
 
@@ -58,6 +58,4 @@ class RatePlanOverview(BaseModel):
     avgBasePlans: float
     corporatePlans: int
 
-    model_config = {"from_attributes": True} 
-
-    
+    model_config = {"from_attributes": True}

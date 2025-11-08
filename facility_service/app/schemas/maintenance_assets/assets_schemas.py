@@ -4,13 +4,13 @@ from typing import List, Optional, Dict
 from uuid import UUID
 from datetime import date, datetime
 
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class AssetBase(BaseModel):
-    org_id: Optional[UUID]=None
+    org_id: Optional[UUID] = None
     site_id: UUID
-    space_id: Optional[UUID]=None
+    space_id: Optional[UUID] = None
     category_id: Optional[UUID]
     tag: str
     name: str
@@ -20,7 +20,7 @@ class AssetBase(BaseModel):
     purchase_date: Optional[date]
     warranty_expiry: Optional[date]
     cost: Optional[float]
-    attributes: Optional[Dict]=None
+    attributes: Optional[Dict] = None
     status: Optional[str] = "active"
 
 

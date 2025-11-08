@@ -12,7 +12,7 @@ from facility_service.app.models.space_sites.spaces import Space
 
 from ...schemas.mobile_app.help_desk_schemas import ComplaintDetailsResponse, ComplaintOut, ComplaintResponse, ComplaintCreate
 from ...models.maintenance_assets.service_request import ServiceRequest
-from shared.schemas import UserToken
+from shared.core.schemas import UserToken
 from sqlalchemy.orm import joinedload
 
 

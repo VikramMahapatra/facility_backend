@@ -1,8 +1,8 @@
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from shared.database import get_auth_db as get_db
-from shared.schemas import Lookup, UserToken
+from shared.core.database import get_auth_db as get_db
+from shared.core.schemas import Lookup, UserToken
 
 from ...schemas.access_control.role_management_schemas import (
     RoleListResponse, RoleLookup, RoleOut, RoleCreate, RoleRequest,
@@ -10,7 +10,7 @@ from ...schemas.access_control.role_management_schemas import (
 )
 from ...crud.access_control import role_management_crud as crud
 
-from shared.auth import validate_current_token
+from shared.core.auth import validate_current_token
 
 
 router = APIRouter(prefix="/api/roles",
@@ -37,6 +37,7 @@ def create_role(
         return crud.create_role(db, role)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.put("/", response_model=RoleOut)
 def update_role(role: RoleUpdate, db: Session = Depends(get_db)):

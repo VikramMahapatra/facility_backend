@@ -2,9 +2,11 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 # ---------------- Base Vendor ----------------
+
+
 class VendorBase(BaseModel):
     name: str
     gst_vat_id: Optional[str] = None
@@ -17,7 +19,7 @@ class VendorBase(BaseModel):
 # ---------------- Overview Response ----------------
 class VendorOverviewResponse(BaseModel):
     totalVendors: int
-    activeVendors: int  
+    activeVendors: int
     avgRating: float
     Categories: int
 
@@ -35,7 +37,6 @@ class VendorCreate(VendorBase):
     org_id: UUID
 
 
-
 class VendorUpdate(VendorBase):
     id: UUID
 
@@ -44,8 +45,8 @@ class VendorUpdate(VendorBase):
 class VendorOut(VendorBase):
     id: UUID
     org_id: UUID
-    created_at: Optional[datetime] = None  
-    updated_at: Optional[datetime] = None  
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {
         "from_attributes": True
@@ -57,4 +58,3 @@ class VendorListResponse(BaseModel):
     total: int
 
     model_config = {"from_attributes": True}
-

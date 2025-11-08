@@ -4,10 +4,10 @@ from uuid import UUID
 from typing import List, Optional
 
 
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token, UserToken
-from shared.json_response_helper import success_response
-from shared.schemas import Lookup
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token, UserToken
+from shared.helpers.json_response_helper import success_response
+from shared.core.schemas import Lookup
 
 from ...schemas.maintenance_assets.work_order_schemas import (
     WorkOrderListResponse,
@@ -28,14 +28,17 @@ router = APIRouter(
     dependencies=[Depends(validate_current_token)]
 )
 
+
 @router.get("/all", response_model=WorkOrderListResponse)
 def get_work_orders(
-    params : WorkOrderRequest = Depends(),
-    db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)) :
+        params: WorkOrderRequest = Depends(),
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
     return crud.get_work_orders(db, current_user.org_id, params)
 
 # ---------------- Work Orders Overview ----------------
+
+
 @router.get("/overview", response_model=WorkOrderOverviewResponse)
 def overview(
     params: WorkOrderRequest = Depends(),
@@ -46,15 +49,16 @@ def overview(
 
 
 @router.put("/{work_order_id}", response_model=None)
-def update_work_order(  
+def update_work_order(
     work_order: WorkOrderUpdate,
     db: Session = Depends(get_db)
 ):
     return crud.update_work_order(db, work_order)
 
+
 @router.post("/", response_model=WorkOrderOut)
 def create_work_order_endpoint(
-    work_order: WorkOrderCreate, 
+    work_order: WorkOrderCreate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
@@ -62,14 +66,18 @@ def create_work_order_endpoint(
     return crud.create_work_order(db, work_order, current_user.org_id)
 
 # ---------------- Delete Work Order (Soft Delete) ----------------
+
+
 @router.delete("/{work_order_id}")
 def delete_work_order_soft(
-    work_order_id: str, 
+    work_order_id: str,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ): return crud.delete_work_order_soft(db, work_order_id, current_user.org_id)
-       
+
 # ---------------- Filter Work Orders by Status ----------------
+
+
 @router.get("/filter-status-lookup", response_model=List[Lookup])
 def work_orders_filter_status_lookup(
     db: Session = Depends(get_db),
@@ -86,6 +94,8 @@ def work_orders_status_lookup(
     return crud.work_orders_status_lookup(db, current_user.org_id)
 
 # ---------------- Filter Work Orders by Priority ----------------
+
+
 @router.get("/filter-priority-lookup", response_model=List[Lookup])
 def work_order_filter_priority_lookup(
     db: Session = Depends(get_db),

@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.users import Users
 from auth_service.app.models.userroles import UserRoles
-from shared.schemas import Lookup
+from shared.core.schemas import Lookup
 
 from ...schemas.access_control.role_management_schemas import (
     RoleCreate, RoleOut, RoleRequest, RoleUpdate
@@ -58,9 +58,10 @@ def create_role(db: Session, role: RoleCreate):
         Roles.org_id == role.org_id,
         Roles.is_deleted == False
     ).first()
-    
+
     if existing_role:
-        raise ValueError(f"Role with name '{role.name}' already exists in this organization")
+        raise ValueError(
+            f"Role with name '{role.name}' already exists in this organization")
 
     role_data = role.model_dump()
     db_role = Roles(**role_data)
@@ -77,7 +78,7 @@ def update_role(db: Session, role: RoleUpdate):
         return None
 
     update_data = role.model_dump(exclude_unset=True)
-    
+
     # Check if name is being updated and if it would create a duplicate (case-insensitive)
     if 'name' in update_data and update_data['name'] != db_role.name:
         existing_role = db.query(Roles).filter(
@@ -86,9 +87,10 @@ def update_role(db: Session, role: RoleUpdate):
             Roles.id != role.id,  # Exclude current role from check
             Roles.is_deleted == False
         ).first()
-        
+
         if existing_role:
-            raise ValueError(f"Role with name '{update_data['name']}' already exists in this organization")
+            raise ValueError(
+                f"Role with name '{update_data['name']}' already exists in this organization")
 
     for key, value in update_data.items():
         setattr(db_role, key, value)

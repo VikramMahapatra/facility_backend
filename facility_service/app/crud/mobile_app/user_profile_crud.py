@@ -2,12 +2,13 @@ from auth_service.app.models.users import Users as AuthUser
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.space_sites.spaces import Space
 from ...models.space_sites.buildings import Building
-from ...models.leasing_tenants.leases import Lease  # ✅ Import the Lease model (not Document)
+# ✅ Import the Lease model (not Document)
+from ...models.leasing_tenants.leases import Lease
 from ...schemas.mobile_app.user_profile_schemas import UserProfileResponse
 
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional
-from shared.schemas import UserToken
+from shared.core.schemas import UserToken
 
 
 def get_user_profile_data(

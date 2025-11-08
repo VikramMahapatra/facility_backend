@@ -5,7 +5,7 @@ from sqlalchemy.orm import relationship
 from ...models.hospitality.rate_plans import RatePlan
 import uuid
 from sqlalchemy import JSON
-from shared.database import Base
+from shared.core.database import Base
 
 
 class Site(Base):
@@ -54,7 +54,8 @@ class Site(Base):
     contracts = relationship("Contract", back_populates="site")
     tickets = relationship("Ticket", back_populates="site")
 
-    staff_sites = relationship("StaffSite", back_populates="site", cascade="all, delete-orphan")
-     # Back-reference to ticket categories
+    staff_sites = relationship(
+        "StaffSite", back_populates="site", cascade="all, delete-orphan")
+    # Back-reference to ticket categories
     ticket_categories = relationship("TicketCategory", back_populates="site")
     sla_policies = relationship("SlaPolicy", back_populates="site")

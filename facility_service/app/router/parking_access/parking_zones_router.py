@@ -3,12 +3,12 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from shared.json_response_helper import success_response
+from shared.helpers.json_response_helper import success_response
 from ...schemas.parking_access.parking_zone_schemas import ParkingZoneCreate, ParkingZoneOverview, ParkingZoneRequest, ParkingZoneUpdate, ParkingZonesResponse
 from ...crud.parking_access import parking_zone_crud as crud
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token  # for dependencies
-from shared.schemas import Lookup, UserToken
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token  # for dependencies
+from shared.core.schemas import Lookup, UserToken
 from uuid import UUID
 
 router = APIRouter(
@@ -18,6 +18,7 @@ router = APIRouter(
 )
 
 # -----------------------------------------------------------------
+
 
 @router.get("/all", response_model=ParkingZonesResponse)
 def get_parking_zones(
@@ -42,19 +43,21 @@ def create_parking_zone(
     zone.org_id = current_user.org_id
     return crud.create_parking_zone(db, zone)
 
+
 @router.put("/", response_model=None)
 def update_parking_zone(
     zone: ParkingZoneUpdate,  # ✅ Changed: Remove zone_id parameter, get ID from zone body
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)  # ✅ Added authentication
-):  
-    return crud.update_parking_zone(db, zone) 
+    current_user: UserToken = Depends(
+        validate_current_token)  # ✅ Added authentication
+):
+    return crud.update_parking_zone(db, zone)
 
 
 @router.delete("/{zone_id}", response_model=None)
 def delete_parking_zone(
-    zone_id: str, 
+    zone_id: str,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)  # ✅ Added authentication
-):return crud.delete_parking_zone(db, zone_id)
-       
+    current_user: UserToken = Depends(
+        validate_current_token)  # ✅ Added authentication
+): return crud.delete_parking_zone(db, zone_id)

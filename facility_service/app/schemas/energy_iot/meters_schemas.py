@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from uuid import UUID
 from typing import Optional, List
 
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class MeterBase(BaseModel):

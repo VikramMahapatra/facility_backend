@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 
 from ...schemas.system.notifications_schemas import NotificationOut
 from ...models.system.notifications import Notification
-from shared.schemas import CommonQueryParams, Lookup
+from shared.core.schemas import CommonQueryParams, Lookup
 
 from ...schemas.access_control.role_management_schemas import (
     RoleCreate, RoleOut, RoleRequest, RoleUpdate
@@ -25,9 +25,11 @@ def get_all_notifications(db: Session, user_id: str, params: CommonQueryParams):
 
     total = notification_query.with_entities(
         func.count(Notification.id.distinct())).scalar()
-    notifications = notification_query.offset(params.skip).limit(params.limit).all()
+    notifications = notification_query.offset(
+        params.skip).limit(params.limit).all()
 
-    result = [NotificationOut.model_validate(notification) for notification in notifications]
+    result = [NotificationOut.model_validate(
+        notification) for notification in notifications]
     return {"notifications": result, "total": total}
 
 
@@ -36,13 +38,14 @@ def mark_notification_as_read(db: Session, notification_id: str):
         Notification.id == notification_id,
         Notification.is_deleted == False
     ).first()
-    
+
     if not notification:
         return None
 
     notification.read = True
     db.commit()
     return True
+
 
 def mark_all_notifications_as_read(db: Session, user_id: str):
     db.query(Notification).filter(
@@ -59,13 +62,14 @@ def delete_notification(db: Session, notification_id: str):
         Notification.id == notification_id,
         Notification.is_deleted == False
     ).first()
-    
+
     if not notification:
         return None
 
     notification.is_deleted = True
     db.commit()
     return True
+
 
 def clear_all_notifications(db: Session, user_id: str):
     """Soft delete all notifications for a user"""

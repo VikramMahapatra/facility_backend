@@ -4,9 +4,9 @@ from sqlalchemy.orm import Session
 
 from ...schemas.parking_access.access_event_schemas import AccessEventOverview, AccessEventRequest, AccessEventsResponse
 from ...crud.parking_access import access_event_crud as crud
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token  # for dependicies
-from shared.schemas import Lookup, UserToken
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token  # for dependicies
+from shared.core.schemas import Lookup, UserToken
 from uuid import UUID
 
 router = APIRouter(

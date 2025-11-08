@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import TIMESTAMP, Boolean, Column, Integer, String, Text, func
-from shared.database import AuthBase
+from shared.core.database import AuthBase
 from sqlalchemy.orm import relationship
 
 
@@ -17,7 +17,9 @@ class Users(AuthBase):
     account_type = Column(String(20), nullable=False)
     status = Column(String(16), nullable=False, default="active")
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True),
+                        server_default=func.now(), onupdate=func.now())
     is_deleted = Column(Boolean, default=False)  # ✅ Soft delete field
-    
-    roles = relationship("Roles", secondary="user_roles", back_populates="users")
+
+    roles = relationship("Roles", secondary="user_roles",
+                         back_populates="users")

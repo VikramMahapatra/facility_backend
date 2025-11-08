@@ -2,7 +2,8 @@ import uuid
 from sqlalchemy import Column, String, TIMESTAMP, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
+
 
 class Folio(Base):
     __tablename__ = "folios"
@@ -17,7 +18,9 @@ class Folio(Base):
     created_at = Column(TIMESTAMP)
 
     payer = relationship("Guest", back_populates="folios")
-     # ✅ Relationships
+    # ✅ Relationships
     booking = relationship("Booking", back_populates="folios")
-    charges = relationship("FolioCharge", back_populates="folio", cascade="all, delete")
-    payments = relationship("FolioPayment", back_populates="folio", cascade="all, delete")
+    charges = relationship(
+        "FolioCharge", back_populates="folio", cascade="all, delete")
+    payments = relationship(
+        "FolioPayment", back_populates="folio", cascade="all, delete")

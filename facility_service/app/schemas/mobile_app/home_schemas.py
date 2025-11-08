@@ -4,9 +4,11 @@ from typing import Optional, List, Any
 from datetime import date
 from pydantic import BaseModel
 
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
+
 from ...schemas.system.notifications_schemas import NotificationOut
 from ...schemas.leases_schemas import LeaseOut
-from shared.schemas import CommonQueryParams, EmptyStringModel
+from shared.core.schemas import CommonQueryParams
 
 
 class SpaceDetailResponse(EmptyStringModel):

@@ -1,27 +1,27 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, cast, Text, case , and_
+from sqlalchemy import func, or_, cast, Text, case, and_
 from typing import Dict, List, Optional
 from datetime import date, datetime
 from sqlalchemy.dialects.postgresql import UUID
 
-from shared.schemas import Lookup
+from shared.core.schemas import Lookup
 from ...models.hospitality.rate_plans import RatePlan
 from ...models.hospitality.rates import Rate
 from ...schemas.hospitality.rate_plans_schemas import (
-    RatePlanCreate, RatePlanOut, RatePlanUpdate, RatePlanRequest, 
+    RatePlanCreate, RatePlanOut, RatePlanUpdate, RatePlanRequest,
     RatePlanListResponse, RatePlanOverview
 )
-from ...enum.hospitality_enum import RatePlansMealPlan ,RatePlanStatus
+from ...enum.hospitality_enum import RatePlansMealPlan, RatePlanStatus
 
 from sqlalchemy import and_, func
-from shared.app_status_code import AppStatusCode
-from shared.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response
 
 
 # ----------------- Overview Calculation -----------------
 def get_rate_plan_overview(
-    db: Session, 
-    org_id: UUID, 
+    db: Session,
+    org_id: UUID,
     site_id: UUID = None
 ) -> RatePlanOverview:
     # Base filters for organization and optional site
@@ -42,7 +42,7 @@ def get_rate_plan_overview(
         .filter(Rate.date >= today)\
         .distinct()\
         .subquery()
-    
+
     active_plans = db.query(func.count(RatePlan.id))\
         .join(active_plans_subquery, RatePlan.id == active_plans_subquery.c.rate_plan_id)\
         .filter(*filters)\
@@ -54,7 +54,7 @@ def get_rate_plan_overview(
         .filter(
             *filters,
             Rate.date >= today
-        )\
+    )\
         .scalar() or 0
 
     # 4. CORPORATE PLANS - Count plans with corporate-related names
@@ -66,7 +66,7 @@ def get_rate_plan_overview(
                 func.lower(RatePlan.name).like('%corporate%'),
                 func.lower(RatePlan.name).like('%company%')
             )
-        )\
+    )\
         .scalar() or 0
 
     return {
@@ -101,6 +101,7 @@ def Rate_Plan_Status_lookup(org_id: UUID, db: Session):
 
 # --------------------Rate_Plan_MealPlan_lookup(hardcode) by Enum -----------
 
+
 def Rate_Plan_Meal_Plan_lookup(org_id: UUID, db: Session):
     return [
         Lookup(id=meal_plan.value, name=meal_plan.name.capitalize())
@@ -113,7 +114,8 @@ def build_rate_plan_filters(org_id: UUID, params: RatePlanRequest):
     filters = [RatePlan.org_id == org_id]
 
     if params.meal_plan and params.meal_plan.lower() != "all":
-        filters.append(func.lower(RatePlan.meal_plan) == params.meal_plan.lower())
+        filters.append(func.lower(RatePlan.meal_plan)
+                       == params.meal_plan.lower())
 
     if params.search:
         search_term = f"%{params.search}%"
@@ -160,7 +162,6 @@ def get_rate_plan(db: Session, rate_plan_id: UUID, org_id: UUID) -> Optional[Rat
     ).first()
 
 
-
 # ----------------- Create Rate Plan -----------------
 def create_rate_plan(db: Session, org_id: UUID, rate_plan: RatePlanCreate) -> RatePlan:
     # Case-insensitive validation: Check for duplicate rate plan name in same SITE
@@ -171,14 +172,14 @@ def create_rate_plan(db: Session, org_id: UUID, rate_plan: RatePlanCreate) -> Ra
             func.lower(RatePlan.name) == func.lower(rate_plan.name)
         )
     ).first()
-    
+
     if existing_plan:
         return error_response(
             message=f"Rate plan with name '{rate_plan.name}' already exists in this site",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
-    
+
     db_rate_plan = RatePlan(
         org_id=org_id,
         **rate_plan.dict(exclude={"org_id"})
@@ -212,7 +213,7 @@ def update_rate_plan(db: Session, rate_plan_update: RatePlanUpdate, current_user
             RatePlan.id != rate_plan_update.id
         )
     ).first()
-    
+
     if existing_plan:
         return error_response(
             message=f"Rate plan with name '{target_name}' already exists in this site",
@@ -236,10 +237,10 @@ def delete_rate_plan(db: Session, rate_plan_id: UUID, org_id: UUID) -> bool:
         RatePlan.id == rate_plan_id,
         RatePlan.org_id == org_id
     ).first()
-    
+
     if not db_rate_plan:
         return False
-        
+
     db.delete(db_rate_plan)
     db.commit()
     return True

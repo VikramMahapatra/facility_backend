@@ -3,7 +3,7 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime
 from uuid import UUID
 
-from shared.schemas import CommonQueryParams, Lookup
+from shared.core.schemas import CommonQueryParams, Lookup
 
 
 class RoleBase(BaseModel):

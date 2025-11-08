@@ -2,13 +2,13 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from shared.app_status_code import AppStatusCode
-from shared.database import get_facility_db as get_db
-from shared.json_response_helper import error_response, success_response
-from shared.schemas import Lookup, UserToken
+from shared.utils.app_status_code import AppStatusCode
+from shared.core.database import get_facility_db as get_db
+from shared.helpers.json_response_helper import error_response, success_response
+from shared.core.schemas import Lookup, UserToken
 from ...schemas.procurement.contracts_schemas import ContractListResponse, ContractOut, ContractCreate, ContractOverviewResponse, ContractRequest, ContractUpdate
 from ...crud.procurement import contracts_crud as crud
-from shared.auth import validate_current_token
+from shared.core.auth import validate_current_token
 from uuid import UUID
 
 
@@ -16,6 +16,8 @@ router = APIRouter(prefix="/api/contracts",
                    tags=["contracts"], dependencies=[Depends(validate_current_token)])
 
 # ---------------- List all contracts ----------------
+
+
 @router.get("/all", response_model=ContractListResponse)
 def get_contracts(
     params: ContractRequest = Depends(),
@@ -25,6 +27,8 @@ def get_contracts(
     return crud.get_contracts(db, current_user.org_id, params)
 
 # -----overview----
+
+
 @router.get("/overview", response_model=ContractOverviewResponse)
 def overview(
     params: ContractRequest = Depends(),
@@ -51,7 +55,7 @@ def update_contract_endpoint(
     contract: ContractUpdate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-): 
+):
     return crud.update_contract(db, contract)
 
 
@@ -61,15 +65,18 @@ def delete_contract(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-   
+
     return crud.delete_contract(db, contract_id, current_user.org_id)
 # ----------status_lookup-------------
+
+
 @router.get("/filter-status-lookup", response_model=List[Lookup])
 def contracts_filter_status_lookup_endpoint(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.contracts_filter_status_lookup(db, current_user.org_id)
+
 
 @router.get("/status-lookup", response_model=List[Lookup])
 def contracts_status_lookup_endpoint(
@@ -79,6 +86,8 @@ def contracts_status_lookup_endpoint(
     return crud.contracts_status_lookup(db, current_user.org_id)
 
 # ----------filter type_lookup-------------
+
+
 @router.get("/filter-type-lookup", response_model=List[Lookup])
 def contracts_type_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -87,6 +96,8 @@ def contracts_type_lookup_endpoint(
     return crud.contracts_filter_type_lookup(db, current_user.org_id)
 
 # ----------type_lookup-------------
+
+
 @router.get("/type-lookup", response_model=List[Lookup])
 def contracts_type_lookup_endpoint(
     db: Session = Depends(get_db),

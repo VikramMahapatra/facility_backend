@@ -5,7 +5,7 @@ from typing import Any, Dict, Generic, List, Optional, TypeVar, Union, get_args,
 from uuid import UUID
 from datetime import datetime
 
-from shared.empty_string_model_wrapper import EmptyStringModel
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 
 # Shared properties
 T = TypeVar("T")

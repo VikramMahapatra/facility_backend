@@ -2,8 +2,8 @@
 from fastapi import HTTPException
 from typing import Any
 
-from shared.app_status_code import AppStatusCode
-from shared.schemas import JsonOutResult
+from shared.utils.app_status_code import AppStatusCode
+from shared.core.schemas import JsonOutResult
 
 
 def success_response(data: Any, message: str = "Success", status_code: str = AppStatusCode.DATA_RETRIEVED_SUCCESSFULLY):

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -9,9 +9,9 @@ from ...schemas.service_ticket.tickets_schemas import TicketActionRequest, Ticke
 from ...crud.service_ticket import tickets_crud
 
 from ...schemas.mobile_app.help_desk_schemas import ComplaintCreate, ComplaintDetailsRequest, ComplaintDetailsResponse, ComplaintOut, ComplaintResponse
-from shared.database import get_auth_db, get_facility_db as get_db
-from shared.auth import validate_current_token
-from shared.schemas import MasterQueryParams, UserToken
+from shared.core.database import get_auth_db, get_facility_db as get_db
+from shared.core.auth import validate_current_token
+from shared.core.schemas import MasterQueryParams, UserToken
 from ...crud.mobile_app import help_desk_crud
 
 
@@ -35,11 +35,13 @@ def get_complaints(
 @router.post("/raisecomplaint", response_model=ComplaintResponse)
 def raise_complaint(
     complaint_data: ComplaintCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return tickets_crud.create_ticket(
+        background_tasks,
         db,
         auth_db,
         complaint_data,

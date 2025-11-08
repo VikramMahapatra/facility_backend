@@ -7,11 +7,11 @@ from jose import JWTError, jwt
 from auth_service.app.models.refresh_token import RefreshToken
 from auth_service.app.models.user_login_session import UserLoginSession
 from auth_service.app.models.users import Users
-from shared.app_status_code import AppStatusCode
-from shared.config import settings
-from shared.json_response_helper import error_response
-from shared.schemas import UserToken
-from shared.database import get_auth_db as get_db
+from shared.utils.app_status_code import AppStatusCode
+from shared.core.config import settings
+from shared.helpers.json_response_helper import error_response
+from shared.core.schemas import UserToken
+from shared.core.database import get_auth_db as get_db
 from sqlalchemy.orm import Session
 
 security = HTTPBearer()

@@ -2,7 +2,7 @@ from datetime import date, datetime
 from uuid import UUID
 from typing import List, Optional
 from pydantic import BaseModel
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 # ----------------- Base -----------------
@@ -11,7 +11,7 @@ class HousekeepingTaskBase(BaseModel):
     site_id: UUID
     space_id: UUID
     status: Optional[str] = "dirty"
-    priority: Optional[str] = "medium"  
+    priority: Optional[str] = "medium"
     task_date: date
     notes: Optional[str] = None
     assigned_to: Optional[UUID] = None
@@ -43,7 +43,7 @@ class HousekeepingTaskOut(HousekeepingTaskBase):
 # ----------------- Request -----------------
 class HousekeepingTaskRequest(CommonQueryParams):
     status: Optional[str] = None
-    priority: Optional[str] = None  
+    priority: Optional[str] = None
     task_date: Optional[date] = None
     site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
@@ -66,4 +66,3 @@ class HousekeepingTaskOverview(BaseModel):
     avgTime: float
 
     model_config = {"from_attributes": True}
-

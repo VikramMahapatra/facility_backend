@@ -3,7 +3,7 @@ from sqlalchemy import Column, String, Text, ForeignKey, TIMESTAMP, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
 
 
 class Comment(Base):
@@ -23,9 +23,11 @@ class Comment(Base):
 
     # Actual comment text
     content = Column(Text, nullable=False)
-       # Reply support (self-referencing)
-    parent_comment_id = Column(UUID(as_uuid=True), ForeignKey("comments.id"), nullable=True)
-    parent_comment = relationship("Comment", remote_side=[id], backref="replies")
+    # Reply support (self-referencing)
+    parent_comment_id = Column(
+        UUID(as_uuid=True), ForeignKey("comments.id"), nullable=True)
+    parent_comment = relationship(
+        "Comment", remote_side=[id], backref="replies")
 
     # Reactions (likes, emojis, etc.)
     comment_reaction = Column(Text, nullable=True)

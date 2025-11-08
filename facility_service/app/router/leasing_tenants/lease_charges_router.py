@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeListResponse, LeaseChargeRequest, LeaseChargeUpdate, LeaseChargesOverview
 from ...crud.leasing_tenants import lease_charges_crud as crud
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token  # for dependicies
-from shared.schemas import Lookup, UserToken
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token  # for dependicies
+from shared.core.schemas import Lookup, UserToken
 from uuid import UUID
 
 router = APIRouter(
@@ -42,7 +42,7 @@ def create_lease_charge(
 
 @router.put("/", response_model=None)
 def update_lease_charge(data: LeaseChargeUpdate, db: Session = Depends(get_db)):
-    return  crud.update_lease_charge(db, data)
+    return crud.update_lease_charge(db, data)
 
 
 @router.delete("/{id}", response_model=None)
@@ -51,6 +51,7 @@ def delete_lease_charge(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ): return crud.delete_lease_charge(db, id, current_user.org_id)
+
 
 @router.get("/month-lookup", response_model=List[Lookup])
 def get_month_lookup(

@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, func, literal, or_
 from uuid import UUID
 
-from shared.app_status_code import AppStatusCode
-from shared.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response
 
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from facility_service.app.models.space_sites.spaces import Space
@@ -14,7 +14,7 @@ from facility_service.app.models.space_sites.buildings import Building
 
 from ...schemas.leases_schemas import LeaseOut
 from ...enum.leasing_tenants_enum import TenantStatus, TenantType
-from shared.schemas import Lookup
+from shared.core.schemas import Lookup
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
 from ...models.leasing_tenants.leases import Lease
@@ -29,6 +29,7 @@ from ...schemas.leasing_tenants.tenants_schemas import (
 
 from fastapi import HTTPException, status
 # ------------------------------------------------------------
+
 
 def get_tenants_overview(db: Session, org_id) -> dict:
     # Total tenants - only non-deleted
@@ -87,8 +88,6 @@ def get_tenants_overview(db: Session, org_id) -> dict:
     }
 
 
-
-
 def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListResponse:
     # ------------------ Residential Query ------------------
     tenant_query = (
@@ -118,7 +117,8 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
     )
 
     if params.status and params.status.lower() != "all":
-        tenant_query = tenant_query.filter(func.lower(Tenant.status) == params.status.lower())
+        tenant_query = tenant_query.filter(
+            func.lower(Tenant.status) == params.status.lower())
 
     if params.search:
         search_term = f"%{params.search}%"
@@ -159,10 +159,12 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
     )
 
     if params.status and params.status.lower() != "all":
-        partner_query = partner_query.filter(func.lower(CommercialPartner.status) == params.status.lower())
+        partner_query = partner_query.filter(func.lower(
+            CommercialPartner.status) == params.status.lower())
 
     if params.search:
-        partner_query = partner_query.filter(CommercialPartner.legal_name.ilike(f"%{params.search}%"))
+        partner_query = partner_query.filter(
+            CommercialPartner.legal_name.ilike(f"%{params.search}%"))
 
     # ------------------ Final Query ------------------
     if params.type and params.type.lower() == "individual":
@@ -200,23 +202,27 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
 
             space_id = record.get("space_id")
             if space_id:
-                space = db.query(Space).filter(Space.id == space_id, Space.is_deleted == False).first()
+                space = db.query(Space).filter(
+                    Space.id == space_id, Space.is_deleted == False).first()
                 if space and space.building:
                     record["building_block_id"] = space.building_block_id
 
         else:
             contact = record.get("contact") or {}
             if contact.get("address") is None:
-                contact["address"] = {"line1": "", "line2": "", "city": "", "state": "", "pincode": ""}
+                contact["address"] = {
+                    "line1": "", "line2": "", "city": "", "state": "", "pincode": ""}
             record["contact_info"] = contact
 
             space_id = record.get("space_id")
             if space_id:
-                space = db.query(Space).filter(Space.id == space_id, Space.is_deleted == False).first()
+                space = db.query(Space).filter(
+                    Space.id == space_id, Space.is_deleted == False).first()
                 if space and space.building:
                     record["building_block_id"] = space.building_block_id
 
-        record["tenant_leases"] = get_tenant_leases(db, org_id, record.get("id"), record.get("tenant_type"))
+        record["tenant_leases"] = get_tenant_leases(
+            db, org_id, record.get("id"), record.get("tenant_type"))
         results.append(TenantOut.model_validate(record))
 
     return {"tenants": results, "total": total}
@@ -274,11 +280,13 @@ def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str, tenant_type: st
 # CRUD
 # ------------------------------------------------------------
 
+
 def get_tenant_by_id(db: Session, tenant_id: str) -> Optional[Tenant]:
     return db.query(Tenant).filter(
         Tenant.id == tenant_id,
         Tenant.is_deleted == False
     ).first()
+
 
 def get_commercial_partner_by_id(db: Session, partner_id: str) -> Optional[CommercialPartner]:
     return db.query(CommercialPartner).filter(
@@ -308,7 +316,8 @@ def create_tenant(db: Session, tenant: TenantCreate):
         existing_tenant_by_name = db.query(Tenant).filter(
             Tenant.site_id == tenant.site_id,
             Tenant.is_deleted == False,
-            func.lower(Tenant.name) == func.lower(tenant.name)  # Case-insensitive
+            func.lower(Tenant.name) == func.lower(
+                tenant.name)  # Case-insensitive
         ).first()
 
         if existing_tenant_by_name:
@@ -355,7 +364,8 @@ def create_tenant(db: Session, tenant: TenantCreate):
         existing_partner_by_name = db.query(CommercialPartner).filter(
             CommercialPartner.site_id == tenant.site_id,
             CommercialPartner.is_deleted == False,
-            func.lower(CommercialPartner.legal_name) == func.lower(legal_name)  # Case-insensitive
+            func.lower(CommercialPartner.legal_name) == func.lower(
+                legal_name)  # Case-insensitive
         ).first()
 
         if existing_partner_by_name:
@@ -417,7 +427,8 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 Tenant.site_id == db_tenant.site_id,
                 Tenant.id != tenant_id,
                 Tenant.is_deleted == False,
-                func.lower(Tenant.name) == func.lower(update_dict['name'])  # Case-insensitive
+                func.lower(Tenant.name) == func.lower(
+                    update_dict['name'])  # Case-insensitive
             ).first()
 
             if existing_tenant_by_name:
@@ -473,13 +484,15 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 )
 
         # Check for duplicate legal_name (case-insensitive) if being updated
-        new_legal_name = update_dict.get("legal_name") or update_dict.get("name")
+        new_legal_name = update_dict.get(
+            "legal_name") or update_dict.get("name")
         if new_legal_name and new_legal_name != db_partner.legal_name:
             existing_partner_by_name = db.query(CommercialPartner).filter(
                 CommercialPartner.site_id == db_partner.site_id,
                 CommercialPartner.id != tenant_id,
                 CommercialPartner.is_deleted == False,
-                func.lower(CommercialPartner.legal_name) == func.lower(new_legal_name)  # Case-insensitive
+                func.lower(CommercialPartner.legal_name) == func.lower(
+                    new_legal_name)  # Case-insensitive
             ).first()
 
             if existing_partner_by_name:
@@ -491,10 +504,13 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
 
         # Update commercial partner
         if db_partner:
-            db_partner.legal_name = update_dict.get("legal_name", db_partner.legal_name)
+            db_partner.legal_name = update_dict.get(
+                "legal_name", db_partner.legal_name)
             db_partner.type = update_dict.get("type", db_partner.type)
-            db_partner.space_id = update_dict.get("space_id", db_partner.space_id)
-            db_partner.contact = update_dict.get("contact_info") or db_partner.contact
+            db_partner.space_id = update_dict.get(
+                "space_id", db_partner.space_id)
+            db_partner.contact = update_dict.get(
+                "contact_info") or db_partner.contact
             db_partner.status = update_dict.get("status", db_partner.status)
             db_partner.updated_at = datetime.utcnow()
 
@@ -507,23 +523,24 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )
-    
-    
+
+
 # ----------------- Delete Tenant -----------------
 def delete_tenant(db: Session, tenant_id: UUID) -> Dict:
     """Delete tenant with automatic type detection - DELETES LEASES & CHARGES TOO"""
-    
+
     # Try individual tenant first
     tenant = get_tenant_by_id(db, tenant_id)
     if tenant:
         return delete_individual_tenant(db, tenant_id)
-    
+
     # Try commercial partner
     partner = get_commercial_partner_by_id(db, tenant_id)
     if partner:
         return delete_commercial_partner(db, tenant_id)
-    
+
     return {"success": False, "message": "Tenant not found"}
+
 
 def delete_individual_tenant(db: Session, tenant_id: UUID) -> Dict:
     """Soft delete individual tenant + all leases + all lease charges"""
@@ -531,31 +548,32 @@ def delete_individual_tenant(db: Session, tenant_id: UUID) -> Dict:
         tenant = get_tenant_by_id(db, tenant_id)
         if not tenant:
             return {"success": False, "message": "Tenant not found"}
-        
+
         # ✅ FIXED: Get leases properly
         leases = db.query(Lease).filter(
             Lease.tenant_id == tenant_id,
             Lease.is_deleted == False
         ).all()
-        
+
         lease_ids = [lease.id for lease in leases]
-        active_lease_count = len([lease for lease in leases if lease.status == "active"])
-        
+        active_lease_count = len(
+            [lease for lease in leases if lease.status == "active"])
+
         now = datetime.utcnow()
-        
+
         # ✅ 1. SOFT DELETE THE TENANT
         tenant.is_deleted = True
         tenant.updated_at = now
-        
+
         # ✅ 2. SOFT DELETE ALL LEASES FOR THIS TENANT
         if lease_ids:
             db.query(Lease).filter(
                 Lease.id.in_(lease_ids)
             ).update({
-                "is_deleted": True, 
+                "is_deleted": True,
                 "updated_at": now
             }, synchronize_session=False)
-            
+
             # ✅ 3. SOFT DELETE ALL LEASE CHARGES FOR THOSE LEASES
             db.query(LeaseCharge).filter(
                 LeaseCharge.lease_id.in_(lease_ids),
@@ -563,21 +581,22 @@ def delete_individual_tenant(db: Session, tenant_id: UUID) -> Dict:
             ).update({
                 "is_deleted": True
             }, synchronize_session=False)
-        
+
         db.commit()
-        
+
         # ✅ CLEAR MESSAGE: Only show one message with active lease count
         if active_lease_count > 0:
             return {
-                "success": True, 
+                "success": True,
                 "message": f"Tenant with {active_lease_count} active lease(s) deleted successfully"
             }
         else:
             return {"success": True, "message": "Tenant deleted successfully"}
-        
+
     except Exception as e:
         db.rollback()
         return {"success": False, "message": f"Database error: {str(e)}"}
+
 
 def delete_commercial_partner(db: Session, partner_id: UUID) -> Dict:
     """Soft delete commercial partner + all leases + all lease charges"""
@@ -585,30 +604,31 @@ def delete_commercial_partner(db: Session, partner_id: UUID) -> Dict:
         partner = get_commercial_partner_by_id(db, partner_id)
         if not partner:
             return {"success": False, "message": "Commercial partner not found"}
-        
+
         # ✅ FIXED: Get leases properly
         leases = db.query(Lease).filter(
             Lease.partner_id == partner_id,
             Lease.is_deleted == False
         ).all()
-        
+
         lease_ids = [lease.id for lease in leases]
-        active_lease_count = len([lease for lease in leases if lease.status == "active"])
-        
+        active_lease_count = len(
+            [lease for lease in leases if lease.status == "active"])
+
         now = datetime.utcnow()
-        
+
         # ✅ 1. SOFT DELETE THE COMMERCIAL PARTNER
         partner.is_deleted = True
-        
+
         # ✅ 2. SOFT DELETE ALL LEASES FOR THIS PARTNER
         if lease_ids:
             db.query(Lease).filter(
                 Lease.id.in_(lease_ids)
             ).update({
-                "is_deleted": True, 
+                "is_deleted": True,
                 "updated_at": now
             }, synchronize_session=False)
-            
+
             # ✅ 3. SOFT DELETE ALL LEASE CHARGES FOR THOSE LEASES
             db.query(LeaseCharge).filter(
                 LeaseCharge.lease_id.in_(lease_ids),
@@ -616,29 +636,30 @@ def delete_commercial_partner(db: Session, partner_id: UUID) -> Dict:
             ).update({
                 "is_deleted": True
             }, synchronize_session=False)
-        
+
         db.commit()
-        
+
         # ✅ CLEAR MESSAGE: Only show one message with active lease count
         if active_lease_count > 0:
             return {
-                "success": True, 
+                "success": True,
                 "message": f"Commercial partner with {active_lease_count} active lease(s) deleted successfully"
             }
         else:
             return {"success": True, "message": "Commercial partner deleted successfully"}
-        
+
     except Exception as e:
         db.rollback()
         return {"success": False, "message": f"Database error: {str(e)}"}
-    
-    
+
+
 # -----------type lookup
 def tenant_type_lookup(db: Session, org_id: str) -> List[Dict]:
     return [
         Lookup(id=type.value, name=type.name.capitalize())
         for type in TenantType
     ]
+
 
 def tenant_type_filter_lookup(db: Session, org_id: str) -> List[Dict]:
     query = (
@@ -657,11 +678,14 @@ def tenant_type_filter_lookup(db: Session, org_id: str) -> List[Dict]:
     return [{"id": r.id, "name": r.name} for r in rows]
 
 # -----------status_lookup
+
+
 def tenant_status_lookup(db: Session, org_id: str) -> List[Dict]:
     return [
         Lookup(id=status.value, name=status.name.capitalize())
         for status in TenantStatus
     ]
+
 
 def tenant_status_filter_lookup(db: Session, org_id: str) -> List[Dict]:
     query = (

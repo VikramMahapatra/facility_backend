@@ -3,7 +3,7 @@ from typing import List, Optional, Any, Dict
 from datetime import date, datetime
 from uuid import UUID
 
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class SiteBase(BaseModel):
@@ -16,12 +16,15 @@ class SiteBase(BaseModel):
     opened_on: Optional[date] = None
     status: Optional[str] = "active"
 
+
 class SiteCreate(SiteBase):
     pass
 
+
 class SiteUpdate(SiteBase):
-    id:str
+    id: str
     pass
+
 
 class SiteOut(SiteBase):
     id: UUID
@@ -35,15 +38,17 @@ class SiteOut(SiteBase):
     model_config = {
         "from_attributes": True
     }
-    
+
+
 class SiteRequest(CommonQueryParams):
     kind: Optional[str] = None
-    
+
+
 class SiteListResponse(BaseModel):
     sites: List[SiteOut]
     total: int
-    
+
+
 class SiteLookup(BaseModel):
     id: UUID
     name: str
-    

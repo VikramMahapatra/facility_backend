@@ -3,15 +3,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
 
-from shared.app_status_code import AppStatusCode
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token  
-from shared.json_response_helper import error_response, success_response
-from shared.schemas import Lookup, UserToken
+from shared.utils.app_status_code import AppStatusCode
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token
+from shared.helpers.json_response_helper import error_response, success_response
+from shared.core.schemas import Lookup, UserToken
 from ...schemas.hospitality.rate_plans_schemas import (
-    RatePlanCreate, 
-    RatePlanUpdate, 
-    RatePlanOut, 
+    RatePlanCreate,
+    RatePlanUpdate,
+    RatePlanOut,
     RatePlanRequest,
     RatePlanListResponse,
     RatePlanOverview
@@ -31,6 +31,8 @@ def get_rate_plans_endpoint(
     return crud.get_rate_plans(db, current_user.org_id, params)
 
 # ---------------- Overview -----------------
+
+
 @router.get("/overview", response_model=RatePlanOverview)
 def get_rate_plan_overview(
     db: Session = Depends(get_db),
@@ -49,6 +51,8 @@ def create_rate_plan_route(
     return crud.create_rate_plan(db, current_user.org_id, rate_plan)
 
 # ----------------- Update Rate Plan -----------------
+
+
 @router.put("/", response_model=None)
 def update_rate_plan_route(
     rate_plan_update: RatePlanUpdate,
@@ -56,7 +60,7 @@ def update_rate_plan_route(
     current_user: UserToken = Depends(validate_current_token)
 ):
     result = crud.update_rate_plan(db, rate_plan_update, current_user)
-    
+
     if not result:
         return error_response(
             message="Rate Plan not found",
@@ -66,12 +70,14 @@ def update_rate_plan_route(
     return result
 
 # ---------------- Delete Rate Plan ----------------
+
+
 @router.delete("/{rate_plan_id}")
 def delete_rate_plan_route(
     rate_plan_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-):return crud.delete_rate_plan(db, rate_plan_id, current_user.org_id)
+): return crud.delete_rate_plan(db, rate_plan_id, current_user.org_id)
 
 
 # ----------------filter(DB)  Status  ----------------
@@ -83,6 +89,8 @@ def rate_plan_filter_status_lookup_endpoint(
     return crud.rate_plan_filter_status_lookup(db, current_user.org_id)
 
 # -------------------- Rate Plan Status Lookup --------------------
+
+
 @router.get("/status-lookup", response_model=list[Lookup])
 def get_rate_plan_status_lookup(
     db: Session = Depends(get_db),
@@ -97,4 +105,4 @@ def get_rate_plan_meal_plan_lookup(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return  crud.Rate_Plan_Meal_Plan_lookup(current_user.org_id, db)
+    return crud.Rate_Plan_Meal_Plan_lookup(current_user.org_id, db)

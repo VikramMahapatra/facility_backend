@@ -4,7 +4,7 @@ from sqlalchemy import Column, String, Date, DateTime, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from shared.database import Base
+from shared.core.database import Base
 
 
 class Tenant(Base):

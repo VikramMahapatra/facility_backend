@@ -5,7 +5,8 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from sqlalchemy.orm import relationship
 from sqlalchemy import DateTime
-from shared.database import Base
+from shared.core.database import Base
+
 
 class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
@@ -21,4 +22,5 @@ class PurchaseOrder(Base):
     created_by = Column(String)
     created_at = Column(String, default="now")
 
-    lines = relationship("PurchaseOrderLine", back_populates="po", cascade="all, delete")
+    lines = relationship("PurchaseOrderLine",
+                         back_populates="po", cascade="all, delete")

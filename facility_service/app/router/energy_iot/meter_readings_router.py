@@ -2,14 +2,14 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from shared.json_response_helper import success_response
+from shared.helpers.json_response_helper import success_response
 
 from ...schemas.energy_iot.meters_schemas import MeterRequest
 from ...schemas.energy_iot.meter_readings_schemas import BulkMeterReadingRequest, MeterReadingCreate, MeterReadingListResponse, MeterReadingOverview, MeterReadingUpdate
 from ...crud.energy_iot import meter_readings_crud as crud
-from shared.database import get_facility_db as get_db
-from shared.auth import validate_current_token  # for dependicies
-from shared.schemas import Lookup, UserToken
+from shared.core.database import get_facility_db as get_db
+from shared.core.auth import validate_current_token  # for dependicies
+from shared.core.schemas import Lookup, UserToken
 from uuid import UUID
 
 router = APIRouter(
@@ -52,7 +52,6 @@ def update_meter_reading(data: MeterReadingUpdate, db: Session = Depends(get_db)
 @router.delete("/{id}", response_model=None)
 def delete_meter_reading(id: str, db: Session = Depends(get_db)):
     return crud.delete(db, id)
-       
 
 
 @router.get("/meter-reading-lookup", response_model=List[Lookup])

@@ -2,7 +2,7 @@ from datetime import date, datetime
 from uuid import UUID
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any
-from shared.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams
 
 
 class PMTemplateBase(BaseModel):
@@ -19,7 +19,7 @@ class PMTemplateBase(BaseModel):
     status: Optional[str] = "active"
     pm_no: Optional[str] = None
 
-    model_config = {"from_attributes": True} 
+    model_config = {"from_attributes": True}
 
 
 class PMTemplateCreate(BaseModel):
@@ -35,9 +35,7 @@ class PMTemplateCreate(BaseModel):
     sla: Optional[Any] = None
     status: Optional[str] = "active"
 
-
-    model_config = {"from_attributes": True} 
-    
+    model_config = {"from_attributes": True}
 
 
 class PMTemplateUpdate(PMTemplateBase):

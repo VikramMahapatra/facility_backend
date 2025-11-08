@@ -3,7 +3,8 @@ import uuid
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy import Boolean, Column, DateTime, String, Numeric, ForeignKey
 from sqlalchemy.orm import relationship
-from shared.database import Base
+from shared.core.database import Base
+
 
 class InventoryStock(Base):
     __tablename__ = "inventory_stocks"
@@ -13,13 +14,14 @@ class InventoryStock(Base):
     site_id = Column(UUID(as_uuid=True))
     item_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("inventory_items.id", ondelete="CASCADE"),  # 🔑 Added CASCADE
+        # 🔑 Added CASCADE
+        ForeignKey("inventory_items.id", ondelete="CASCADE"),
         nullable=False
     )
-    qty_on_hand = Column(Numeric(14,3), default=0)
+    qty_on_hand = Column(Numeric(14, 3), default=0)
     bin_location = Column(String(64))
 
-        # ✅ Add soft delete columns
+    # ✅ Add soft delete columns
     is_deleted = Column(Boolean, default=False, nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 

@@ -51,7 +51,7 @@ def get_ticket_categories(
 
     ticket_categories = (
         base_query
-        .order_by(TicketCategory.category_name.asc())
+        .order_by(TicketCategory.updated_at.desc())
         .offset(skip)
         .limit(limit)
         .all()

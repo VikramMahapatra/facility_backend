@@ -24,6 +24,8 @@ class TicketCategoryOut(TicketCategoryBase):
     id: UUID
     is_deleted: Optional[bool] = False
     deleted_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True

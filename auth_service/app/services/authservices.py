@@ -136,6 +136,7 @@ def verify_otp(
         db: Session,
         facility_db: Session,
         request: authchemas.OTPVerify):
+    user = None
     if request.mobile and request.mobile.strip():
         try:
             # check = twilio_client.verify.v2.services(settings.TWILIO_VERIFY_SID).verification_checks.create(
@@ -155,6 +156,8 @@ def verify_otp(
                 status_code=str(AppStatusCode.AUTHENTICATION_USER_OTP_EXPIRED),
                 http_status=status.HTTP_400_BAD_REQUEST
             )
+
+        user = db.query(Users).filter(Users.phone == request.mobile).first()
     elif request.email:
         record = (
             db.query(OtpVerification)
@@ -174,14 +177,13 @@ def verify_otp(
         # mark verified
         record.is_verified = True
         db.commit()
+
+        user = db.query(Users).filter(Users.phone == request.email).first()
     else:
         return error_response(
             message="Invalid Request",
             status_code=AppStatusCode.INVALID_INPUT
         )
-
-    # OTP VERIFIED
-    user = db.query(Users).filter(Users.phone == request.mobile).first()
 
     if not user:
         return authchemas.AuthenticationResponse(

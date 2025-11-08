@@ -1,4 +1,5 @@
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator
+import re
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator, model_validator
 from typing import Annotated, Literal, Optional, Union
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from ..schemas.userschema import UserResponse
@@ -18,10 +19,27 @@ class MobileRequest(BaseModel):
     mobile: Optional[str] = None
     email: Optional[EmailStr] = None
 
+    @field_validator("mobile", mode="before")
+    def clean_mobile(cls, v):
+        if not v:
+            return None
+        # remove spaces and all invisible unicode chars
+        cleaned = re.sub(
+            r"[\s\u200b-\u200f\u202a-\u202e\u2066-\u2069]", "", v.strip())
+        return cleaned if cleaned else None
 
-class OTPVerify(BaseModel):
-    mobile: Optional[str] = None
-    email: Optional[EmailStr] = None
+    @field_validator("email", mode="before")
+    def empty_to_none(cls, v):
+        return v or None
+
+    @model_validator(mode="after")
+    def validate_either_mobile_or_email(cls, values):
+        if not values.mobile and not values.email:
+            raise ValueError("Either mobile or email is required")
+        return values
+
+
+class OTPVerify(MobileRequest):
     otp: str
 
 

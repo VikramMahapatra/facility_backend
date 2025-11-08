@@ -178,7 +178,7 @@ def verify_otp(
         record.is_verified = True
         db.commit()
 
-        user = db.query(Users).filter(Users.phone == request.email).first()
+        user = db.query(Users).filter(Users.email == request.email).first()
     else:
         return error_response(
             message="Invalid Request",

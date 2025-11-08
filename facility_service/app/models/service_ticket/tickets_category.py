@@ -1,6 +1,6 @@
 
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, ForeignKey
+from sqlalchemy import TIMESTAMP, Boolean, Column, DateTime, Integer, String, ForeignKey, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -22,6 +22,9 @@ class TicketCategory(Base):
     # Soft delete fields
     is_deleted = Column(Boolean, default=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
+        # ✅ New timestamps
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     sla_policy = relationship("SlaPolicy", back_populates="categories")
     tickets = relationship("Ticket", back_populates="category")

@@ -5,6 +5,8 @@ from uuid import UUID
 from typing import List, Optional
 from datetime import datetime
 
+from facility_service.app.models.service_ticket.sla_policy import SlaPolicy
+
 from ...enum.ticket_service_enum import AutoAssignRoleEnum, StatusEnum
 from ...schemas.service_ticket.ticket_category_schemas import TicketCategoryListResponse
 from ...models.service_ticket.tickets_category import TicketCategory
@@ -138,3 +140,17 @@ def status_lookup(db: Session) -> List[Lookup]:
         Lookup(id=status.value, name=status.value.capitalize())
         for status in StatusEnum
     ]
+
+
+#-----------------sla policy------------------------
+def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
+    """
+    Fetch SLA policies filtered by site_id.
+    Returns id and service_category as lookup values.
+    """
+    query = db.query(SlaPolicy.id, SlaPolicy.service_category).filter(SlaPolicy.is_deleted == False)
+
+    if site_id and site_id.lower() != "all":
+        query = query.filter(SlaPolicy.site_id == site_id)
+
+    return [Lookup(id=row.id, name=row.service_category) for row in query.all()]

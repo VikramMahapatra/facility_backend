@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List, Optional
 
+from facility_service.app.models.service_ticket.sla_policy import SlaPolicy
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token, UserToken
 from shared.core.schemas import Lookup
@@ -86,3 +87,14 @@ def status_lookup(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.status_lookup(db)
+
+
+# ---------------- SLA Policy Lookup ---------------------------------
+
+@router.get("/sla-policy-lookup", response_model=List[Lookup])
+def sla_policy_lookup(
+    site_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.sla_policy_lookup(db, site_id)

@@ -4,7 +4,7 @@ from sqlalchemy import Boolean, Column, DateTime, Integer, String, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
-from shared.core.database import Base  # adjust the import to your Base
+from shared.core.database import Base  # adjust the import to your Base--
 
 
 class TicketCategory(Base):

@@ -103,7 +103,7 @@ class Ticket(Base):
 
         elapsed_mins = (datetime.now(timezone.utc) -
                         self.closed_date).total_seconds() / 60
-        return elapsed_mins >= sla.reopen_time_mins
+        return elapsed_mins <= sla.reopen_time_mins
 
     @property
     def is_overdue(self) -> bool:

@@ -23,8 +23,8 @@ class SlaPolicy(Base):
                         server_default=func.now(), onupdate=func.now())
         # ✅ New column
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"), nullable=True)
-
-    
+    # 🆕 Soft delete fields
+    is_deleted = Column(Boolean, default=False)
 
     categories = relationship("TicketCategory", back_populates="sla_policy")
        # Optional relationship with Site (if you have a Site model)

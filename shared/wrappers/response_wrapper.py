@@ -1,3 +1,4 @@
+from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse, Response
 from shared.core.schemas import JsonOutResult
@@ -27,9 +28,13 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
             response.body_iterator = body_gen()  # async iterator
 
             try:
-                data = json.loads(body_bytes.decode("utf-8"))
+                if isinstance(data, BaseModel):
+                    # Run model_dump to ensure validators and transformations apply
+                    data = data.model_dump(mode="json", exclude_none=False)
+                else:
+                    data = json.loads(body_bytes.decode("utf-8"))
             except Exception:
-                return response  # non-JSON, return as-is
+                return response
 
             # Skip if already wrapped
             if isinstance(data, dict) and {"status", "status_code", "message"}.issubset(data.keys()):
@@ -40,7 +45,7 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
                 status="Success",
                 status_code="200",
                 message="Data retrieved successfully"
-            ).dict()
+            ).model_dump(exclude_none=False)
 
             return JSONResponse(
                 content=wrapped,

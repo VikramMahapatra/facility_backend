@@ -60,13 +60,13 @@ class TicketFilterRequest(CommonQueryParams):
 
 
 class TicketCreate(BaseModel):
-    org_id: Optional[UUID]
-    site_id: Optional[UUID]
+    org_id: Optional[UUID] = None
+    site_id: Optional[UUID] = None
     space_id: UUID
-    tenant_id: Optional[UUID]
-    category: Optional[str]
-    category_id: Optional[UUID]
-    title: Optional[str]
+    tenant_id: Optional[UUID] = None
+    category: Optional[str] = None
+    category_id: Optional[UUID] = None
+    title: Optional[str] = None
     description: str
     preferred_time: Optional[str] = None
     request_type: str

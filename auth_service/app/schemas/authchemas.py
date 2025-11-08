@@ -15,22 +15,22 @@ class GoogleAuthRequest(BaseModel):
 
 # -------- Mobile --------
 
-class MobileRequest(BaseModel):
+class MobileRequest(EmptyStringModel):
     mobile: Optional[str] = None
     email: Optional[EmailStr] = None
 
-    @field_validator("mobile", mode="before")
-    def clean_mobile(cls, v):
-        if not v:
-            return None
-        # remove spaces and all invisible unicode chars
-        cleaned = re.sub(
-            r"[\s\u200b-\u200f\u202a-\u202e\u2066-\u2069]", "", v.strip())
-        return cleaned if cleaned else None
+    # @field_validator("mobile", mode="before")
+    # def clean_mobile(cls, v):
+    #     if not v:
+    #         return None
+    #     # remove spaces and all invisible unicode chars
+    #     cleaned = re.sub(
+    #         r"[\s\u200b-\u200f\u202a-\u202e\u2066-\u2069]", "", v.strip())
+    #     return cleaned if cleaned else None
 
-    @field_validator("email", mode="before")
-    def empty_to_none(cls, v):
-        return v or None
+    # @field_validator("email", mode="before")
+    # def empty_to_none(cls, v):
+    #     return v or None
 
     @model_validator(mode="after")
     def validate_either_mobile_or_email(cls, values):
@@ -58,7 +58,7 @@ class TokenSuccessResponse(EmptyStringModel):
     token_type: str = "bearer"
 
 
-class AuthenticationResponse(BaseModel):
+class AuthenticationResponse(EmptyStringModel):
     needs_registration: Literal[True, False]
     access_token: Optional[str] = None
     refresh_token: Optional[str] = None
@@ -68,14 +68,3 @@ class AuthenticationResponse(BaseModel):
     email: Optional[EmailStr] = None
     mobile: Optional[str] = None
     picture: Optional[str] = None
-
-    @model_validator(mode="after")
-    def convert_null_values(self):
-        for field, value in self.__dict__.items():
-            if field == "user":
-                if value is None:
-                    setattr(self, field, {})  # ✅ Empty object
-            else:
-                if value is None:
-                    setattr(self, field, "")  # ✅ Empty string
-        return self

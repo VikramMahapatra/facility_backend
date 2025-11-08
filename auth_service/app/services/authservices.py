@@ -96,6 +96,7 @@ def generate_otp(length=6):
 def send_otp(background_tasks: BackgroundTasks, db: Session, facility_db: Session, request: authchemas.MobileRequest):
     try:
         message = None
+        print("MOBILE VALUE:", repr(request.mobile))
         if request.mobile and request.mobile.strip():
             message = "OTP sent to your mobile no."
             # verification = twilio_client.verify.v2.services(settings.TWILIO_VERIFY_SID).verifications.create(

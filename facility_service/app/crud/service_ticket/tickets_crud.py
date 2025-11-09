@@ -349,7 +349,10 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
             http_status=400
         )
 
-    if not ticket.can_escalate or ticket.created_by != data.action_by:
+    if (
+        not ticket.can_escalate
+        or str(ticket.created_by) != str(data.action_by)
+    ):
         return error_response(
             message=f"Not authorize to perform this action",
             status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
@@ -461,7 +464,10 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
             http_status=400
         )
 
-    if ticket.status == TicketStatus.CLOSED or ticket.assigned_to != data.action_by:
+    if (
+        ticket.status == TicketStatus.CLOSED
+        or str(ticket.assigned_to) != str(data.action_by)
+    ):
         return error_response(
             message=f"Not authorize to perform this action",
             status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
@@ -621,6 +627,16 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     if not ticket:
         raise Exception("Ticket not found")
 
+    if (
+        ticket.status not in (TicketStatus.CLOSED, TicketStatus.ON_HOLD)
+        or str(ticket.assigned_to) != str(data.action_by)
+    ):
+        return error_response(
+            message=f"Not authorize to perform this action",
+            status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
+            http_status=400
+        )
+
     old_status = ticket.status
     ticket.status = TicketStatus.ON_HOLD
     ticket.updated_at = datetime.utcnow()
@@ -633,7 +649,7 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
 
     created_by_user = (
         auth_db.query(Users)
-        .filter(Users.id == ticket.tenant_id)
+        .filter(Users.id == ticket.created_by)
         .scalar()
     )
 

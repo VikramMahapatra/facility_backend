@@ -483,7 +483,7 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
 
     old_status = ticket.status
     ticket.status = TicketStatus.CLOSED
-    ticket.closed_at = datetime.utcnow()
+    ticket.closed_date = datetime.utcnow()
     ticket.updated_at = datetime.utcnow()
 
     created_by_user = (

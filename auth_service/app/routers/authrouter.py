@@ -45,7 +45,7 @@ def refresh_token(
 
 @router.post("/logout")
 def logout(
-        refresh_token_str: str,
+        refresh_token_str: str = None,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(auth.validate_current_token)):
     return authservices.logout_user(db, current_user.user_id, refresh_token_str)

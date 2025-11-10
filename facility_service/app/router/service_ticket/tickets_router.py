@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -14,20 +14,21 @@ from shared.helpers.json_response_helper import success_response
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
 
-@router.post("/", response_model=None)
+@router.post("/", response_model=TicketOut)
 def create_ticket_route(
+    background_tasks: BackgroundTasks,
     request: TicketCreate,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.create_ticket(
+        background_tasks=background_tasks,
         session=db,
         auth_db=auth_db,
         data=request,
         user=current_user
     )
-
 
 @router.get("/all", response_model=None)
 def get_tickets(

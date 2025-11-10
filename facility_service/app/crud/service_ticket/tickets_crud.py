@@ -26,7 +26,7 @@ from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketCommentOut, TicketCreate, TicketDetailsResponse, TicketDetailsResponseS, TicketFilterRequest, TicketOut, TicketWorkflowOut
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketAssignedToRequest, TicketCommentOut, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById,  TicketFilterRequest, TicketOut, TicketUpdateRequest, TicketWorkflowOut
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
@@ -912,7 +912,7 @@ def send_ticket_onhold_email(background_tasks, db, data, recipients):
     )
 
 
-# for view
+# for view ---------------------
 
 def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     """
@@ -1009,7 +1009,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
         )
 
     # Step 5: Return as schema
-    return TicketDetailsResponseS.model_validate(
+    return TicketDetailsResponseById.model_validate(
         {
             **service_req.__dict__,
             "category": category_name,
@@ -1024,4 +1024,170 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "can_reopen": service_req.can_reopen,
             "is_overdue": service_req.is_overdue,
         }
+    )
+
+
+
+
+#update status
+def update_ticket_status(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    auth_db: Session,
+    data: TicketUpdateRequest
+):
+    # Fetch ticket
+    ticket = db.execute(
+        select(Ticket).where(Ticket.id == data.ticket_id)
+    ).scalar_one_or_none()
+
+    if not ticket:
+        return error_response(
+            message="Invalid Ticket",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+
+    old_status = ticket.status
+
+    # Update ticket
+    ticket.status = data.new_status
+    ticket.updated_at = datetime.utcnow()
+
+    if data.new_status == TicketStatus.CLOSED:
+        ticket.closed_date = datetime.utcnow()
+
+
+    action_by_user = auth_db.query(Users).filter(Users.id == data.action_by).first()
+    action_by_name = action_by_user.full_name if action_by_user else "Unknown User"
+
+    # Workflow Log
+    workflow_log = TicketWorkflow(
+        ticket_id=ticket.id,
+        action_by=data.action_by, 
+        old_status=old_status.value if old_status else None,
+        new_status=data.new_status,
+        action_taken=f"Ticket {ticket.ticket_no} status changed from {old_status.value} to {data.new_status.value} by {action_by_name}"
+    )
+
+    # Notification Log
+    notification = Notification(
+        user_id=ticket.assigned_to or ticket.created_by,
+        type=NotificationType.alert,
+        title=f"Ticket {data.new_status.value.capitalize()}",
+        message=f"Ticket {ticket.ticket_no} marked as {data.new_status.value} by {action_by_name}",
+        posted_date=datetime.utcnow(),
+        priority=PriorityType(ticket.priority),
+        read=False,
+        is_deleted=False
+    )
+
+    # Combine logs
+    objects_to_add = [workflow_log, notification]
+
+    db.add_all(objects_to_add)
+    db.commit()
+    db.refresh(ticket)
+
+    # Response
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name if ticket.category else None
+        }
+    )
+
+    return success_response(
+        data=updated_ticket,
+        message=f"Ticket status updated to {data.new_status.value} successfully"
+    )
+
+
+
+
+def update_ticket_assigned_to(session: Session, auth_db: Session, data: TicketAssignedToRequest, current_user: UserToken):
+    ticket = (
+        session.query(Ticket)
+        .filter(Ticket.id == data.ticket_id)
+        .first()
+    )
+
+    if not ticket:
+        return error_response(
+            message="Invalid Ticket",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+
+    # Get new assigned_to user details 
+    assigned_to_user = (
+        auth_db.query(Users)
+        .filter(Users.id == data.assigned_to)
+        .scalar()
+    )
+
+    if not assigned_to_user:
+        return error_response(
+            message="Invalid assigned_to user",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+    action_by = current_user.user_id  
+    # Get action_by user details 
+    action_by_user = (
+        auth_db.query(Users)
+        .filter(Users.id == action_by)
+        .scalar()
+    )
+
+    # Update ticket assigned_to (EXACTLY like create_ticket)
+    ticket.assigned_to = data.assigned_to
+    ticket.updated_at = datetime.utcnow()
+
+    # Assignment Log (EXACTLY like create_ticket pattern)
+    assignment_log = TicketAssignment(
+        ticket_id=ticket.id,
+        assigned_from=action_by, 
+        assigned_to=data.assigned_to, 
+        reason="Manual assignment" 
+    )
+    session.add(assignment_log)
+
+    # Notification Log 
+    notification = Notification(
+        user_id=data.assigned_to,
+        type=NotificationType.alert,
+        title="Ticket Assigned",
+        message=f"You have been assigned ticket {ticket.ticket_no}: {ticket.title}",
+        posted_date=datetime.utcnow(),
+        priority=PriorityType(ticket.priority),
+        read=False,
+        is_deleted=False
+    )
+    session.add(notification)
+
+    # Workflow Log 
+    workflow_log = TicketWorkflow(
+        ticket_id=ticket.id,
+        action_by=action_by, 
+        old_status=None,
+        new_status=None,
+        action_taken=f"Ticket assigned to {assigned_to_user.full_name} by {action_by_user.full_name if action_by_user else 'Unknown User'}"  # Like "Ticket Created by {created_by_user.full_name}"
+    )
+    session.add(workflow_log)
+
+    session.commit()
+    session.refresh(ticket)
+
+    # Response
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name if ticket.category else None
+        }
+    )
+
+    return success_response(
+        data=updated_ticket,
+        message=f"Ticket assigned to {assigned_to_user.full_name} successfully"
     )

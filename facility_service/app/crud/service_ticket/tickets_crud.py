@@ -235,7 +235,7 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
             Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
         title = f"{data.category} - {space.name}"
         category_id = session.query(TicketCategory.id).filter(
-            TicketCategory.category_name == data.category).scalar()
+            and_(TicketCategory.category_name == data.category, TicketCategory.site_id == space.site_id)).scalar()
 
     if not tenant_id:
         return error_response(
@@ -350,7 +350,10 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
             http_status=400
         )
 
-    if not ticket.can_escalate or ticket.created_by != data.action_by:
+    if (
+        not ticket.can_escalate
+        or str(ticket.created_by) != str(data.action_by)
+    ):
         return error_response(
             message=f"Not authorize to perform this action",
             status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
@@ -445,8 +448,15 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     send_ticket_escalated_email(
         background_tasks, db, ticket, assigned_to_user, email_list)
 
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name
+        }
+    )
+
     return success_response(
-        data=True,
+        data=updated_ticket,
         message="Ticket escalated successfully"
     )
 
@@ -462,7 +472,10 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
             http_status=400
         )
 
-    if ticket.status == TicketStatus.CLOSED or ticket.assigned_to != data.action_by:
+    if (
+        ticket.status == TicketStatus.CLOSED
+        or str(ticket.assigned_to) != str(data.action_by)
+    ):
         return error_response(
             message=f"Not authorize to perform this action",
             status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
@@ -533,7 +546,7 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     send_ticket_closed_email(background_tasks, db, context, email_list)
 
     return success_response(
-        data=True,
+        data="",
         message="Ticket closed successfully"
     )
 
@@ -554,46 +567,64 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     ticket.status = TicketStatus.REOPENED
     ticket.updated_at = datetime.utcnow()
 
-    action_by_name = (
-        auth_db.query(Users.full_name)
+    action_by_user = (
+        auth_db.query(Users)
         .filter(Users.id == data.action_by)
         .scalar()
     )
 
-    if data.comment:
-        new_comment = TicketComment(
-            ticket_id=ticket.id,
-            user_id=data.action_by,
-            comment_text=data.comment
-        )
-        db.add(new_comment)
+    assigned_to_user = (
+        auth_db.query(Users.full_name)
+        .filter(Users.id == ticket.assigned_to)
+        .scalar()
+    )
 
-    workflow = TicketWorkflow(
+    workflow_log = TicketWorkflow(
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status.value if old_status else None,
         new_status=TicketStatus.REOPENED,
-        action_taken=f"Ticket {ticket.ticket_no} reopened by {action_by_name}"
+        action_taken=f"Ticket {ticket.ticket_no} reopened by {action_by_user.full_name}"
     )
-    db.add(workflow)
 
     # Notification Log
     notification = Notification(
         user_id=ticket.assigned_to,
         type=NotificationType.alert,
         title="Ticket Reopened",
-        message=f"Ticket {ticket.ticket_no} reopened by {action_by_name}",
+        message=f"Ticket {ticket.ticket_no} reopened by {action_by_user.full_name}",
         posted_date=datetime.utcnow(),
         priority=PriorityType(ticket.priority),
         read=False,
         is_deleted=False
     )
-    db.add(notification)
 
+    objects_to_add = [notification, workflow_log]
+
+    if data.comment:
+        objects_to_add.append(TicketComment(
+            ticket_id=ticket.id,
+            user_id=data.action_by,
+            comment_text=data.comment
+        ))
+
+    db.add_all(objects_to_add)
     db.commit()
     db.refresh(ticket)
+
+    # email
+    context = {
+        "assigned_to": assigned_to_user.full_name,
+        "reopened_by": action_by_user.full_name,
+        "ticket_no": ticket.ticket_no
+    }
+
+    email_list = [assigned_to_user.email, action_by_user.email]
+
+    send_ticket_reopened_email(background_tasks, db, context, email_list)
+
     return success_response(
-        data=True,
+        data="",
         message="Ticket reopened successfully"
     )
 
@@ -603,6 +634,16 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
         Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
         raise Exception("Ticket not found")
+
+    if (
+        ticket.status not in (TicketStatus.CLOSED, TicketStatus.ON_HOLD)
+        or str(ticket.assigned_to) != str(data.action_by)
+    ):
+        return error_response(
+            message=f"Not authorize to perform this action",
+            status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
+            http_status=400
+        )
 
     old_status = ticket.status
     ticket.status = TicketStatus.ON_HOLD
@@ -614,14 +655,19 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
         .scalar()
     )
 
-    workflow = TicketWorkflow(
+    created_by_user = (
+        auth_db.query(Users)
+        .filter(Users.id == ticket.created_by)
+        .scalar()
+    )
+
+    workflow_log = TicketWorkflow(
         ticket_id=data.ticket_id,
         action_by=data.action_by,
         old_status=old_status.value if old_status else None,
         new_status=TicketStatus.ON_HOLD,
         action_taken=f"Ticket {ticket.ticket_no} put on hold by {action_by_user.full_name}"
     )
-    db.add(workflow)
 
     # Notification Log
     notification = Notification(
@@ -634,12 +680,32 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
         read=False,
         is_deleted=False
     )
-    db.add(notification)
 
+    objects_to_add = [notification, workflow_log]
+
+    if data.comment:
+        objects_to_add.append(TicketComment(
+            ticket_id=ticket.id,
+            user_id=data.action_by,
+            comment_text=data.comment
+        ))
+
+    db.add_all(objects_to_add)
     db.commit()
     db.refresh(ticket)
+
+    # email
+    context = {
+        "created_by": created_by_user.full_name,
+        "hold_reason": data.comment if data.comment else None,
+        "ticket_no": ticket.ticket_no
+    }
+
+    email_list = [created_by_user.email, action_by_user.email]
+
+    send_ticket_onhold_email(background_tasks, db, context, email_list)
     return success_response(
-        data=True,
+        data="",
         message="Ticket put on hold successfully"
     )
 
@@ -682,7 +748,7 @@ def return_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     db.commit()
     db.refresh(ticket)
     return success_response(
-        data=True,
+        data="",
         message="Ticket returned successfully"
     )
 
@@ -793,5 +859,31 @@ def send_ticket_closed_email(background_tasks, db, data, recipients):
         template_code="ticket_closed",
         recipients=recipients,
         subject=f"Ticket Escalated - {data["ticket_no"]}",
+        context=data,
+    )
+
+
+def send_ticket_reopened_email(background_tasks, db, data, recipients):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="ticket_reopened",
+        recipients=recipients,
+        subject=f"Ticket Reopened - {data["ticket_no"]}",
+        context=data,
+    )
+
+
+def send_ticket_onhold_email(background_tasks, db, data, recipients):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="ticket_on_hold",
+        recipients=recipients,
+        subject=f"Ticket On hold - {data["ticket_no"]}",
         context=data,
     )

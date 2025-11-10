@@ -85,6 +85,7 @@ class UserResponse(EmptyStringModel):
     id: str
     name: str
     email: str
+    phone: str
     account_type: str
     organization_name: str
     status: str

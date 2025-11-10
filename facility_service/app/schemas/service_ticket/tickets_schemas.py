@@ -33,6 +33,10 @@ class TicketOut(BaseModel):
     site_id: Optional[UUID]
     space_id: Optional[UUID]
     tenant_id: Optional[UUID]
+    org_id: Optional[UUID] = None
+    site_id: Optional[UUID] = None
+    space_id: Optional[UUID] = None
+    tenant_id: Optional[UUID] = None
     category_id: UUID
     category: Optional[str] = None
     title: str
@@ -40,9 +44,9 @@ class TicketOut(BaseModel):
     status: str
     priority: str
     created_by: UUID
-    assigned_to: Optional[UUID]
+    assigned_to: Optional[UUID] = None
     request_type: str
-    preferred_time: Optional[str]
+    preferred_time: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     closed_date: Optional[datetime] = None
@@ -61,13 +65,13 @@ class TicketFilterRequest(CommonQueryParams):
 
 
 class TicketCreate(BaseModel):
-    org_id: Optional[UUID]
-    site_id: Optional[UUID]
+    org_id: Optional[UUID] = None
+    site_id: Optional[UUID] = None
     space_id: UUID
-    tenant_id: Optional[UUID]
-    category: Optional[str]
-    category_id: Optional[UUID]
-    title: Optional[str]
+    tenant_id: Optional[UUID] = None
+    category: Optional[str] = None
+    category_id: Optional[UUID] = None
+    title: Optional[str] = None
     description: str
     preferred_time: Optional[str] = None
     request_type: str

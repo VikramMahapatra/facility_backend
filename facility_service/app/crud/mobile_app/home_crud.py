@@ -91,7 +91,7 @@ def get_home_spaces(db: Session, user: UserToken):
             .all()
         )
         results = [
-            {"site_id": s.site_id, "site_name": s.site.name}
+            {"site_id": s.site_id, "site_name": s.site.name, "is_primary": True}
             for s in sites
         ]
 
@@ -102,7 +102,7 @@ def get_home_spaces(db: Session, user: UserToken):
             .all()
         )
         results = [
-            {"site_id": s.id, "site_name": s.name}
+            {"site_id": s.id, "site_name": s.name, "is_primary": True}
             for s in sites
         ]
 

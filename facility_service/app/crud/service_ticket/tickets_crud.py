@@ -646,7 +646,7 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
         raise Exception("Ticket not found")
 
     if (
-        ticket.status not in (TicketStatus.CLOSED, TicketStatus.ON_HOLD)
+        ticket.status in (TicketStatus.CLOSED, TicketStatus.ON_HOLD)
         or str(ticket.assigned_to) != str(data.action_by)
     ):
         return error_response(
@@ -714,7 +714,7 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     email_list = [created_by_user.email, action_by_user.email]
 
     send_ticket_onhold_email(background_tasks, db, context, email_list)
-    
+
     updated_ticket = TicketOut.model_validate(
         {
             **ticket.__dict__,
@@ -912,7 +912,7 @@ def send_ticket_onhold_email(background_tasks, db, data, recipients):
     )
 
 
-# for view 
+# for view ---------------------
 
 def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     """
@@ -991,7 +991,6 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             )
         )
 
-
     # WORKFLOW SECTION (TicketWorkflow schema)
     workflows = service_req.workflows or []
 
@@ -1026,7 +1025,6 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "is_overdue": service_req.is_overdue,
         }
     )
-
 
 
 

@@ -447,8 +447,14 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     send_ticket_escalated_email(
         background_tasks, db, ticket, assigned_to_user, email_list)
 
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name
+        }
+    )
     return success_response(
-        data="",
+        data=updated_ticket,
         message="Ticket escalated successfully"
     )
 
@@ -621,8 +627,14 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
 
     send_ticket_reopened_email(background_tasks, db, context, email_list)
 
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name
+        }
+    )
     return success_response(
-        data="",
+        data=updated_ticket,
         message="Ticket reopened successfully"
     )
 
@@ -702,8 +714,15 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     email_list = [created_by_user.email, action_by_user.email]
 
     send_ticket_onhold_email(background_tasks, db, context, email_list)
+    
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name
+        }
+    )
     return success_response(
-        data="",
+        data=updated_ticket,
         message="Ticket put on hold successfully"
     )
 
@@ -745,8 +764,14 @@ def return_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
 
     db.commit()
     db.refresh(ticket)
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name
+        }
+    )
     return success_response(
-        data="",
+        data=updated_ticket,
         message="Ticket returned successfully"
     )
 

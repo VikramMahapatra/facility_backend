@@ -28,6 +28,11 @@ class TicketCreate(TicketBase):
 
 class TicketOut(BaseModel):
     id: UUID
+    ticket_no: str
+    org_id: Optional[UUID]
+    site_id: Optional[UUID]
+    space_id: Optional[UUID]
+    tenant_id: Optional[UUID]
     org_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None

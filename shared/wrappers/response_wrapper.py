@@ -93,7 +93,13 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
 
         # Skip wrapping if already wrapped
         if isinstance(data, dict) and {"status", "status_code", "message"}.issubset(data.keys()):
-            return response
+            data = replace_nulls_with_empty(data)
+            return JSONResponse(
+                content=data,
+                status_code=response.status_code,
+                headers={k: v for k, v in response.headers.items() if k.lower()
+                         != "content-length"},
+            )
 
         wrapped = JsonOutResult(
             data=data if data not in [None, {}] else "",

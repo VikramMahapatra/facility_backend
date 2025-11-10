@@ -447,15 +447,8 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     send_ticket_escalated_email(
         background_tasks, db, ticket, assigned_to_user, email_list)
 
-    updated_ticket = TicketOut.model_validate(
-        {
-            **ticket.__dict__,
-            "category": ticket.category.category_name
-        }
-    )
-
     return success_response(
-        data=updated_ticket,
+        data="",
         message="Ticket escalated successfully"
     )
 
@@ -483,7 +476,7 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
 
     old_status = ticket.status
     ticket.status = TicketStatus.CLOSED
-    ticket.closed_at = datetime.utcnow()
+    ticket.closed_date = datetime.utcnow()
     ticket.updated_at = datetime.utcnow()
 
     created_by_user = (
@@ -544,8 +537,14 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
 
     send_ticket_closed_email(background_tasks, db, context, email_list)
 
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name
+        }
+    )
     return success_response(
-        data="",
+        data=updated_ticket,
         message="Ticket closed successfully"
     )
 

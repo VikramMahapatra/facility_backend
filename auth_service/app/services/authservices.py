@@ -249,32 +249,62 @@ def refresh_access_token(db: Session, refresh_token_str: str):
     }
 
 
-def logout_user(db: Session, user_id: str, refresh_token_str: str):
-    token = (
-        db.query(RefreshToken)
-        .join(UserLoginSession)
-        .filter(
-            UserLoginSession.user_id == user_id,
-            RefreshToken.token == refresh_token_str,
-            RefreshToken.revoked == False
-        )
-        .first()
-    )
-
-    if not token:
-        return error_response(
-            message="Active session or refresh token not found.",
-            status_code=str(AppStatusCode.AUTHENTICATION_TOKEN_INVALID),
-            http_status=status.HTTP_404_NOT_FOUND
-        )
-
+def logout_user(db: Session, user_id: str, refresh_token_str: str = None):
     now = datetime.now(timezone.utc)
-    token.revoked = True
-    token.session.is_active = False
-    token.session.logged_out_at = now
-    db.commit()
 
-    return {"message": "Logged out successfully"}
+    if refresh_token_str:
+        # 🔹 Case 1: Web/portal logout using refresh token
+        token = (
+            db.query(RefreshToken)
+            .join(UserLoginSession)
+            .filter(
+                UserLoginSession.user_id == user_id,
+                RefreshToken.token == refresh_token_str,
+                RefreshToken.revoked == False
+            )
+            .first()
+        )
+
+        if not token:
+            return error_response(
+                message="Active session or refresh token not found.",
+                status_code=str(AppStatusCode.AUTHENTICATION_TOKEN_INVALID),
+                http_status=status.HTTP_404_NOT_FOUND
+            )
+
+        token.revoked = True
+        token.session.is_active = False
+        token.session.logged_out_at = now
+        db.commit()
+
+        return {"message": "Logged out successfully"}
+
+    else:
+        # 🔹 Case 2: Mobile logout (no refresh token)
+        # Simply deactivate the active mobile session(s)
+        sessions = (
+            db.query(UserLoginSession)
+            .filter(
+                UserLoginSession.user_id == user_id,
+                UserLoginSession.platform == "mobile",
+                UserLoginSession.is_active == True
+            )
+            .all()
+        )
+
+        if not sessions:
+            return error_response(
+                message="No active mobile sessions found.",
+                status_code=str(AppStatusCode.AUTHENTICATION_TOKEN_INVALID),
+                http_status=status.HTTP_404_NOT_FOUND
+            )
+
+        for session in sessions:
+            session.is_active = False
+            session.logged_out_at = now
+
+        db.commit()
+        return {"message": "Mobile session(s) logged out successfully"}
 
 
 def send_otp_email(background_tasks, db, otp, email):

@@ -1,9 +1,10 @@
 import uuid
+from fastapi import HTTPException
 from sqlalchemy import (
     Column, String, Boolean, ForeignKey, TIMESTAMP, Enum, func
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from shared.core.database import AuthBase
 import enum
 
@@ -20,3 +21,10 @@ class RefreshToken(AuthBase):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
     session = relationship("UserLoginSession", back_populates="refresh_tokens")
+
+    @validates("session")
+    def validate_session(self, key, session):
+        if session.platform != "portal":
+            raise HTTPException(
+                status_code=400, detail="Refresh tokens are only allowed for web logins")
+        return session

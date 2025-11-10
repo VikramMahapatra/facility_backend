@@ -201,3 +201,8 @@ class TicketUpdateRequest(BaseModel):
 class TicketAssignedToRequest(BaseModel):
     ticket_id: UUID
     assigned_to: UUID
+
+
+class TicketCommentRequest(BaseModel):
+    ticket_id: UUID
+    comment: str

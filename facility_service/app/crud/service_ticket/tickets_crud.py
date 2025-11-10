@@ -26,7 +26,7 @@ from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketAssignedToRequest, TicketCommentOut, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById,  TicketFilterRequest, TicketOut, TicketUpdateRequest, TicketWorkflowOut
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById,  TicketFilterRequest, TicketOut, TicketUpdateRequest, TicketWorkflowOut
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
@@ -1190,4 +1190,79 @@ def update_ticket_assigned_to(session: Session, auth_db: Session, data: TicketAs
     return success_response(
         data=updated_ticket,
         message=f"Ticket assigned to {assigned_to_user.full_name} successfully"
+    )
+
+def post_ticket_comment(session: Session, auth_db: Session, data: TicketCommentRequest, current_user: UserToken):
+   
+    ticket = (
+        session.query(Ticket)
+        .options(joinedload(Ticket.tenant))  
+        .filter(Ticket.id == data.ticket_id)
+        .first()
+    )
+
+    if not ticket:
+        return error_response(
+            message="Invalid Ticket",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+
+    comment = TicketComment(
+        ticket_id=data.ticket_id,
+        user_id=current_user.user_id,
+        comment_text=data.comment,
+        created_at=datetime.utcnow()
+    )
+    session.add(comment)
+
+    current_user_details = (
+        auth_db.query(Users)
+        .filter(Users.id == current_user.user_id)
+        .scalar()
+    )
+
+
+    recipient_ids = []
+    
+
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+    
+  
+    if ticket.created_by:
+        recipient_ids.append(ticket.created_by)
+    
+
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+    
+
+    recipient_ids = list(set(recipient_ids))
+
+    for recipient_id in recipient_ids:
+        notification = Notification(
+            user_id=recipient_id,
+            type=NotificationType.alert,
+            title="New Comment on Ticket",
+            message=f"{current_user_details.full_name if current_user_details else 'User'} commented on ticket {ticket.ticket_no}: {data.comment[:50]}...",
+            posted_date=datetime.utcnow(),
+            priority=PriorityType(ticket.priority),
+            read=False,
+            is_deleted=False
+        )
+        session.add(notification)
+
+    session.commit()
+    session.refresh(comment)
+
+    return success_response(
+        data={
+            "comment_id": comment.id,
+            "ticket_id": comment.ticket_id,
+            "user_id": comment.user_id,
+            "comment_text": comment.comment_text,
+            "created_at": comment.created_at
+        },
+        message="Comment posted successfully"
     )

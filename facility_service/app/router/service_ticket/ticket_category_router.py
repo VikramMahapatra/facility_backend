@@ -37,8 +37,10 @@ def get_ticket_categories(
     return crud.get_ticket_categories(db, skip, limit, search)
 
 
+# routes/ticket_category_routes.py
+
 # ---------------- Create ----------------
-@router.post("/", response_model=None)
+@router.post("/", response_model=TicketCategoryOut)
 def create_ticket_category(
     category: TicketCategoryCreate,
     db: Session = Depends(get_db),
@@ -47,9 +49,7 @@ def create_ticket_category(
     return crud.create_ticket_category(db, category)
 
 # ---------------- Update ----------------
-
-
-@router.put("/", response_model=None)
+@router.put("/", response_model=TicketCategoryOut)
 def update_ticket_category(
     category: TicketCategoryUpdate,
     db: Session = Depends(get_db),

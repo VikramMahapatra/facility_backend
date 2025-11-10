@@ -92,6 +92,7 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
     """Get all tickets with pagination"""
 
     base_query = build_ticket_filters(db, params, current_user)
+    
 
     total = base_query.with_entities(func.count(Ticket.id)).scalar()
 

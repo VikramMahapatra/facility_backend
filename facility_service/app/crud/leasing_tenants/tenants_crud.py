@@ -702,3 +702,52 @@ def tenant_status_filter_lookup(db: Session, org_id: str) -> List[Dict]:
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
+
+
+
+
+# Add to app/crud/leasing_tenants/tenants_crud.py
+
+def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
+    """
+    Get tenants filtered by both site_id and space_id
+    Returns LIST of id and name
+    """
+    
+    # Individual tenants - filter by both site_id AND space_id
+    individual_tenants = (
+        db.query(
+            Tenant.id,
+            Tenant.name,
+        )
+        .filter(
+            Tenant.site_id == site_id,
+            Tenant.space_id == space_id,
+            Tenant.is_deleted == False,
+            Tenant.status == "active"
+        )
+        .all()
+    )
+    
+    # Commercial partners - filter by both site_id AND space_id
+    commercial_tenants = (
+        db.query(
+            CommercialPartner.id,
+            CommercialPartner.legal_name.label("name"),
+        )
+        .filter(
+            CommercialPartner.site_id == site_id,
+            CommercialPartner.space_id == space_id,
+            CommercialPartner.is_deleted == False,
+            CommercialPartner.status == "active"
+        )
+        .all()
+    )
+    
+    # Combine results - make sure we return a LIST
+    all_tenants = []
+    all_tenants.extend([{"id": t.id, "name": t.name} for t in individual_tenants])
+    all_tenants.extend([{"id": t.id, "name": t.name} for t in commercial_tenants])
+    
+    
+    return all_tenants  # This should be a list

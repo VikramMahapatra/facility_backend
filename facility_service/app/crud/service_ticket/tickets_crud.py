@@ -645,8 +645,6 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     if not ticket:
         raise Exception("Ticket not found")
 
-    print(f"assigned by : {ticket.assigned_to}, action by : {data.action_by}")
-
     if (
         ticket.status in (TicketStatus.CLOSED, TicketStatus.ON_HOLD)
         or str(ticket.assigned_to) != str(data.action_by)
@@ -914,7 +912,7 @@ def send_ticket_onhold_email(background_tasks, db, data, recipients):
     )
 
 
-# for view 
+# for view
 
 def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     """
@@ -993,7 +991,6 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             )
         )
 
-
     # WORKFLOW SECTION (TicketWorkflow schema)
     workflows = service_req.workflows or []
 
@@ -1028,6 +1025,3 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "is_overdue": service_req.is_overdue,
         }
     )
-
-
-

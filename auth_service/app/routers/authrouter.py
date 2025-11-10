@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from requests import Session
 from shared.core import auth
 from shared.core.database import get_auth_db as get_db, get_facility_db
@@ -19,8 +19,12 @@ def google_login(
 
 
 @router.post("/mobile/send_otp")
-def send_otp(request: authchemas.MobileRequest):
-    return authservices.send_otp(request)
+def send_otp(
+        request: authchemas.MobileRequest,
+        background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db),
+        facility_db: Session = Depends(get_facility_db)):
+    return authservices.send_otp(background_tasks, db, facility_db, request)
 
 
 @router.post("/mobile/verify_otp", response_model=authchemas.AuthenticationResponse)

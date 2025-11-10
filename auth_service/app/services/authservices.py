@@ -1,10 +1,13 @@
+import random
 from twilio.rest import Client
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 import requests
 from datetime import datetime, timedelta, timezone
-from auth_service.app.models.user_login_session import UserLoginSession
+from ..models.otp_verifications import OtpVerification
+from ..models.user_login_session import UserLoginSession
+from shared.helpers.email_helper import EmailHelper
 from ..models.refresh_token import RefreshToken
 from ..schemas.userschema import UserCreate
 from shared.utils.app_status_code import AppStatusCode
@@ -12,7 +15,7 @@ from shared.core.config import settings
 from google.oauth2 import id_token
 from shared.core.database import get_auth_db as get_db
 from shared.core import auth
-from shared.helpers.json_response_helper import error_response
+from shared.helpers.json_response_helper import error_response, success_response
 from ..models.users import Users
 from ..schemas import authchemas
 from ..services import userservices
@@ -23,30 +26,8 @@ ALLOWED_ROLES = {"manager", "admin", "superadmin", "user"}
 
 security = HTTPBearer()
 
-# Dependency to get current user
-
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
-    token = credentials.credentials
-    payload = auth.verify_token(token)
-    if payload is None:
-        return error_response(
-            message="Invalid access token",
-            status_code=str(AppStatusCode.AUTHENTICATION_TOKEN_INVALID),
-            http_status=status.HTTP_400_BAD_REQUEST
-        )
-
-    user = userservices.get_user_by_id(db, payload.get("id"))
-    if user is None:
-        error_response(
-            message="User not found",
-            status_code=str(AppStatusCode.AUTHENTICATION_USER_INVALID),
-            http_status=400
-        )
-    return user
 
 #### GOOGLE AUTHENTICATION ###
-
 
 def google_login(
         request: Request,
@@ -108,16 +89,47 @@ def google_login(
 
 #### MOBILE AUTHENTICATION ###
 
-def send_otp(request: authchemas.MobileRequest):
+def generate_otp(length=6):
+    return str(random.randint(10**(length-1), (10**length)-1))
+
+
+def send_otp(background_tasks: BackgroundTasks, db: Session, facility_db: Session, request: authchemas.MobileRequest):
     try:
-        # verification = twilio_client.verify.v2.services(settings.TWILIO_VERIFY_SID).verifications.create(
-        #     to=request.mobile,
-        #     channel="sms"
-        # )
-        # return {"message": "OTP sent", "status": verification.status}
-        return {"message": "OTP sent", "status": "pending"}
+        message = None
+        print("MOBILE VALUE:", repr(request.mobile))
+        if request.mobile and request.mobile.strip():
+            message = "OTP sent to your mobile no."
+            # verification = twilio_client.verify.v2.services(settings.TWILIO_VERIFY_SID).verifications.create(
+            #     to=request.mobile,
+            #     channel="sms"
+            # )
+            # return {"message": "OTP sent", "status": verification.status}
+        elif request.email:
+            otp = generate_otp()
+            # store OTP in DB
+            otp_entry = OtpVerification(
+                email=request.email,
+                otp=otp,
+                created_at=datetime.utcnow(),
+                is_verified=False
+            )
+            db.add(otp_entry)
+            db.commit()
+            send_otp_email(background_tasks, facility_db, otp, request.email)
+            message = "OTP sent to your email."
+        else:
+            return error_response(
+                message="Invalid Request",
+                status_code=AppStatusCode.INVALID_INPUT
+            )
+
+        return success_response(
+            data="",
+            message=message
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Twilio error: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error sending OTP:{str(e)}")
 
 
 def verify_otp(
@@ -125,25 +137,54 @@ def verify_otp(
         db: Session,
         facility_db: Session,
         request: authchemas.OTPVerify):
-    try:
-        # check = twilio_client.verify.v2.services(settings.TWILIO_VERIFY_SID).verification_checks.create(
-        #     to=request.mobile,
-        #     code=request.otp
-        # )
-        check = {"status": "approved"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Twilio error: {str(e)}")
+    user = None
+    if request.mobile and request.mobile.strip():
+        try:
+            # check = twilio_client.verify.v2.services(settings.TWILIO_VERIFY_SID).verification_checks.create(
+            #     to=request.mobile,
+            #     code=request.otp
+            # )
+            check = {"status": "approved"}
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Twilio error: {str(e)}")
 
-    status_value = getattr(check, "status", None) or check.get("status")
+        status_value = getattr(check, "status", None) or check.get("status")
 
-    if status_value != "approved":
-        return error_response(
-            message="Invalid or expired OTP",
-            status_code=str(AppStatusCode.AUTHENTICATION_USER_OTP_EXPIRED),
-            http_status=status.HTTP_400_BAD_REQUEST
+        if status_value != "approved":
+            return error_response(
+                message="Invalid or expired OTP",
+                status_code=str(AppStatusCode.AUTHENTICATION_USER_OTP_EXPIRED),
+                http_status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = db.query(Users).filter(Users.phone == request.mobile).first()
+    elif request.email:
+        record = (
+            db.query(OtpVerification)
+            .filter(OtpVerification.email == request.email, OtpVerification.is_verified == False)
+            .order_by(OtpVerification.created_at.desc())
+            .first()
         )
+        if not record:
+            return error_response(message="OTP not found", status_code=AppStatusCode.INVALID_INPUT)
 
-    user = db.query(Users).filter(Users.phone == request.mobile).first()
+        if record.is_expired:
+            return error_response(message="OTP expired", status_code=AppStatusCode.AUTHENTICATION_USER_OTP_EXPIRED)
+
+        if record.otp != request.otp:
+            return error_response(message="Invalid OTP", status_code=AppStatusCode.INVALID_INPUT)
+
+        # mark verified
+        record.is_verified = True
+        db.commit()
+
+        user = db.query(Users).filter(Users.email == request.email).first()
+    else:
+        return error_response(
+            message="Invalid Request",
+            status_code=AppStatusCode.INVALID_INPUT
+        )
 
     if not user:
         return authchemas.AuthenticationResponse(
@@ -234,3 +275,16 @@ def logout_user(db: Session, user_id: str, refresh_token_str: str):
     db.commit()
 
     return {"message": "Logged out successfully"}
+
+
+def send_otp_email(background_tasks, db, otp, email):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="otp_send",
+        recipients=[email],
+        subject="Your One Time Password to login",
+        context={"otp": otp},
+    )

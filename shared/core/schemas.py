@@ -23,7 +23,7 @@ class UserToken(BaseModel):
     exp: int
 
 
-class CommonQueryParams(BaseModel):
+class CommonQueryParams(EmptyStringModel):
     search: Optional[str] = None
     skip: Optional[int] = 0
     limit: Optional[int] = None

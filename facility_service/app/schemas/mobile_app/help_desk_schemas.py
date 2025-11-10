@@ -42,6 +42,7 @@ class ComplaintResponse(EmptyStringModel):
     description: str
     preferred_time: Optional[str] = None
     created_at: datetime
+    closed_date: Optional[datetime] = None
     model_config = {"from_attributes": True}
 
 

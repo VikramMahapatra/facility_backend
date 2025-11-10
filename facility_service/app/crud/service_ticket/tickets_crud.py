@@ -914,7 +914,7 @@ def send_ticket_onhold_email(background_tasks, db, data, recipients):
 
 # for view 
 
-def get_ticket_detail(db: Session, auth_db: Session, ticket_id: str):
+def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     """
     Fetch full Tickets details along with all related comments and logs
     """
@@ -994,14 +994,6 @@ def get_ticket_detail(db: Session, auth_db: Session, ticket_id: str):
 
     # WORKFLOW SECTION (TicketWorkflow schema)
     workflows = service_req.workflows or []
-
-    workflow_user_ids = [w.action_by for w in workflows if w.action_by]
-    workflow_users = (
-        auth_db.query(Users.id, Users.full_name)
-        .filter(Users.id.in_(workflow_user_ids))
-        .all()
-    ) if workflow_user_ids else []
-    workflow_user_map = {uid: uname for uid, uname in workflow_users}
 
     workflows_out = []
     for w in workflows:

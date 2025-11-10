@@ -15,6 +15,7 @@ from ...schemas.leasing_tenants.tenants_schemas import (
     TenantOverviewResponse,
     TenantUpdate,
     TenantRequest,
+    TenantDropdownResponse
 )
 from ...crud.leasing_tenants import tenants_crud as crud
 
@@ -95,3 +96,25 @@ def tenant_status_lookup_endpoint(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.tenant_status_lookup(db, current_user.org_id)
+
+
+
+# Add to app/routes/leasing_tenants/tenants_router.py
+
+@router.get("/by-site-space")
+def get_tenants_by_site_and_space(
+    site_id: UUID = Query(..., description="Site ID"),
+    space_id: UUID = Query(..., description="Space ID"),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get tenants filtered by both site_id and space_id
+    """
+    tenants = crud.get_tenants_by_site_and_space(db, site_id, space_id)
+    
+    # If you're using success_response wrapper
+    return success_response(
+        data=tenants,  # This should be a list
+        message="Data retrieved successfully"
+    )

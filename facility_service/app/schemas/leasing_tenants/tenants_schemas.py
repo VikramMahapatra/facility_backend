@@ -72,3 +72,11 @@ class TenantOverviewResponse(BaseModel):
     model_config = {
         "from_attributes": True
     }
+# Add to schemas/leasing_tenants/tenants_schemas.py
+
+class TenantDropdownResponse(BaseModel):
+    id: UUID
+    name: str
+    
+    class Config:
+        from_attributes = True

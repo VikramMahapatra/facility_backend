@@ -645,8 +645,10 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     if not ticket:
         raise Exception("Ticket not found")
 
+    print(f"assigned by : {ticket.assigned_to}, action by : {data.action_by}")
+
     if (
-        ticket.status not in (TicketStatus.CLOSED, TicketStatus.ON_HOLD)
+        ticket.status in (TicketStatus.CLOSED, TicketStatus.ON_HOLD)
         or str(ticket.assigned_to) != str(data.action_by)
     ):
         return error_response(
@@ -714,7 +716,7 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     email_list = [created_by_user.email, action_by_user.email]
 
     send_ticket_onhold_email(background_tasks, db, context, email_list)
-    
+
     updated_ticket = TicketOut.model_validate(
         {
             **ticket.__dict__,

@@ -124,7 +124,7 @@ def send_otp(background_tasks: BackgroundTasks, db: Session, facility_db: Sessio
             )
 
         return success_response(
-            data=True,
+            data="",
             message=message
         )
     except Exception as e:

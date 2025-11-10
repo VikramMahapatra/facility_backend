@@ -28,10 +28,10 @@ class TicketCreate(TicketBase):
 
 class TicketOut(BaseModel):
     id: UUID
-    org_id: Optional[UUID]
-    site_id: Optional[UUID]
-    space_id: Optional[UUID]
-    tenant_id: Optional[UUID]
+    org_id: Optional[UUID] = None
+    site_id: Optional[UUID] = None
+    space_id: Optional[UUID] = None
+    tenant_id: Optional[UUID] = None
     category_id: UUID
     category: Optional[str] = None
     title: str
@@ -39,9 +39,9 @@ class TicketOut(BaseModel):
     status: str
     priority: str
     created_by: UUID
-    assigned_to: Optional[UUID]
+    assigned_to: Optional[UUID] = None
     request_type: str
-    preferred_time: Optional[str]
+    preferred_time: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     closed_date: Optional[datetime] = None

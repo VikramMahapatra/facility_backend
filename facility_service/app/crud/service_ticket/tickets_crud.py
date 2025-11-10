@@ -234,7 +234,7 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
             Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
         title = f"{data.category} - {space.name}"
         category_id = session.query(TicketCategory.id).filter(
-            TicketCategory.category_name == data.category).scalar()
+            and_(TicketCategory.category_name == data.category, TicketCategory.site_id == space.site_id)).scalar()
 
     if not tenant_id:
         return error_response(
@@ -447,8 +447,15 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     send_ticket_escalated_email(
         background_tasks, db, ticket, assigned_to_user, email_list)
 
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name
+        }
+    )
+
     return success_response(
-        data=True,
+        data=updated_ticket,
         message="Ticket escalated successfully"
     )
 
@@ -538,7 +545,7 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     send_ticket_closed_email(background_tasks, db, context, email_list)
 
     return success_response(
-        data=True,
+        data="",
         message="Ticket closed successfully"
     )
 
@@ -616,7 +623,7 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     send_ticket_reopened_email(background_tasks, db, context, email_list)
 
     return success_response(
-        data=True,
+        data="",
         message="Ticket reopened successfully"
     )
 
@@ -697,7 +704,7 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
 
     send_ticket_onhold_email(background_tasks, db, context, email_list)
     return success_response(
-        data=True,
+        data="",
         message="Ticket put on hold successfully"
     )
 
@@ -740,7 +747,7 @@ def return_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     db.commit()
     db.refresh(ticket)
     return success_response(
-        data=True,
+        data="",
         message="Ticket returned successfully"
     )
 

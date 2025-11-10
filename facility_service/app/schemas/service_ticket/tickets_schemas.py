@@ -141,3 +141,48 @@ class TicketDetailsResponse(EmptyStringModel):
 
     class Config:
         from_attributes = True
+
+
+
+#FOR VIEW -------------------------------------------------------
+
+class TicketWorkflowOut(BaseModel):
+    workflow_id: UUID
+    ticket_id: UUID
+    action_by: Optional[UUID]
+    old_status: Optional[str]
+    new_status: Optional[str]
+    action_taken: Optional[str]
+    action_time: Optional[datetime]
+
+
+class  TicketCommentOut(BaseModel):
+    comment_id: UUID
+    ticket_id: UUID
+    user_id: Optional[UUID]
+    user_name: Optional[str]
+    comment_text: Optional[str]
+    created_at: Optional[datetime]
+    reactions: List = []
+
+class TicketDetailsResponseS(EmptyStringModel):
+    id: UUID
+    category: Optional[str]
+    priority: Optional[str]
+    status: Optional[str]
+    description: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    closed_date: Optional[str]
+    space_id: Optional[UUID]
+    space_name: Optional[str]
+    building_name: Optional[str]
+    site_name: Optional[str]
+    assigned_to: Optional[UUID]
+    assigned_to_name: Optional[str]
+    request_type: Optional[str]
+    can_escalate: bool
+    can_reopen: bool
+    is_overdue: bool
+    comments: List[TicketCommentOut] = []
+    workflows: List[TicketWorkflowOut] = []

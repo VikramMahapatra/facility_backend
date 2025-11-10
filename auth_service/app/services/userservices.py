@@ -7,7 +7,7 @@ from sqlalchemy import func
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 
-from ..models.user_login_session import UserLoginSession
+from ..models.user_login_session import LoginPlatform, UserLoginSession
 from ..schemas.authchemas import AuthenticationResponse
 from ..models.sites_safe import SiteSafe
 from ..models.commercial_partner_safe import CommercialPartnerSafe
@@ -195,9 +195,15 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     roles = [str(r.id) for r in user.roles]
     ip = request.client.host
     ua = request.headers.get("user-agent")
+
+    if "dart" in ua or "flutter" in ua:
+        platform = "mobile"
+    else:
+        platform = "portal"
+
     session = UserLoginSession(
         user_id=user.id,
-        platform="portal",
+        platform=platform,
         ip_address=ip,
         user_agent=ua,
     )
@@ -211,14 +217,18 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         "org_id": str(user.org_id),
         "account_type": user.account_type,
         "role_ids": roles})
-    refresh_token = auth.create_refresh_token(auth_db, session.id)
+
+    refresh_token = None
+
+    if session.platform == LoginPlatform.portal:
+        refresh_token = auth.create_refresh_token(auth_db, session.id)
 
     user_data = get_user_by_id(facility_db, user)
 
     return AuthenticationResponse(
         needs_registration=False,
         access_token=token,
-        refresh_token=refresh_token.token,
+        refresh_token=refresh_token.token if refresh_token else None,
         token_type="bearer",
         user=user_data
     )

@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import secrets
 from typing import Optional
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from auth_service.app.models.refresh_token import RefreshToken
-from auth_service.app.models.user_login_session import UserLoginSession
+from auth_service.app.models.user_login_session import LoginPlatform, UserLoginSession
 from auth_service.app.models.users import Users
 from shared.utils.app_status_code import AppStatusCode
 from shared.core.config import settings
@@ -17,29 +17,67 @@ from sqlalchemy.orm import Session
 security = HTTPBearer()
 
 
-def create_access_token(data: dict):
-    expires = datetime.utcnow(
-    ) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
-    data.update({'exp': expires})
-    # ✅ Ensure "name" exists if user is passed added it for service request requester id
-    if 'name' not in data and 'full_name' in data:
-        data['name'] = data['full_name']
+def create_access_token(data: dict, is_mobile: bool = False):
+    payload = data.copy()
 
-    return jwt.encode(data, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    # Only add expiry for non-mobile users
+    if not is_mobile:
+        expires = datetime.utcnow() + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+        payload['exp'] = expires
+
+    # Ensure "name" exists (for service request requester_id use case)
+    if 'name' not in payload and 'full_name' in payload:
+        payload['name'] = payload['full_name']
+
+    token = jwt.encode(payload, settings.JWT_SECRET,
+                       algorithm=settings.JWT_ALGORITHM)
+    return token
 
 
 def create_refresh_token(db, session_id):
-    token_str = secrets.token_urlsafe(64)
-    expires = datetime.utcnow() + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+    # 1️⃣ Fetch the session
+    session = db.query(UserLoginSession).filter(
+        UserLoginSession.id == session_id).first()
 
+    print(f"session : {session}")
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Login session not found."
+        )
+
+    # Only allow refresh token for web/portal platform
+    if session.platform != LoginPlatform.portal:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Refresh tokens are only available for web logins (not for {session.platform})."
+        )
+
+    existing = (
+        db.query(RefreshToken)
+        .filter(RefreshToken.session_id == session.id, RefreshToken.revoked == False)
+        .first()
+    )
+
+    if existing:
+        return existing  # or revoke it before creating new
+
+    # Generate the secure token
+    token_str = secrets.token_urlsafe(64)
+    expires = datetime.now(timezone.utc) + \
+        timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+
+    # Save refresh token
     refresh = RefreshToken(
-        session_id=session_id,
+        session_id=session.id,
         token=token_str,
         expires_at=expires
     )
     db.add(refresh)
     db.commit()
     db.refresh(refresh)
+
     return refresh
 
 

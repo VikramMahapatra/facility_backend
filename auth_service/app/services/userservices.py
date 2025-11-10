@@ -195,8 +195,11 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     roles = [str(r.id) for r in user.roles]
     ip = request.client.host
     ua = request.headers.get("user-agent")
-    platform = "portal" if "Mozilla" in (
-        ua or "") else "mobile"  # basic detection
+
+    if "dart" in ua or "flutter" in ua:
+        platform = "mobile"
+    else:
+        platform = "portal"
 
     session = UserLoginSession(
         user_id=user.id,

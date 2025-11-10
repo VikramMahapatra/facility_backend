@@ -48,4 +48,4 @@ def get_ticket_details_route(
     """
     Get complete ticket details for a given ticket_id
     """
-    return crud.get_ticket_detail(db, auth_db, ticket_id)
+    return crud.get_ticket_details_by_Id(db, auth_db, ticket_id)

@@ -26,7 +26,7 @@ from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest, TicketOut
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketCommentOut, TicketCreate, TicketDetailsResponse, TicketDetailsResponseS, TicketFilterRequest, TicketOut, TicketWorkflowOut
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
@@ -912,3 +912,122 @@ def send_ticket_onhold_email(background_tasks, db, data, recipients):
         subject=f"Ticket On hold - {data["ticket_no"]}",
         context=data,
     )
+
+
+# for view 
+
+def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
+    """
+    Fetch full Tickets details along with all related comments and logs
+    """
+    # Step 1: Fetch service request with joins for related data
+    service_req = (
+        db.query(Ticket)
+        .filter(Ticket.id == ticket_id)
+        .first()
+    )
+
+    if not service_req:
+        raise HTTPException(
+            status_code=404, detail="Service request not found")
+
+    # Step 2: Get assigned_to from SLA policies based on category - FIXED
+    category_name = service_req.category.category_name if service_req.category else None
+
+    assigned_to_name = None
+    # Fetch assigned user full_name from auth.db user table
+    assigned_user = (
+        auth_db.query(Users)
+        .filter(Users.id == service_req.assigned_to)
+        .first()
+    )
+    assigned_to_name = assigned_user.full_name if assigned_user else None
+
+    #  COMMENTS SECTION (TicketComment schema)
+    comments = service_req.comments or []
+
+    # Step 3.1: Fetch all reactions in one go
+    comment_ids = [c.id for c in comments]
+    reactions_all = (
+        db.query(TicketReaction)
+        .filter(TicketReaction.comment_id.in_(comment_ids))
+        .all()
+    ) if comment_ids else []
+
+    # Step 3.2: Group reactions by comment_id
+    reaction_map = {}
+    for r in reactions_all:
+        reaction_map.setdefault(r.comment_id, []).append(r)
+
+    # Step 3.3: Fetch comment user names in one go
+    comment_user_ids = [c.user_id for c in comments if c.user_id]
+    comment_users = (
+        auth_db.query(Users.id, Users.full_name)
+        .filter(Users.id.in_(comment_user_ids))
+        .all()
+    ) if comment_user_ids else []
+    comment_user_map = {uid: uname for uid, uname in comment_users}
+
+    # Step 3.4: Build comment outputs
+    comments_out = []
+    for c in comments:
+        reactions = [
+            {
+                "reaction_id": str(r.id),
+                "user_id": str(r.user_id),
+                "emoji": r.emoji,
+                "created_at": r.created_at
+            }
+            for r in reaction_map.get(c.id, [])
+        ]
+
+        comments_out.append(
+            TicketCommentOut(
+                comment_id=c.id,
+                ticket_id=c.ticket_id,
+                user_id=c.user_id,
+                user_name=comment_user_map.get(c.user_id, "Unknown User"),
+                comment_text=c.comment_text,
+                created_at=c.created_at,
+                reactions=reactions
+            )
+        )
+
+
+    # WORKFLOW SECTION (TicketWorkflow schema)
+    workflows = service_req.workflows or []
+
+    workflows_out = []
+    for w in workflows:
+        workflows_out.append(
+            TicketWorkflowOut(
+                workflow_id=w.id,
+                ticket_id=w.ticket_id,
+                action_by=w.action_by,
+                old_status=getattr(w, "old_status", None),
+                new_status=getattr(w, "new_status", None),
+                action_taken=w.action_taken,
+                action_time=w.action_time
+            )
+        )
+
+    # Step 5: Return as schema
+    return TicketDetailsResponseS.model_validate(
+        {
+            **service_req.__dict__,
+            "category": category_name,
+            "space_name": service_req.space.name if service_req.space else None,
+            "building_name": service_req.space.building.name if service_req.space and service_req.space.building else None,
+            "site_name": service_req.site.name if service_req.site else None,
+            "closed_date": service_req.closed_date.isoformat() if service_req.closed_date else None,
+            "assigned_to_name": assigned_to_name,
+            "comments": comments_out,
+            "workflows": workflows_out,
+            "can_escalate": service_req.can_escalate,
+            "can_reopen": service_req.can_reopen,
+            "is_overdue": service_req.is_overdue,
+        }
+    )
+
+
+

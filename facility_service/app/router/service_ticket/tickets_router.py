@@ -5,7 +5,7 @@ from typing import List
 from facility_service.app import crud
 from shared.core.schemas import UserToken
 from ...crud.service_ticket import tickets_crud as crud
-from ...schemas.service_ticket.tickets_schemas import TicketActionRequest, TicketAssignedToRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById, TicketFilterRequest, TicketOut, TicketUpdateRequest
+from ...schemas.service_ticket.tickets_schemas import TicketActionRequest, TicketAssignedToRequest, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById, TicketFilterRequest, TicketOut, TicketUpdateRequest
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.helpers.json_response_helper import success_response
@@ -86,4 +86,21 @@ def assign_ticket_route(
         auth_db=auth_db,
         data=request,
         current_user=current_user 
+    )
+
+@router.post("/post-comment")
+def post_comment_route(
+    request: TicketCommentRequest,
+    session: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Post comment on ticket
+    """
+    return crud.post_ticket_comment(
+        session=session,
+        auth_db=auth_db,
+        data=request,
+        current_user=current_user
     )

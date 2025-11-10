@@ -92,7 +92,6 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
     """Get all tickets with pagination"""
 
     base_query = build_ticket_filters(db, params, current_user)
-    
 
     total = base_query.with_entities(func.count(Ticket.id)).scalar()
 
@@ -448,15 +447,8 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     send_ticket_escalated_email(
         background_tasks, db, ticket, assigned_to_user, email_list)
 
-    updated_ticket = TicketOut.model_validate(
-        {
-            **ticket.__dict__,
-            "category": ticket.category.category_name
-        }
-    )
-
     return success_response(
-        data=updated_ticket,
+        data="",
         message="Ticket escalated successfully"
     )
 
@@ -545,8 +537,14 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
 
     send_ticket_closed_email(background_tasks, db, context, email_list)
 
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name
+        }
+    )
     return success_response(
-        data="",
+        data=updated_ticket,
         message="Ticket closed successfully"
     )
 

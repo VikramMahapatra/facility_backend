@@ -71,10 +71,24 @@ def get_ticket_category_by_id(db: Session, category_id: UUID) -> Optional[Ticket
         TicketCategory.is_deleted == False  # Exclude soft deleted
     ).first()
 
+
+
+
 # ---------------- Create ----------------
-
-
 def create_ticket_category(db: Session, category: TicketCategoryCreate) -> TicketCategoryOut:
+    # Check for duplicate category name for the same site
+    existing_category = db.query(TicketCategory).filter(
+        TicketCategory.category_name.ilike(category.category_name.strip()),
+        TicketCategory.site_id == category.site_id,
+        TicketCategory.is_deleted == False
+    ).first()
+    
+    if existing_category:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ticket category '{category.category_name}' already exists for this site"
+        )
+    
     db_category = TicketCategory(**category.model_dump())
     db.add(db_category)
     db.commit()
@@ -82,15 +96,30 @@ def create_ticket_category(db: Session, category: TicketCategoryCreate) -> Ticke
     return db_category
 
 # ---------------- Update ----------------
-
-
-def update_ticket_category(db: Session, category: TicketCategoryUpdate) -> Optional[TicketCategoryOut]:
+def update_ticket_category(db: Session, category: TicketCategoryUpdate) -> TicketCategoryOut:
     db_category = get_ticket_category_by_id(db, category.id)
     if not db_category:
-        return None
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket category not found"
+        )
 
-    # Update only the provided fields (excluding id since we already used it to find the record)
     update_data = category.model_dump(exclude_unset=True, exclude={'id'})
+    
+    # Check for duplicate category name
+    new_name = update_data.get('category_name')
+    if new_name and new_name != db_category.category_name:
+        if db.query(TicketCategory).filter(
+            TicketCategory.category_name.ilike(new_name.strip()),
+            TicketCategory.site_id == db_category.site_id,
+            TicketCategory.id != category.id,
+            TicketCategory.is_deleted == False
+        ).first():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ticket category '{new_name}' already exists for this site"
+            )
+
     for key, value in update_data.items():
         setattr(db_category, key, value)
 

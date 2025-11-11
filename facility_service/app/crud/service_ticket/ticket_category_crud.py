@@ -1,11 +1,16 @@
 # crud/service_ticket/ticket_category_crud.py
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from uuid import UUID
 from typing import List, Optional
 from datetime import datetime
 
-from facility_service.app.models.service_ticket.sla_policy import SlaPolicy
+from auth_service.app.models.users import Users
+from shared.core.config import Settings
+
+from ...models.common.staff_sites import StaffSite
+from ...models.service_ticket.tickets import Ticket
+from ...models.service_ticket.sla_policy import SlaPolicy
 
 from ...enum.ticket_service_enum import AutoAssignRoleEnum, StatusEnum
 from ...schemas.service_ticket.ticket_category_schemas import TicketCategoryListResponse
@@ -183,3 +188,72 @@ def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup
         query = query.filter(SlaPolicy.site_id == site_id)
 
     return [Lookup(id=row.id, name=row.service_category) for row in query.all()]
+
+
+
+
+
+#-----------------get Employee------------------------
+
+# Add this to your existing ticket_crud.py file
+
+def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
+    """
+    Get all employees for a ticket based on site_id from staff_sites table
+    Simplified version - returns users directly
+    """
+    # Step 1: Fetch ticket with related data
+    ticket = (
+        db.query(Ticket)
+        .filter(Ticket.id == ticket_id)
+        .first()
+    )
+
+    if not ticket:
+        raise HTTPException(
+            status_code=404, detail="Ticket not found")
+
+    # Step 2: Get site_id and org_id from ticket
+    site_id = ticket.site_id
+    org_id = ticket.org_id
+
+    if not site_id or not org_id:
+        return []  # No site or org associated with ticket
+
+    # Step 3: Get all user_ids from staff_sites for this site_id and org_id
+    staff_sites = (
+        db.query(StaffSite)
+        .filter(
+            and_(
+                StaffSite.site_id == site_id,
+                StaffSite.org_id == org_id,
+                StaffSite.is_deleted == False
+            )
+        )
+        .all()
+    )
+
+    if not staff_sites:
+        return []  # No staff assigned to this site
+
+    # Step 4: Extract user_ids
+    user_ids = [staff.user_id for staff in staff_sites]
+
+    # Step 5: Fetch all user names from auth db and return directly
+    users = (
+        auth_db.query(Users.id, Users.full_name)
+        .filter(Users.id.in_(user_ids))
+        .all()
+    )
+    
+    # Return directly -
+    return [
+        {
+            "user_id": user.id,
+            "full_name": user.full_name
+        }
+        for user in users
+    ]
+    
+    
+    

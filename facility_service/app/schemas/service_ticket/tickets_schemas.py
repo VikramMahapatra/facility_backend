@@ -214,3 +214,10 @@ class StatusOption(BaseModel):
 class PossibleStatusesResponse(BaseModel):
     current_status: StatusOption
     possible_next_statuses: List[StatusOption]
+
+
+class TicketReactionRequest(BaseModel):
+    comment_id: UUID
+    emoji: str
+
+#new

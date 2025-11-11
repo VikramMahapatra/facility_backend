@@ -206,8 +206,13 @@ class TicketCommentRequest(BaseModel):
     ticket_id: UUID
     comment: str
     
+class StatusOption(BaseModel):
+    id: str
+    name: str    
+    
 class PossibleStatusesResponse(BaseModel):
-    possible_next_statuses: List[str]    
+    current_status: StatusOption
+    possible_next_statuses: List[StatusOption]
 
 
 class TicketReactionRequest(BaseModel):

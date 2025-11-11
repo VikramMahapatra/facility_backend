@@ -22,13 +22,13 @@ from ...models.service_ticket.sla_policy import SlaPolicy
 from ...models.service_ticket.tickets_commets import TicketComment
 from ...models.service_ticket.tickets_feedback import TicketFeedback
 from ...models.service_ticket.tickets_reaction import ALLOWED_EMOJIS, TicketReaction
-from shared.core.schemas import UserToken
+from shared.core.schemas import Lookup, UserToken
 from ...models.service_ticket.ticket_assignment import TicketAssignment
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut  
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut  
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
@@ -918,7 +918,7 @@ def send_ticket_onhold_email(background_tasks, db, data, recipients):
     )
 
 
-# for view ---------------------
+# for view ------------------------
 
 def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     """
@@ -1322,20 +1322,22 @@ def get_possible_next_statuses(db: Session, ticket_id: str):
     """
     Get possible next statuses for a ticket based on current status
     """
+    # Query the ticket from database using your actual Ticket model
     ticket = (
         db.query(Ticket)
-        .filter(Ticket.id == ticket_id)  # ✅ Removed is_deleted filter
+        .filter(Ticket.id == ticket_id)
         .first()
     )
 
     if not ticket:
-        raise HTTPException(
-            status_code=404, detail="Ticket not found")
+        raise HTTPException(status_code=404, detail="Ticket not found")
 
-    # Get current status
+    # Get current status from your actual ticket
     current_status = ticket.status
 
-    # Define possible next statuses based on business rules (lowercase for UI)
+    
+
+    # Define possible next statuses based on business rules
     status_transitions = {
         TicketStatus.OPEN: [
             "closed",
@@ -1376,7 +1378,28 @@ def get_possible_next_statuses(db: Session, ticket_id: str):
         ]
     }
 
-    return status_transitions.get(current_status, [])    
+    
+    
+    all_statuses = [
+        Lookup(id=type.value, name=type.name.capitalize())
+        for type in TicketStatus
+    ]
+    
+    #print("Filter STATUSES:", status_transitions.get(current_status, []))
+    
+    possible_next_statuses = [
+        status for status in all_statuses 
+        if status.id in status_transitions.get(current_status, [])
+    ]
+    
+    possible_next_statuses.append(
+        Lookup(
+            id=current_status.value,
+            name=current_status.name.capitalize()
+        )
+    )
+
+    return possible_next_statuses
 
 
 def react_on_comment(session: Session, data: TicketReactionRequest, current_user: UserToken):

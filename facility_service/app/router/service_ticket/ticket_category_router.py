@@ -105,7 +105,7 @@ def sla_policy_lookup(
 
 # Add to your existing ticket_routes.py
 
-@router.get("/{ticket_id}/employees", response_model=EmployeeListResponse)
+@router.get("/employees/{ticket_id}", response_model=EmployeeListResponse)
 def get_employees_for_ticket(
     ticket_id: UUID,
     db: Session = Depends(get_db),
@@ -114,7 +114,6 @@ def get_employees_for_ticket(
 ):
     """
     Get all employees for a specific ticket based on site_id
-    Following the same pattern as other ticket endpoints
     """
     employees = crud.get_employees_by_ticket(db, auth_db, ticket_id)
     

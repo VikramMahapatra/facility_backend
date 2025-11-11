@@ -194,8 +194,7 @@ class TicketDetailsResponseById(EmptyStringModel):
 class TicketUpdateRequest(BaseModel):
     ticket_id: UUID
     new_status: TicketStatus
-    action_by: UUID 
-    
+
 
 
 class TicketAssignedToRequest(BaseModel):
@@ -215,4 +214,6 @@ class TicketReactionRequest(BaseModel):
     comment_id: UUID
     emoji: str
 
-#new
+#new for fetching admin in the organization 
+class TicketAdminRoleRequest(BaseModel):
+    org_id :UUID

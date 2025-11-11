@@ -1,9 +1,11 @@
 from datetime import datetime
-from sqlalchemy import desc, select
+from sqlalchemy import desc, distinct, select
 from fastapi import HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from sqlalchemy import and_, func
+from auth_service.app.models.roles import Roles
+from auth_service.app.models.userroles import UserRoles
 from auth_service.app.models.users import Users
 from shared.core.config import Settings
 from shared.helpers.email_helper import EmailHelper
@@ -26,7 +28,7 @@ from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut  
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut  
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
@@ -1038,7 +1040,8 @@ def update_ticket_status(
     background_tasks: BackgroundTasks,
     db: Session,
     auth_db: Session,
-    data: TicketUpdateRequest
+    data: TicketUpdateRequest,
+    current_user: UserToken 
 ):
     # Fetch ticket
     ticket = db.execute(
@@ -1062,21 +1065,40 @@ def update_ticket_status(
         ticket.closed_date = datetime.utcnow()
 
 
-    action_by_user = auth_db.query(Users).filter(Users.id == data.action_by).first()
+    action_by_user = auth_db.query(Users).filter(Users.id == current_user.user_id).first()
     action_by_name = action_by_user.full_name if action_by_user else "Unknown User"
 
     # Workflow Log
     workflow_log = TicketWorkflow(
         ticket_id=ticket.id,
-        action_by=data.action_by, 
+        action_by=current_user.user_id, 
         old_status=old_status.value if old_status else None,
         new_status=data.new_status,
         action_taken=f"Ticket {ticket.ticket_no} status changed from {old_status.value} to {data.new_status.value} by {action_by_name}"
     )
 
     # Notification Log
-    notification = Notification(
-        user_id=ticket.assigned_to or ticket.created_by,
+
+    recipient_ids = []
+
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+   
+    recipient_ids.append(current_user.user_id) #action_by
+
+   
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+
+    admin_user_ids = fetch_role_admin(auth_db, current_user.org_id)
+
+    recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+    recipient_ids = list(set(recipient_ids))
+
+    for recipient_id in recipient_ids:
+        notification = Notification(
+        user_id=recipient_id,
         type=NotificationType.alert,
         title=f"Ticket {data.new_status.value.capitalize()}",
         message=f"Ticket {ticket.ticket_no} marked as {data.new_status.value} by {action_by_name}",
@@ -1158,7 +1180,28 @@ def update_ticket_assigned_to(session: Session, auth_db: Session, data: TicketAs
     session.add(assignment_log)
 
     # Notification Log 
-    notification = Notification(
+    # Collect recipients id
+    recipient_ids = []
+
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+   
+  
+    recipient_ids.append(current_user.user_id) #action_by
+
+   
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+
+
+    admin_user_ids = fetch_role_admin(auth_db, current_user.org_id)
+
+    recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+    recipient_ids = list(set(recipient_ids))
+
+    for recipient_id in recipient_ids:
+        notification = Notification(
         user_id=data.assigned_to,
         type=NotificationType.alert,
         title="Ticket Assigned",
@@ -1241,6 +1284,9 @@ def post_ticket_comment(session: Session, auth_db: Session, data: TicketCommentR
     if ticket.tenant and ticket.tenant.user_id:
         recipient_ids.append(ticket.tenant.user_id)
 
+    admin_user_ids = fetch_role_admin(auth_db, current_user.org_id)
+
+    recipient_ids.extend([a["user_id"] for a in admin_user_ids])
 
     recipient_ids = list(set(recipient_ids))
 
@@ -1270,7 +1316,6 @@ def post_ticket_comment(session: Session, auth_db: Session, data: TicketCommentR
         },
         message="Comment posted successfully"
     )
-    
     
     
 def get_possible_next_statuses(db: Session, ticket_id: str):
@@ -1397,3 +1442,46 @@ def react_on_comment(session: Session, data: TicketReactionRequest, current_user
         },
         message="Reaction added successfully"
     )
+
+def fetch_role_admin(session: Session, org_id):
+    """
+    Fetch all users in the given organization who have account_type='ORGANIZATION'
+    and at least one role containing 'admin'
+    """
+
+    # Query for admin users
+    admin_users = (
+        session.query(Users.id, Users.full_name, Users.email ,Users.account_type,)
+        .join(UserRoles, Users.id == UserRoles.user_id)
+        .join(Roles, Roles.id == UserRoles.role_id)
+        .filter(
+            and_(
+                Users.org_id == org_id,
+                func.lower(Users.account_type) == "organization",
+                func.lower(Roles.name).like("%admin%"),
+                Users.is_deleted == False
+            )
+        )
+        .distinct()
+        .all()
+    )
+
+    # ✅ If no admins found → return 404 cleanly, not as exception
+    if not admin_users:
+        return error_response(
+            message="No admin users found in this organization",
+            http_status=404
+        )
+
+
+    data = [
+        {
+            "user_id": str(u.id),
+            "full_name": u.full_name,
+            "email": u.email,
+            "account_type": u.account_type,
+        }
+        for u in admin_users
+    ]
+
+    return data

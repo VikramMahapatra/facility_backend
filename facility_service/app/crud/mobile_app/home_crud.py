@@ -193,6 +193,8 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                 c.amount for c in rent_charges) if rent_charges else 0.0
             all_rent_periods = rent_query.order_by(
                 LeaseCharge.period_end.desc()).all()
+            print("lease id:", lease.id)
+            print("Period for rents:", all_rent_periods)
 
             current_date = date.today()
             last_rent_paid, next_rent_due = None, None
@@ -202,6 +204,11 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                     last_rent_paid = period.period_start
                     next_rent_due = period.period_end + timedelta(days=1)
                     break
+                elif period.period_end <= current_date:
+                    last_rent_paid = period.period_end
+                    next_rent_due = period.period_end + timedelta(days=1)
+                    break
+                    
 
             lease_contract_detail.update({
                 "total_rent_paid": float(total_rent_paid),
@@ -216,7 +223,7 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                     and_(
                         LeaseCharge.lease_id == lease.id,
                         LeaseCharge.is_deleted == False,
-                        LeaseCharge.charge_code == "MAINT"
+                        LeaseCharge.charge_code == "MAINTENANCE"
                     )
                 )
             )
@@ -231,6 +238,11 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
             for period in all_periods:
                 if period.period_start <= current_date <= period.period_end:
                     last_paid = period.period_start
+                    next_due = period.period_end + timedelta(days=1)
+                    next_amount = period.amount
+                    break
+                elif period.period_end <= current_date:
+                    last_paid = period.period_end
                     next_due = period.period_end + timedelta(days=1)
                     next_amount = period.amount
                     break

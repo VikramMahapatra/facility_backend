@@ -19,14 +19,14 @@ from ...schemas.mobile_app.help_desk_schemas import TicketWorkFlowOut
 from ...models.service_ticket.sla_policy import SlaPolicy
 from ...models.service_ticket.tickets_commets import TicketComment
 from ...models.service_ticket.tickets_feedback import TicketFeedback
-from ...models.service_ticket.tickets_reaction import TicketReaction
+from ...models.service_ticket.tickets_reaction import ALLOWED_EMOJIS, TicketReaction
 from shared.core.schemas import UserToken
 from ...models.service_ticket.ticket_assignment import TicketAssignment
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById,  TicketFilterRequest, TicketOut, TicketUpdateRequest, TicketWorkflowOut
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut  
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
@@ -67,16 +67,16 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
                 .filter(*filters)
             )
 
-        elif status == TicketStatus.OPEN.value:
-            open_statuses = [
-                TicketStatus.OPEN.value,
-                TicketStatus.ESCALATED.value,
-                TicketStatus.RETURNED.value,
-                TicketStatus.REOPENED.value,
-                TicketStatus.IN_PROGRESS.value,
-            ]
-            filters.append(Ticket.status.in_(open_statuses))
-            base_query = db.query(Ticket).filter(*filters)
+        # elif status == TicketStatus.OPEN.value:
+        #     open_statuses = [
+        #         TicketStatus.OPEN.value,
+        #         TicketStatus.ESCALATED.value,
+        #         TicketStatus.RETURNED.value,
+        #         TicketStatus.REOPENED.value,
+        #         TicketStatus.IN_PROGRESS.value,
+        #     ]
+        #     filters.append(Ticket.status.in_(open_statuses))
+        #     base_query = db.query(Ticket).filter(*filters)
 
         else:
             filters.append(func.lower(Ticket.status) == status)
@@ -1225,22 +1225,22 @@ def post_ticket_comment(session: Session, auth_db: Session, data: TicketCommentR
         .filter(Users.id == current_user.user_id)
         .scalar()
     )
-
-
-    recipient_ids = []
     
+
+
+    # Collect recipients id
+    recipient_ids = []
 
     if ticket.assigned_to:
         recipient_ids.append(ticket.assigned_to)
-    
+   
   
-    if ticket.created_by:
-        recipient_ids.append(ticket.created_by)
-    
+    recipient_ids.append(current_user.user_id)
 
+   
     if ticket.tenant and ticket.tenant.user_id:
         recipient_ids.append(ticket.tenant.user_id)
-    
+
 
     recipient_ids = list(set(recipient_ids))
 
@@ -1332,3 +1332,68 @@ def get_possible_next_statuses(db: Session, ticket_id: str):
     }
 
     return status_transitions.get(current_status, [])    
+
+
+def react_on_comment(session: Session, data: TicketReactionRequest, current_user: UserToken):
+    """
+    Toggle reaction on a comment (user can have only ONE reaction per comment)
+    """
+    #Validate comment
+    if data.emoji not in ALLOWED_EMOJIS:
+        return error_response("Invalid emoji type", http_status=400)
+
+    comment = session.query(TicketComment).filter(TicketComment.id == data.comment_id).first()
+    if not comment:
+        return error_response("Invalid Comment", http_status=404)
+
+    #Check if this user already reacted (any emoji)
+    existing_reaction = (
+        session.query(TicketReaction)
+        .filter(
+            TicketReaction.comment_id == data.comment_id,
+            TicketReaction.user_id == current_user.user_id
+        )
+        .limit(1)  
+        .first()
+    )
+
+    # If reaction exists
+    if existing_reaction:
+        # If user clicked the same emoji again → remove (toggle off)
+        if existing_reaction.emoji == data.emoji:
+            session.delete(existing_reaction)
+            session.commit()
+            return success_response(
+                data={},
+                message="Reaction removed successfully"
+            )
+        else:
+            # If user clicked different emoji → update it (switch reaction)
+            existing_reaction.emoji = data.emoji
+            session.commit()
+            return success_response(
+                data={
+                    "reaction_id": existing_reaction.id,
+                    "comment_id": existing_reaction.comment_id,
+                    "emoji": existing_reaction.emoji
+                },
+                message="Reaction updated successfully"
+            )
+
+    # No previous reaction → create new
+    new_reaction = TicketReaction(
+        comment_id=data.comment_id,
+        user_id=current_user.user_id,
+        emoji=data.emoji
+    )
+    session.add(new_reaction)
+    session.commit()
+
+    return success_response(
+        data={
+            "reaction_id": new_reaction.id,
+            "comment_id": new_reaction.comment_id,
+            "emoji": new_reaction.emoji
+        },
+        message="Reaction added successfully"
+    )

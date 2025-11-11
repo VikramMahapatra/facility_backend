@@ -209,3 +209,10 @@ class TicketCommentRequest(BaseModel):
     
 class PossibleStatusesResponse(BaseModel):
     possible_next_statuses: List[str]    
+
+
+class TicketReactionRequest(BaseModel):
+    comment_id: UUID
+    emoji: str
+
+#new

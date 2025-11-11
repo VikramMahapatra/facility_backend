@@ -67,16 +67,16 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
                 .filter(*filters)
             )
 
-        elif status == TicketStatus.OPEN.value:
-            open_statuses = [
-                TicketStatus.OPEN.value,
-                TicketStatus.ESCALATED.value,
-                TicketStatus.RETURNED.value,
-                TicketStatus.REOPENED.value,
-                TicketStatus.IN_PROGRESS.value,
-            ]
-            filters.append(Ticket.status.in_(open_statuses))
-            base_query = db.query(Ticket).filter(*filters)
+        # elif status == TicketStatus.OPEN.value:
+        #     open_statuses = [
+        #         TicketStatus.OPEN.value,
+        #         TicketStatus.ESCALATED.value,
+        #         TicketStatus.RETURNED.value,
+        #         TicketStatus.REOPENED.value,
+        #         TicketStatus.IN_PROGRESS.value,
+        #     ]
+        #     filters.append(Ticket.status.in_(open_statuses))
+        #     base_query = db.query(Ticket).filter(*filters)
 
         else:
             filters.append(func.lower(Ticket.status) == status)

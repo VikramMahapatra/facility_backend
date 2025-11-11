@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from fastapi import HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
@@ -98,12 +98,17 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
     if params.skip and params.limit:
         tickets = (
             base_query
+            .order_by(desc(Ticket.created_at))
             .offset(params.skip)
             .limit(params.limit)
             .all()
         )
     else:
-        tickets = base_query.all()
+        tickets = (
+            base_query
+            .order_by(desc(Ticket.created_at))
+            .all()
+        )
 
     results = []
     for t in tickets:
@@ -119,7 +124,6 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
         results.append(TicketOut.model_validate(complaint_data))
 
     return {"tickets": results, "total": total}
-
 
 def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
     """
@@ -1266,3 +1270,65 @@ def post_ticket_comment(session: Session, auth_db: Session, data: TicketCommentR
         },
         message="Comment posted successfully"
     )
+    
+    
+    
+def get_possible_next_statuses(db: Session, ticket_id: str):
+    """
+    Get possible next statuses for a ticket based on current status
+    """
+    ticket = (
+        db.query(Ticket)
+        .filter(Ticket.id == ticket_id)  # ✅ Removed is_deleted filter
+        .first()
+    )
+
+    if not ticket:
+        raise HTTPException(
+            status_code=404, detail="Ticket not found")
+
+    # Get current status
+    current_status = ticket.status
+
+    # Define possible next statuses based on business rules (lowercase for UI)
+    status_transitions = {
+        TicketStatus.OPEN: [
+            "closed",
+            "escalated", 
+            "on_hold",
+            "in_progress"
+        ],
+        TicketStatus.CLOSED: [
+            "reopened"
+        ],
+        TicketStatus.RETURNED: [
+            "reopened",
+            "on_hold",
+            "in_progress"
+        ],
+        TicketStatus.REOPENED: [
+            "escalated",
+            "closed",
+            "in_progress",
+            "on_hold"
+        ],
+        TicketStatus.ESCALATED: [
+            "closed",
+            "in_progress",
+            "on_hold"
+        ],
+        TicketStatus.IN_PROGRESS: [
+            "closed",
+            "returned",
+            "reopened",
+            "escalated",
+            "on_hold"
+        ],
+        TicketStatus.ON_HOLD: [
+            "in_progress",
+            "closed",
+            "escalated"
+        ]
+    }
+
+    return status_transitions.get(current_status, [])    

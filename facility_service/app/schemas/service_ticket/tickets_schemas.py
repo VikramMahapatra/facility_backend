@@ -206,3 +206,6 @@ class TicketAssignedToRequest(BaseModel):
 class TicketCommentRequest(BaseModel):
     ticket_id: UUID
     comment: str
+    
+class PossibleStatusesResponse(BaseModel):
+    possible_next_statuses: List[str]    

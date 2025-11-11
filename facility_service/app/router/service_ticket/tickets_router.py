@@ -1,11 +1,12 @@
+from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List
 
-from facility_service.app import crud
+
 from shared.core.schemas import UserToken
 from ...crud.service_ticket import tickets_crud as crud
-from ...schemas.service_ticket.tickets_schemas import TicketActionRequest, TicketAssignedToRequest, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById, TicketFilterRequest, TicketOut, TicketUpdateRequest
+from ...schemas.service_ticket.tickets_schemas import PossibleStatusesResponse,  TicketActionRequest, TicketAssignedToRequest, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById, TicketFilterRequest, TicketOut, TicketUpdateRequest
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.helpers.json_response_helper import success_response
@@ -104,3 +105,17 @@ def post_comment_route(
         data=request,
         current_user=current_user
     )
+    
+# Add to your existing ticket_routes.py
+
+@router.get("/{ticket_id}/next-statuses", response_model=PossibleStatusesResponse)
+def get_possible_next_statuses_endpoint(
+    ticket_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get possible next statuses for a ticket based on current status
+    """
+    possible_statuses = crud.get_possible_next_statuses(db, ticket_id)
+    return PossibleStatusesResponse(possible_next_statuses=possible_statuses) 

@@ -206,3 +206,8 @@ class TicketAssignedToRequest(BaseModel):
 class TicketCommentRequest(BaseModel):
     ticket_id: UUID
     comment: str
+
+
+class TicketReactionRequest(BaseModel):
+    comment_id: UUID
+    emoji: str

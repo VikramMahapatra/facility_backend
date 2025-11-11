@@ -5,15 +5,17 @@ from uuid import UUID
 from typing import List, Optional
 
 from facility_service.app.models.service_ticket.sla_policy import SlaPolicy
-from shared.core.database import get_facility_db as get_db
+from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token, UserToken
 from shared.core.schemas import Lookup
 
 from ...schemas.service_ticket.ticket_category_schemas import (
+    EmployeeListResponse,
     TicketCategoryCreate,
     TicketCategoryUpdate,
     TicketCategoryOut,
     TicketCategoryListResponse
+    
 )
 from ...crud.service_ticket import ticket_category_crud as crud
 
@@ -98,3 +100,21 @@ def sla_policy_lookup(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.sla_policy_lookup(db, site_id)
+
+
+
+# Add to your existing ticket_routes.py
+
+@router.get("/employees/{ticket_id}", response_model=EmployeeListResponse)
+def get_employees_for_ticket(
+    ticket_id: UUID,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get all employees for a specific ticket based on site_id
+    """
+    employees = crud.get_employees_by_ticket(db, auth_db, ticket_id)
+    
+    return EmployeeListResponse(employees=employees)

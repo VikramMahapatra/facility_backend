@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 
-from shared.core.schemas import UserToken
+from shared.core.schemas import Lookup, UserToken
 from ...crud.service_ticket import tickets_crud as crud
 from ...schemas.service_ticket.tickets_schemas import PossibleStatusesResponse,  TicketActionRequest, TicketAssignedToRequest, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById, TicketFilterRequest, TicketOut, TicketUpdateRequest
 from shared.core.database import get_auth_db, get_facility_db as get_db
@@ -107,7 +107,7 @@ def post_comment_route(
     )
     
 # Add to your existing ticket_routes.py
-@router.get("/next-statuses/{ticket_id}", response_model=PossibleStatusesResponse)
+@router.get("/next-statuses/{ticket_id}", response_model=List[Lookup])
 def get_possible_next_statuses_endpoint(
     ticket_id: UUID,
     db: Session = Depends(get_db),
@@ -117,4 +117,4 @@ def get_possible_next_statuses_endpoint(
     Get possible next statuses for a ticket based on current status
     """
     possible_statuses = crud.get_possible_next_statuses(db, ticket_id)
-    return PossibleStatusesResponse(possible_next_statuses=possible_statuses)
+    return possible_statuses  # Directly return the dictionary

@@ -107,8 +107,7 @@ def post_comment_route(
     )
     
 # Add to your existing ticket_routes.py
-
-@router.get("/{ticket_id}/next-statuses", response_model=PossibleStatusesResponse)
+@router.get("/next-statuses/{ticket_id}", response_model=PossibleStatusesResponse)
 def get_possible_next_statuses_endpoint(
     ticket_id: UUID,
     db: Session = Depends(get_db),
@@ -118,4 +117,4 @@ def get_possible_next_statuses_endpoint(
     Get possible next statuses for a ticket based on current status
     """
     possible_statuses = crud.get_possible_next_statuses(db, ticket_id)
-    return PossibleStatusesResponse(possible_next_statuses=possible_statuses) 
+    return PossibleStatusesResponse(possible_next_statuses=possible_statuses)

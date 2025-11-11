@@ -36,3 +36,15 @@ class TicketCategoryListResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        
+# Add to your existing tickets_schemas.py
+
+class EmployeeOut(BaseModel):
+    user_id: UUID
+    full_name: str
+
+class EmployeeListResponse(BaseModel):
+    employees: List[EmployeeOut]    
+    
+    
+

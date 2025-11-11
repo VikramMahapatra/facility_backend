@@ -3,6 +3,7 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 
+from facility_service.app.enum.ticket_service_enum import TicketStatus
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 
 from ...schemas.mobile_app.help_desk_schemas import CommentOut, TicketWorkFlowOut
@@ -165,8 +166,9 @@ class  TicketCommentOut(BaseModel):
     created_at: Optional[datetime]
     reactions: List = []
 
-class TicketDetailsResponseS(EmptyStringModel):
+class TicketDetailsResponseById(EmptyStringModel):
     id: UUID
+    ticket_no :str
     category: Optional[str]
     priority: Optional[str]
     status: Optional[str]
@@ -186,3 +188,21 @@ class TicketDetailsResponseS(EmptyStringModel):
     is_overdue: bool
     comments: List[TicketCommentOut] = []
     workflows: List[TicketWorkflowOut] = []
+
+
+
+class TicketUpdateRequest(BaseModel):
+    ticket_id: UUID
+    new_status: TicketStatus
+    action_by: UUID 
+    
+
+
+class TicketAssignedToRequest(BaseModel):
+    ticket_id: UUID
+    assigned_to: UUID
+
+
+class TicketCommentRequest(BaseModel):
+    ticket_id: UUID
+    comment: str

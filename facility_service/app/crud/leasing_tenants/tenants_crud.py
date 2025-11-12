@@ -299,15 +299,16 @@ def create_tenant(db: Session, tenant: TenantCreate):
     now = datetime.utcnow()
 
     if tenant.tenant_type == "individual":
-        # ✅ Check if space already has a tenant (1 tenant per space)
-        existing_tenant_in_space = db.query(Tenant).filter(
+        # ✅ Check if space already has an ACTIVE tenant (1 active tenant per space)
+        existing_active_tenant_in_space = db.query(Tenant).filter(
             Tenant.space_id == tenant.space_id,
-            Tenant.is_deleted == False
+            Tenant.is_deleted == False,
+            Tenant.status == "active"  # Only check for active tenants
         ).first()
 
-        if existing_tenant_in_space:
+        if existing_active_tenant_in_space:
             return error_response(
-                message=f"Space already has a tenant assigned. One space can only have one tenant.",
+                message=f"Space is already occupied by an active tenant. Please select another space.",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
@@ -316,8 +317,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
         existing_tenant_by_name = db.query(Tenant).filter(
             Tenant.site_id == tenant.site_id,
             Tenant.is_deleted == False,
-            func.lower(Tenant.name) == func.lower(
-                tenant.name)  # Case-insensitive
+            func.lower(Tenant.name) == func.lower(tenant.name)
         ).first()
 
         if existing_tenant_by_name:
@@ -335,7 +335,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
             "email": tenant.email,
             "phone": tenant.phone,
             "address": (tenant.contact_info or {}).get("address"),
-            "status": tenant.status or "active",
+            "status": "active",  # Default to active when creating
             "created_at": now,
             "updated_at": now,
         }
@@ -346,15 +346,16 @@ def create_tenant(db: Session, tenant: TenantCreate):
         return db_tenant
 
     elif tenant.tenant_type == "commercial":
-        # ✅ Check if space already has a commercial partner (1 tenant per space)
-        existing_partner_in_space = db.query(CommercialPartner).filter(
+        # ✅ Check if space already has an ACTIVE commercial partner (1 active tenant per space)
+        existing_active_partner_in_space = db.query(CommercialPartner).filter(
             CommercialPartner.space_id == tenant.space_id,
-            CommercialPartner.is_deleted == False
+            CommercialPartner.is_deleted == False,
+            CommercialPartner.status == "active"  # Only check for active partners
         ).first()
 
-        if existing_partner_in_space:
+        if existing_active_partner_in_space:
             return error_response(
-                message=f"Space already has a commercial partner assigned. One space can only have one tenant.",
+                message=f"Space is already occupied by an active commercial partner. Please select another space.",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
@@ -364,8 +365,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
         existing_partner_by_name = db.query(CommercialPartner).filter(
             CommercialPartner.site_id == tenant.site_id,
             CommercialPartner.is_deleted == False,
-            func.lower(CommercialPartner.legal_name) == func.lower(
-                legal_name)  # Case-insensitive
+            func.lower(CommercialPartner.legal_name) == func.lower(legal_name)
         ).first()
 
         if existing_partner_by_name:
@@ -382,7 +382,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
             "type": tenant.type or "merchant",
             "legal_name": legal_name,
             "contact": tenant.contact_info.dict() if tenant.contact_info else None,
-            "status": tenant.status or "active",
+            "status": "active",  # Default to active when creating
             "created_at": now,
             "updated_at": now,
         }
@@ -406,17 +406,18 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 http_status=404
             )
 
-        # ✅ Check if space_id is being updated and if new space already has a tenant
+        # ✅ Check if space_id is being updated and if new space already has an ACTIVE tenant
         if 'space_id' in update_dict and update_dict['space_id'] != db_tenant.space_id:
-            existing_tenant_in_new_space = db.query(Tenant).filter(
+            existing_active_tenant_in_new_space = db.query(Tenant).filter(
                 Tenant.space_id == update_dict['space_id'],
                 Tenant.id != tenant_id,  # Exclude current tenant
-                Tenant.is_deleted == False
+                Tenant.is_deleted == False,
+                Tenant.status == "active"  # Only check for active tenants
             ).first()
 
-            if existing_tenant_in_new_space:
+            if existing_active_tenant_in_new_space:
                 return error_response(
-                    message=f"Target space already has a tenant assigned. One space can only have one tenant.",
+                    message=f"Target space is already occupied by an active tenant. Please select another space.",
                     status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                     http_status=400
                 )
@@ -427,8 +428,7 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 Tenant.site_id == db_tenant.site_id,
                 Tenant.id != tenant_id,
                 Tenant.is_deleted == False,
-                func.lower(Tenant.name) == func.lower(
-                    update_dict['name'])  # Case-insensitive
+                func.lower(Tenant.name) == func.lower(update_dict['name'])
             ).first()
 
             if existing_tenant_by_name:
@@ -468,31 +468,30 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 http_status=404
             )
 
-        # ✅ Check if space_id is being updated and if new space already has a commercial partner
+        # ✅ Check if space_id is being updated and if new space already has an ACTIVE commercial partner
         if 'space_id' in update_dict and update_dict['space_id'] != db_partner.space_id:
-            existing_partner_in_new_space = db.query(CommercialPartner).filter(
+            existing_active_partner_in_new_space = db.query(CommercialPartner).filter(
                 CommercialPartner.space_id == update_dict['space_id'],
                 CommercialPartner.id != tenant_id,  # Exclude current partner
-                CommercialPartner.is_deleted == False
+                CommercialPartner.is_deleted == False,
+                CommercialPartner.status == "active"  # Only check for active partners
             ).first()
 
-            if existing_partner_in_new_space:
+            if existing_active_partner_in_new_space:
                 return error_response(
-                    message=f"Target space already has a commercial partner assigned. One space can only have one tenant.",
+                    message=f"Target space is already occupied by an active commercial partner. Please select another space.",
                     status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                     http_status=400
                 )
 
         # Check for duplicate legal_name (case-insensitive) if being updated
-        new_legal_name = update_dict.get(
-            "legal_name") or update_dict.get("name")
+        new_legal_name = update_dict.get("legal_name") or update_dict.get("name")
         if new_legal_name and new_legal_name != db_partner.legal_name:
             existing_partner_by_name = db.query(CommercialPartner).filter(
                 CommercialPartner.site_id == db_partner.site_id,
                 CommercialPartner.id != tenant_id,
                 CommercialPartner.is_deleted == False,
-                func.lower(CommercialPartner.legal_name) == func.lower(
-                    new_legal_name)  # Case-insensitive
+                func.lower(CommercialPartner.legal_name) == func.lower(new_legal_name)
             ).first()
 
             if existing_partner_by_name:
@@ -504,13 +503,10 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
 
         # Update commercial partner
         if db_partner:
-            db_partner.legal_name = update_dict.get(
-                "legal_name", db_partner.legal_name)
+            db_partner.legal_name = update_dict.get("legal_name", db_partner.legal_name)
             db_partner.type = update_dict.get("type", db_partner.type)
-            db_partner.space_id = update_dict.get(
-                "space_id", db_partner.space_id)
-            db_partner.contact = update_dict.get(
-                "contact_info") or db_partner.contact
+            db_partner.space_id = update_dict.get("space_id", db_partner.space_id)
+            db_partner.contact = update_dict.get("contact_info") or db_partner.contact
             db_partner.status = update_dict.get("status", db_partner.status)
             db_partner.updated_at = datetime.utcnow()
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, List, Optional
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -33,19 +33,21 @@ def get_complaints(
 
 # Raise a complaint without photos/videos initially
 @router.post("/raisecomplaint", response_model=ComplaintResponse)
-def raise_complaint(
-    complaint_data: ComplaintCreate,
+async def raise_complaint(
     background_tasks: BackgroundTasks,
+    complaint_data:ComplaintCreate = Depends(ComplaintCreate.as_form),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    file: UploadFile = File(None),
 ):
-    return tickets_crud.create_ticket(
+    return await tickets_crud.create_ticket(
         background_tasks,
         db,
         auth_db,
         complaint_data,
-        current_user
+        current_user,
+        file
     )
 
 

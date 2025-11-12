@@ -1,12 +1,14 @@
-from pydantic import BaseModel, Field
+import base64
+from fastapi import Form
+from pydantic import BaseModel, Field, field_serializer
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 
-from facility_service.app.enum.ticket_service_enum import TicketStatus
-from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
+from sqlalchemy import LargeBinary
 
-from ...schemas.mobile_app.help_desk_schemas import CommentOut, TicketWorkFlowOut
+from ...enum.ticket_service_enum import TicketStatus
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from shared.core.schemas import CommonQueryParams
 
 
@@ -64,6 +66,7 @@ class TicketFilterRequest(CommonQueryParams):
     space_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
 
+   
 
 class TicketCreate(BaseModel):
     org_id: Optional[UUID] = None
@@ -76,6 +79,33 @@ class TicketCreate(BaseModel):
     description: str
     preferred_time: Optional[str] = None
     request_type: str
+
+    @classmethod
+    def as_form(
+        cls,
+        org_id: Optional[UUID] = Form(None),
+        site_id: Optional[UUID] = Form(None),
+        space_id: UUID = Form(...),
+        tenant_id: Optional[UUID] = Form(None),
+        category: Optional[str] = Form(None),
+        category_id: Optional[UUID] = Form(None),
+        title: Optional[str] = Form(None),
+        description: str = Form(...),
+        preferred_time: Optional[str] = Form(None),
+        request_type: str = Form(...),
+    ):
+        return cls(
+            org_id=org_id,
+            site_id=site_id,
+            space_id=space_id,
+            tenant_id=tenant_id,
+            category=category,
+            category_id=category_id,
+            title=title,
+            description=description,
+            preferred_time=preferred_time,
+            request_type=request_type,
+    )
 
 # For Comment/Reaction/Feedback ADD
 
@@ -116,7 +146,43 @@ class TicketEscalationRequest(BaseModel):
     ticket_id: UUID
     escalated_by: UUID   # user who clicked escalate button
 
+class TicketAttachmentOut(BaseModel):
+    file_name: str
+    content_type: str
+    file_data_base64: Optional[str] = None
 
+    class Config:
+        from_attributes = True
+
+
+
+class CommentOut(EmptyStringModel):
+    id: UUID
+    ticket_id: UUID
+    user_id: Optional[UUID] = None
+    user_name: Optional[str] = None
+    comment_text: Optional[str] = None
+    comment_reaction: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+
+class TicketWorkFlowOut(EmptyStringModel):
+    id: UUID
+    ticket_id: Optional[UUID]
+    type: Optional[str] = None
+    action_taken: Optional[str] = None
+    created_at: datetime
+    action_by: UUID
+    action_by_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+        
 class TicketDetailsResponse(EmptyStringModel):
     id: UUID
     category: Optional[str] = None
@@ -139,6 +205,7 @@ class TicketDetailsResponse(EmptyStringModel):
     assigned_to_name: Optional[str] = None
     request_type: Optional[str] = None
     is_overdue: Optional[bool] = False
+    attachments: Optional[List[TicketAttachmentOut]] = None
 
     class Config:
         from_attributes = True
@@ -165,29 +232,6 @@ class  TicketCommentOut(BaseModel):
     comment_text: Optional[str]
     created_at: Optional[datetime]
     reactions: List = []
-
-class TicketDetailsResponseById(EmptyStringModel):
-    id: UUID
-    ticket_no :str
-    category: Optional[str]
-    priority: Optional[str]
-    status: Optional[str]
-    description: Optional[str]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
-    closed_date: Optional[str]
-    space_id: Optional[UUID]
-    space_name: Optional[str]
-    building_name: Optional[str]
-    site_name: Optional[str]
-    assigned_to: Optional[UUID]
-    assigned_to_name: Optional[str]
-    request_type: Optional[str]
-    can_escalate: bool
-    can_reopen: bool
-    is_overdue: bool
-    comments: List[TicketCommentOut] = []
-    workflows: List[TicketWorkflowOut] = []
 
 
 
@@ -222,3 +266,5 @@ class TicketReactionRequest(BaseModel):
 #new for fetching admin in the organization 
 class TicketAdminRoleRequest(BaseModel):
     org_id :UUID
+
+

@@ -1,6 +1,8 @@
+import base64
 from datetime import datetime
+from requests import request
 from sqlalchemy import desc, distinct, select
-from fastapi import HTTPException, BackgroundTasks
+from fastapi import HTTPException, BackgroundTasks, UploadFile
 from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from sqlalchemy import and_, func
@@ -28,7 +30,7 @@ from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketDetailsResponseById,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut  
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut  
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
@@ -191,7 +193,18 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
         l.action_by_name = user_map.get(l.action_by, "Unknown User")
 
     all_logs.sort(key=lambda x: x.created_at, reverse=True)
-
+    print("service tickets ", service_req)
+    attachments_out = []
+    if service_req.file_data:
+        attachments_out.append(
+            {
+                "file_name": service_req.file_name,
+                "content_type": service_req.content_type,
+                # Convert binary to base64 so it can be sent safely in JSON
+                "file_data_base64": base64.b64encode(service_req.file_data).decode('utf-8')
+                }
+            )
+            
     # Step 5: Return as schema
     return TicketDetailsResponse.model_validate(
         {
@@ -206,11 +219,18 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
             "can_escalate": service_req.can_escalate,
             "can_reopen": service_req.can_reopen,
             "is_overdue": service_req.is_overdue,
+            "attachments": attachments_out,
         }
     )
 
-
-def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketCreate, user: UserToken):
+async def create_ticket(
+        background_tasks: BackgroundTasks, 
+        session: Session, 
+        auth_db: Session,
+        data: TicketCreate,        
+        user: UserToken,
+        file: UploadFile = None
+    ):
     account_type = user.account_type.lower()
     # Create Ticket (defaults to OPEN)
     space = (
@@ -256,6 +276,7 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
             http_status=400
         )
 
+
     new_ticket = Ticket(
         org_id=space.org_id,
         site_id=space.site_id if space.site_id else data.site_id,
@@ -271,6 +292,12 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
         preferred_time=data.preferred_time,
         request_type=data.request_type
     )
+    if file and file.filename:
+        file_bytes = await file.read()
+        new_ticket.file_name = file.filename
+        new_ticket.content_type = file.content_type or "application/octet-stream"
+        new_ticket.file_data = file_bytes  # 👈 store binary data directly
+
     session.add(new_ticket)
     session.flush()  # needed to get ticket_id
 
@@ -342,7 +369,7 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
     )
 
 
-def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
+def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest ):
     # Fetch ticket
     ticket = db.execute(
         select(Ticket).where(Ticket.id == data.ticket_id)
@@ -404,11 +431,41 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     )
 
     # Notification Log
-    notification = Notification(
-        user_id=sla.escalation_contact,
+    # Get action user details for logs
+    action_by_user = auth_db.query(Users).filter(Users.id == data.action_by).first()
+    action_by_name = action_by_user.full_name if action_by_user else "Unknown User"
+
+    recipient_ids = []
+
+    # Add assigned user
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+   
+    # Add action user
+    recipient_ids.append(data.action_by)
+
+    # Add tenant if exists
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+
+    # Add admin users using the fetch_role_admin function
+    admin_user_ids = fetch_role_admin(auth_db, action_by_user.org_id if action_by_user else None)
+    
+    # Handle both success and error responses from fetch_role_admin
+    if isinstance(admin_user_ids, list):  
+        recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+    
+
+    recipient_ids = list(set(recipient_ids))
+
+    # Create notifications for all recipients (instead of just one)
+    notifications = []
+    for recipient_id in recipient_ids:
+        notification = Notification(
+        user_id=recipient_id,
         type=NotificationType.alert,
         title="Ticket Escalated",
-        message=f"Ticket {ticket.ticket_no} have been escalated & assigned to you",
+        message=f"Ticket {ticket.ticket_no} have been escalated & assigned to {assigned_to_user} by {action_by_name}",
         posted_date=datetime.utcnow(),
         priority=PriorityType(ticket.priority),
         read=False,
@@ -1013,9 +1070,18 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
                 action_time=w.action_time
             )
         )
-
+    attachments_out = []
+    if service_req.file_data:
+        attachments_out.append(
+        {
+            "file_name": service_req.file_name,
+            "content_type": service_req.content_type,
+            # Convert binary to base64 so it can be sent safely in JSON
+            "file_data_base64": base64.b64encode(service_req.file_data).decode('utf-8')
+            }
+        )
     # Step 5: Return as schema
-    return TicketDetailsResponseById.model_validate(
+    return TicketDetailsResponse.model_validate(
         {
             **service_req.__dict__,
             "category": category_name,
@@ -1029,6 +1095,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "can_escalate": service_req.can_escalate,
             "can_reopen": service_req.can_reopen,
             "is_overdue": service_req.is_overdue,
+            "attachments": attachments_out,
         }
     )
 
@@ -1127,7 +1194,6 @@ def update_ticket_status(
         data=updated_ticket,
         message=f"Ticket status updated to {data.new_status.value} successfully"
     )
-
 
 
 

@@ -1,5 +1,5 @@
 
-from sqlalchemy import Enum
+from sqlalchemy import Enum, LargeBinary
 from typing import Optional
 from pydantic import computed_field
 from sqlalchemy.dialects.postgresql import UUID
@@ -52,6 +52,10 @@ class Ticket(Base):
     updated_at = Column(TIMESTAMP(timezone=True),
                         server_default=func.now(), onupdate=func.now())
     closed_date = Column(TIMESTAMP(timezone=True), nullable=True)
+    file_name = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    file_data = Column(LargeBinary, nullable=False)  # 👈 store bytes here
+
 
     org = relationship("Org", back_populates="tickets")
     site = relationship("Site", back_populates="tickets")

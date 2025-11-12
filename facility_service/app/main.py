@@ -129,3 +129,4 @@ app.include_router(user_profile_router.router)
 app.include_router(tickets_router.router)
 app.include_router(notifiaction_settings_router.router)
 app.include_router(ticket_category_router.router)
+

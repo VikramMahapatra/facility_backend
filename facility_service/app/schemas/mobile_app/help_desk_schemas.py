@@ -2,10 +2,12 @@
 from uuid import UUID
 from typing import Optional, List, Any
 from datetime import date, datetime
-from pydantic import UUID4, BaseModel, Field
+from fastapi import Form
+from pydantic import  BaseModel, Field
+from ...schemas.service_ticket.tickets_schemas import CommentOut, TicketAttachmentOut, TicketWorkFlowOut
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
-from ...schemas.leases_schemas import LeaseOut
-from shared.core.schemas import CommonQueryParams
+
+
 
 
 class ComplaintOut(EmptyStringModel):
@@ -25,12 +27,30 @@ class ComplaintOut(EmptyStringModel):
 
 
 class ComplaintCreate(EmptyStringModel):
-    space_id: str  # ✅ unit_id → space_id
+    space_id: UUID  # ✅ unit_id → space_id
     category: str
     request_type: str
     description: str
     preferred_time: Optional[str] = None
 
+    @classmethod
+    def as_form(
+        cls,
+        space_id: UUID = Form(...),
+        category: Optional[str] = Form(None),
+        request_type: str = Form(...),
+        description: str = Form(...),
+        preferred_time: Optional[str] = Form(None),
+        
+    ):
+        return cls(
+            space_id=space_id,
+            category=category,
+            request_type=request_type,
+            description=description,
+            preferred_time=preferred_time,
+
+    )
     model_config = {"from_attributes": True}
 
 
@@ -51,31 +71,6 @@ class ComplaintResponse(EmptyStringModel):
 class ComplaintDetailsRequest(BaseModel):
     ticket_id: str
 
-
-class CommentOut(EmptyStringModel):
-    id: UUID
-    ticket_id: UUID
-    user_id: Optional[UUID] = None
-    user_name: Optional[str] = None
-    comment_text: Optional[str] = None
-    comment_reaction: Optional[str] = None
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class TicketWorkFlowOut(EmptyStringModel):
-    id: UUID
-    ticket_id: Optional[UUID]
-    type: Optional[str] = None
-    action_taken: Optional[str] = None
-    created_at: datetime
-    action_by: UUID
-    action_by_name: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
 class ComplaintDetailsResponse(EmptyStringModel):
@@ -100,6 +95,7 @@ class ComplaintDetailsResponse(EmptyStringModel):
     assigned_to_name: Optional[str] = None
     request_type: Optional[str] = None
     is_overdue: Optional[bool] = False
+    attachments: Optional[List[TicketAttachmentOut]] = None
 
     class Config:
         from_attributes = True

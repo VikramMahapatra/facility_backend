@@ -34,7 +34,7 @@ class PmtemplateStatus(str, Enum):
 class ServiceRequestStatus (str, Enum):
 
     open = "open"
-    inprogress = "in progress"
+    in_progress = "in_progress"
     resolved = "resolved"
     close = "close"
 

@@ -118,3 +118,16 @@ def get_employees_for_ticket(
     employees = crud.get_employees_by_ticket(db, auth_db, ticket_id)
     
     return EmployeeListResponse(employees=employees)
+
+
+@router.get("/category-lookup", response_model=List[Lookup])
+def get_category_lookup(
+    site_id: Optional[str] = Query(None, description="Filter by site ID. Use 'all' for all sites."),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get ticket categories for dropdown/lookup.
+    Returns both site-specific and global categories.
+    """
+    return crud.category_lookup(db, site_id)

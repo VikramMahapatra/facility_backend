@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime
+from operator import or_
 from requests import request
 from sqlalchemy import desc, distinct, select
 from fastapi import HTTPException, BackgroundTasks, UploadFile
@@ -259,8 +260,13 @@ async def create_ticket(
         tenant_id = session.query(Tenant.id).filter(and_(
             Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
         title = f"{data.category} - {space.name}"
+            # ✅ FIXED: Case-insensitive search with site check
         category_id = session.query(TicketCategory.id).filter(
-            and_(TicketCategory.category_name == data.category, TicketCategory.site_id == space.site_id)).scalar()
+        and_(func.lower(TicketCategory.category_name) == func.lower(data.category),
+             or_(TicketCategory.site_id == space.site_id, 
+                 TicketCategory.site_id.is_(None)),
+             TicketCategory.is_active == True,
+             TicketCategory.is_deleted == False)).scalar()
 
     if not tenant_id:
         return error_response(
@@ -270,11 +276,12 @@ async def create_ticket(
         )
 
     if not category_id:
+    # ✅ Better error message to debug
         return error_response(
-            message=f"Invalid category",
-            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
-            http_status=400
-        )
+        message=f"Invalid category: '{data.category}' not found for site {space.site_id}",
+        status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+        http_status=400
+    )
 
 
     new_ticket = Ticket(
@@ -309,12 +316,17 @@ async def create_ticket(
     )
 
     assigned_to_user = None
+    sla = None
 
-    sla = session.execute(
-        select(SlaPolicy).where(SlaPolicy.service_category == data.category)
-    ).scalar_one_or_none()
+    if new_ticket.category and new_ticket.category.sla_policy:
+        sla = new_ticket.category.sla_policy
 
     assigned_to = sla.default_contact if sla else None
+
+    if not assigned_to:
+        return error_response(
+            message="No default contact for assignment"
+        )
 
     if assigned_to:
         assigned_to_user = (
@@ -358,8 +370,9 @@ async def create_ticket(
     session.refresh(new_ticket)
 
     # email
-    send_ticket_created_email(
-        background_tasks, session, new_ticket, created_by_user, assigned_to_user)
+    if assigned_to_user :
+        send_ticket_created_email(
+            background_tasks, session, new_ticket, created_by_user, assigned_to_user)
 
     return TicketOut.model_validate(
         {

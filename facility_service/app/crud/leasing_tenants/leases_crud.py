@@ -329,6 +329,7 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
                     Site.org_id == org_id,
                     CommercialPartner.site_id == site_id,
                     CommercialPartner.is_deleted == False,
+                    CommercialPartner.status == "active",
                 )
             )
             .distinct()
@@ -337,7 +338,13 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
     else:
         partners = (
             db.query(Tenant.id, Tenant.name)
-            .filter(Tenant.site_id == site_id, Tenant.is_deleted == False)
+            .filter(
+                and_(
+                    Tenant.site_id == site_id,
+                    Tenant.is_deleted == False,
+                    Tenant.status == "active",
+                )
+            )
             .distinct()
             .all()
         )

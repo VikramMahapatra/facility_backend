@@ -78,16 +78,17 @@ def escalate_ticket(
 
 
 @router.post("/ticket-resolved", response_model=None)
-def resolved_ticket(
-    request: TicketActionRequest,
+async def resolved_ticket(
     background_tasks: BackgroundTasks,
+    request: TicketActionRequest = Depends(TicketActionRequest.as_form),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
+    file: UploadFile = File(None)
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.resolve_ticket(background_tasks, db, auth_db, request)
-
+    return await tickets_crud.resolve_ticket(background_tasks, db, auth_db, request , file)
+    
 
 @router.post("/ticket-reopened", response_model=None)
 def reopen_ticket(

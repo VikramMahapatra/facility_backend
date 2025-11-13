@@ -3,10 +3,19 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 
+# Technician for dropdown (using StaffSite + Users)
+class TechnicianOut(BaseModel):
+    user_id: UUID
+    full_name: str
+   
+
+    class Config:
+        from_attributes = True
+
 # Technician Workload Summary
 class TechnicianWorkloadSummary(BaseModel):
-    technician_id: str
-    technician_name: Optional[str] = None
+    technician_id: UUID  # user_id from StaffSite
+    technician_name: str
     total_tickets: int
     open_tickets: int
     in_progress_tickets: int
@@ -21,8 +30,8 @@ class AssignedTicketOut(BaseModel):
     ticket_no: str
     title: str
     category: str
-    assigned_to: str
-    technician_name: Optional[str] = None
+    assigned_to: UUID  # user_id from StaffSite
+    technician_name: str
     status: str
     priority: str
     created_at: datetime
@@ -51,6 +60,7 @@ class TeamWorkloadManagementResponse(BaseModel):
     technicians_workload: List[TechnicianWorkloadSummary]
     assigned_tickets: List[AssignedTicketOut]
     unassigned_tickets: List[UnassignedTicketOut]
+    available_technicians: List[TechnicianOut]  # For dropdown
     total_assigned: int
     total_unassigned: int
 

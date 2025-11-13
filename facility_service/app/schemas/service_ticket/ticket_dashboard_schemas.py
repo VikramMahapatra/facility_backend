@@ -101,6 +101,7 @@ class CompleteDashboardResponse(BaseModel):
     performance: PerformanceResponse
     recent_tickets: RecentTicketsResponse
     team_workload: TeamWorkloadResponse
+    category_statistics: CategoryStatisticsResponse  # Add this field
 
     class Config:
         from_attributes = True

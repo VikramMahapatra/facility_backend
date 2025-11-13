@@ -406,7 +406,6 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
         )
 
     # Fetch SLA Policy using category_id
-
     if not ticket.category or not ticket.category.sla_policy or not ticket.category.sla_policy.escalation_contact:
         return error_response(
             message="No escalation contact configured for SLA",
@@ -467,7 +466,6 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     # Handle both success and error responses from fetch_role_admin
     if isinstance(admin_user_ids, list):  
         recipient_ids.extend([a["user_id"] for a in admin_user_ids])
-    
 
     recipient_ids = list(set(recipient_ids))
 
@@ -475,15 +473,16 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     notifications = []
     for recipient_id in recipient_ids:
         notification = Notification(
-        user_id=recipient_id,
-        type=NotificationType.alert,
-        title="Ticket Escalated",
-        message=f"Ticket {ticket.ticket_no} have been escalated & assigned to {assigned_to_user} by {action_by_name}",
-        posted_date=datetime.utcnow(),
-        priority=PriorityType(ticket.priority),
-        read=False,
-        is_deleted=False
-    )
+            user_id=recipient_id,
+            type=NotificationType.alert,
+            title="Ticket Escalated",
+            message=f"Ticket {ticket.ticket_no} have been escalated & assigned to {assigned_to_user} by {action_by_name}",
+            posted_date=datetime.utcnow(),
+            priority=PriorityType(ticket.priority),
+            read=False,
+            is_deleted=False
+        )
+        notifications.append(notification)
 
     # Workflow Log
     workflow_log = TicketWorkflow(
@@ -494,7 +493,7 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
         action_taken=f"Ticket {ticket.ticket_no} escalated & assigned to {assigned_to_user}"
     )
 
-    objects_to_add = [assignment_log, notification, workflow_log]
+    objects_to_add = [assignment_log, workflow_log] + notifications
 
     # Comment Log
     if data.comment:
@@ -509,11 +508,6 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     db.refresh(ticket)
 
     # email
-    recipient_ids = [
-        data.action_by,
-        sla.escalation_contact,
-        sla.default_contact
-    ]
     emails = (
         auth_db.query(Users.email)
         .filter(Users.id.in_(recipient_ids))
@@ -533,7 +527,6 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
         data=updated_ticket,
         message="Ticket escalated successfully"
     )
-
 
 def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
@@ -630,13 +623,13 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
         message="Ticket closed successfully"
     )
 
-
 def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
         raise Exception("Ticket not found")
-    if not ticket.can_reopen or ticket.created_by != data.action_by:
+    
+    if not ticket.can_reopen or str(ticket.created_by) != str(data.action_by):
         return error_response(
             message=f"Not authorize to perform this action",
             status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
@@ -648,9 +641,9 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     ticket.updated_at = datetime.utcnow()
 
     action_by_user = (
-        auth_db.query(Users)
-        .filter(Users.id == data.action_by)
-        .scalar()
+    auth_db.query(Users)
+    .filter(Users.id == data.action_by)
+    .first()
     )
 
     assigned_to_user = (
@@ -668,18 +661,44 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     )
 
     # Notification Log
-    notification = Notification(
-        user_id=ticket.assigned_to,
-        type=NotificationType.alert,
-        title="Ticket Reopened",
-        message=f"Ticket {ticket.ticket_no} reopened by {action_by_user.full_name}",
-        posted_date=datetime.utcnow(),
-        priority=PriorityType(ticket.priority),
-        read=False,
-        is_deleted=False
-    )
+    recipient_ids = []
 
-    objects_to_add = [notification, workflow_log]
+    # Add assigned user
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+   
+    # Add action user
+    recipient_ids.append(data.action_by)
+
+    # Add tenant if exists
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+
+    # Add admin users using the fetch_role_admin function
+    admin_user_ids = fetch_role_admin(auth_db, action_by_user.org_id if action_by_user else None)
+    
+    # Handle both success and error responses from fetch_role_admin
+    if isinstance(admin_user_ids, list):  
+        recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+    recipient_ids = list(set(recipient_ids))
+
+    # Create notifications for all recipients
+    notifications = []
+    for recipient_id in recipient_ids:
+        notification = Notification(
+            user_id=recipient_id,
+            type=NotificationType.alert,
+            title="Ticket Reopened",
+            message=f"Ticket {ticket.ticket_no} reopened by {action_by_user.full_name}",
+            posted_date=datetime.utcnow(),
+            priority=PriorityType(ticket.priority),
+            read=False,
+            is_deleted=False
+        )
+        notifications.append(notification)
+
+    objects_to_add = [workflow_log] + notifications
 
     if data.comment:
         objects_to_add.append(TicketComment(
@@ -692,17 +711,22 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     db.commit()
     db.refresh(ticket)
 
-    # email
+    # Email
+    emails = (
+        auth_db.query(Users.email)
+        .filter(Users.id.in_(recipient_ids))
+        .all()
+    )
+    email_list = [e[0] for e in emails]
+
     context = {
-        "assigned_to": assigned_to_user.full_name,
+        "assigned_to": assigned_to_user,
         "reopened_by": action_by_user.full_name,
         "ticket_no": ticket.ticket_no
     }
 
-    email_list = [assigned_to_user.email, action_by_user.email]
-
     send_ticket_reopened_email(background_tasks, db, context, email_list)
-
+    
     updated_ticket = TicketOut.model_validate(
         {
             **ticket.__dict__,
@@ -713,7 +737,6 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
         data=updated_ticket,
         message="Ticket reopened successfully"
     )
-
 
 def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
     ticket = db.execute(select(Ticket).where(

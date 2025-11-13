@@ -221,12 +221,14 @@ def get_complete_dashboard(db: Session, site_id: UUID, org_id: UUID) -> Complete
         performance = get_last_30_days_performance(db, site_id, org_id)
         recent_tickets = get_recent_tickets(db, site_id, org_id)
         team_workload = get_team_workload(db, site_id, org_id)
+        category_statistics = get_category_statistics(db, site_id, org_id)  # Add this line
         
         return CompleteDashboardResponse(
             overview=overview,
             performance=performance,
             recent_tickets=recent_tickets,
-            team_workload=team_workload
+            team_workload=team_workload,
+            category_statistics=category_statistics  # Add this line
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching complete dashboard: {str(e)}")

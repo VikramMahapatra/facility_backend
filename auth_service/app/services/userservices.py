@@ -87,7 +87,7 @@ def create_user(
         role_name = ("admin" if user.accountType.lower() ==
                      "organization" else user.accountType.lower())
         role_obj = db.query(Roles).filter(
-            func.lower(Roles.name) == role_name).first()
+            func.lower(Roles.name) == func.lower(role_name)).first()
 
         if not role_obj:
             return error_response(
@@ -159,8 +159,11 @@ def create_user(
                     site_id=user.site_id,
                     type="merchant",
                     legal_name=full_name,
-                    contact={"name": full_name,
-                             "phone": user.phone, "email": user.email},
+                    contact={
+                        "name": full_name,
+                        "phone": user.phone,
+                        "email": user.email
+                    },
                     status="inactive",
                     user_id=user_instance.id
                 )

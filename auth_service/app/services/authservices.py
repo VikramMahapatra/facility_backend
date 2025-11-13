@@ -81,7 +81,7 @@ def google_login(
 
     except ValueError as e:
         return error_response(
-            message="Invalid or expired OTP",
+            message="Something went wrong",
             status_code=str(AppStatusCode.AUTHENTICATION_USER_OTP_EXPIRED),
             http_status=status.HTTP_400_BAD_REQUEST
         )

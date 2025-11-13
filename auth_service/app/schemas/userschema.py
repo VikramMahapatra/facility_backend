@@ -35,7 +35,7 @@ class UserCreate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: str
-    phone: str
+    phone: Optional[str] = None
     accountType: Literal["organization", "vendor", "tenant", "flatowner"]
     organizationName: Optional[str] = None
     site_id: Optional[UUID] = None

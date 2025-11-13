@@ -70,6 +70,7 @@ def update_ticket_status_route(
 @router.put("/assign-ticket")
 def assign_ticket_route(
     request: TicketAssignedToRequest,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
@@ -78,6 +79,7 @@ def assign_ticket_route(
     Update ticket assigned_to
     """
     return crud.update_ticket_assigned_to(
+        background_tasks,
         session=session,
         auth_db=auth_db,
         data=request,
@@ -86,6 +88,7 @@ def assign_ticket_route(
 
 @router.post("/post-comment")
 def post_comment_route(
+    background_tasks: BackgroundTasks,
     request: TicketCommentRequest,
     session: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
@@ -95,6 +98,7 @@ def post_comment_route(
     Post comment on tickets
     """
     return crud.post_ticket_comment(
+        background_tasks,
         session=session,
         auth_db=auth_db,
         data=request,

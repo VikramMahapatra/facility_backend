@@ -15,7 +15,12 @@ from ...schemas.service_ticket.ticket_dashboard_schemas import (
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token, UserToken
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+router = APIRouter(
+    prefix="/api/ticket_dashboard",
+    tags=["Ticket_Dashboard"],
+    dependencies=[Depends(validate_current_token)]
+)
+
 
 # 1. Dashboard Overview
 @router.get("/overview", response_model=DashboardOverviewResponse)

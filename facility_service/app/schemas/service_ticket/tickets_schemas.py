@@ -11,6 +11,13 @@ from ...enum.ticket_service_enum import TicketStatus
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from shared.core.schemas import CommonQueryParams
 
+class TicketAttachmentOut(BaseModel):
+    file_name: str
+    content_type: str
+    file_data_base64: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class TicketBase(BaseModel):
     org_id: Optional[UUID] = None
@@ -56,6 +63,7 @@ class TicketOut(BaseModel):
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
     is_overdue: Optional[bool] = False
+    attachments: Optional[List[TicketAttachmentOut]] = None
 
     class Config:
         from_attributes = True
@@ -135,6 +143,19 @@ class TicketActionRequest(BaseModel):
     ticket_id: UUID
     action_by: Optional[UUID] = None
     comment: Optional[str] = None
+    
+    @classmethod
+    def as_form(
+        cls,
+        ticket_id: UUID = Form(...),
+        action_by: Optional[UUID] = Form(None),
+        comment: Optional[str] = Form(None),
+    ):
+        return cls(
+            ticket_id=ticket_id,
+            action_by=action_by,
+            comment=comment,
+        )
 
 
 class TicketReturnRequest(TicketActionRequest):
@@ -146,13 +167,7 @@ class TicketEscalationRequest(BaseModel):
     ticket_id: UUID
     escalated_by: UUID   # user who clicked escalate button
 
-class TicketAttachmentOut(BaseModel):
-    file_name: str
-    content_type: str
-    file_data_base64: Optional[str] = None
 
-    class Config:
-        from_attributes = True
 
 
 

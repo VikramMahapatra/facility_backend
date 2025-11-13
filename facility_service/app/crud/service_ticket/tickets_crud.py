@@ -528,7 +528,7 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
         message="Ticket escalated successfully"
     )
 
-def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
+async def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest ,file: UploadFile = None):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
 
@@ -538,7 +538,7 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
-
+    
     if (
         ticket.status == TicketStatus.CLOSED
         or str(ticket.assigned_to) != str(data.action_by)
@@ -554,6 +554,13 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     ticket.closed_date = datetime.utcnow()
     ticket.updated_at = datetime.utcnow()
 
+        # File attachment logic (same as create_ticket)
+    if file and file.filename:
+        file_bytes = await file.read()
+        ticket.file_name = file.filename
+        ticket.content_type = file.content_type or "application/octet-stream"
+        ticket.file_data = file_bytes  # 👈 store binary data directly
+        
     created_by_user = (
         auth_db.query(Users)
         .filter(Users.id == ticket.created_by)
@@ -575,8 +582,34 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     )
 
     # Notification Log
-    notification = Notification(
-        user_id=ticket.tenant_id,
+    # Get action user details for logs
+    recipient_ids = []
+
+    # Add assigned user
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+   
+    # Add action user
+    recipient_ids.append(data.action_by)
+
+    # Add tenant if exists
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+
+    # Add admin users using the fetch_role_admin function
+    admin_user_ids = fetch_role_admin(auth_db, action_by_user.org_id if action_by_user else None)
+    
+    # Handle both success and error responses from fetch_role_admin
+    if isinstance(admin_user_ids, list):  
+        recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+    recipient_ids = list(set(recipient_ids))
+
+    # Create notifications for all recipients (instead of just one)
+    notifications = []
+    for recipient_id in recipient_ids:
+        notification = Notification(
+        user_id=recipient_id,
         type=NotificationType.alert,
         title="Ticket Closed",
         message=f"Ticket {ticket.ticket_no} closed by {action_by_user.full_name}",
@@ -585,8 +618,10 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
         read=False,
         is_deleted=False
     )
+        notifications.append(notification)
 
-    objects_to_add = [notification, workflow_log]
+     # Prepare all objects to add
+    objects_to_add = [workflow_log] + notifications
 
     # Comment Log
     if data.comment:
@@ -601,14 +636,18 @@ def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     db.refresh(ticket)
 
     # email
+    emails = (
+        auth_db.query(Users.email)
+        .filter(Users.id.in_(recipient_ids))
+        .all()
+    )
+    email_list = [e[0] for e in emails]
     context = {
         "created_by_name": created_by_user.full_name,
         "closed_by": action_by_user.full_name,
         "ticket_no": ticket.ticket_no,
         "feedback": data.comment if data.comment else 'NA'
     }
-
-    email_list = [created_by_user.email, action_by_user.email]
 
     send_ticket_closed_email(background_tasks, db, context, email_list)
 
@@ -779,8 +818,33 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     )
 
     # Notification Log
-    notification = Notification(
-        user_id=ticket.tenant_id,
+    recipient_ids = []
+
+    # Add assigned user
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+   
+    # Add action user
+    recipient_ids.append(data.action_by)
+
+    # Add tenant if exists
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+
+    # Add admin users using the fetch_role_admin function
+    admin_user_ids = fetch_role_admin(auth_db, action_by_user.org_id if action_by_user else None)
+    
+    # Handle both success and error responses from fetch_role_admin
+    if isinstance(admin_user_ids, list):  
+        recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+    recipient_ids = list(set(recipient_ids))
+
+    # Create notifications for all recipients
+    notifications = []
+    for recipient_id in recipient_ids:
+        notification = Notification(
+        user_id=recipient_id,
         type=NotificationType.alert,
         title="Ticket On hold",
         message=f"Ticket {ticket.ticket_no} put on hold by {action_by_user.full_name}",
@@ -789,8 +853,9 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
         read=False,
         is_deleted=False
     )
+        notifications.append(notification)
 
-    objects_to_add = [notification, workflow_log]
+    objects_to_add = [workflow_log] + notifications
 
     if data.comment:
         objects_to_add.append(TicketComment(
@@ -803,14 +868,20 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
     db.commit()
     db.refresh(ticket)
 
-    # email
+
+    # Email
+    emails = (
+        auth_db.query(Users.email)
+        .filter(Users.id.in_(recipient_ids))
+        .all()
+    )
+    email_list = [e[0] for e in emails]
+
     context = {
         "created_by": created_by_user.full_name,
         "hold_reason": data.comment if data.comment else None,
         "ticket_no": ticket.ticket_no
     }
-
-    email_list = [created_by_user.email, action_by_user.email]
 
     send_ticket_onhold_email(background_tasks, db, context, email_list)
 
@@ -834,7 +905,7 @@ def return_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
 
     # Fetch SLA Policy for auto-assignment
     sla = db.execute(
-        select(SlaPolicy).where(SlaPolicy.sla_id == data.category_id)
+        select(SlaPolicy).where(SlaPolicy.id == Ticket.category_id)
     ).scalar_one_or_none()
 
     assigned_to = sla.default_contact if sla else None
@@ -844,13 +915,25 @@ def return_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     ticket.assigned_to = assigned_to
     ticket.updated_at = datetime.utcnow()
 
+    
+    action_by_user = (
+        auth_db.query(Users)
+        .filter(Users.id == data.action_by)
+        .scalar()
+    )
+
+    created_by_user = (
+        auth_db.query(Users)
+        .filter(Users.id == ticket.created_by)
+        .scalar()
+    )
+
     assignment = TicketAssignment(
         ticket_id=data.ticket_id,
         assigned_from=data.action_by,
         assigned_to=assigned_to,
         reason=data.comment or "Ticket Returned"
     )
-    db.add(assignment)
 
     workflow = TicketWorkflow(
         ticket_id=data.ticket_id,
@@ -859,10 +942,75 @@ def return_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
         new_status=TicketStatus.RETURNED,
         action_taken=data.comment or "Ticket Returned to Another User"
     )
-    db.add(workflow)
+   
+    # Notification 
 
+    recipient_ids = []
+
+    # Add assigned user
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+   
+    # Add action user
+    recipient_ids.append(data.action_by)
+
+    # Add tenant if exists
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+
+    # Add admin users using the fetch_role_admin function
+    admin_user_ids = fetch_role_admin(auth_db, action_by_user.org_id if action_by_user else None)
+    
+    # Handle both success and error responses from fetch_role_admin
+    if isinstance(admin_user_ids, list):  
+        recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+    recipient_ids = list(set(recipient_ids))
+
+    # Create notifications for all recipients
+    notifications = []
+    for recipient_id in recipient_ids:
+        notification = Notification(
+        user_id=recipient_id,
+        type=NotificationType.alert,
+        title="Ticket Returned",
+        message=f"Ticket {ticket.ticket_no} put on returned by {action_by_user.full_name}",
+        posted_date=datetime.utcnow(),
+        priority=PriorityType(ticket.priority),
+        read=False,
+        is_deleted=False
+    )
+        notifications.append(notification)
+
+    objects_to_add = [workflow , assignment] + notifications
+
+    if data.comment:
+        objects_to_add.append(TicketComment(
+            ticket_id=ticket.id,
+            user_id=data.action_by,
+            comment_text=data.comment
+        ))
+
+    db.add_all(objects_to_add)
     db.commit()
     db.refresh(ticket)
+
+        # Email
+    emails = (
+        auth_db.query(Users.email)
+        .filter(Users.id.in_(recipient_ids))
+        .all()
+    )
+    email_list = [e[0] for e in emails]
+
+    context = {
+        "created_by": created_by_user.full_name,
+        "return_reason": data.comment if data.comment else None,
+        "ticket_no": ticket.ticket_no
+    }
+
+    send_ticket_return_email(background_tasks, db, context, email_list)
+
     updated_ticket = TicketOut.model_validate(
         {
             **ticket.__dict__,
@@ -980,7 +1128,7 @@ def send_ticket_closed_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_closed",
         recipients=recipients,
-        subject=f"Ticket Escalated - {data["ticket_no"]}",
+        subject=f"Ticket Resolved - {data["ticket_no"]}",
         context=data,
     )
 
@@ -1011,6 +1159,54 @@ def send_ticket_onhold_email(background_tasks, db, data, recipients):
     )
 
 
+def send_ticket_return_email(background_tasks, db, data, recipients):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="ticket_return",
+        recipients=recipients,
+        subject=f"Ticket Return -{data["ticket_no"]}",
+        context=data,
+    )
+
+def send_ticket_update_status_email(background_tasks, db, data, recipients):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="ticket_update_status",
+        recipients=recipients,
+        subject=f"Ticket Update Status -{data["ticket_no"]}",
+        context=data,
+    )
+
+def send_ticket_update_assigned_to_email(background_tasks, db, data, recipients):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="ticket_update_assigned_to",
+        recipients=recipients,
+        subject=f"Ticket Update Assigned_to -{data["ticket_no"]}",
+        context=data,
+    )
+
+def send_ticket_post_comment_email(background_tasks, db, data, recipients):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="ticket_post_comment",
+        recipients=recipients,
+        subject=f"Ticket Post Comment -{data["ticket_no"]}",
+        context=data,
+    )
+    
 # for view ------------------------
 
 def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
@@ -1137,7 +1333,6 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
 
 
 
-
 #update status
 def update_ticket_status(
     background_tasks: BackgroundTasks,
@@ -1167,6 +1362,11 @@ def update_ticket_status(
     if data.new_status == TicketStatus.CLOSED:
         ticket.closed_date = datetime.utcnow()
 
+    created_by_user = (
+        auth_db.query(Users)
+        .filter(Users.id == ticket.created_by)
+        .scalar()
+    )
 
     action_by_user = auth_db.query(Users).filter(Users.id == current_user.user_id).first()
     action_by_name = action_by_user.full_name if action_by_user else "Unknown User"
@@ -1199,6 +1399,7 @@ def update_ticket_status(
 
     recipient_ids = list(set(recipient_ids))
 
+    notifications = []
     for recipient_id in recipient_ids:
         notification = Notification(
         user_id=recipient_id,
@@ -1210,14 +1411,30 @@ def update_ticket_status(
         read=False,
         is_deleted=False
     )
+        notifications.append(notification)
 
-    # Combine logs
-    objects_to_add = [workflow_log, notification]
+    objects_to_add = [workflow_log ] + notifications
 
     db.add_all(objects_to_add)
     db.commit()
     db.refresh(ticket)
 
+         # Email
+    emails = (
+        auth_db.query(Users.email)
+        .filter(Users.id.in_(recipient_ids))
+        .all()
+    )
+    email_list = [e[0] for e in emails]
+
+    context = {
+    "created_by": created_by_user.full_name,
+    "ticket_no": ticket.ticket_no,
+    "updated_by": action_by_name,
+    "new_status": data.new_status.value,
+    }
+
+    send_ticket_update_status_email(background_tasks, db, context, email_list)
     # Response
     updated_ticket = TicketOut.model_validate(
         {
@@ -1233,7 +1450,7 @@ def update_ticket_status(
 
 
 
-def update_ticket_assigned_to(session: Session, auth_db: Session, data: TicketAssignedToRequest, current_user: UserToken):
+def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketAssignedToRequest, current_user: UserToken):
     ticket = (
         session.query(Ticket)
         .filter(Ticket.id == data.ticket_id)
@@ -1279,7 +1496,6 @@ def update_ticket_assigned_to(session: Session, auth_db: Session, data: TicketAs
         assigned_to=data.assigned_to, 
         reason="Manual assignment" 
     )
-    session.add(assignment_log)
 
     # Notification Log 
     # Collect recipients id
@@ -1302,6 +1518,8 @@ def update_ticket_assigned_to(session: Session, auth_db: Session, data: TicketAs
 
     recipient_ids = list(set(recipient_ids))
 
+    notifications = []
+
     for recipient_id in recipient_ids:
         notification = Notification(
         user_id=data.assigned_to,
@@ -1313,7 +1531,7 @@ def update_ticket_assigned_to(session: Session, auth_db: Session, data: TicketAs
         read=False,
         is_deleted=False
     )
-    session.add(notification)
+    notifications.append(notification)
 
     # Workflow Log 
     workflow_log = TicketWorkflow(
@@ -1323,10 +1541,29 @@ def update_ticket_assigned_to(session: Session, auth_db: Session, data: TicketAs
         new_status=None,
         action_taken=f"Ticket assigned to {assigned_to_user.full_name} by {action_by_user.full_name if action_by_user else 'Unknown User'}"  # Like "Ticket Created by {created_by_user.full_name}"
     )
-    session.add(workflow_log)
+ 
 
+    objects_to_add = [workflow_log ,assignment_log] + notifications
+
+    session.add_all(objects_to_add)
     session.commit()
     session.refresh(ticket)
+
+             # Email
+    emails = (
+        auth_db.query(Users.email)
+        .filter(Users.id.in_(recipient_ids))
+        .all()
+    )
+    email_list = [e[0] for e in emails]
+
+    context = {
+    "assigned_to": assigned_to_user.full_name,  # The person who got assigned
+    "ticket_no": ticket.ticket_no,
+    "assigned_by": action_by_user.full_name if action_by_user else "System"
+    }
+
+    send_ticket_update_assigned_to_email(background_tasks, session, context, email_list)
 
     # Response
     updated_ticket = TicketOut.model_validate(
@@ -1341,7 +1578,7 @@ def update_ticket_assigned_to(session: Session, auth_db: Session, data: TicketAs
         message=f"Ticket assigned to {assigned_to_user.full_name} successfully"
     )
 
-def post_ticket_comment(session: Session, auth_db: Session, data: TicketCommentRequest, current_user: UserToken):
+def post_ticket_comment(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketCommentRequest, current_user: UserToken):
    
     ticket = (
         session.query(Ticket)
@@ -1392,6 +1629,8 @@ def post_ticket_comment(session: Session, auth_db: Session, data: TicketCommentR
 
     recipient_ids = list(set(recipient_ids))
 
+    notifications = []
+
     for recipient_id in recipient_ids:
         notification = Notification(
             user_id=recipient_id,
@@ -1403,10 +1642,39 @@ def post_ticket_comment(session: Session, auth_db: Session, data: TicketCommentR
             read=False,
             is_deleted=False
         )
-        session.add(notification)
+        notifications.append(notification)
+    
+    objects_to_add = [comment] + notifications
 
+    session.add_all(objects_to_add)
     session.commit()
-    session.refresh(comment)
+    session.refresh(ticket)
+
+        # Get assigned_to user details
+    assigned_to_user = None
+    if ticket.assigned_to:
+        assigned_to_user = (
+            auth_db.query(Users)
+            .filter(Users.id == ticket.assigned_to)
+            .scalar()
+        )
+
+    # Email
+    emails = (
+        auth_db.query(Users.email)
+        .filter(Users.id.in_(recipient_ids))
+        .all()
+    )
+    email_list = [e[0] for e in emails]
+
+    context = {
+        "assigned_to": assigned_to_user.full_name ,
+        "ticket_no": ticket.ticket_no,
+        "comment_by": current_user_details.full_name ,
+        "comment": data.comment
+    }
+
+    send_ticket_post_comment_email(background_tasks, session, context, email_list)
 
     return success_response(
         data={

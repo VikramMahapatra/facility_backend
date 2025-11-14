@@ -60,6 +60,7 @@ class Statistics(EmptyStringModel):
 
 
 class HomeDetailsResponse(EmptyStringModel):
+    lease_contract_exist: bool
     lease_contract_detail: LeaseContractDetail
     maintenance_detail: MaintenanceDetail
     statistics: Statistics

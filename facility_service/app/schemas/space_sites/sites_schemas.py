@@ -4,10 +4,11 @@ from datetime import date, datetime
 from uuid import UUID
 
 from shared.core.schemas import CommonQueryParams
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 
 
-class SiteBase(BaseModel):
-    org_id: Optional[UUID] = None   # ✅ UUID instead of str
+class SiteBase(EmptyStringModel):
+    org_id: Optional[UUID] = None
     name: str
     code: Optional[str] = None
     kind: str
@@ -30,10 +31,9 @@ class SiteOut(SiteBase):
     id: UUID
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
-
     total_spaces: Optional[int] = 0
-    buildings: Optional[int] = 0   # number of unique space kinds
-    occupied_percent: Optional[float] = 0.0   # ✅ occupancy percentage
+    buildings: Optional[int] = 0
+    occupied_percent: Optional[float] = 0.0
 
     model_config = {
         "from_attributes": True

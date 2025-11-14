@@ -9,18 +9,32 @@ INVISIBLE_CHARS_PATTERN = re.compile(
 
 
 def deep_clean(value: Any):
-    """Recursively clean invisible Unicode chars and convert empty strings to None."""
-    if isinstance(value, dict):
-        cleaned = {k: deep_clean(v) for k, v in value.items()}
-        return cleaned
+    """Recursively convert empty strings to None, clean invisible chars, and handle nested models."""
 
-    elif isinstance(value, list):
+    # 1️⃣ Handle Pydantic models
+    if isinstance(value, BaseModel):
+        data = value.model_dump()
+        cleaned = deep_clean(data)
+        return type(value)(**cleaned)
+
+    # 2️⃣ Handle dictionaries
+    if isinstance(value, dict):
+        return {k: deep_clean(v) for k, v in value.items()}
+
+    # 3️⃣ Handle lists
+    if isinstance(value, list):
         return [deep_clean(v) for v in value]
 
-    elif isinstance(value, str):
-        cleaned = INVISIBLE_CHARS_PATTERN.sub('', value).strip()
+    # 4️⃣ Handle strings
+    if isinstance(value, str):
+        cleaned = value.strip()
         return None if cleaned == "" else cleaned
 
+    # 5️⃣ If the value is UUID but empty string passed somehow
+    if isinstance(value, UUID):
+        return value  # valid UUID stays UUID
+
+    # Default return
     return value
 
 

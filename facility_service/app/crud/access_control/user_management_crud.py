@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from typing import Dict, List, Optional
 
@@ -32,32 +32,17 @@ def get_users(db: Session, org_id: str, params: UserRequest):
     total = user_query.with_entities(func.count(Users.id.distinct())).scalar()
     users = (
         user_query
+        .options(joinedload(Users.roles))
         .order_by(Users.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
         .all()
     )
 
-    # Get roles for each user
-    users_with_roles = []
-    for user in users:
-        # Create UserOut manually instead of using from_orm
-        user_out = UserOut(
-            id=user.id,
-            org_id=user.org_id,
-            full_name=user.full_name,
-            email=user.email,
-            phone=user.phone,
-            picture_url=user.picture_url,
-            account_type=user.account_type,
-            status=user.status,
-            roles=[RoleOut.model_validate(role) for role in user.roles],
-            created_at=user.created_at,
-            updated_at=user.updated_at
-        )
-        users_with_roles.append(user_out)
-
-    return {"users": users_with_roles, "total": total}
+    return {
+        "users": [UserOut.model_validate(u) for u in users],
+        "total": total
+    }
 
 
 def get_user_by_id(db: Session, user_id: str):

@@ -9,13 +9,31 @@ import traceback
 
 
 def replace_nulls_with_empty(value: Any):
-    """Recursively replace None with empty string, keep all keys intact."""
+    """
+    Recursively replaces None based on expected structure:
+    - List fields -> []
+    - Object/model fields -> {}
+    - Primitives -> ""
+    """
+    # Dict → recurse
     if isinstance(value, dict):
-        return {k: replace_nulls_with_empty(v) for k, v in value.items()}
+        cleaned = {}
+        for k, v in value.items():
+            # If key suggests a LIST and value is None → []
+            if v is None and k.lower() in {"roles", "items", "children", "permissions"}:
+                cleaned[k] = []
+            else:
+                cleaned[k] = replace_nulls_with_empty(v)
+        return cleaned
+
+    # List → recurse each item
     elif isinstance(value, list):
         return [replace_nulls_with_empty(v) for v in value]
+
+    # None → choose best type
     elif value is None:
-        return ""
+        return ""  # default
+
     return value
 
 

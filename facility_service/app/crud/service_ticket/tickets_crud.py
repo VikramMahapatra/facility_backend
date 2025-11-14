@@ -1,5 +1,8 @@
+import base64
 from datetime import datetime
-from sqlalchemy import select
+from operator import or_
+from requests import request
+from sqlalchemy import desc, distinct, select
 from fastapi import HTTPException, BackgroundTasks, UploadFile
 from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
@@ -28,7 +31,7 @@ from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, TicketActionRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
@@ -69,16 +72,16 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
                 .filter(*filters)
             )
 
-        elif status == TicketStatus.OPEN.value:
-            open_statuses = [
-                TicketStatus.OPEN.value,
-                TicketStatus.ESCALATED.value,
-                TicketStatus.RETURNED.value,
-                TicketStatus.REOPENED.value,
-                TicketStatus.IN_PROGRESS.value,
-            ]
-            filters.append(Ticket.status.in_(open_statuses))
-            base_query = db.query(Ticket).filter(*filters)
+        # elif status == TicketStatus.OPEN.value:
+        #     open_statuses = [
+        #         TicketStatus.OPEN.value,
+        #         TicketStatus.ESCALATED.value,
+        #         TicketStatus.RETURNED.value,
+        #         TicketStatus.REOPENED.value,
+        #         TicketStatus.IN_PROGRESS.value,
+        #     ]
+        #     filters.append(Ticket.status.in_(open_statuses))
+        #     base_query = db.query(Ticket).filter(*filters)
 
         else:
             filters.append(func.lower(Ticket.status) == status)
@@ -100,12 +103,17 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
     if params.skip and params.limit:
         tickets = (
             base_query
+            .order_by(desc(Ticket.created_at))
             .offset(params.skip)
             .limit(params.limit)
             .all()
         )
     else:
-        tickets = base_query.all()
+        tickets = (
+            base_query
+            .order_by(desc(Ticket.created_at))
+            .all()
+        )
 
     results = []
     for t in tickets:
@@ -187,6 +195,17 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
         l.action_by_name = user_map.get(l.action_by, "Unknown User")
 
     all_logs.sort(key=lambda x: x.created_at, reverse=True)
+    print("service tickets ", service_req)
+    attachments_out = []
+    if service_req.file_data:
+        attachments_out.append(
+            {
+                "file_name": service_req.file_name,
+                "content_type": service_req.content_type,
+                # Convert binary to base64 so it can be sent safely in JSON
+                "file_data_base64": base64.b64encode(service_req.file_data).decode('utf-8')
+            }
+        )
 
     # Step 5: Return as schema
     return TicketDetailsResponse.model_validate(
@@ -202,11 +221,19 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
             "can_escalate": service_req.can_escalate,
             "can_reopen": service_req.can_reopen,
             "is_overdue": service_req.is_overdue,
+            "attachments": attachments_out,
         }
     )
 
 
-def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketCreate, user: UserToken):
+async def create_ticket(
+    background_tasks: BackgroundTasks,
+    session: Session,
+    auth_db: Session,
+    data: TicketCreate,
+    user: UserToken,
+    file: UploadFile = None
+):
     account_type = user.account_type.lower()
     # Create Ticket (defaults to OPEN)
     space = (
@@ -235,8 +262,13 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
         tenant_id = session.query(Tenant.id).filter(and_(
             Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
         title = f"{data.category} - {space.name}"
+        # ✅ FIXED: Case-insensitive search with site check
         category_id = session.query(TicketCategory.id).filter(
-            and_(TicketCategory.category_name == data.category, TicketCategory.site_id == space.site_id)).scalar()
+            and_(func.lower(TicketCategory.category_name) == func.lower(data.category),
+                 or_(TicketCategory.site_id == space.site_id,
+                 TicketCategory.site_id.is_(None)),
+                 TicketCategory.is_active == True,
+                 TicketCategory.is_deleted == False)).scalar()
 
     if not tenant_id:
         return error_response(
@@ -246,8 +278,9 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
         )
 
     if not category_id:
+        # ✅ Better error message to debug
         return error_response(
-            message=f"Invalid category",
+            message=f"Invalid category: '{data.category}' not found for site {space.site_id}",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
@@ -267,6 +300,12 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
         preferred_time=data.preferred_time,
         request_type=data.request_type
     )
+    if file and file.filename:
+        file_bytes = await file.read()
+        new_ticket.file_name = file.filename
+        new_ticket.content_type = file.content_type or "application/octet-stream"
+        new_ticket.file_data = file_bytes  # 👈 store binary data directly
+
     session.add(new_ticket)
     session.flush()  # needed to get ticket_id
 
@@ -278,12 +317,17 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
     )
 
     assigned_to_user = None
+    sla = None
 
-    sla = session.execute(
-        select(SlaPolicy).where(SlaPolicy.service_category == data.category)
-    ).scalar_one_or_none()
+    if new_ticket.category and new_ticket.category.sla_policy:
+        sla = new_ticket.category.sla_policy
 
     assigned_to = sla.default_contact if sla else None
+
+    if not assigned_to:
+        return error_response(
+            message="No default contact for assignment"
+        )
 
     if assigned_to:
         assigned_to_user = (
@@ -327,8 +371,9 @@ def create_ticket(background_tasks: BackgroundTasks, session: Session, auth_db: 
     session.refresh(new_ticket)
 
     # email
-    send_ticket_created_email(
-        background_tasks, session, new_ticket, created_by_user, assigned_to_user)
+    if assigned_to_user:
+        send_ticket_created_email(
+            background_tasks, session, new_ticket, created_by_user, assigned_to_user)
 
     return TicketOut.model_validate(
         {
@@ -362,7 +407,6 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
         )
 
     # Fetch SLA Policy using category_id
-
     if not ticket.category or not ticket.category.sla_policy or not ticket.category.sla_policy.escalation_contact:
         return error_response(
             message="No escalation contact configured for SLA",
@@ -400,16 +444,48 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     )
 
     # Notification Log
-    notification = Notification(
-        user_id=sla.escalation_contact,
-        type=NotificationType.alert,
-        title="Ticket Escalated",
-        message=f"Ticket {ticket.ticket_no} have been escalated & assigned to you",
-        posted_date=datetime.utcnow(),
-        priority=PriorityType(ticket.priority),
-        read=False,
-        is_deleted=False
-    )
+    # Get action user details for logs
+    action_by_user = auth_db.query(Users).filter(
+        Users.id == data.action_by).first()
+    action_by_name = action_by_user.full_name if action_by_user else "Unknown User"
+
+    recipient_ids = []
+
+    # Add assigned user
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+
+    # Add action user
+    recipient_ids.append(data.action_by)
+
+    # Add tenant if exists
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+
+    # Add admin users using the fetch_role_admin function
+    admin_user_ids = fetch_role_admin(
+        auth_db, action_by_user.org_id if action_by_user else None)
+
+    # Handle both success and error responses from fetch_role_admin
+    if isinstance(admin_user_ids, list):
+        recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+    recipient_ids = list(set(recipient_ids))
+
+    # Create notifications for all recipients (instead of just one)
+    notifications = []
+    for recipient_id in recipient_ids:
+        notification = Notification(
+            user_id=recipient_id,
+            type=NotificationType.alert,
+            title="Ticket Escalated",
+            message=f"Ticket {ticket.ticket_no} have been escalated & assigned to {assigned_to_user} by {action_by_name}",
+            posted_date=datetime.utcnow(),
+            priority=PriorityType(ticket.priority),
+            read=False,
+            is_deleted=False
+        )
+        notifications.append(notification)
 
     # Workflow Log
     workflow_log = TicketWorkflow(
@@ -420,7 +496,7 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
         action_taken=f"Ticket {ticket.ticket_no} escalated & assigned to {assigned_to_user}"
     )
 
-    objects_to_add = [assignment_log, notification, workflow_log]
+    objects_to_add = [assignment_log, workflow_log] + notifications
 
     # Comment Log
     if data.comment:
@@ -435,11 +511,6 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     db.refresh(ticket)
 
     # email
-    recipient_ids = [
-        data.action_by,
-        sla.escalation_contact,
-        sla.default_contact
-    ]
     emails = (
         auth_db.query(Users.email)
         .filter(Users.id.in_(recipient_ids))
@@ -602,7 +673,8 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
         Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
         raise Exception("Ticket not found")
-    if not ticket.can_reopen or ticket.created_by != data.action_by:
+
+    if not ticket.can_reopen or str(ticket.created_by) != str(data.action_by):
         return error_response(
             message=f"Not authorize to perform this action",
             status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
@@ -616,7 +688,7 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     action_by_user = (
         auth_db.query(Users)
         .filter(Users.id == data.action_by)
-        .scalar()
+        .first()
     )
 
     assigned_to_user = (
@@ -634,18 +706,45 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     )
 
     # Notification Log
-    notification = Notification(
-        user_id=ticket.assigned_to,
-        type=NotificationType.alert,
-        title="Ticket Reopened",
-        message=f"Ticket {ticket.ticket_no} reopened by {action_by_user.full_name}",
-        posted_date=datetime.utcnow(),
-        priority=PriorityType(ticket.priority),
-        read=False,
-        is_deleted=False
-    )
+    recipient_ids = []
 
-    objects_to_add = [notification, workflow_log]
+    # Add assigned user
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+
+    # Add action user
+    recipient_ids.append(data.action_by)
+
+    # Add tenant if exists
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+
+    # Add admin users using the fetch_role_admin function
+    admin_user_ids = fetch_role_admin(
+        auth_db, action_by_user.org_id if action_by_user else None)
+
+    # Handle both success and error responses from fetch_role_admin
+    if isinstance(admin_user_ids, list):
+        recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+    recipient_ids = list(set(recipient_ids))
+
+    # Create notifications for all recipients
+    notifications = []
+    for recipient_id in recipient_ids:
+        notification = Notification(
+            user_id=recipient_id,
+            type=NotificationType.alert,
+            title="Ticket Reopened",
+            message=f"Ticket {ticket.ticket_no} reopened by {action_by_user.full_name}",
+            posted_date=datetime.utcnow(),
+            priority=PriorityType(ticket.priority),
+            read=False,
+            is_deleted=False
+        )
+        notifications.append(notification)
+
+    objects_to_add = [workflow_log] + notifications
 
     if data.comment:
         objects_to_add.append(TicketComment(
@@ -658,14 +757,19 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     db.commit()
     db.refresh(ticket)
 
-    # email
+    # Email
+    emails = (
+        auth_db.query(Users.email)
+        .filter(Users.id.in_(recipient_ids))
+        .all()
+    )
+    email_list = [e[0] for e in emails]
+
     context = {
-        "assigned_to": assigned_to_user.full_name,
+        "assigned_to": assigned_to_user,
         "reopened_by": action_by_user.full_name,
         "ticket_no": ticket.ticket_no
     }
-
-    email_list = [assigned_to_user.email, action_by_user.email]
 
     send_ticket_reopened_email(background_tasks, db, context, email_list)
 
@@ -1210,9 +1314,18 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
                 action_time=w.action_time
             )
         )
-
+    attachments_out = []
+    if service_req.file_data:
+        attachments_out.append(
+            {
+                "file_name": service_req.file_name,
+                "content_type": service_req.content_type,
+                # Convert binary to base64 so it can be sent safely in JSON
+                "file_data_base64": base64.b64encode(service_req.file_data).decode('utf-8')
+            }
+        )
     # Step 5: Return as schema
-    return TicketDetailsResponseS.model_validate(
+    return TicketDetailsResponse.model_validate(
         {
             **service_req.__dict__,
             "category": category_name,
@@ -1226,6 +1339,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "can_escalate": service_req.can_escalate,
             "can_reopen": service_req.can_reopen,
             "is_overdue": service_req.is_overdue,
+            "attachments": attachments_out,
         }
     )
 

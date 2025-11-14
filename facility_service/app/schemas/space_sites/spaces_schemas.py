@@ -4,10 +4,11 @@ from pydantic import BaseModel
 from typing import List, Optional, Any
 from decimal import Decimal
 
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from shared.core.schemas import CommonQueryParams
 
 
-class SpaceBase(BaseModel):
+class SpaceBase(EmptyStringModel):
     org_id: Optional[UUID] = None
     site_id: UUID
     code: str

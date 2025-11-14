@@ -42,7 +42,7 @@ class Ticket(Base):
         default=TicketStatus.OPEN,
         nullable=False,
     )
-    priority = Column(String(20), default="medium")
+    priority = Column(String(20), default="low")
     created_by = Column(UUID(as_uuid=True))
     assigned_to = Column(UUID(as_uuid=True))
     request_type = Column(String(20), default="unit")

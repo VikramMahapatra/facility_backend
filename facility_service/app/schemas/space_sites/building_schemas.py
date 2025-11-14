@@ -15,6 +15,7 @@ class BuildingOut(BaseModel):
     floors: Optional[int]
     total_spaces: Optional[int]
     occupied_spaces: Optional[int]
+    occupancy_rate: Optional[float] = None  # ADD OCCUPANCY RATE FIELD
     attributes: Optional[Any] = None
 
     class Config:

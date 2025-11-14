@@ -200,6 +200,7 @@ class TicketWorkFlowOut(EmptyStringModel):
         
 class TicketDetailsResponse(EmptyStringModel):
     id: UUID
+    ticket_no: str
     category: Optional[str] = None
     priority: Optional[str] = None
     status: Optional[str] = None

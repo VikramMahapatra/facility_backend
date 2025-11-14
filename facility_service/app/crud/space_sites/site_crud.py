@@ -217,7 +217,10 @@ def create_site(db: Session, site: SiteCreate):
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
+    # Print site data before creating
+    print("create site data", site.model_dump())
 
+    
     # Create site
     db_site = Site(**site.model_dump())
     db.add(db_site)

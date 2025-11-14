@@ -79,10 +79,13 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
         except Exception:
             data = None
 
+        error_message = "An unexpected error occurred"
         # Error responses (4xx/5xx)
         if not (200 <= response.status_code < 400):
-            message = ""
+            message = error_message
             internal_status_code = str(response.status_code)
+
+            print(f"status code: {str(response.status_code)}")
 
             if isinstance(data, dict):
                 message = data.get("detail") or data.get("message") or ""
@@ -93,8 +96,11 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
                 )
             elif isinstance(data, str):
                 message = data
-            elif data is None:
-                message = "An unexpected error occurred"
+
+            print(f"Status Code : {internal_status_code},  Error : {message}")
+
+            if internal_status_code == "11":
+                message = error_message
 
             wrapped_error = JsonOutResult(
                 data="",

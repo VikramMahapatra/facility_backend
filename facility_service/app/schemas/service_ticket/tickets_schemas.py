@@ -27,7 +27,7 @@ class TicketBase(BaseModel):
     category_id: UUID
     title: str
     description: str
-    priority: Optional[str] = "MEDIUM"
+    priority: Optional[str] = "LOW"
     request_type: Optional[str] = "UNIT"
     prefered_time: Optional[str] = None
 
@@ -87,6 +87,7 @@ class TicketCreate(BaseModel):
     description: str
     preferred_time: Optional[str] = None
     request_type: str
+    priority: Optional[str] = None
 
     @classmethod
     def as_form(
@@ -101,6 +102,7 @@ class TicketCreate(BaseModel):
         description: str = Form(...),
         preferred_time: Optional[str] = Form(None),
         request_type: str = Form(...),
+        priority: Optional[str] = Form(None),
     ):
         return cls(
             org_id=org_id,
@@ -113,6 +115,7 @@ class TicketCreate(BaseModel):
             description=description,
             preferred_time=preferred_time,
             request_type=request_type,
+            priority=priority,
     )
 
 # For Comment/Reaction/Feedback ADD

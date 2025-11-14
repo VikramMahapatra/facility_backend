@@ -258,27 +258,27 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
     
 def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """
-    Fetch DISTINCT ticket categories filtered by site_id.
-    Returns unique category names.
+    Strictly fetch ticket categories filtered by site_id.
+    Returns categories only for that specific site.
     """
-    query = db.query(TicketCategory.id, TicketCategory.category_name).filter(
-        TicketCategory.is_deleted == False,
-        TicketCategory.is_active == True
+
+    if not site_id or site_id.lower() == "all":
+        # STRICT MODE: do NOT return all categories
+        return []
+
+    query = (
+        db.query(TicketCategory.id, TicketCategory.category_name)
+        .filter(
+            TicketCategory.is_deleted == False,
+            TicketCategory.is_active == True,
+            TicketCategory.site_id == site_id   # STRICT FILTER HERE
+        )
+        .order_by(TicketCategory.category_name)
     )
 
-    if site_id and site_id.lower() != "all":
-        query = query.filter(TicketCategory.site_id == site_id)
+    categories = query.all()
 
-    # Get all categories first
-    categories = query.order_by(TicketCategory.category_name).all()
-    
-    # Remove duplicates by category name, keeping the first occurrence
-    seen = set()
-    distinct_categories = []
-    
-    for row in categories:
-        if row.category_name not in seen:
-            seen.add(row.category_name)
-            distinct_categories.append(row)
-    
-    return [Lookup(id=row.id, name=row.category_name) for row in distinct_categories]
+    return [
+        Lookup(id=row.id, name=row.category_name)
+        for row in categories
+    ]

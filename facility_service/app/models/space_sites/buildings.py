@@ -1,4 +1,5 @@
 # building.py
+from datetime import datetime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Boolean, Column, String, Integer, JSON, ForeignKey, func, DateTime
 from sqlalchemy.orm import relationship
@@ -18,6 +19,7 @@ class Building(Base):
     attributes = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     site = relationship("Site", back_populates="buildings")

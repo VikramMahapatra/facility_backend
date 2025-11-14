@@ -221,24 +221,32 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
     if not db_space:
         return None
 
-    # Check if there are any leases associated with this space (even deleted ones)
-    existing_leases = (
-        db.query(Lease)
-        .filter(Lease.space_id == space_id)
-        .first()
-    )
-
-    # Check if there are any tenants associated with this space (even deleted ones)
-    existing_tenants = (
+    # Check if there are any ACTIVE tenants associated with this space
+    active_tenants = (
         db.query(Tenant)
-        .filter(Tenant.space_id == space_id)
+        .filter(
+            Tenant.space_id == space_id,
+            Tenant.is_deleted == False,
+            Tenant.status.in_(["active", "pending"])  # Active status tenants
+        )
         .first()
     )
 
-    if existing_leases or existing_tenants:
+    # Check if there are any ACTIVE leases associated with this space
+    active_leases = (
+        db.query(Lease)
+        .filter(
+            Lease.space_id == space_id,
+            Lease.is_deleted == False,
+            Lease.status.in_(["active", "pending"])  # Active status leases
+        )
+        .first()
+    )
+
+    if active_tenants or active_leases:
         raise HTTPException(
             status_code=400,
-            detail="Cannot delete space that has ever had tenants or leases associated with it."
+            detail="Cannot delete space that has active tenants or leases associated with it."
         )
 
     # Soft delete - set is_deleted to True instead of actually deleting
@@ -247,7 +255,6 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
     db.commit()
     db.refresh(db_space)
     return db_space
-
 
 def get_space_lookup(db: Session, site_id: str, building_id: str, org_id: str):
     space_query = (

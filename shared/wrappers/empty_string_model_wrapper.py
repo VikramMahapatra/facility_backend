@@ -10,14 +10,25 @@ INVISIBLE_CHARS_PATTERN = re.compile(
 
 
 def deep_clean(value: Any):
-    """Recursively clean invisible Unicode chars and empty strings."""
+    """Recursively clean invisible Unicode chars and convert empty values to None."""
+
+    # If dict → clean children
     if isinstance(value, dict):
-        return {k: deep_clean(v) for k, v in value.items()}
+        cleaned = {k: deep_clean(v) for k, v in value.items()}
+        return None if not cleaned else cleaned   # return None if dict becomes empty
+
+    # If list → clean children
     elif isinstance(value, list):
-        return [deep_clean(v) for v in value]
+        cleaned = [deep_clean(v) for v in value]
+        cleaned = [v for v in cleaned if v is not None]  # remove None items
+        return None if len(cleaned) == 0 else cleaned
+
+    # If string → remove invisible chars
     elif isinstance(value, str):
         cleaned = INVISIBLE_CHARS_PATTERN.sub('', value).strip()
         return None if cleaned == "" else cleaned
+
+    # Other types return unchanged
     return value
 
 

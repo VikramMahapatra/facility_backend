@@ -138,6 +138,8 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
         "next_maintenance_amount": 0.0
     }
 
+    lease_contract_exist = False
+
     # ------------------------------
     # Tenant or Flat Owner flow
     # ------------------------------
@@ -168,8 +170,9 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                 .order_by(Lease.end_date.desc())
                 .first()
             )
-
         if lease:
+            lease_contract_exist = True
+
             lease_contract_detail.update({
                 "start_date": lease.start_date,
                 "expiry_date": lease.end_date,
@@ -208,7 +211,6 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                     last_rent_paid = period.period_end
                     next_rent_due = period.period_end + timedelta(days=1)
                     break
-                    
 
             lease_contract_detail.update({
                 "total_rent_paid": float(total_rent_paid),
@@ -320,4 +322,5 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
         "maintenance_detail": maintenance_detail,
         "statistics": statistics,
         "notifications": notification_list or [],
+        "lease_contract_exist": lease_contract_exist
     }

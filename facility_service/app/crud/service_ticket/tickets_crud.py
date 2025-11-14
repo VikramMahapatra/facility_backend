@@ -270,8 +270,8 @@ async def create_ticket(
                  TicketCategory.is_active == True,
                  TicketCategory.is_deleted == False)).scalar()
 
-    if not tenant_id:
-        return error_response(
+        if not tenant_id:
+            return error_response(
             message=f"Invalid tenant",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400

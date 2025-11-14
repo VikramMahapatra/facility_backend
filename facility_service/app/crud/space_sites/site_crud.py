@@ -34,8 +34,8 @@ def get_sites(db: Session, org_id: str, params: SiteRequest):
             Site.status,
             Site.created_at,
             Site.updated_at,
-            func.count(Space.id).label("total_spaces"),
-            func.count(Building.id).label("buildings"),
+            func.count(distinct(Space.id)).label("total_spaces"),
+            func.count(distinct(Building.id)).label("buildings"),
             func.sum(
                 case(
                     (
@@ -46,15 +46,25 @@ def get_sites(db: Session, org_id: str, params: SiteRequest):
                 )
             ).label("occupied"),
         )
-        .outerjoin(Building, Site.id == Building.site_id)
-        .outerjoin(Space, Site.id == Space.site_id)
-        .outerjoin(Lease, Space.id == Lease.space_id)
+        .outerjoin(Building, and_(
+            Site.id == Building.site_id, 
+            Building.is_deleted == False
+        ))
+        .outerjoin(Space, and_(
+            Site.id == Space.site_id, 
+            Space.is_deleted == False
+        ))
+        .outerjoin(Lease, and_(
+            Space.id == Lease.space_id,
+            Lease.start_date <= now,
+            Lease.end_date >= now
+        ))
         .filter(
             Site.org_id == org_id,
-            Site.is_deleted == False,      # Add this filter
-            Building.is_deleted == False,  # Add this filter (for count)
-            Space.is_deleted == False      # Add this filter (for count)
+            Site.is_deleted == False
         )
+        .group_by(Site.id)
+        .order_by(Site.updated_at.desc(), Site.created_at.desc())  # Updated first, then created
     )
 
     if params.kind and params.kind.lower() != "all":
@@ -66,10 +76,30 @@ def get_sites(db: Session, org_id: str, params: SiteRequest):
         site_query = site_query.filter(
             or_(Site.name.ilike(search_term), Site.code.ilike(search_term)))
 
-    total = site_query.group_by(Site.id).count()
-    site_query = site_query.group_by(Site.id).offset(
-        params.skip).limit(params.limit)
-    sites = site_query.all()
+    # Get total count using a separate base query without GROUP BY
+    total_query = (
+        db.query(func.count(Site.id))
+        .filter(
+            Site.org_id == org_id,
+            Site.is_deleted == False
+        )
+    )
+    
+    # Apply the same filters to total count
+    if params.kind and params.kind.lower() != "all":
+        total_query = total_query.filter(
+            func.lower(Site.kind) == params.kind.lower())
+
+    if params.search:
+        search_term = f"%{params.search}%"
+        total_query = total_query.filter(
+            or_(Site.name.ilike(search_term), Site.code.ilike(search_term)))
+
+    total = total_query.scalar()
+
+    # Apply pagination
+    sites = site_query.offset(params.skip).limit(params.limit).all()
+    
     return {"sites": sites, "total": total}
 
 

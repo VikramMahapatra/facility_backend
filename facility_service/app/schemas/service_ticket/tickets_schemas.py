@@ -11,6 +11,7 @@ from ...enum.ticket_service_enum import TicketStatus
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from shared.core.schemas import CommonQueryParams
 
+
 class TicketAttachmentOut(BaseModel):
     file_name: str
     content_type: str
@@ -18,6 +19,7 @@ class TicketAttachmentOut(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class TicketBase(BaseModel):
     org_id: Optional[UUID] = None
@@ -39,31 +41,19 @@ class TicketCreate(TicketBase):
 class TicketOut(BaseModel):
     id: UUID
     ticket_no: str
-    org_id: Optional[UUID]
-    site_id: Optional[UUID]
-    space_id: Optional[UUID]
-    tenant_id: Optional[UUID]
-    org_id: Optional[UUID] = None
-    site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
-    tenant_id: Optional[UUID] = None
-    category_id: UUID
     category: Optional[str] = None
     title: str
     description: str
     status: str
     priority: str
-    created_by: UUID
-    assigned_to: Optional[UUID] = None
     request_type: str
     preferred_time: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
     closed_date: Optional[datetime] = None
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
     is_overdue: Optional[bool] = False
-    attachments: Optional[List[TicketAttachmentOut]] = None
 
     class Config:
         from_attributes = True
@@ -74,7 +64,6 @@ class TicketFilterRequest(CommonQueryParams):
     space_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
 
-   
 
 class TicketCreate(BaseModel):
     org_id: Optional[UUID] = None
@@ -116,7 +105,7 @@ class TicketCreate(BaseModel):
             preferred_time=preferred_time,
             request_type=request_type,
             priority=priority,
-    )
+        )
 
 # For Comment/Reaction/Feedback ADD
 
@@ -146,7 +135,7 @@ class TicketActionRequest(BaseModel):
     ticket_id: UUID
     action_by: Optional[UUID] = None
     comment: Optional[str] = None
-    
+
     @classmethod
     def as_form(
         cls,
@@ -171,9 +160,6 @@ class TicketEscalationRequest(BaseModel):
     escalated_by: UUID   # user who clicked escalate button
 
 
-
-
-
 class CommentOut(EmptyStringModel):
     id: UUID
     ticket_id: UUID
@@ -185,7 +171,6 @@ class CommentOut(EmptyStringModel):
 
     class Config:
         from_attributes = True
-
 
 
 class TicketWorkFlowOut(EmptyStringModel):
@@ -200,7 +185,12 @@ class TicketWorkFlowOut(EmptyStringModel):
     class Config:
         from_attributes = True
 
-        
+
+class TicketListResponse(BaseModel):
+    tickets: List[TicketOut]
+    total: int
+
+
 class TicketDetailsResponse(EmptyStringModel):
     id: UUID
     ticket_no: str
@@ -230,8 +220,7 @@ class TicketDetailsResponse(EmptyStringModel):
         from_attributes = True
 
 
-
-#FOR VIEW -------------------------------------------------------
+# FOR VIEW -------------------------------------------------------
 
 class TicketWorkflowOut(BaseModel):
     workflow_id: UUID
@@ -243,7 +232,7 @@ class TicketWorkflowOut(BaseModel):
     action_time: Optional[datetime]
 
 
-class  TicketCommentOut(BaseModel):
+class TicketCommentOut(BaseModel):
     comment_id: UUID
     ticket_id: UUID
     user_id: Optional[UUID]
@@ -253,11 +242,9 @@ class  TicketCommentOut(BaseModel):
     reactions: List = []
 
 
-
 class TicketUpdateRequest(BaseModel):
     ticket_id: UUID
     new_status: TicketStatus
-
 
 
 class TicketAssignedToRequest(BaseModel):
@@ -268,11 +255,13 @@ class TicketAssignedToRequest(BaseModel):
 class TicketCommentRequest(BaseModel):
     ticket_id: UUID
     comment: str
-    
+
+
 class StatusOption(BaseModel):
     id: str
-    name: str    
-    
+    name: str
+
+
 class PossibleStatusesResponse(BaseModel):
     current_status: StatusOption
     possible_next_statuses: List[StatusOption]
@@ -282,8 +271,8 @@ class TicketReactionRequest(BaseModel):
     comment_id: UUID
     emoji: str
 
-#new for fetching admin in the organization 
+# new for fetching admin in the organization
+
+
 class TicketAdminRoleRequest(BaseModel):
-    org_id :UUID
-
-
+    org_id: UUID

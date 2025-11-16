@@ -6,7 +6,10 @@ from typing import List
 
 from shared.core.schemas import Lookup, UserToken
 from ...crud.service_ticket import tickets_crud as crud
-from ...schemas.service_ticket.tickets_schemas import PossibleStatusesResponse,  TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest , TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest
+from ...schemas.service_ticket.tickets_schemas import (
+    TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest,
+    TicketListResponse, TicketOut, TicketReactionRequest, TicketUpdateRequest
+)
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.helpers.json_response_helper import success_response
@@ -18,7 +21,7 @@ router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 @router.post("/", response_model=TicketOut)
 async def create_ticket_route(
     background_tasks: BackgroundTasks,
-    request: TicketCreate = Depends(TicketCreate.as_form),  
+    request: TicketCreate = Depends(TicketCreate.as_form),
     file: UploadFile = File(None),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
@@ -33,13 +36,15 @@ async def create_ticket_route(
         user=current_user
     )
 
-@router.get("/all", response_model=None)
+
+@router.get("/all", response_model=TicketListResponse)
 def get_tickets(
     params: TicketFilterRequest = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.get_tickets(db, params, current_user)
+
 
 @router.get("/tickets/{ticket_id}", response_model=TicketDetailsResponse)
 def get_ticket_details_route(
@@ -54,17 +59,15 @@ def get_ticket_details_route(
     return crud.get_ticket_details_by_Id(db, auth_db, ticket_id)
 
 
-
 @router.put("/update-status")
 def update_ticket_status_route(
     data: TicketUpdateRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
-    current_user: UserToken = Depends(validate_current_token)  
+    current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.update_ticket_status(background_tasks, db, auth_db, data, current_user)
-
 
 
 @router.put("/assign-ticket")
@@ -83,8 +86,9 @@ def assign_ticket_route(
         session=session,
         auth_db=auth_db,
         data=request,
-        current_user=current_user 
+        current_user=current_user
     )
+
 
 @router.post("/post-comment")
 def post_comment_route(
@@ -104,8 +108,10 @@ def post_comment_route(
         data=request,
         current_user=current_user
     )
-    
+
 # Add to your existing ticket_routes.py
+
+
 @router.get("/next-statuses/{ticket_id}", response_model=List[Lookup])
 def get_possible_next_statuses_endpoint(
     ticket_id: UUID,

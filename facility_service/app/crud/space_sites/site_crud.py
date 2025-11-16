@@ -21,6 +21,54 @@ import uuid
 
 def get_sites(db: Session, org_id: str, params: SiteRequest):
     now = datetime.utcnow()
+
+    # --------------------------
+    # SUBQUERY: total buildings
+    # --------------------------
+    buildings_sq = (
+        db.query(
+            Building.site_id.label("site_id"),
+            func.count(Building.id).label("buildings")
+        )
+        .filter(Building.is_deleted == False)
+        .group_by(Building.site_id)
+        .subquery()
+    )
+
+    # --------------------------
+    # SUBQUERY: total spaces
+    # --------------------------
+    spaces_sq = (
+        db.query(
+            Space.site_id.label("site_id"),
+            func.count(Space.id).label("total_spaces")
+        )
+        .filter(Space.is_deleted == False)
+        .group_by(Space.site_id)
+        .subquery()
+    )
+
+    # --------------------------
+    # SUBQUERY: occupancy count
+    # --------------------------
+    occupied_sq = (
+        db.query(
+            Space.site_id.label("site_id"),
+            func.count(Lease.id).label("occupied")
+        )
+        .join(Lease, Lease.space_id == Space.id)
+        .filter(
+            Space.is_deleted == False,
+            Lease.start_date <= now,
+            Lease.end_date >= now
+        )
+        .group_by(Space.site_id)
+        .subquery()
+    )
+
+    # --------------------------
+    # MAIN SITE QUERY
+    # --------------------------
     site_query = (
         db.query(
             Site.id,
@@ -34,73 +82,55 @@ def get_sites(db: Session, org_id: str, params: SiteRequest):
             Site.status,
             Site.created_at,
             Site.updated_at,
-            func.count(distinct(Space.id)).label("total_spaces"),
-            func.count(distinct(Building.id)).label("buildings"),
-            func.sum(
-                case(
-                    (
-                        (Lease.start_date <= now) & (Lease.end_date >= now),
-                        1
-                    ),
-                    else_=0
-                )
-            ).label("occupied"),
+            func.coalesce(spaces_sq.c.total_spaces, 0).label("total_spaces"),
+            func.coalesce(buildings_sq.c.buildings, 0).label("buildings"),
+            func.coalesce(occupied_sq.c.occupied, 0).label("occupied")
         )
-        .outerjoin(Building, and_(
-            Site.id == Building.site_id, 
-            Building.is_deleted == False
-        ))
-        .outerjoin(Space, and_(
-            Site.id == Space.site_id, 
-            Space.is_deleted == False
-        ))
-        .outerjoin(Lease, and_(
-            Space.id == Lease.space_id,
-            Lease.start_date <= now,
-            Lease.end_date >= now
-        ))
-        .filter(
-            Site.org_id == org_id,
-            Site.is_deleted == False
-        )
-        .group_by(Site.id)
-        .order_by(Site.updated_at.desc(), Site.created_at.desc())  # Updated first, then created
+        .outerjoin(spaces_sq, spaces_sq.c.site_id == Site.id)
+        .outerjoin(buildings_sq, buildings_sq.c.site_id == Site.id)
+        .outerjoin(occupied_sq, occupied_sq.c.site_id == Site.id)
+        .filter(Site.org_id == org_id, Site.is_deleted == False)
     )
 
+    # ------------- Filters --------------
     if params.kind and params.kind.lower() != "all":
         site_query = site_query.filter(
-            func.lower(Site.kind) == params.kind.lower())
-
-    if params.search:
-        search_term = f"%{params.search}%"
-        site_query = site_query.filter(
-            or_(Site.name.ilike(search_term), Site.code.ilike(search_term)))
-
-    # Get total count using a separate base query without GROUP BY
-    total_query = (
-        db.query(func.count(Site.id))
-        .filter(
-            Site.org_id == org_id,
-            Site.is_deleted == False
+            func.lower(Site.kind) == params.kind.lower()
         )
-    )
-    
-    # Apply the same filters to total count
-    if params.kind and params.kind.lower() != "all":
-        total_query = total_query.filter(
-            func.lower(Site.kind) == params.kind.lower())
 
     if params.search:
-        search_term = f"%{params.search}%"
-        total_query = total_query.filter(
-            or_(Site.name.ilike(search_term), Site.code.ilike(search_term)))
+        s = f"%{params.search}%"
+        site_query = site_query.filter(
+            or_(Site.name.ilike(s), Site.code.ilike(s))
+        )
 
-    total = total_query.scalar()
+    # ----------- Total Count (lightweight) ------------
+    total = site_query.with_entities(func.count(Site.id)).scalar()
 
-    # Apply pagination
-    sites = site_query.offset(params.skip).limit(params.limit).all()
-    
-    return {"sites": sites, "total": total}
+    # -------- Pagination ----------
+    sites = (
+        site_query
+        .order_by(Site.updated_at.desc(), Site.created_at.desc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+
+    # -------- Post-process occupancy percentage --------
+    final = []
+    for s in sites:
+        total_spaces = s.total_spaces or 0
+        occupied = s.occupied or 0
+        occupied_percent = (
+            round((occupied / total_spaces) * 100,
+                  2) if total_spaces > 0 else 0
+        )
+
+        out = dict(s._mapping)
+        out["occupied_percent"] = occupied_percent
+        final.append(out)
+
+    return {"sites": final, "total": total}
 
 
 def get_site_lookup(db: Session, org_id: str, params: Optional[SiteRequest] = None):
@@ -220,7 +250,6 @@ def create_site(db: Session, site: SiteCreate):
     # Print site data before creating
     print("create site data", site.model_dump())
 
-    
     # Create site
     db_site = Site(**site.model_dump())
     db.add(db_site)

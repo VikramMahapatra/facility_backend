@@ -76,10 +76,15 @@ def get_spaces_overview(db: Session, org_id: UUID, params: SpaceRequest):
 
 def get_spaces(db: Session, org_id: UUID, params: SpaceRequest) -> SpaceListResponse:
     base_query = get_space_query(db, org_id, params)
-    total = base_query.with_entities(func.count(Space.id)).scalar()
+    query = (
+        base_query
+        .join(Building, Space.building_block_id == Building.id, isouter=True)
+        .add_columns(Building.name.label("building_block_name"))
+    )
+    total = db.query(func.count()).select_from(query.subquery()).scalar()
 
     spaces = (
-        base_query
+        query
         .order_by(Space.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
@@ -87,14 +92,13 @@ def get_spaces(db: Session, org_id: UUID, params: SpaceRequest) -> SpaceListResp
     )
 
     results = []
-    for space in spaces:
-        building_block_name = (
-            db.query(Building.name)
-            .filter(Building.id == space.building_block_id)
-            .scalar()
-        )
-        results.append(SpaceOut.model_validate(
-            {**space.__dict__, "building_block": building_block_name}))
+    for row in spaces:
+        space = row[0]                     # Space object
+        building_name = row.building_block_name  # Joined building name
+
+        data = {**space.__dict__, "building_block": building_name}
+        results.append(SpaceOut.model_validate(data))
+
     return {"spaces": results, "total": total}
 
 
@@ -255,6 +259,7 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
     db.commit()
     db.refresh(db_space)
     return db_space
+
 
 def get_space_lookup(db: Session, site_id: str, building_id: str, org_id: str):
     space_query = (

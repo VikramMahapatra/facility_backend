@@ -23,10 +23,7 @@ def read_orgs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 
 @router.get("/", response_model=OrgOut)
 def read_org(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
-    db_org = crud_orgs.get_org_by_id(db, current_user.org_id)
-    if not db_org:
-        raise HTTPException(status_code=404, detail="Org not found")
-    return db_org
+    return crud_orgs.get_org_by_id(db, current_user.org_id)
 
 
 @router.post("/", response_model=OrgOut)

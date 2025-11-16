@@ -4,9 +4,9 @@ from operator import or_
 from requests import request
 from sqlalchemy import desc, distinct, select
 from fastapi import HTTPException, BackgroundTasks, UploadFile
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload, joinedload, load_only
 from uuid import UUID
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, desc
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
 from auth_service.app.models.users import Users
@@ -35,33 +35,54 @@ from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeed
 
 
 def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
+
     account_type = current_user.account_type.lower()
-    if (account_type in (UserAccountType.ORGANIZATION, UserAccountType.STAFF)):
+
+    # -----------------------------------------------
+    # Base filters based on user type
+    # -----------------------------------------------
+    if account_type in (UserAccountType.ORGANIZATION, UserAccountType.STAFF):
         filters = [Ticket.org_id == current_user.org_id]
 
         if account_type == UserAccountType.STAFF:
             filters.append(Ticket.assigned_to == current_user.user_id)
+
     else:
-        tenant_id = db.query(Tenant.id).filter(and_(
-            Tenant.user_id == current_user.user_id, Tenant.is_deleted == False)).scalar()
+        tenant_id = db.query(Tenant.id).filter(
+            Tenant.user_id == current_user.user_id,
+            Tenant.is_deleted == False
+        ).scalar()
+
         filters = [Ticket.tenant_id == tenant_id]
 
+    # -----------------------------------------------
+    # Additional filters
+    # -----------------------------------------------
     if params.site_id:
         filters.append(Ticket.site_id == params.site_id)
 
     if params.space_id and account_type != UserAccountType.STAFF:
         filters.append(Ticket.space_id == params.space_id)
 
+    # -----------------------------------------------
+    # Status Filters
+    # -----------------------------------------------
     if params.status and params.status.lower() != "all":
+
         status = params.status.lower()
 
+        # ------------------ OVERDUE ------------------
         if status == "overdue":
-            # Join TicketCategory -> SlaPolicy to compute overdue tickets
+
+            cutoff = (
+                func.now()
+                - func.make_interval(mins=SlaPolicy.resolution_time_mins)
+            )
+
             filters.append(
                 and_(
                     Ticket.status != "closed",
-                    func.extract('epoch', func.now() - Ticket.created_at) / 60 >
-                    func.coalesce(SlaPolicy.resolution_time_mins, 0)
+                    Ticket.created_at < cutoff
                 )
             )
 
@@ -72,17 +93,7 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
                 .filter(*filters)
             )
 
-        # elif status == TicketStatus.OPEN.value:
-        #     open_statuses = [
-        #         TicketStatus.OPEN.value,
-        #         TicketStatus.ESCALATED.value,
-        #         TicketStatus.RETURNED.value,
-        #         TicketStatus.REOPENED.value,
-        #         TicketStatus.IN_PROGRESS.value,
-        #     ]
-        #     filters.append(Ticket.status.in_(open_statuses))
-        #     base_query = db.query(Ticket).filter(*filters)
-
+        # ------------------ OTHER STATUS -------------
         else:
             filters.append(func.lower(Ticket.status) == status)
             base_query = db.query(Ticket).filter(*filters)
@@ -90,43 +101,62 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
     else:
         base_query = db.query(Ticket).filter(*filters)
 
+    # -----------------------------------------------
+    # PERFORMANCE: avoid loading BIG columns
+    # -----------------------------------------------
+    base_query = (
+        base_query.options(
+            load_only(
+                Ticket.id,
+                Ticket.ticket_no,
+                Ticket.title,
+                Ticket.description,
+                Ticket.priority,
+                Ticket.request_type,
+                Ticket.status,
+                Ticket.preferred_time,
+                Ticket.created_at,
+                Ticket.closed_date,
+                Ticket.space_id,
+            ),
+            selectinload(Ticket.category).load_only(
+                TicketCategory.category_name)
+        )
+    )
+
     return base_query
 
 
 def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToken):
-    """Get all tickets with pagination"""
 
     base_query = build_ticket_filters(db, params, current_user)
 
-    total = base_query.with_entities(func.count(Ticket.id)).scalar()
+    total = db.query(func.count(Ticket.id)).select_from(
+        base_query.subquery()).scalar()
 
-    if params.skip and params.limit:
-        tickets = (
-            base_query
-            .order_by(desc(Ticket.created_at))
-            .offset(params.skip)
-            .limit(params.limit)
-            .all()
-        )
-    else:
-        tickets = (
-            base_query
-            .order_by(desc(Ticket.created_at))
-            .all()
-        )
+    query = base_query.order_by(desc(Ticket.created_at))
+
+    if params.skip is not None:
+        query = query.offset(params.skip)
+
+    if params.limit is not None:
+        query = query.limit(params.limit)
+
+    tickets = query.all()
 
     results = []
     for t in tickets:
-        category_name = t.category.category_name if t.category else None
-        complaint_data = {
-            **t.__dict__,
-            "category": category_name,  # override with name
-            "can_escalate": t.can_escalate,
-            "can_reopen": t.can_reopen,
-            "is_overdue": t.is_overdue,
-        }
-
-        results.append(TicketOut.model_validate(complaint_data))
+        data = t.__dict__.copy()
+        data.pop("category", None)  # remove SA relationship
+        results.append(
+            TicketOut(
+                **data,
+                category=t.category.category_name if t.category else None,
+                can_escalate=t.can_escalate,
+                can_reopen=t.can_reopen,
+                is_overdue=t.is_overdue
+            )
+        )
 
     return {"tickets": results, "total": total}
 
@@ -272,10 +302,10 @@ async def create_ticket(
 
         if not tenant_id:
             return error_response(
-            message=f"Invalid tenant",
-            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
-            http_status=400
-        )
+                message=f"Invalid tenant",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                http_status=400
+            )
 
     if not category_id:
         # ✅ Better error message to debug
@@ -299,7 +329,7 @@ async def create_ticket(
         updated_at=datetime.utcnow(),
         preferred_time=data.preferred_time,
         request_type=data.request_type,
-        priority= data.priority
+        priority=data.priority
     )
     if file and file.filename:
         file_bytes = await file.read()

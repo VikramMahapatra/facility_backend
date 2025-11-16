@@ -1,5 +1,5 @@
 
-from sqlalchemy import Enum, LargeBinary
+from sqlalchemy import Enum, LargeBinary, Index
 from typing import Optional
 from pydantic import computed_field
 from sqlalchemy.dialects.postgresql import UUID
@@ -56,7 +56,6 @@ class Ticket(Base):
     content_type = Column(String, nullable=False)
     file_data = Column(LargeBinary, nullable=False)  # 👈 store bytes here
 
-
     org = relationship("Org", back_populates="tickets")
     site = relationship("Site", back_populates="tickets")
     space = relationship("Space", back_populates="tickets")
@@ -68,6 +67,75 @@ class Ticket(Base):
     comments = relationship("TicketComment", back_populates="ticket")
     feedbacks = relationship("TicketFeedback", back_populates="ticket")
     work_orders = relationship("TicketWorkOrder", back_populates="ticket")
+
+    __table_args__ = (
+
+        # -------------------------------------------------------
+        # 1. org_id + status + created_at DESC
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_org_status_created",
+            "org_id",
+            "status",
+            "created_at",
+            postgresql_ops={"created_at": "DESC"}
+        ),
+
+        # -------------------------------------------------------
+        # 2. assigned_to + created_at DESC
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_assigned_created",
+            "assigned_to",
+            "created_at",
+            postgresql_ops={"created_at": "DESC"}
+        ),
+
+        # -------------------------------------------------------
+        # 3. site_id + created_at DESC
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_site_created",
+            "site_id",
+            "created_at",
+            postgresql_ops={"created_at": "DESC"}
+        ),
+
+        # -------------------------------------------------------
+        # 4. space_id + created_at DESC
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_space_created",
+            "space_id",
+            "created_at",
+            postgresql_ops={"created_at": "DESC"}
+        ),
+
+        # -------------------------------------------------------
+        # 5. category_id
+        # -------------------------------------------------------
+        Index("ix_ticket_category", "category_id"),
+
+        # -------------------------------------------------------
+        # 6. Partial index — open tickets only (status != 'closed')
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_open",
+            "org_id",
+            "created_at",
+            postgresql_ops={"created_at": "DESC"},
+            postgresql_where=(status != 'closed')
+        ),
+
+        # -------------------------------------------------------
+        # 7. Partial index — created_at for open tickets
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_open_created",
+            "created_at",
+            postgresql_where=(status != 'closed')
+        ),
+    )
 
     # -------------------------------
     # Computed flags

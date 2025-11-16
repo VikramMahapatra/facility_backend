@@ -1,5 +1,5 @@
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Boolean, Column, String, Date, DateTime, func, ForeignKey
+from sqlalchemy import Boolean, Column, String, Date, DateTime, func, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from ...models.hospitality.rate_plans import RatePlan
@@ -10,7 +10,39 @@ from shared.core.database import Base
 
 class Site(Base):
     __tablename__ = "sites"
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = (
+        # 🔥 Best index for your main list API:
+        # WHERE org_id = ? AND is_deleted = false ORDER BY created_at DESC
+        Index(
+            "ix_site_org_active_created_desc",
+            "org_id",
+            "is_deleted",
+            "created_at",
+            postgresql_ops={"created_at": "DESC"},
+            postgresql_using="btree"
+        ),
+
+        # 🔥 Fuzzy search on name (ILIKE %text%)
+        Index(
+            "ix_site_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"}
+        ),
+
+        # 🔥 Fuzzy search on code (ILIKE %text%)
+        Index(
+            "ix_site_code_trgm",
+            "code",
+            postgresql_using="gin",
+            postgresql_ops={"code": "gin_trgm_ops"}
+        ),
+
+        # 🔥 Filtering on kind
+        Index("ix_site_kind", "kind"),
+
+        {'extend_existing': True}
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey(

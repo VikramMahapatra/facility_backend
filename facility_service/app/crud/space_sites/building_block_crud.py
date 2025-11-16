@@ -32,7 +32,6 @@ def get_buildings(db: Session, org_id: UUID, params: BuildingRequest):
 
         )
         .filter(Space.is_deleted == False)  # Add this filter
-        .outerjoin(Lease, Space.id == Lease.space_id)
         .group_by(Space.building_block_id)  # Changed this
     ).subquery()
 
@@ -48,18 +47,19 @@ def get_buildings(db: Session, org_id: UUID, params: BuildingRequest):
             func.coalesce(space_subq.c.total_spaces, 0).label("total_spaces"),
             func.coalesce(space_subq.c.occupied_spaces,
                           0).label("occupied_spaces"),
-             # ADD OCCUPANCY RATE CALCULATION
+            # ADD OCCUPANCY RATE CALCULATION
             func.round(
                 case(
                     (func.coalesce(space_subq.c.total_spaces, 0) > 0,
-                     (func.coalesce(space_subq.c.occupied_spaces, 0) * 100.0) / 
+                     (func.coalesce(space_subq.c.occupied_spaces, 0) * 100.0) /
                      func.coalesce(space_subq.c.total_spaces, 1)),
                     else_=0.0
                 ), 2
             ).label("occupancy_rate")
         )
         .join(Site, Building.site_id == Site.id)
-        .outerjoin(space_subq, Building.id == space_subq.c.building_id)  # Changed this
+        # Changed this
+        .outerjoin(space_subq, Building.id == space_subq.c.building_id)
         .filter(
             Site.org_id == org_id,
             Building.is_deleted == False,  # Add this filter
@@ -76,25 +76,25 @@ def get_buildings(db: Session, org_id: UUID, params: BuildingRequest):
         building_query = building_query.filter(
             or_(Building.name.ilike(search_term), Site.name.ilike(search_term)))
 
-    total = building_query.count()
+    total = db.query(func.count()).select_from(
+        building_query.subquery()).scalar()
 
     building_query = building_query.order_by(
         Building.updated_at.desc()).offset(params.skip).limit(params.limit)
 
     buildings = building_query.all()
-        # Use _asdict() to convert Row objects to dictionaries
-    results = []
-    for building in buildings:
-        building_dict = building._asdict()
-        results.append(BuildingOut.model_validate(building_dict))
-    
+    # Use _asdict() to convert Row objects to dictionaries
+    results = [BuildingOut.model_validate(r._asdict()) for r in buildings]
+
     return {"buildings": results, "total": total}
+
 
 def get_building_by_id(db: Session, building_id: str):
     return db.query(Building).filter(
         Building.id == building_id,
         Building.is_deleted == False  # Add this filter
     ).first()
+
 
 def create_building(db: Session, building: BuildingCreate):
     # Check for duplicate building name within the same site (case-insensitive)
@@ -137,7 +137,8 @@ def update_building(db: Session, building: BuildingUpdate):
             Building.site_id == db_building.site_id,
             Building.id != building.id,
             Building.is_deleted == False,
-            func.lower(Building.name) == func.lower(update_data.get('name', ''))
+            func.lower(Building.name) == func.lower(
+                update_data.get('name', ''))
         ).first()
 
         if existing_building:
@@ -162,8 +163,6 @@ def update_building(db: Session, building: BuildingUpdate):
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )
-
-
 
 
 def get_building_lookup(db: Session, site_id: str, org_id: str):

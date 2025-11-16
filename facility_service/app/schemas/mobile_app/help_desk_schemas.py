@@ -3,11 +3,9 @@ from uuid import UUID
 from typing import Optional, List, Any
 from datetime import date, datetime
 from fastapi import Form
-from pydantic import  BaseModel, Field
+from pydantic import BaseModel, Field
 from ...schemas.service_ticket.tickets_schemas import CommentOut, TicketAttachmentOut, TicketWorkFlowOut
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
-
-
 
 
 class ComplaintOut(EmptyStringModel):
@@ -41,7 +39,7 @@ class ComplaintCreate(EmptyStringModel):
         request_type: str = Form(...),
         description: str = Form(...),
         preferred_time: Optional[str] = Form(None),
-        
+
     ):
         return cls(
             space_id=space_id,
@@ -50,7 +48,7 @@ class ComplaintCreate(EmptyStringModel):
             description=description,
             preferred_time=preferred_time,
 
-    )
+        )
     model_config = {"from_attributes": True}
 
 
@@ -70,7 +68,6 @@ class ComplaintResponse(EmptyStringModel):
 
 class ComplaintDetailsRequest(BaseModel):
     ticket_id: str
-
 
 
 class ComplaintDetailsResponse(EmptyStringModel):

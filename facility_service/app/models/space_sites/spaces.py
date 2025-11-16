@@ -1,6 +1,6 @@
 # space.py
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Boolean, Column, String, Integer, Numeric, DateTime, ForeignKey, func
+from sqlalchemy import Boolean, Column, String, Integer, Numeric, DateTime, ForeignKey, func, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -54,3 +54,47 @@ class Space(Base):
     meters = relationship("Meter", back_populates="space",
                           cascade="all, delete-orphan")
     tickets = relationship("Ticket", back_populates="space")
+
+    __table_args__ = (
+
+        # -------------------------
+        # Existing Indexes
+        # -------------------------
+        Index(
+            "ix_space_building_active",
+            "building_block_id",
+            "is_deleted"
+        ),
+        Index(
+            "ix_space_status",
+            "status"
+        ),
+
+        # -------------------------
+        # New Recommended Indexes
+        # -------------------------
+
+        # 1) Composite index for faster overview counts
+        Index(
+            "idx_spaces_org_status",
+            "org_id",
+            "status"
+        ),
+
+        # 2) Partial indexes for each status (VERY FAST)
+        Index(
+            "idx_spaces_available",
+            "org_id",
+            postgresql_where=(status == "available")
+        ),
+        Index(
+            "idx_spaces_occupied",
+            "org_id",
+            postgresql_where=(status == "occupied")
+        ),
+        Index(
+            "idx_spaces_oos",
+            "org_id",
+            postgresql_where=(status == "out_of_service")
+        ),
+    )

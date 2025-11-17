@@ -248,9 +248,8 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
     )
 
     if active_tenants or active_leases:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete space that has active tenants or leases associated with it."
+        raise error_response(
+            message="Cannot delete space that has active tenants or leases associated with it."
         )
 
     # Soft delete - set is_deleted to True instead of actually deleting

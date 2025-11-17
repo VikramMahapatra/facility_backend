@@ -26,7 +26,7 @@ class Ticket(Base):
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"))
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"))
     space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"))
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"))
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True)  # ✅ MADE NULLABLE
     category_id = Column(UUID(as_uuid=True),
                          ForeignKey("ticket_categories.id"))
 

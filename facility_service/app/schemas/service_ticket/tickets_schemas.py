@@ -192,33 +192,7 @@ class TicketListResponse(BaseModel):
     total: int
 
 
-class TicketDetailsResponse(EmptyStringModel):
-    id: UUID
-    ticket_no: str
-    category: Optional[str] = None
-    priority: Optional[str] = None
-    status: Optional[str] = None
-    description: Optional[str] = None
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-    closed_date: Optional[str] = None
-    space_id: Optional[UUID] = None
-    space_name: Optional[str] = None
-    building_name: Optional[str] = None
-    site_name: Optional[str] = None
-    can_escalate: Optional[bool] = False
-    can_reopen: Optional[bool] = False
-    comments: List[CommentOut] = []
-    logs: List[TicketWorkFlowOut] = []
-    preferred_time: Optional[str] = None
-    assigned_to: Optional[UUID] = None
-    assigned_to_name: Optional[str] = None
-    request_type: Optional[str] = None
-    is_overdue: Optional[bool] = False
-    attachments: Optional[List[TicketAttachmentOut]] = None
 
-    class Config:
-        from_attributes = True
 
 
 # FOR VIEW -------------------------------------------------------
@@ -242,6 +216,33 @@ class TicketCommentOut(BaseModel):
     created_at: Optional[datetime]
     reactions: List = []
 
+class TicketDetailsResponse(EmptyStringModel):
+    id: UUID
+    ticket_no: str
+    category: Optional[str] = None
+    priority: Optional[str] = None
+    status: Optional[str] = None
+    description: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    closed_date: Optional[str] = None
+    space_id: Optional[UUID] = None
+    space_name: Optional[str] = None
+    building_name: Optional[str] = None
+    site_name: Optional[str] = None
+    can_escalate: Optional[bool] = False
+    can_reopen: Optional[bool] = False
+    comments: List[TicketCommentOut] = []
+    logs: List[TicketWorkflowOut] = []
+    preferred_time: Optional[str] = None
+    assigned_to: Optional[UUID] = None
+    assigned_to_name: Optional[str] = None
+    request_type: Optional[str] = None
+    is_overdue: Optional[bool] = False
+    attachments: Optional[List[TicketAttachmentOut]] = None
+
+    class Config:
+        from_attributes = True
 
 class TicketUpdateRequest(BaseModel):
     ticket_id: UUID

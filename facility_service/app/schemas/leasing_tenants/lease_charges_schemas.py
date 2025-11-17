@@ -47,7 +47,7 @@ class LeaseChargeOut(BaseModel):
     period_start: Optional[date]
     period_end: Optional[date]
     amount: Decimal
-    tax_pct: Decimal
+    tax_pct: Optional[Decimal] = None
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     rent_amount: Optional[Decimal] = None

@@ -141,3 +141,28 @@ def fetch_role_admin_route(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.fetch_role_admin(db, data.org_id)
+
+
+# ----------------filter(DB) Priority ----------------
+@router.get("/filter-priority-lookup", response_model=List[Lookup])
+def tickets_filter_priority_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get available priority values for ticket filtering
+    Follows same pattern as housekeeping_tasks_filter_status_lookup_endpoint
+    """
+    return crud.tickets_filter_priority_lookup(db, current_user.org_id)
+
+# ----------------filter(DB) Status ----------------
+@router.get("/filter-status-lookup", response_model=List[Lookup])
+def tickets_filter_status_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get available status values for ticket filtering
+    Follows same pattern as housekeeping_tasks_filter_status_lookup_endpoint
+    """
+    return crud.tickets_filter_status_lookup(db, current_user.org_id)

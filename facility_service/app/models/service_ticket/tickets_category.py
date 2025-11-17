@@ -1,6 +1,6 @@
 
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import TIMESTAMP, Boolean, Column, DateTime, Integer, String, ForeignKey, func
+from sqlalchemy import TIMESTAMP, Boolean, Column, DateTime, Index, Integer, String, ForeignKey, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -30,3 +30,60 @@ class TicketCategory(Base):
     tickets = relationship("Ticket", back_populates="category")
     # New relationship
     site = relationship("Site", back_populates="ticket_categories")
+
+
+    __table_args__ = (
+        # -------------------------------------------------------
+        # 1. Composite index for site + active categories
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_category_site_active",
+            "site_id",
+            "is_active",
+            "category_name"
+        ),
+
+        # -------------------------------------------------------
+        # 2. Site + deleted status (for soft delete queries)
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_category_site_deleted",
+            "site_id",
+            "is_deleted",
+            "created_at",
+            postgresql_ops={"created_at": "DESC"}
+        ),
+
+        # -------------------------------------------------------
+        # 3. SLA policy reference (for SLA-related queries)
+        # -------------------------------------------------------
+        Index("ix_ticket_category_sla", "sla_id"),
+
+        # -------------------------------------------------------
+        # 4. Active categories only (partial index)
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_category_active",
+            "category_name",
+            "site_id",
+            postgresql_where=(is_deleted == False) & (is_active == True)
+        ),
+
+        # -------------------------------------------------------
+        # 5. Category name lookup (case-insensitive ready)
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_category_name",
+            "category_name",
+            postgresql_using='btree'
+        ),
+
+        # -------------------------------------------------------
+        # 6. Created_at for recent categories
+        # -------------------------------------------------------
+        Index(
+            "ix_ticket_category_created",
+            "created_at",
+            postgresql_ops={"created_at": "DESC"}
+        ),
+    )

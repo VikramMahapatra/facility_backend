@@ -1,6 +1,7 @@
 import base64
 from datetime import datetime
 from operator import or_
+from typing import Dict, List
 from requests import request
 from sqlalchemy import desc, distinct, select
 from fastapi import HTTPException, BackgroundTasks, UploadFile
@@ -63,6 +64,12 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
 
     if params.space_id and account_type != UserAccountType.STAFF:
         filters.append(Ticket.space_id == params.space_id)
+
+    # -----------------------------------------------
+    # Priority Filter 
+    # -----------------------------------------------
+    if params.priority and params.priority.lower() != "all":
+        filters.append(func.lower(Ticket.priority) == params.priority.lower())
 
     # -----------------------------------------------
     # Status Filters
@@ -1913,3 +1920,38 @@ def fetch_role_admin(session: Session, org_id):
     ]
 
     return data
+
+def tickets_filter_priority_lookup(db: Session, org_id: str) -> List[Dict]:
+    """
+    Get distinct priority values for filter dropdown
+    Follows same structure as housekeeping_tasks_filter_status_lookup
+    """
+    query = (
+        db.query(
+            Ticket.priority.label("id"),
+            Ticket.priority.label("name")
+        )
+        .filter(Ticket.org_id == org_id)
+        .distinct()
+        .order_by(Ticket.priority)
+    )
+    rows = query.all()
+    return [{"id": r.id, "name": r.name} for r in rows]
+
+
+def tickets_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
+    """
+    Get distinct status values for filter dropdown
+    Follows same structure as housekeeping_tasks_filter_status_lookup
+    """
+    query = (
+        db.query(
+            Ticket.status.label("id"),
+            Ticket.status.label("name")
+        )
+        .filter(Ticket.org_id == org_id)
+        .distinct()
+        .order_by(Ticket.status)
+    )
+    rows = query.all()
+    return [{"id": r.id, "name": r.name} for r in rows]

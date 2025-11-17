@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func
 from typing import Dict, List, Optional
 
@@ -13,41 +13,44 @@ from ...schemas.access_control.role_approval_rules_schemas import (
 
 
 def get_all_rules(db: Session, org_id: str):
-    """
-    Get all active role approval rules for an organization
-    """
-    rules_query = db.query(RoleApprovalRule).filter(
-        RoleApprovalRule.org_id == org_id,
-        RoleApprovalRule.is_deleted == False
+
+    Roles2 = aliased(Roles)
+
+    rules = (
+        db.query(
+            RoleApprovalRule,
+            Roles.name.label("approver_name"),
+            Roles2.name.label("can_approve_name")
+        )
+        .join(Roles, Roles.id == RoleApprovalRule.approver_role_id)
+        .join(Roles2, Roles2.id == RoleApprovalRule.can_approve_role_id)
+        .filter(
+            RoleApprovalRule.org_id == org_id,
+            RoleApprovalRule.is_deleted == False,
+            Roles.is_deleted == False,
+            Roles2.is_deleted == False
+        )
+        .order_by(RoleApprovalRule.created_at.desc())
+        .all()
     )
 
-    total = rules_query.count()
-    rules = rules_query.order_by(RoleApprovalRule.created_at.desc()).all()
+    total = len(rules)
 
-    # Convert to RoleApprovalRuleOut with role names
-    rules_out = []
-    for rule in rules:
-        # Get approver role name
-        approver_role = db.query(Roles).filter(
-            Roles.id == rule.approver_role_id).first()
-        # Get can_approve role name
-        can_approve_role = db.query(Roles).filter(
-            Roles.id == rule.can_approve_role_id).first()
+    result = []
+    for rule, approver_name, can_approve_name in rules:
+        result.append({
+            "id": rule.id,
+            "org_id": rule.org_id,
+            "approver_role_id": rule.approver_role_id,
+            "approver_role_name": approver_name,
+            "can_approve_role_id": rule.can_approve_role_id,
+            "can_approve_role_name": can_approve_name,
+            "created_at": rule.created_at,
+            "is_deleted": rule.is_deleted,
+            "deleted_at": rule.deleted_at
+        })
 
-        rule_out = RoleApprovalRuleOut(
-            id=rule.id,
-            org_id=rule.org_id,
-            approver_role_id=rule.approver_role_id,
-            approver_role_name=approver_role.name if approver_role else "Unknown",
-            can_approve_role_id=rule.can_approve_role_id,
-            can_approve_role_name=can_approve_role.name if can_approve_role else "Unknown",
-            created_at=rule.created_at,
-            is_deleted=rule.is_deleted,
-            deleted_at=rule.deleted_at
-        )
-        rules_out.append(rule_out)
-
-    return {"rules": rules_out, "total": total}
+    return {"rules": result, "total": total}
 
 
 def get_rule_by_id(db: Session, rule_id: str):

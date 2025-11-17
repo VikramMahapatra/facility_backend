@@ -6,14 +6,15 @@ from typing import List, Optional
 from datetime import datetime
 
 from auth_service.app.models.users import Users
+from facility_service.app.models.space_sites.sites import Site
 from shared.core.config import Settings
 
 from ...models.common.staff_sites import StaffSite
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.sla_policy import SlaPolicy
-
+from sqlalchemy.orm import joinedload
 from ...enum.ticket_service_enum import AutoAssignRoleEnum, StatusEnum
-from ...schemas.service_ticket.ticket_category_schemas import TicketCategoryListResponse
+from ...schemas.service_ticket.ticket_category_schemas import TicketCategoryListResponse, TicketCategoryRequest
 from ...models.service_ticket.tickets_category import TicketCategory
 from ...schemas.service_ticket.ticket_category_schemas import (
     TicketCategoryCreate,
@@ -23,50 +24,78 @@ from ...schemas.service_ticket.ticket_category_schemas import (
 from shared.core.schemas import Lookup
 from fastapi import HTTPException
 
+
+
 # ---------------- Build Filters ----------------
+def build_ticket_categories_filters(org_id: UUID, params: TicketCategoryRequest):
+    filters = [
+        TicketCategory.is_deleted == False,
+        Site.org_id == org_id  
+    ]
 
+    # site filter
+    if params.site_id and params.site_id.lower() != "all":
+        filters.append(TicketCategory.site_id == params.site_id)
 
-def build_ticket_categories_filters(search: Optional[str] = None):
-    # Always filter out soft deleted records
-    filters = [TicketCategory.is_deleted == False]
+    # Active status filter
+    if params.is_active and params.is_active.lower() != "all":
+        if params.is_active.lower() == "true":
+            filters.append(TicketCategory.is_active == True)
+        elif params.is_active.lower() == "false":
+            filters.append(TicketCategory.is_active == False)
 
-    if search:
-        search_term = f"%{search}%"
+    # Search across category name and auto assign role
+    if params.search:
+        search_term = f"%{params.search}%"
         filters.append(or_(
             TicketCategory.category_name.ilike(search_term),
-            TicketCategory.auto_assign_role.ilike(search_term)
+            TicketCategory.auto_assign_role.ilike(search_term),
+            Site.name.ilike(search_term)
         ))
 
     return filters
 
 # ---------------- Get All ----------------
-
-
 def get_ticket_categories(
     db: Session,
-    skip: int = 0,
-    limit: int = 100,
-    search: Optional[str] = None
+    org_id: UUID, 
+    params: TicketCategoryRequest
 ) -> TicketCategoryListResponse:
 
-    filters = build_ticket_categories_filters(search)
-    base_query = db.query(TicketCategory).filter(*filters)
+    filters = build_ticket_categories_filters(org_id, params)  
+    
+    # Base query with joins for site
+    base_query = (
+        db.query(TicketCategory)
+        .join(Site, TicketCategory.site_id == Site.id, isouter=True)
+        .filter(*filters)
+    )
 
     total = base_query.count()
 
+    # Get categories with pagination and site relationship
     ticket_categories = (
         base_query
+        .options(joinedload(TicketCategory.site))
         .order_by(TicketCategory.updated_at.desc())
-        .offset(skip)
-        .limit(limit)
+        .offset(params.skip)
+        .limit(params.limit)
         .all()
     )
 
+    # Convert to output schema with site name
+    results = []
+    for category in ticket_categories:
+        category_out = TicketCategoryOut.model_validate({
+            **category.__dict__,
+            "site_name": category.site.name if category.site else None
+        })
+        results.append(category_out)
+
     return {
-        "ticket_categories": ticket_categories,
+        "ticket_categories": results,
         "total": total
     }
-
 # ---------------- Get By ID ----------------
 
 
@@ -179,15 +208,29 @@ def status_lookup(db: Session) -> List[Lookup]:
 #-----------------sla policy------------------------
 def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """
-    Fetch SLA policies filtered by site_id.
-    Returns id and service_category as lookup values.
+    Strictly fetch SLA policies filtered by site_id.
+    Returns SLA policies only for that specific site.
     """
-    query = db.query(SlaPolicy.id, SlaPolicy.service_category).filter(SlaPolicy.is_deleted == False)
 
-    if site_id and site_id.lower() != "all":
-        query = query.filter(SlaPolicy.site_id == site_id)
+    if not site_id or site_id.lower() == "all":
+        # STRICT MODE: do NOT return all policies
+        return []
 
-    return [Lookup(id=row.id, name=row.service_category) for row in query.all()]
+    query = (
+        db.query(SlaPolicy.id, SlaPolicy.service_category)
+        .filter(
+            SlaPolicy.is_deleted == False,
+            SlaPolicy.site_id == site_id   # STRICT FILTER HERE
+        )
+        .order_by(SlaPolicy.service_category)
+    )
+
+    policies = query.all()
+
+    return [
+        Lookup(id=row.id, name=row.service_category)
+        for row in policies
+    ]
 
 
 

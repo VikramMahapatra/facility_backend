@@ -63,6 +63,7 @@ class TicketFilterRequest(CommonQueryParams):
     status: Optional[str] = None
     space_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
+    priority: Optional[str] = None
 
 
 class TicketCreate(BaseModel):

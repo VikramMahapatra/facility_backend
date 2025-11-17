@@ -2,9 +2,10 @@
 import calendar
 import uuid
 from typing import List, Optional, Tuple, Dict, Any
-from datetime import date
+from datetime import datetime, date
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import String, func, extract, or_, cast, Date
+from sqlalchemy import desc
 
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
@@ -102,7 +103,7 @@ def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
 
     results = (
         base_query
-        .order_by(LeaseCharge.period_start.desc())
+        .order_by(LeaseCharge.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
         .all()
@@ -171,10 +172,13 @@ def update_lease_charge(
 
     for k, v in payload.dict(exclude_unset=True).items():
         setattr(obj, k, v)
+    
+    # ADD THIS LINE: Update the timestamp
+    obj.updated_at = datetime.utcnow()
+    
     db.commit()
     db.refresh(obj)
     return obj
-
 
 def delete_lease_charge(db: Session, charge_id: UUID, org_id: UUID) -> Dict:
     """Soft delete lease charge - can be directly deleted as it's at the bottom of hierarchy"""

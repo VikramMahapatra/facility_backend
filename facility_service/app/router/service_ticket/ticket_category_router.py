@@ -12,6 +12,7 @@ from shared.core.schemas import Lookup
 from ...schemas.service_ticket.ticket_category_schemas import (
     EmployeeListResponse,
     TicketCategoryCreate,
+    TicketCategoryRequest,
     TicketCategoryUpdate,
     TicketCategoryOut,
     TicketCategoryListResponse
@@ -26,21 +27,20 @@ router = APIRouter(
 )
 
 # ---------------- Get All ----------------
-
-
 @router.get("/all", response_model=TicketCategoryListResponse)
-def get_ticket_categories(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    search: Optional[str] = Query(None),
+def get_ticket_categories_endpoint(
+    params: TicketCategoryRequest = Depends(),  
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_ticket_categories(db, skip, limit, search)
-
-
-# routes/ticket_category_routes.py
-
+    """
+    Get ticket categories with search, site filter, and pagination
+    """
+    return crud.get_ticket_categories(
+        db=db,
+        org_id=current_user.org_id,  
+        params=params
+    )
 # ---------------- Create ----------------
 @router.post("/", response_model=TicketCategoryOut)
 def create_ticket_category(
@@ -92,18 +92,19 @@ def status_lookup(
 
 
 # ---------------- SLA Policy Lookup ---------------------------------
-
 @router.get("/sla-policy-lookup", response_model=List[Lookup])
-def sla_policy_lookup(
-    site_id: Optional[str] = Query(None),
+def sla_policy_lookup(  
+    site_id: Optional[str] = Query(None, description="Filter by site ID. Required to get SLA policies."),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
+    """
+    Get SLA policies for dropdown/lookup.
+    STRICTLY filtered by site_id - returns empty if no site_id provided.
+    """
     return crud.sla_policy_lookup(db, site_id)
 
 
-
-# Add to your existing ticket_routes.py
 
 @router.get("/employees/{ticket_id}", response_model=EmployeeListResponse)
 def get_employees_for_ticket(

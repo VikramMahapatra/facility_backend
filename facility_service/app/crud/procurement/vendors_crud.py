@@ -148,7 +148,7 @@ def get_vendors(db: Session, org_id: uuid.UUID, params: VendorRequest) -> Vendor
     # Fetch vendors with offset & limit
     vendors = (
         base_query
-        .order_by(Vendor.created_at.desc())
+        .order_by(Vendor.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
         .all()

@@ -1373,7 +1373,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "closed_date": service_req.closed_date.isoformat() if service_req.closed_date else None,
             "assigned_to_name": assigned_to_name,
             "comments": comments_out,
-            "workflows": workflows_out,
+            "logs": workflows_out,
             "can_escalate": service_req.can_escalate,
             "can_reopen": service_req.can_reopen,
             "is_overdue": service_req.is_overdue,

@@ -131,8 +131,8 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
 
     base_query = build_ticket_filters(db, params, current_user)
 
-    total = db.query(func.count(Ticket.id)).select_from(
-        base_query.subquery()).scalar()
+    subq = base_query.with_entities(Ticket.id).subquery()
+    total = db.query(func.count()).select_from(subq).scalar()
 
     query = base_query.order_by(desc(Ticket.created_at))
 

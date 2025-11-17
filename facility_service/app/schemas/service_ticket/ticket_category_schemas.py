@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
+
+from shared.core.schemas import CommonQueryParams
 from ...enum.ticket_service_enum import AutoAssignRoleEnum
 
 class TicketCategoryBase(BaseModel):
@@ -26,7 +28,8 @@ class TicketCategoryOut(TicketCategoryBase):
     deleted_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
+    site_name: Optional[str] = None  # ✅ Added site name for grid display
+
     class Config:
         from_attributes = True
 
@@ -46,5 +49,7 @@ class EmployeeOut(BaseModel):
 class EmployeeListResponse(BaseModel):
     employees: List[EmployeeOut]    
     
-    
 
+class TicketCategoryRequest(CommonQueryParams):
+    site_id: Optional[str] = None  
+    is_active: Optional[str] = None  

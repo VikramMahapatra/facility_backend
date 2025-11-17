@@ -71,7 +71,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2️⃣ Custom JSON response wrapper middleware
+# 2️⃣ Custom JSON response wrapper middlewares
 app.add_middleware(JsonResponseMiddleware)
 
 # Register exception handlers

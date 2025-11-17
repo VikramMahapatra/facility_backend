@@ -102,7 +102,7 @@ def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
 
     results = (
         base_query
-        .order_by(LeaseCharge.period_start.desc())
+        .order_by(LeaseCharge.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
         .all()

@@ -26,16 +26,10 @@ class UserCreate(UserBase):
     pass
 
 
-class UserUpdate(BaseModel):
+class UserUpdate(UserCreate):
     id: UUID
-    org_id: Optional[UUID] = None
-    full_name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    picture_url: Optional[str] = None
-    account_type: Optional[str] = None
-    status: Optional[str] = None
-    role_ids: Optional[List[str]] = None
+
+    pass
 
 
 class UserOut(BaseModel):

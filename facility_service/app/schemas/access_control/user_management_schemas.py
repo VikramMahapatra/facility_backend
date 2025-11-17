@@ -19,6 +19,10 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
+    site_id: Optional[UUID] = None
+    space_id: Optional[UUID] = None
+    site_ids: Optional[List[str]] = []
+
     pass
 
 

@@ -17,8 +17,14 @@ from ...schemas.access_control.user_management_schemas import (
 def get_users(db: Session, org_id: str, params: UserRequest):
     user_query = db.query(Users).filter(
         Users.org_id == org_id,
-        Users.is_deleted == False
+        Users.is_deleted == False,
+        # ALWAYS EXCLUDE PENDING AND REJECTED STATUSES
+        Users.status.notin_(["pending_approval", "rejected"])
     )
+    
+    # ADD STATUS FILTERING
+    if params.status and params.status != "all":
+        user_query = user_query.filter(Users.status == params.status)
 
     if params.search:
         search_term = f"%{params.search}%"
@@ -43,7 +49,6 @@ def get_users(db: Session, org_id: str, params: UserRequest):
         "users": [UserOut.model_validate(u) for u in users],
         "total": total
     }
-
 
 def get_user_by_id(db: Session, user_id: str):
     return db.query(Users).filter(

@@ -2,7 +2,7 @@ import os
 import shutil
 from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
-from sqlalchemy import func
+from sqlalchemy import func, and_
 
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
@@ -86,8 +86,10 @@ def create_user(
         # ✅ Assign Role
         role_name = ("admin" if user.accountType.lower() ==
                      "organization" else user.accountType.lower())
-        role_obj = db.query(Roles).filter(
-            func.lower(Roles.name) == func.lower(role_name)).first()
+        role_obj = (
+            db.query(Roles).filter(and_(func.lower(Roles.name) ==
+                                        func.lower(role_name), Roles.is_deleted == False)).first()
+        )
 
         if not role_obj:
             return error_response(

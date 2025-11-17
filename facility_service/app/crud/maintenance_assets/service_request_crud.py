@@ -92,7 +92,7 @@ def get_service_requests(db: Session, org_id: UUID, params: ServiceRequestReques
 
     requests = (
         base_query
-        .order_by(ServiceRequest.created_at.desc())
+        .order_by(ServiceRequest.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
         .all()

@@ -20,6 +20,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     site_id: Optional[UUID] = None
+    tenant_type: Optional[str] = None
     space_id: Optional[UUID] = None
     site_ids: Optional[List[str]] = []
 

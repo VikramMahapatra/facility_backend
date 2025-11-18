@@ -511,8 +511,13 @@ def user_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
     ]
 
 
-def user_roles_lookup(db: Session, org_id: str, role: Optional[str] = None):
-    return [
-        Lookup(id=role.value, name=role.name.capitalize())
-        for role in UserRoleEnum
-    ]
+def user_roles_lookup(db: Session, org_id: str):
+    query = (
+        db.query(
+            Roles.id.label("id"),
+            Roles.name.label("name")
+        )
+        .filter(Roles.org_id == org_id, Roles.is_deleted == False)
+        .distinct()
+    )
+    return query.all()

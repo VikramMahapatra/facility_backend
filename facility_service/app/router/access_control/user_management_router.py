@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.core.database import get_auth_db as get_db, get_facility_db
@@ -68,8 +68,8 @@ def user_status_lookup(
     return crud.user_status_lookup(db, current_user.org_id)
 
 
-@router.get("/user-roles-lookup", response_model=List[Lookup])
-def user_roles_lookup(
+@router.get("/roles-lookup", response_model=List[Lookup])
+def user_roles_lookup_endpoint(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):

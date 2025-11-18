@@ -1,0 +1,50 @@
+from pydantic import BaseModel
+from typing import Any, List, Optional, Dict
+from datetime import date, datetime
+from uuid import UUID
+
+from shared.core.schemas import CommonQueryParams
+
+
+class BuildingOut(BaseModel):
+    id: UUID
+    site_id: UUID
+    name: str
+    site_name: str
+    site_kind: str
+    floors: Optional[int]
+    total_spaces: Optional[int]
+    occupied_spaces: Optional[int]
+    occupancy_rate: Optional[float] = None  # ADD OCCUPANCY RATE FIELD
+    attributes: Optional[Any] = None
+
+    class Config:
+        # Change from_attribute to from_attributes FOR CREATE AND UPDATE VALIDATION
+        from_attributes = True
+
+
+class BuildingRequest(CommonQueryParams):
+    site_id: Optional[str] = None
+
+
+class BuildingListResponse(BaseModel):
+    buildings: List[BuildingOut]
+    total: int
+
+
+class BuildingBase(BaseModel):
+    org_id: Optional[UUID] = None
+    site_id: UUID
+    name: str
+    floors: Optional[int]
+    status: Optional[str] = "active"
+    attributes: Optional[Any] = None
+
+
+class BuildingCreate(BuildingBase):
+    pass
+
+
+class BuildingUpdate(BuildingBase):
+    id: str
+    pass

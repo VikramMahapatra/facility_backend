@@ -1,32 +1,41 @@
 # app/main.py
 from fastapi import FastAPI
-from app.core.database import Base, engine
-from app.routers import authrouter, userrouter
+from shared.core.database import AuthBase, auth_engine
 from fastapi.middleware.cors import CORSMiddleware
-from app.models import users, roles, userroles, rolepolicy
+
+from shared.helpers.exception_handler import setup_exception_handlers
+from shared.wrappers.response_wrapper import JsonResponseMiddleware
+from .routers import authrouter, userrouter
+from .models import users, roles, userroles, rolepolicy, user_otps, user_login_session, refresh_token, otp_verifications
 
 # Create tables
-Base.metadata.create_all(bind=engine)
+AuthBase.metadata.create_all(bind=auth_engine)
 
 # This MUST exist for uvicorn
 app = FastAPI(title="Unified Auth (Google + Mobile)")
 
 # Allow requests from your React app
 origins = [
-    "http://localhost:9090",
-    "http://127.0.0.1:8002",
-    "http://192.0.0.2:9090"
+    "http://localhost:8080",
+    "http://127.0.0.1:8001"
     # Add other origins if deploying later
 ]
 
+# 1️⃣ CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # or ["*"] to allow all origins (not recommended for production)
+    # or ["*"] to allow all origins (not recommended for production)
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# 2️⃣ Custom JSON response wrapper middleware
+app.add_middleware(JsonResponseMiddleware)
+
+# Register exception handlers
+setup_exception_handlers(app)
 
 # Routers
 app.include_router(authrouter.router)

@@ -1,0 +1,18 @@
+# auth_service/app/models/org.py
+from sqlalchemy import Column, String, DateTime
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from shared.core.database import Base
+import uuid
+
+
+class TenantSafe(Base):
+    __tablename__ = "tenants"
+    __table_args__ = {"extend_existing": True}
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True))
+    site_id = Column(UUID(as_uuid=True))
+    space_id = Column(UUID(as_uuid=True))
+    name = Column(String)
+    email = Column(String)
+    phone = Column(String)
+    status = Column(String(16))

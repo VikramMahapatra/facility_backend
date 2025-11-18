@@ -1,0 +1,29 @@
+# app/models/inventory_stocks.py
+import uuid
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import Boolean, Column, DateTime, String, Numeric, ForeignKey
+from sqlalchemy.orm import relationship
+from shared.core.database import Base
+
+
+class InventoryStock(Base):
+    __tablename__ = "inventory_stocks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), nullable=False)
+    site_id = Column(UUID(as_uuid=True))
+    item_id = Column(
+        UUID(as_uuid=True),
+        # 🔑 Added CASCADE
+        ForeignKey("inventory_items.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    qty_on_hand = Column(Numeric(14, 3), default=0)
+    bin_location = Column(String(64))
+
+    # ✅ Add soft delete columns
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+    # 🔑 Added relationship to item
+    item = relationship("InventoryItem", back_populates="stocks")

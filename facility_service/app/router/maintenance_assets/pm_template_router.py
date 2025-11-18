@@ -1,0 +1,118 @@
+from typing import List, Optional
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from shared.core.auth import validate_current_token  # for dependicies
+from shared.core.database import get_facility_db as get_db
+from shared.helpers.json_response_helper import success_response
+from shared.core.schemas import Lookup, UserToken
+from ...schemas.maintenance_assets.pm_templates_schemas import (
+    PMTemplateCreate,
+    PMTemplateOverviewResponse,
+    PMTemplateUpdate,
+    PMTemplateOut,
+    PMTemplateRequest,
+    PMTemplateListResponse,
+)
+from ...crud.maintenance_assets import pm_template_crud as crud
+
+router = APIRouter(prefix="/api/pm_templates", tags=["PM Templates"])
+
+
+# ---------------- List templates -----------------
+@router.get("/all", response_model=PMTemplateListResponse)
+def get_pm_templates(
+    params: PMTemplateRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_pm_templates(db, current_user.org_id, params)
+
+# ---------------- Overview ----------------
+
+
+@router.get("/overview", response_model=PMTemplateOverviewResponse)
+def overview(
+    params: PMTemplateRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_pm_templates_overview(db, current_user.org_id, params)
+
+# ---------------- Update template ----------------
+
+
+@router.put("/", response_model=None)
+def update_pm_template(
+    template: PMTemplateUpdate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.update_pm_template(db, template)
+
+
+# ---------------- Create template ----------------
+@router.post("/", response_model=PMTemplateOut)
+def create_pm_template(
+    template: PMTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    template.org_id = current_user.org_id
+    return crud.create_pm_template(db, template)
+
+
+# ---------------- Delete PM Template (Soft Delete) ----------------
+@router.delete("/{template_id}")
+def delete_pm_template_soft(
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+): return crud.delete_pm_template_soft(db, template_id, current_user.org_id)
+
+
+# ---------------- Frequency Lookup ----------------
+@router.get("/frequency-lookup", response_model=List[Lookup])
+def pm_template_frequency_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.pm_templates_frequency_lookup(db, current_user.org_id)
+
+
+# ---------------- Category Lookup ----------------
+@router.get("/category-lookup", response_model=List[Lookup])
+def pm_template_category_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.pm_templates_category_lookup(db, current_user.org_id)
+
+# ----------------  Status Lookup ----------------
+
+
+@router.get("/status-lookup", response_model=List[Lookup])
+def pm_templates_status_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.pm_templates_status_lookup(db, current_user.org_id)
+
+# ----------------filter Frequency Lookup ----------------
+
+
+@router.get("/filter-frequency-lookup", response_model=List[Lookup])
+def pm_templates_filter_frequency_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.pm_templates_filter_frequency_lookup(db, current_user.org_id)
+
+
+# ----------------filter by  Status Lookup ------------------
+@router.get("/filter-status-lookup", response_model=List[Lookup])
+def pm_templates_filter_status_lookup_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.pm_templates_filter_status_lookup(db, current_user.org_id)

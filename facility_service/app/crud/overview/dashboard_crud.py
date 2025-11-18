@@ -27,7 +27,8 @@ from ...models.energy_iot.meter_readings import MeterReading
 from ...models.energy_iot.meters import Meter
 from ...models.financials.invoices import Invoice, PaymentAR
 from sqlalchemy.dialects.postgresql import UUID
-
+from dateutil.relativedelta import relativedelta
+from datetime import timedelta
 
 def get_overview_data(db: Session, org_id: UUID) -> Dict[str, Any]:
     today = date.today()
@@ -427,23 +428,138 @@ def get_financial_summary(db: Session, org_id: UUID):
     }
 
 
-def monthly_revenue_trend():
-    return [
-            {"month": "Oct", "rental": 465000, "cam": 72000, "total": 537000 },
-             { "month": "Nov", "rental": 478000, "cam": 75500, "total": 553500 },
-            { "month": "Dec", "rental": 483000, "cam": 76800, "total": 559800 },
-            { "month": "Jan", "rental": 487500, "cam": 78900, "total": 566400 },
-    ]
-
-def space_occupancy():
-    return {
-        "total": 248,
-        "occupied": 187,
-        "available": 45,
-        "outOfService": 16,
-        "occupancyRate": 75.4,
-    }
+#-------------------------------monthly revenue-----------------------
+def monthly_revenue_trend(db: Session, org_id: UUID):
+    # Get the current date and calculate the last 4 months
+    today = date.today()
+    current_month_start = today.replace(day=1)
     
+    # Generate the last 4 months including current month
+    months = []
+    for i in range(3, -1, -1):  # Last 3 months + current month
+        month_date = current_month_start - relativedelta(months=i)
+        months.append({
+            "date": month_date,
+            "label": month_date.strftime("%b")
+        })
+    
+    monthly_data = []
+    
+    for month_info in months:
+        month_start = month_info["date"]
+        month_end = (month_start + relativedelta(months=1)) - timedelta(days=1)
+        
+        # Calculate rental revenue for the month
+        rental_revenue = float((
+            db.query(
+                func.coalesce(
+                    func.sum(LeaseCharge.amount + LeaseCharge.amount * LeaseCharge.tax_pct / 100),
+                    0
+                )
+            )
+            .join(Lease, Lease.id == LeaseCharge.lease_id)
+            .filter(
+                Lease.org_id == org_id,
+                LeaseCharge.period_start <= month_end,
+                LeaseCharge.period_end >= month_start,
+                ~func.lower(LeaseCharge.charge_code).like("cam%")
+            )
+            .scalar() or 0.0
+        ))
+        
+        # Calculate CAM revenue for the month
+        cam_revenue = float((
+            db.query(
+                func.coalesce(
+                    func.sum(LeaseCharge.amount + LeaseCharge.amount * LeaseCharge.tax_pct / 100),
+                    0
+                )
+            )
+            .join(Lease, Lease.id == LeaseCharge.lease_id)
+            .filter(
+                Lease.org_id == org_id,
+                LeaseCharge.period_start <= month_end,
+                LeaseCharge.period_end >= month_start,
+                func.lower(LeaseCharge.charge_code).like("cam%")
+            )
+            .scalar() or 0.0
+        ))
+        
+        # Round all values to 2 decimal places
+        rental_revenue = round(rental_revenue, 2)
+        cam_revenue = round(cam_revenue, 2)
+        total_revenue = round(rental_revenue + cam_revenue, 2)
+        
+        monthly_data.append({
+            "month": month_info["label"],
+            "rental": rental_revenue,
+            "cam": cam_revenue,
+            "total": total_revenue
+        })
+    
+    return monthly_data
+
+
+
+def space_occupancy(db: Session, org_id: UUID):
+    # Count total spaces (excluding deleted ones)
+    total_spaces = (
+        db.query(func.count(Space.id))
+        .filter(
+            Space.org_id == org_id,
+            Space.is_deleted == False
+        )
+        .scalar() or 0
+    )
+    
+    # Count occupied spaces
+    occupied_spaces = (
+        db.query(func.count(Space.id))
+        .filter(
+            Space.org_id == org_id,
+            Space.is_deleted == False,
+            func.lower(Space.status) == "occupied"
+        )
+        .scalar() or 0
+    )
+    
+    # Count available spaces
+    available_spaces = (
+        db.query(func.count(Space.id))
+        .filter(
+            Space.org_id == org_id,
+            Space.is_deleted == False,
+            func.lower(Space.status) == "available"
+        )
+        .scalar() or 0
+    )
+    
+    # Count out of service spaces
+    out_of_service_spaces = (
+        db.query(func.count(Space.id))
+        .filter(
+            Space.org_id == org_id,
+            Space.is_deleted == False,
+            func.lower(Space.status) == "out_of_service"
+        )
+        .scalar() or 0
+    )
+    
+    # Calculate occupancy rate (percentage)
+    occupancy_rate = 0.0
+    if total_spaces > 0:
+        occupancy_rate = round((occupied_spaces / total_spaces) * 100, 1)
+    
+    return {
+        "total": total_spaces,
+        "occupied": occupied_spaces,
+        "available": available_spaces,
+        "outOfService": out_of_service_spaces,
+        "occupancyRate": occupancy_rate,
+    }
+
+
+
 def work_orders_priority():
     return [ 
     { "priority": "Critical", "count": 3 },
@@ -452,6 +568,8 @@ def work_orders_priority():
     { "priority": "Low",      "count": 5 }
     ]
 
+
+
 def get_energy_consumption_trend():
     return [
        { "month": "Sep", "electricity": 42500, "water": 1250, "gas": 890 },
@@ -459,6 +577,8 @@ def get_energy_consumption_trend():
     { "month": "Nov", "electricity": 46800, "water": 1320, "gas": 850 },
     { "month": "Dec", "electricity": 45680, "water": 1280, "gas": 880 },
     ]
+
+
 def get_occupancy_by_floor():
     return [
      

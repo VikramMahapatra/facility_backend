@@ -21,10 +21,10 @@ router = APIRouter(prefix="/api/users",
 def get_all_users(
     params: UserRequest = Depends(),
     db: Session = Depends(get_db),
+    facility_db: Session = Depends(get_facility_db),  
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_users(db, current_user.org_id, params)
-
+    return crud.get_users(db, facility_db, current_user.org_id, params)  
 
 @router.put("/", response_model=UserOut)
 def update_user(

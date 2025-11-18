@@ -45,6 +45,12 @@ class UserOut(BaseModel):
     roles: Optional[List[RoleOut]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+        # ADD THESE 5 NEW FIELDS
+    site_id: Optional[UUID] = None
+    space_id: Optional[UUID] = None
+    building_block_id: Optional[UUID] = None
+    tenant_type: Optional[str] = None
+    site_ids: Optional[List[UUID]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

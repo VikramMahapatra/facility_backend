@@ -96,7 +96,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
         if existing_user:
             raise ValueError("User with this email already exists")
 
-    user_data = user.model_dump(exclude={'roles'})
+    user_data = user.model_dump(exclude={'roles', 'role_ids','site_id' ,'space_id' , 'site_ids','tenant_type'}) 
 
     db_user = Users(**user_data)
     db.add(db_user)
@@ -117,8 +117,15 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                 db.add(user_role)
         db.commit()
 
+    if db_user.account_type.lower() == "staff":
+        if user.site_ids is not None and len(user.site_ids) == 0:
+            return error_response(
+                message=" Site list required for  staff",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+            )
+        
     if db_user.account_type.lower() == "tenant":
-        if not user.space_id and not user.site_id:
+        if user.site_id is None or user.space_id is None:
             return error_response(
                 message="space & Site required for individual tenant",
                 status_code=str(
@@ -133,7 +140,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                 email=user.email,
                 phone=user.phone,
                 status=user.status,
-                user_id=user.id
+                user_id=db_user.id  # FIXED: Use db_user.id instead of user.id
             )
             facility_db.add(tenant_obj)
         elif user.tenant_type == "commercial":
@@ -147,7 +154,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                     "email": user.email
                 },
                 status=user.status,
-                user_id=user.id
+                user_id=db_user.id  # FIXED: Use db_user.id instead of user.id
             )
             facility_db.add(partner_obj)
         else:
@@ -202,11 +209,18 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
     db.commit()
     db.refresh(db_user)
 
+    if db_user.account_type.lower() == "staff":
+        if user.site_ids is not None and len(user.site_ids) == 0:
+            return error_response(
+                message=" Site list required for  staff",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+            )
+
     # ======================================================
     # =============== TENANT ACCOUNT UPDATE ================
     # ======================================================
     if db_user.account_type.lower() == "tenant":
-        if not user.space_id and not user.site_id:
+        if user.site_id is None or user.space_id is None:
             return error_response(
                 message="space & Site required for individual tenant",
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)

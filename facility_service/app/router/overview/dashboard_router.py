@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException
 from ...crud.overview import dashboard_crud
 from sqlalchemy.orm import Session
@@ -6,7 +6,7 @@ from uuid import UUID
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from ...schemas.overview.dasboard_schema import (
-    OverviewResponse, LeasingOverviewResponse, MaintenanceStatusResponse, AccessAndParkingResponse, FinancialSummaryResponse)
+    MonthlyRevenueTrendResponse, OverviewResponse, LeasingOverviewResponse, MaintenanceStatusResponse, AccessAndParkingResponse, FinancialSummaryResponse, SpaceOccupancyResponse)
 from shared.core.schemas import UserToken
 
 
@@ -59,14 +59,21 @@ def financial_summary(
     return dashboard_crud.get_financial_summary(db, current_user.org_id)
 
 
-@router.get("/monthly-revenue-trend")
-def monthly_revenue_trend():
-    return dashboard_crud.monthly_revenue_trend()
+# Router endpoint for charts
+@router.get("/monthly-revenue-trend", response_model=List[MonthlyRevenueTrendResponse])
+def get_monthly_revenue_trend(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return dashboard_crud.monthly_revenue_trend(db, current_user.org_id)
 
 
-@router.get("/space-occupancy")
-def space_occupancy():
-    return dashboard_crud.space_occupancy()
+@router.get("/space-occupancy", response_model=SpaceOccupancyResponse)
+def get_space_occupancy(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return dashboard_crud.space_occupancy(db, current_user.org_id)
 
 
 @router.get("/work-orders-priority")

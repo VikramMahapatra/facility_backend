@@ -53,3 +53,24 @@ class FinancialSummaryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# Response model for charts
+class MonthlyRevenueTrendResponse(BaseModel):
+    month: str
+    rental: float
+    cam: float
+    total: float
+
+    class Config:
+        from_attributes = True
+
+
+class SpaceOccupancyResponse(BaseModel):
+    total: int
+    occupied: int
+    available: int
+    outOfService: int
+    occupancyRate: float
+
+    class Config:
+        from_attributes = True

@@ -1,7 +1,7 @@
 from typing import Any, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import extract, func, case , literal_column, or_
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from ...models.parking_access.access_events import AccessEvent
 
@@ -568,16 +568,75 @@ def work_orders_priority():
     { "priority": "Low",      "count": 5 }
     ]
 
-
-
-def get_energy_consumption_trend():
-    return [
-       { "month": "Sep", "electricity": 42500, "water": 1250, "gas": 890 },
-    { "month": "Oct", "electricity": 44200, "water": 1180, "gas": 920 },
-    { "month": "Nov", "electricity": 46800, "water": 1320, "gas": 850 },
-    { "month": "Dec", "electricity": 45680, "water": 1280, "gas": 880 },
-    ]
-
+def get_energy_consumption_trend(db: Session, org_id: UUID):
+    # Get the current date and calculate the last 4 months
+    today = date.today()
+    
+    current_month_start = today.replace(day=1)
+    
+    # Generate the last 4 months including current month
+    months = []
+    for i in range(3, -1, -1):  # Last 3 months + current month: Aug, Sep, Oct, Nov
+        month_date = current_month_start - relativedelta(months=i)
+        months.append({
+            "date": month_date,
+            "label": month_date.strftime("%b")
+        })
+    
+    monthly_data = []
+    
+    for month_info in months:
+        month_start = month_info["date"]
+        month_end = (month_start + relativedelta(months=1)) - timedelta(days=1)
+        
+        # Use between() for cleaner date range filtering
+        electricity_consumption = float((
+            db.query(
+                func.coalesce(func.sum(MeterReading.delta), 0)
+            )
+            .join(Meter, Meter.id == MeterReading.meter_id)
+            .filter(
+                Meter.org_id == org_id,
+                Meter.kind == "electricity",
+                func.date(MeterReading.ts).between(month_start, month_end)
+            )
+            .scalar() or 0.0
+        ))
+        
+        water_consumption = float((
+            db.query(
+                func.coalesce(func.sum(MeterReading.delta), 0)
+            )
+            .join(Meter, Meter.id == MeterReading.meter_id)
+            .filter(
+                Meter.org_id == org_id,
+                Meter.kind == "water",
+                func.date(MeterReading.ts).between(month_start, month_end)
+            )
+            .scalar() or 0.0
+        ))
+        
+        gas_consumption = float((
+            db.query(
+                func.coalesce(func.sum(MeterReading.delta), 0)
+            )
+            .join(Meter, Meter.id == MeterReading.meter_id)
+            .filter(
+                Meter.org_id == org_id,
+                Meter.kind == "gas",
+                func.date(MeterReading.ts).between(month_start, month_end)
+            )
+            .scalar() or 0.0
+        ))
+        
+        monthly_data.append({
+            "month": month_info["label"],
+            "electricity": round(electricity_consumption, 2),
+            "water": round(water_consumption, 2),
+            "gas": round(gas_consumption, 2)
+        })
+    
+    return monthly_data
 
 def get_occupancy_by_floor():
     return [

@@ -6,6 +6,8 @@ from typing import List, Optional
 from datetime import datetime
 
 from auth_service.app.models.users import Users
+from shared.helpers.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
 from facility_service.app.models.space_sites.sites import Site
 from shared.core.config import Settings
 
@@ -175,10 +177,10 @@ def delete_ticket_category_soft(db: Session, category_id: UUID) -> bool:
 
     # Check if category has associated tickets
     if db_category.tickets:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete category with associated tickets"
-        )
+       return error_response (
+        message="Cannot delete category with associated tickets",
+        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+    )
 
     # Soft delete
     db_category.is_deleted = True

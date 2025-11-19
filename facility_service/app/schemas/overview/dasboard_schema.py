@@ -74,3 +74,13 @@ class SpaceOccupancyResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class EnergyConsumptionTrendResponse(BaseModel):
+    month: str
+    electricity: float
+    water: float
+    gas: float
+
+    class Config:
+        from_attributes = True

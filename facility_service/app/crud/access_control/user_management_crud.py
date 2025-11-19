@@ -190,125 +190,170 @@ def get_user(db: Session, user_id: str, facility_db: Session):
         site_ids=site_ids
     )
 
+
 def create_user(db: Session, facility_db: Session, user: UserCreate):
-    # Check if email already exists
-    if user.email:
-        existing_user = db.query(Users).filter(
-            Users.email == user.email,
-            Users.is_deleted == False
-        ).first()
+    try:
+        # Check if email already exists
+        if user.email:
+            existing_user = db.query(Users).filter(
+                Users.email == user.email,
+                Users.is_deleted == False
+            ).first()
 
-        if existing_user:
-            raise ValueError("User with this email already exists")
+            if existing_user:
+                raise ValueError("User with this email already exists")
 
-    user_data = user.model_dump(exclude={'roles', 'role_ids','site_id' ,'space_id' , 'site_ids','tenant_type'}) 
+        # Check if phone already exists
+        if user.phone:
+            existing_phone_user = db.query(Users).filter(
+                Users.phone == user.phone,
+                Users.is_deleted == False
+            ).first()
 
-    db_user = Users(**user_data)
-    db.add(db_user)
-    db.commit()
-    db.flush(db_user)
+            if existing_phone_user:
+                raise ValueError("User with this phone number already exists")
 
-    # Add roles if provided - NO org_id filter
-    if user.role_ids:
-        for role_id in user.role_ids:
-            role = db.query(Roles).filter(
-                Roles.id == role_id).first()  # ✅ No org_id filter
+        user_data = user.model_dump(exclude={'roles', 'role_ids','site_id' ,'space_id' , 'site_ids','tenant_type'}) 
 
-            if role:
-                user_role = UserRoles(
-                    user_id=db_user.id,
-                    role_id=role.id
-                )
-                db.add(user_role)
+        db_user = Users(**user_data)
+        db.add(db_user)
         db.commit()
+        db.flush(db_user)
 
-    # Handle different account types
-    account_type = db_user.account_type.lower() if db_user.account_type else ""
+        # Add roles if provided
+        if user.role_ids:
+            for role_id in user.role_ids:
+                role = db.query(Roles).filter(Roles.id == role_id).first()
+                if role:
+                    user_role = UserRoles(user_id=db_user.id, role_id=role.id)
+                    db.add(user_role)
+            db.commit()
 
-    if account_type == "staff":
-        if user.site_ids is not None and len(user.site_ids) == 0:
-            return error_response(
-                message="Site list required for staff",
-                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
-            )
-        
-        # Create staff site assignments
-        if user.site_ids:
-            for site_id in user.site_ids:
-                site = db.query(Site).filter(Site.id == site_id).first()
-                if site:
-                    staff_site = StaffSite(
-                        user_id=db_user.id,
-                        site_id=site.id,
-                        org_id=user.org_id
-                    )
-                    facility_db.add(staff_site)
+        # Handle different account types
+        account_type = db_user.account_type.lower() if db_user.account_type else ""
+
+        if account_type == "staff":
+            if user.site_ids is not None and len(user.site_ids) == 0:
+                # ✅ ROLLBACK user creation if staff validation fails
+                db.delete(db_user)
+                db.commit()
+                return error_response(
+                    message="Site list required for staff",
+                    status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+                )
+            
+            # Create staff site assignments
+            if user.site_ids:
+                for site_id in user.site_ids:
+                    site = db.query(Site).filter(Site.id == site_id).first()
+                    if site:
+                        staff_site = StaffSite(
+                            user_id=db_user.id,
+                            site_id=site.id,
+                            org_id=user.org_id
+                        )
+                        facility_db.add(staff_site)
+                facility_db.commit()
+            
+        elif account_type == "tenant":
+            # ✅ ENHANCED VALIDATION: Check for None and empty strings
+            if not user.site_id or user.site_id == "" or not user.space_id or user.space_id == "":
+                # ✅ ROLLBACK user creation if tenant validation fails
+                db.delete(db_user)
+                db.commit()
+                return error_response(
+                    message="space & Site required for individual tenant",
+                    status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+                )
+
+            # Check if space already has a tenant
+            existing_tenant = facility_db.query(Tenant).filter(
+                Tenant.space_id == user.space_id,
+                Tenant.is_deleted == False
+            ).first()
+
+            if existing_tenant:
+                # ✅ ROLLBACK user creation if space is occupied
+                db.delete(db_user)
+                db.commit()
+                return error_response(
+                    message="This space is already occupied by another tenant",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+                )
+
+            if user.tenant_type == "individual":
+                tenant_obj = Tenant(
+                    site_id=user.site_id,
+                    space_id=user.space_id,
+                    name=user.full_name,
+                    email=user.email,
+                    phone=user.phone,
+                    status=user.status,
+                    user_id=db_user.id
+                )
+                facility_db.add(tenant_obj)
+            elif user.tenant_type == "commercial":
+                partner_obj = CommercialPartnerSafe(
+                    site_id=user.site_id,
+                    type="merchant",
+                    legal_name=user.full_name,
+                    contact={
+                        "name": user.full_name,
+                        "phone": user.phone,
+                        "email": user.email,
+                        "user_id": str(db_user.id)
+                    },
+                    status=user.status
+                )
+                facility_db.add(partner_obj)
+            else:
+                # ✅ ROLLBACK user creation if invalid tenant type
+                db.delete(db_user)
+                db.commit()
+                return error_response(
+                    message="Invalid tenant type",
+                    status_code=str(AppStatusCode.INVALID_INPUT)
+                )
             facility_db.commit()
-        
-    elif account_type == "tenant":
-        if user.site_id is None or user.space_id is None:
-            return error_response(
-                message="space & Site required for individual tenant",
-                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
-            )
-
-        if user.tenant_type == "individual":
-            tenant_obj = Tenant(
-                site_id=user.site_id,
-                space_id=user.space_id,
+            
+        elif account_type == "vendor":
+            # Validate vendor-specific fields
+            if not user.full_name:
+                # ✅ ROLLBACK user creation if vendor validation fails
+                db.delete(db_user)
+                db.commit()
+                return error_response(
+                    message="Vendor name is required",
+                    status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+                )
+            
+            # Create vendor entry
+            vendor_obj = Vendor(
+                org_id=user.org_id,
                 name=user.full_name,
-                email=user.email,
-                phone=user.phone,
-                status=user.status,
-                user_id=db_user.id
-            )
-            facility_db.add(tenant_obj)
-        elif user.tenant_type == "commercial":
-            partner_obj = CommercialPartnerSafe(
-                site_id=user.site_id,
-                type="merchant",
-                legal_name=user.full_name,
                 contact={
                     "name": user.full_name,
-                    "phone": user.phone,
                     "email": user.email,
-                    "user_id": str(db_user.id)  # Add user_id to contact JSON
+                    "phone": user.phone,
+                    "user_id": str(db_user.id)
                 },
-                status=user.status
+                status=user.status or "active"
             )
-            facility_db.add(partner_obj)
-        else:
-            return error_response(
-                message="Invalid tenant type",
-                status_code=str(AppStatusCode.INVALID_INPUT)
-            )
-        facility_db.commit()
-        
-    elif account_type == "vendor":
-        # Validate vendor-specific fields
-        if not user.full_name:
-            return error_response(
-                message="Vendor name is required",
-                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
-            )
-        
-        # Create vendor entry
-        vendor_obj = Vendor(
-            org_id=user.org_id,
-            name=user.full_name,
-            contact={
-                "name": user.full_name,
-                "email": user.email,
-                "phone": user.phone,
-                "user_id": str(db_user.id)  # Link to user
-            },
-            status=user.status or "active"
-        )
-        facility_db.add(vendor_obj)
-        facility_db.commit()
+            facility_db.add(vendor_obj)
+            facility_db.commit()
 
-    # FIX: Pass both db and facility_db to get_user
-    return get_user(db, db_user.id, facility_db)
+        return get_user(db, db_user.id, facility_db)
+
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        facility_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
 
 def update_user(db: Session, facility_db: Session, user: UserUpdate):
     # Fetch existing user
@@ -317,9 +362,39 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
         return None
 
     # -----------------------
-    # UPDATE BASE USER FIELDS
+    # ✅ ADDED: VALIDATE EMAIL & PHONE DUPLICATES
     # -----------------------
     update_data = user.model_dump(exclude_unset=True, exclude={'id', 'roles'})
+    
+    # Check email duplicate (if email is being updated)
+    if 'email' in update_data and update_data['email'] != db_user.email:
+        existing_email_user = db.query(Users).filter(
+            Users.email == update_data['email'],
+            Users.is_deleted == False,
+            Users.id != user.id  # Exclude current user
+        ).first()
+        if existing_email_user:
+            return error_response(
+                message="User with this email already exists",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+            )
+
+    # Check phone duplicate (if phone is being updated)
+    if 'phone' in update_data and update_data['phone'] != db_user.phone:
+        existing_phone_user = db.query(Users).filter(
+            Users.phone == update_data['phone'],
+            Users.is_deleted == False,
+            Users.id != user.id  # Exclude current user
+        ).first()
+        if existing_phone_user:
+            return error_response(
+                message="User with this phone number already exists",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+            )
+
+    # -----------------------
+    # UPDATE BASE USER FIELDS
+    # -----------------------
     for key, value in update_data.items():
         setattr(db_user, key, value)
 
@@ -350,11 +425,26 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
     # =============== TENANT ACCOUNT UPDATE ================
     # ======================================================
     if db_user.account_type.lower() == "tenant":
-        if user.site_id is None or user.space_id is None:
+        # ✅ ENHANCED VALIDATION: Check for empty strings too
+        if user.site_id is None or user.space_id is None or user.site_id == "" or user.space_id == "":
             return error_response(
                 message="space & Site required for individual tenant",
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
             )
+
+        # ✅ ADDED: VALIDATE SPACE OCCUPANCY FOR TENANT
+        if user.space_id:
+            existing_tenant = facility_db.query(Tenant).filter(
+                Tenant.space_id == user.space_id,
+                Tenant.is_deleted == False,
+                Tenant.user_id != db_user.id  # Exclude current tenant
+            ).first()
+
+            if existing_tenant:
+                return error_response(
+                    message="This space is already occupied by another tenant",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+                )
 
         # ---------- UPDATE INDIVIDUAL TENANT ----------
         if user.tenant_type == "individual":
@@ -488,6 +578,7 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
 
     # FIX: Pass both db and facility_db to get_user
     return get_user(db, db_user.id, facility_db)
+
 
 def delete_user(db: Session, user_id: str) -> Dict:
     """Soft delete user"""

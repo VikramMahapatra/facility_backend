@@ -57,7 +57,7 @@ def get_lease_charges_overview(db: Session, org_id: UUID):
         .filter(
             Lease.org_id == org_id,
             LeaseCharge.is_deleted == False,  # Add soft delete filter
-            Lease.is_deleted == False  # Add soft delete filter for leases
+            Lease.is_deleted == False  # Add soft delete filter for lease
         )
     )
 

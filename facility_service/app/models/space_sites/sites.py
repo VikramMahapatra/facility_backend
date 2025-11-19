@@ -69,8 +69,16 @@ class Site(Base):
                           cascade="all, delete-orphan")
     space_filters = relationship(
         "SpaceFilter", back_populates="site", cascade="all, delete-orphan")
-    tenants = relationship("Tenant", back_populates="site",
-                           cascade="all, delete-orphan")
+    tenants = relationship(
+        "Tenant",
+        back_populates="site",
+        cascade="all, delete-orphan"
+    )
+    partners = relationship(
+        "CommercialPartner",
+        back_populates="site",
+        cascade="all, delete-orphan",
+    )
     work_orders = relationship("WorkOrder", back_populates="site")
     leases = relationship("Lease", back_populates="site")
 

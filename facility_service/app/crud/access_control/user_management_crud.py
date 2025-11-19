@@ -6,12 +6,12 @@ from auth_service.app.models.commercial_partner_safe import CommercialPartnerSaf
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.users import Users
 from auth_service.app.models.userroles import UserRoles
-from facility_service.app.models.common.staff_sites import StaffSite
-from facility_service.app.models.leasing_tenants.tenants import Tenant
-from facility_service.app.models.procurement.vendors import Vendor
-from facility_service.app.models.space_sites.buildings import Building
-from facility_service.app.models.space_sites.sites import Site
-from facility_service.app.models.space_sites.spaces import Space
+from ...models.common.staff_sites import StaffSite
+from ...models.leasing_tenants.tenants import Tenant
+from ...models.procurement.vendors import Vendor
+from ...models.space_sites.buildings import Building
+from ...models.space_sites.sites import Site
+from ...models.space_sites.spaces import Space
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
 from ...schemas.access_control.role_management_schemas import RoleOut
@@ -21,6 +21,7 @@ from ...enum.access_control_enum import UserRoleEnum, UserStatusEnum
 from ...schemas.access_control.user_management_schemas import (
     UserCreate, UserOut, UserRequest, UserUpdate
 )
+
 
 def get_users(db: Session, facility_db: Session, org_id: str, params: UserRequest):
     user_query = db.query(Users).filter(
@@ -56,7 +57,8 @@ def get_users(db: Session, facility_db: Session, org_id: str, params: UserReques
     # USE get_user FUNCTION TO GET FULL DETAILS FOR EACH USER
     user_list = []
     for user in users:
-        user_details = get_user(db, str(user.id), facility_db)  # Pass facility_db
+        user_details = get_user(
+            db, str(user.id), facility_db)  # Pass facility_db
         user_list.append(user_details)
 
     return {
@@ -64,11 +66,13 @@ def get_users(db: Session, facility_db: Session, org_id: str, params: UserReques
         "total": total
     }
 
+
 def get_user_by_id(db: Session, user_id: str):
     return db.query(Users).filter(
         Users.id == user_id,
         Users.is_deleted == False
     ).first()
+
 
 def get_user(db: Session, user_id: str, facility_db: Session):
     user = get_user_by_id(db, user_id)
@@ -89,14 +93,14 @@ def get_user(db: Session, user_id: str, facility_db: Session):
     if account_type == "tenant":
         # Check individual tenant: Tenant → Space (no Building join)
         tenant_with_space = (facility_db.query(Tenant, Space)
-                          .join(Space, Space.id == Tenant.space_id)
-                          .filter(
-                              Tenant.user_id == user.id,
-                              Tenant.is_deleted == False,
-                              Space.is_deleted == False
-                          )
-                          .first())
-        
+                             .join(Space, Space.id == Tenant.space_id)
+                             .filter(
+            Tenant.user_id == user.id,
+            Tenant.is_deleted == False,
+            Space.is_deleted == False
+        )
+            .first())
+
         if tenant_with_space:
             tenant, space = tenant_with_space
             site_id = space.site_id  # Get site_id from Space
@@ -106,37 +110,39 @@ def get_user(db: Session, user_id: str, facility_db: Session):
         else:
             # Check commercial tenant
             commercial_tenant = None
-            
+
             # Try different JSON query approaches
             try:
                 # Approach 1: Direct JSON containment
                 commercial_tenant = (facility_db.query(CommercialPartnerSafe)
-                                    .filter(
-                                        CommercialPartnerSafe.contact.contains({"user_id": str(user.id)}),
-                                        CommercialPartnerSafe.is_deleted == False
-                                    )
-                                    .first())
+                                     .filter(
+                    CommercialPartnerSafe.contact.contains(
+                        {"user_id": str(user.id)}),
+                    CommercialPartnerSafe.is_deleted == False
+                )
+                    .first())
             except:
                 try:
                     # Approach 2: JSON key access
                     commercial_tenant = (facility_db.query(CommercialPartnerSafe)
-                                        .filter(
-                                            CommercialPartnerSafe.contact["user_id"].astext == str(user.id),
-                                            CommercialPartnerSafe.is_deleted == False
-                                        )
-                                        .first())
+                                         .filter(
+                        CommercialPartnerSafe.contact["user_id"].astext == str(
+                            user.id),
+                        CommercialPartnerSafe.is_deleted == False
+                    )
+                        .first())
                 except:
                     commercial_tenant = None
-            
+
             if commercial_tenant:
                 # Get space details for commercial tenant (no Building join)
                 space = (facility_db.query(Space)
-                        .filter(
-                            Space.id == commercial_tenant.space_id,
-                            Space.is_deleted == False
-                        )
-                        .first())
-                
+                         .filter(
+                    Space.id == commercial_tenant.space_id,
+                    Space.is_deleted == False
+                )
+                    .first())
+
                 if space:
                     site_id = space.site_id
                     space_id = commercial_tenant.space_id
@@ -155,7 +161,7 @@ def get_user(db: Session, user_id: str, facility_db: Session):
             StaffSite.user_id == user.id,
             StaffSite.is_deleted == False
         ).all()
-        
+
         if staff_sites:
             site_ids = [staff_site.site_id for staff_site in staff_sites]
         else:
@@ -213,7 +219,8 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
             if existing_phone_user:
                 raise ValueError("User with this phone number already exists")
 
-        user_data = user.model_dump(exclude={'roles', 'role_ids','site_id' ,'space_id' , 'site_ids','tenant_type'}) 
+        user_data = user.model_dump(
+            exclude={'roles', 'role_ids', 'site_id', 'space_id', 'site_ids', 'tenant_type'})
 
         db_user = Users(**user_data)
         db.add(db_user)
@@ -241,7 +248,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                     message="Site list required for staff",
                     status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
                 )
-            
+
             # Create staff site assignments
             if user.site_ids:
                 for site_id in user.site_ids:
@@ -254,7 +261,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                         )
                         facility_db.add(staff_site)
                 facility_db.commit()
-            
+
         elif account_type == "tenant":
             # ✅ ENHANCED VALIDATION: Check for None and empty strings
             if not user.site_id or user.site_id == "" or not user.space_id or user.space_id == "":
@@ -315,7 +322,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                     status_code=str(AppStatusCode.INVALID_INPUT)
                 )
             facility_db.commit()
-            
+
         elif account_type == "vendor":
             # Validate vendor-specific fields
             if not user.full_name:
@@ -326,7 +333,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                     message="Vendor name is required",
                     status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
                 )
-            
+
             # Create vendor entry
             vendor_obj = Vendor(
                 org_id=user.org_id,
@@ -365,7 +372,7 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
     # ✅ ADDED: VALIDATE EMAIL & PHONE DUPLICATES
     # -----------------------
     update_data = user.model_dump(exclude_unset=True, exclude={'id', 'roles'})
-    
+
     # Check email duplicate (if email is being updated)
     if 'email' in update_data and update_data['email'] != db_user.email:
         existing_email_user = db.query(Users).filter(
@@ -545,7 +552,7 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
                 message="Vendor name is required",
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
             )
-        
+
         # Update or create vendor entry
         vendor = facility_db.query(Vendor).filter(
             Vendor.contact['user_id'].astext == str(db_user.id)
@@ -573,7 +580,7 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
                 status=user.status or "active"
             )
             facility_db.add(vendor)
-        
+
         facility_db.commit()
 
     # FIX: Pass both db and facility_db to get_user

@@ -66,19 +66,7 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
         filters.append(Ticket.space_id == params.space_id)
 
     # -----------------------------------------------
-    # SEARCH FILTER (FIXED)
-    # -----------------------------------------------
-    if params.search:
-        search_term = f"%{params.search.lower()}%"
-        filters.append(
-            or_(
-                func.lower(Ticket.ticket_no).like(search_term),
-                or_(func.lower(Ticket.title).like(search_term),
-                func.lower(Ticket.description).like(search_term),
-            ))
-        )
-    # -----------------------------------------------
-    # Priority Filter 
+    # Priority Filter
     # -----------------------------------------------
     if params.priority and params.priority.lower() != "all":
         filters.append(func.lower(Ticket.priority) == params.priority.lower())
@@ -1186,7 +1174,7 @@ def send_ticket_closed_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_closed",
         recipients=recipients,
-        subject=f"Ticket Resolved - {data['ticket_no']}",
+        subject=f"Ticket Resolved - {data["ticket_no"]}",
         context=data,
     )
 
@@ -1199,7 +1187,7 @@ def send_ticket_reopened_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_reopened",
         recipients=recipients,
-        subject=f"Ticket Reopened - {data['ticket_no']}",
+        subject=f"Ticket Reopened - {data["ticket_no"]}",
         context=data,
     )
 
@@ -1212,7 +1200,7 @@ def send_ticket_onhold_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_on_hold",
         recipients=recipients,
-        subject=f"Ticket On hold - {data['ticket_no']}",
+        subject=f"Ticket On hold - {data["ticket_no"]}",
         context=data,
     )
 
@@ -1225,7 +1213,7 @@ def send_ticket_return_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_return",
         recipients=recipients,
-        subject=f"Ticket Return -{data['ticket_no']}",
+        subject=f"Ticket Return -{data["ticket_no"]}",
         context=data,
     )
 
@@ -1238,7 +1226,7 @@ def send_ticket_update_status_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_update_status",
         recipients=recipients,
-        subject=f"Ticket Update Status -{data['ticket_no']}",
+        subject=f"Ticket Update Status -{data["ticket_no"]}",
         context=data,
     )
 
@@ -1251,7 +1239,7 @@ def send_ticket_update_assigned_to_email(background_tasks, db, data, recipients)
         db=db,
         template_code="ticket_update_assigned_to",
         recipients=recipients,
-        subject=f"Ticket Update Assigned_to -{data['ticket_no']}",
+        subject=f"Ticket Update Assigned_to -{data["ticket_no"]}",
         context=data,
     )
 
@@ -1264,7 +1252,7 @@ def send_ticket_post_comment_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_post_comment",
         recipients=recipients,
-        subject=f"Ticket Post Comment -{data['ticket_no']}",
+        subject=f"Ticket Post Comment -{data["ticket_no"]}",
         context=data,
     )
 
@@ -1932,6 +1920,7 @@ def fetch_role_admin(session: Session, org_id):
     ]
 
     return data
+
 
 def tickets_filter_priority_lookup(db: Session, org_id: str) -> List[Dict]:
     """

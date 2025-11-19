@@ -1,5 +1,5 @@
 # auth_service/app/models/org.py
-from sqlalchemy import Column, String, DateTime, Boolean
+from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from shared.core.database import Base
 import uuid
@@ -10,8 +10,10 @@ class TenantSafe(Base):
     __table_args__ = {"extend_existing": True}
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True))
-    site_id = Column(UUID(as_uuid=True))
-    space_id = Column(UUID(as_uuid=True))
+    site_id = Column(UUID(as_uuid=True), ForeignKey(
+        "sites.id", ondelete="CASCADE"))
+    space_id = Column(UUID(as_uuid=True), ForeignKey(
+        "spaces.id", ondelete="CASCADE"))
     name = Column(String)
     email = Column(String)
     phone = Column(String)

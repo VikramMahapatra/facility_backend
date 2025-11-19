@@ -6,7 +6,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from auth_service.app.models.users import Users
-from facility_service.app.models.space_sites.sites import Site
+from ...models.space_sites.sites import Site
 from shared.core.config import Settings
 
 from ...models.common.staff_sites import StaffSite
@@ -25,12 +25,11 @@ from shared.core.schemas import Lookup
 from fastapi import HTTPException
 
 
-
 # ---------------- Build Filters ----------------
 def build_ticket_categories_filters(org_id: UUID, params: TicketCategoryRequest):
     filters = [
         TicketCategory.is_deleted == False,
-        Site.org_id == org_id  
+        Site.org_id == org_id
     ]
 
     # site filter
@@ -56,14 +55,16 @@ def build_ticket_categories_filters(org_id: UUID, params: TicketCategoryRequest)
     return filters
 
 # ---------------- Get All ----------------
+
+
 def get_ticket_categories(
     db: Session,
-    org_id: UUID, 
+    org_id: UUID,
     params: TicketCategoryRequest
 ) -> TicketCategoryListResponse:
 
-    filters = build_ticket_categories_filters(org_id, params)  
-    
+    filters = build_ticket_categories_filters(org_id, params)
+
     # Base query with joins for site
     base_query = (
         db.query(TicketCategory)
@@ -106,8 +107,6 @@ def get_ticket_category_by_id(db: Session, category_id: UUID) -> Optional[Ticket
     ).first()
 
 
-
-
 # ---------------- Create ----------------
 def create_ticket_category(db: Session, category: TicketCategoryCreate) -> TicketCategoryOut:
     # Check for duplicate category name for the same site
@@ -116,13 +115,13 @@ def create_ticket_category(db: Session, category: TicketCategoryCreate) -> Ticke
         TicketCategory.site_id == category.site_id,
         TicketCategory.is_deleted == False
     ).first()
-    
+
     if existing_category:
         raise HTTPException(
             status_code=400,
             detail=f"Ticket category '{category.category_name}' already exists for this site"
         )
-    
+
     db_category = TicketCategory(**category.model_dump())
     db.add(db_category)
     db.commit()
@@ -130,6 +129,8 @@ def create_ticket_category(db: Session, category: TicketCategoryCreate) -> Ticke
     return db_category
 
 # ---------------- Update ----------------
+
+
 def update_ticket_category(db: Session, category: TicketCategoryUpdate) -> TicketCategoryOut:
     db_category = get_ticket_category_by_id(db, category.id)
     if not db_category:
@@ -139,7 +140,7 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate) -> Ticke
         )
 
     update_data = category.model_dump(exclude_unset=True, exclude={'id'})
-    
+
     # Check for duplicate category name
     new_name = update_data.get('category_name')
     if new_name and new_name != db_category.category_name:
@@ -205,7 +206,7 @@ def status_lookup(db: Session) -> List[Lookup]:
     ]
 
 
-#-----------------sla policy------------------------
+# -----------------sla policy------------------------
 def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """
     Strictly fetch SLA policies filtered by site_id.
@@ -233,10 +234,7 @@ def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup
     ]
 
 
-
-
-
-#-----------------get Employee------------------------
+# -----------------get Employee------------------------
 
 # Add this to your existing ticket_crud.py file
 
@@ -288,7 +286,7 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         .filter(Users.id.in_(user_ids))
         .all()
     )
-    
+
     # Return directly -
     return [
         {
@@ -297,8 +295,8 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         }
         for user in users
     ]
-    
-    
+
+
 def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """
     Strictly fetch ticket categories filtered by site_id.
@@ -316,7 +314,7 @@ def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
             TicketCategory.is_active == True,
             TicketCategory.site_id == site_id   # STRICT FILTER HERE
         )
-        .distinct(TicketCategory.category_name) 
+        .distinct(TicketCategory.category_name)
         .order_by(TicketCategory.category_name)
     )
 

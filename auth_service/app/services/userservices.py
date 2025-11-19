@@ -234,11 +234,29 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     auth_db.commit()
     auth_db.refresh(session)
 
+    tenant = facility_db.query(TenantSafe).filter(
+        TenantSafe.user_id == user.id,
+        TenantSafe.is_deleted == False
+    ).first()
+
+    partner = facility_db.query(CommercialPartnerSafe).filter(
+        CommercialPartnerSafe.user_id == user.id,
+        CommercialPartnerSafe.is_deleted == False
+    ).first()
+
+    tenant_type = None
+
+    if tenant:
+        tenant_type = "individual"
+    elif partner:
+        tenant_type = "commercial"
+
     token = auth.create_access_token({
         "user_id": str(user.id),
         "session_id": str(session.id),
         "org_id": str(user.org_id),
         "account_type": user.account_type,
+        "tenant_type": tenant_type,
         "role_ids": roles or []})
 
     refresh_token = None

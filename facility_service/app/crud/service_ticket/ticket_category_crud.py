@@ -224,7 +224,7 @@ def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup
             SlaPolicy.is_deleted == False,
             SlaPolicy.site_id == site_id   # STRICT FILTER HERE
         )
-        .order_by(SlaPolicy.service_category)
+        .order_by(SlaPolicy.service_category.asc())  # ASCENDING ORDER
     )
 
     policies = query.all()
@@ -300,26 +300,31 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         for user in users
     ]
     
-    
 def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """
     Strictly fetch ticket categories filtered by site_id.
-    Returns categories only for that specific site.
+    Returns distinct category names sorted ASC.
     """
 
     if not site_id or site_id.lower() == "all":
-        # STRICT MODE: do NOT return all categories
         return []
 
     query = (
-        db.query(TicketCategory.id, TicketCategory.category_name)
+        db.query(
+            TicketCategory.id,
+            TicketCategory.category_name
+        )
         .filter(
             TicketCategory.is_deleted == False,
             TicketCategory.is_active == True,
-            TicketCategory.site_id == site_id   # STRICT FILTER HERE
+            TicketCategory.site_id == site_id
         )
-        .distinct(TicketCategory.category_name) 
-        .order_by(TicketCategory.category_name)
+        .order_by(
+            TicketCategory.category_name.asc()
+        )
+        .distinct(
+            TicketCategory.category_name
+        )
     )
 
     categories = query.all()

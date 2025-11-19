@@ -14,7 +14,7 @@ class SpaceBase(EmptyStringModel):
     code: str
     name: Optional[str] = None
     kind: str
-    floor: Optional[str] = None
+    floor: Optional[int] = None
     building_block_id: Optional[UUID] = None
     building_block: Optional[str] = None
     area_sqft: Optional[Decimal] = None

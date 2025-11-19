@@ -1,5 +1,5 @@
 # auth_service/app/models/org.py
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, String, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from shared.core.database import Base
 import uuid
@@ -16,3 +16,4 @@ class TenantSafe(Base):
     email = Column(String)
     phone = Column(String)
     status = Column(String(16))
+    is_deleted = Column(Boolean, default=False, nullable=False)

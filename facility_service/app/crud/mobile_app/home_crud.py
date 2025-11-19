@@ -5,6 +5,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
+from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
+
 from ...models.space_sites.sites import Site
 
 from ...models.common.staff_sites import StaffSite
@@ -119,6 +121,7 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
     """
     now = datetime.now(timezone.utc)
     account_type = user.account_type.lower()
+    tenant_type = user.tenant_type.lower() if user.tenant_type else None
 
     # ✅ Always define placeholders at top level
     lease_contract_detail = {
@@ -144,7 +147,17 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
     # Tenant or Flat Owner flow
     # ------------------------------
     if account_type in (UserAccountType.TENANT, UserAccountType.FLAT_OWNER):
-        lease = (
+        print("Tenant Type :", tenant_type)
+        tenant_id = None
+        partner_id = None
+        if tenant_type == "individual":
+            tenant_id = db.query(Tenant.id).filter(and_(
+                Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
+        elif tenant_type == "commercial":
+            partner_id = db.query(CommercialPartner.id).filter(and_(
+                CommercialPartner.user_id == user.user_id, CommercialPartner.is_deleted == False)).scalar()
+
+        lease_query = (
             db.query(Lease)
             .filter(
                 and_(
@@ -153,13 +166,18 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                     Lease.end_date >= date.today()
                 )
             )
-            .order_by(Lease.end_date.desc())
-            .first()
         )
+
+        if tenant_id:
+            lease_query = lease_query.filter(Lease.tenant_id == tenant_id)
+        elif partner_id:
+            lease_query = lease_query.filter(Lease.partner_id == partner_id)
+
+        lease = lease_query.order_by(Lease.end_date.desc()).first()
 
         # If no active lease, fallback to most recent
         if not lease:
-            lease = (
+            lease_query = (
                 db.query(Lease)
                 .filter(
                     and_(
@@ -167,9 +185,16 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                         Lease.is_deleted == False
                     )
                 )
-                .order_by(Lease.end_date.desc())
-                .first()
             )
+
+            if tenant_id:
+                lease_query = lease_query.filter(Lease.tenant_id == tenant_id)
+            elif partner_id:
+                lease_query = lease_query.filter(
+                    Lease.partner_id == partner_id)
+
+            lease = lease_query.order_by(Lease.end_date.desc()).first()
+
         if lease:
             lease_contract_exist = True
 

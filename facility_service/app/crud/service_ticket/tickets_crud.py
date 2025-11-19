@@ -1174,7 +1174,7 @@ def send_ticket_closed_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_closed",
         recipients=recipients,
-        subject=f"Ticket Resolved - {data["ticket_no"]}",
+        subject=f"Ticket Resolved - {data['ticket_no']}",
         context=data,
     )
 
@@ -1187,7 +1187,7 @@ def send_ticket_reopened_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_reopened",
         recipients=recipients,
-        subject=f"Ticket Reopened - {data["ticket_no"]}",
+        subject=f"Ticket Reopened - {data['ticket_no']}",
         context=data,
     )
 
@@ -1200,7 +1200,7 @@ def send_ticket_onhold_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_on_hold",
         recipients=recipients,
-        subject=f"Ticket On hold - {data["ticket_no"]}",
+        subject=f"Ticket On hold - {data['ticket_no']}",
         context=data,
     )
 
@@ -1213,7 +1213,7 @@ def send_ticket_return_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_return",
         recipients=recipients,
-        subject=f"Ticket Return -{data["ticket_no"]}",
+        subject=f"Ticket Return -{data['ticket_no']}",
         context=data,
     )
 
@@ -1226,7 +1226,7 @@ def send_ticket_update_status_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_update_status",
         recipients=recipients,
-        subject=f"Ticket Update Status -{data["ticket_no"]}",
+        subject=f"Ticket Update Status -{data['ticket_no']}",
         context=data,
     )
 
@@ -1239,7 +1239,7 @@ def send_ticket_update_assigned_to_email(background_tasks, db, data, recipients)
         db=db,
         template_code="ticket_update_assigned_to",
         recipients=recipients,
-        subject=f"Ticket Update Assigned_to -{data["ticket_no"]}",
+        subject=f"Ticket Update Assigned_to -{data['ticket_no']}",
         context=data,
     )
 
@@ -1252,7 +1252,7 @@ def send_ticket_post_comment_email(background_tasks, db, data, recipients):
         db=db,
         template_code="ticket_post_comment",
         recipients=recipients,
-        subject=f"Ticket Post Comment -{data["ticket_no"]}",
+        subject=f"Ticket Post Comment -{data['ticket_no']}",
         context=data,
     )
 

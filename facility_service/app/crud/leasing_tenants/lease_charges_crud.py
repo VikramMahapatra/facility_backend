@@ -23,8 +23,8 @@ from decimal import Decimal
 def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
     filters = [
         Lease.org_id == org_id,
-        LeaseCharge.is_deleted == False,  # Add soft delete filter for lease charges
-        Lease.is_deleted == False  # Add soft delete filter for leases
+        LeaseCharge.is_deleted == False,
+        Lease.is_deleted == False
     ]
 
     if params.charge_code and params.charge_code != "all":
@@ -37,7 +37,14 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
 
     if params.search:
         search_term = f"%{params.search}%"
-        filters.append(LeaseCharge.charge_code.ilike(search_term))
+        # Search in multiple fields INCLUDING charge_code (your existing search)
+        filters.append(or_(
+            LeaseCharge.charge_code.ilike(search_term),  # ← Your existing charge_code search
+            CommercialPartner.legal_name.ilike(search_term),  # Partner name
+            Tenant.name.ilike(search_term),                   # Tenant name
+            Site.name.ilike(search_term),                     # Site name
+            Space.name.ilike(search_term)                     # Space name
+        ))
 
     return filters
 
@@ -84,11 +91,18 @@ def get_lease_charges_overview(db: Session, org_id: UUID):
 
 def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
     filters = build_lease_charge_filters(org_id, params)
+    
+    # Add outer joins for search functionality
     base_query = (
         db.query(
             LeaseCharge,
             Lease
-        ).join(Lease, LeaseCharge.lease_id == Lease.id)
+        )
+        .join(Lease, LeaseCharge.lease_id == Lease.id)
+        .outerjoin(CommercialPartner, Lease.partner_id == CommercialPartner.id)  # For partner name search
+        .outerjoin(Tenant, Lease.tenant_id == Tenant.id)  # For tenant name search
+        .outerjoin(Space, Lease.space_id == Space.id)  # For space name search
+        .outerjoin(Site, Lease.site_id == Site.id)  # For site name search
         .options(
             joinedload(Lease.tenant).load_only(Tenant.id, Tenant.name),
             joinedload(Lease.partner).load_only(
@@ -145,7 +159,6 @@ def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
         }))
 
     return {"items": items, "total": total}
-
 
 def get_lease_charge_by_id(db: Session, charge_id: UUID):
     return db.query(LeaseCharge).filter(

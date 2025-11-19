@@ -45,7 +45,7 @@ class UserOut(BaseModel):
     roles: Optional[List[RoleOut]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-        # ADD THESE 5 NEW FIELDS
+    # ADD THESE 5 NEW FIELDS
     site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
     building_block_id: Optional[UUID] = None
@@ -73,6 +73,7 @@ class ApprovalStatus(str, Enum):
 class ApprovalStatusRequest(BaseModel):
     user_id: UUID
     status: ApprovalStatus = Field(..., description="User approval status")
+    role_ids: List[str]
 
     model_config = {
         "use_enum_values": True

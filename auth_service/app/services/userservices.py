@@ -84,21 +84,21 @@ def create_user(
         db.flush()
 
         # ✅ Assign Role
-        role_name = ("admin" if user.accountType.lower() ==
-                     "organization" else user.accountType.lower())
-        role_obj = (
-            db.query(Roles).filter(and_(func.lower(Roles.name) ==
-                                        func.lower(role_name), Roles.is_deleted == False)).first()
-        )
+        # role_name = ("admin" if user.accountType.lower() ==
+        #              "organization" else user.accountType.lower())
+        # role_obj = (
+        #     db.query(Roles).filter(and_(func.lower(Roles.name) ==
+        #                                 func.lower(role_name), Roles.is_deleted == False)).first()
+        # )
 
-        if not role_obj:
-            return error_response(
-                message=f"Role '{role_name}' not found",
-                status_code=str(AppStatusCode.INVALID_INPUT),
-                http_status=status.HTTP_400_BAD_REQUEST
-            )
+        # if not role_obj:
+        #     return error_response(
+        #         message=f"Role '{role_name}' not found",
+        #         status_code=str(AppStatusCode.INVALID_INPUT),
+        #         http_status=status.HTTP_400_BAD_REQUEST
+        #     )
 
-        user_instance.roles.append(role_obj)
+        # user_instance.roles.append(role_obj)
 
         # ✅ ACCOUNT TYPE: ORGANIZATION
         if user.accountType.lower() == "organization":
@@ -221,7 +221,7 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         "session_id": str(session.id),
         "org_id": str(user.org_id),
         "account_type": user.account_type,
-        "role_ids": roles})
+        "role_ids": roles or []})
 
     refresh_token = None
 

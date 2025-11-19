@@ -5,17 +5,15 @@ from typing import Optional, List
 
 class RoleApprovalRuleCreate(BaseModel):
     # org_id removed from create schema - will come from token
-    approver_role_id: UUID4
-    can_approve_role_id: UUID4
+    approver_type: str
+    can_approve_type: str
 
 
 class RoleApprovalRuleOut(BaseModel):
     id: UUID4
     org_id: Optional[UUID4]
-    approver_role_id: UUID4
-    approver_role_name: str
-    can_approve_role_id: UUID4
-    can_approve_role_name: str
+    approver_type: str
+    can_approve_type: str
     created_at: datetime
     is_deleted: bool
     deleted_at: Optional[datetime]

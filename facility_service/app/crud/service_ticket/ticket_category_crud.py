@@ -316,6 +316,7 @@ def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
             TicketCategory.is_active == True,
             TicketCategory.site_id == site_id   # STRICT FILTER HERE
         )
+        .distinct(TicketCategory.category_name) 
         .order_by(TicketCategory.category_name)
     )
 

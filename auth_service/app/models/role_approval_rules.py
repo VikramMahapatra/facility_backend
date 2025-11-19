@@ -11,10 +11,8 @@ class RoleApprovalRule(AuthBase):
     id = Column(UUID(as_uuid=True), primary_key=True,
                 default=uuid.uuid4, server_default=text('gen_random_uuid()'))
     org_id = Column(UUID(as_uuid=True), nullable=True)
-    approver_role_id = Column(UUID(as_uuid=True), ForeignKey(
-        "roles.id", ondelete="CASCADE"), nullable=False)
-    can_approve_role_id = Column(UUID(as_uuid=True), ForeignKey(
-        "roles.id", ondelete="CASCADE"), nullable=False)
+    approver_type = Column(String(50), nullable=False)
+    can_approve_type = Column(String(50), nullable=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow,
                         server_default=text('CURRENT_TIMESTAMP'))
     is_deleted = Column(Boolean, default=False, server_default=text('false'))

@@ -76,6 +76,18 @@ def update_user_approval_status(db: Session, facility_db: Session, request: Appr
     if commercial_partner:
         commercial_partner.status = user.status
 
+    if request.role_ids:
+        for role_id in request.role_ids:
+            role = db.query(Roles).filter(
+                Roles.id == role_id).first()  # ✅ No org_id filter
+
+            if role:
+                user_role = UserRoles(
+                    user_id=user.id,
+                    role_id=role.id
+                )
+                db.add(user_role)
+
     facility_db.commit()
     db.commit()
     db.refresh(user)

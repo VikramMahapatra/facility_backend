@@ -84,21 +84,21 @@ def create_user(
         db.flush()
 
         # ✅ Assign Role
-        role_name = ("admin" if user.accountType.lower() ==
-                     "organization" else user.accountType.lower())
-        role_obj = (
-            db.query(Roles).filter(and_(func.lower(Roles.name) ==
-                                        func.lower(role_name), Roles.is_deleted == False)).first()
-        )
+        # role_name = ("admin" if user.accountType.lower() ==
+        #              "organization" else user.accountType.lower())
+        # role_obj = (
+        #     db.query(Roles).filter(and_(func.lower(Roles.name) ==
+        #                                 func.lower(role_name), Roles.is_deleted == False)).first()
+        # )
 
-        if not role_obj:
-            return error_response(
-                message=f"Role '{role_name}' not found",
-                status_code=str(AppStatusCode.INVALID_INPUT),
-                http_status=status.HTTP_400_BAD_REQUEST
-            )
+        # if not role_obj:
+        #     return error_response(
+        #         message=f"Role '{role_name}' not found",
+        #         status_code=str(AppStatusCode.INVALID_INPUT),
+        #         http_status=status.HTTP_400_BAD_REQUEST
+        #     )
 
-        user_instance.roles.append(role_obj)
+        # user_instance.roles.append(role_obj)
 
         # ✅ ACCOUNT TYPE: ORGANIZATION
         if user.accountType.lower() == "organization":
@@ -124,7 +124,6 @@ def create_user(
                 return error_response(
                     message="Invalid site selected",
                     status_code=str(AppStatusCode.INVALID_INPUT),
-                    http_status=status.HTTP_400_BAD_REQUEST
                 )
 
             user_instance.org_id = site.org_id
@@ -133,16 +132,24 @@ def create_user(
                 return error_response(
                     message="Selected site has no organization assigned",
                     status_code=str(AppStatusCode.INVALID_INPUT),
-                    http_status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not user.space_id:
+                return error_response(
+                    message="Space required for tenant",
+                    status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 )
 
             if user.tenant_type == "individual":
-                if not user.space_id:
+
+                existing_tenant = facility_db.query(TenantSafe).filter(
+                    and_(TenantSafe.space_id == user.space_id, TenantSafe.is_deleted == False)).first()
+
+                if existing_tenant:
                     return error_response(
-                        message="space_id required for individual tenant",
+                        message="Tenant already registered for selected space",
                         status_code=str(
-                            AppStatusCode.REQUIRED_VALIDATION_ERROR),
-                        http_status=status.HTTP_400_BAD_REQUEST
+                            AppStatusCode.USER_ALREADY_REGISTERED),
                     )
 
                 tenant_obj = TenantSafe(
@@ -157,8 +164,19 @@ def create_user(
                 facility_db.add(tenant_obj)
 
             elif user.tenant_type == "commercial":
+                existing_partner = facility_db.query(CommercialPartnerSafe).filter(
+                    and_(CommercialPartnerSafe.space_id == user.space_id, CommercialPartnerSafe.is_deleted == False)).first()
+
+                if existing_partner:
+                    return error_response(
+                        message="Tenant already registered for selected space",
+                        status_code=str(
+                            AppStatusCode.USER_ALREADY_REGISTERED),
+                    )
+
                 partner_obj = CommercialPartnerSafe(
                     site_id=user.site_id,
+                    space_id=user.space_id,
                     type="merchant",
                     legal_name=full_name,
                     contact={
@@ -221,7 +239,7 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         "session_id": str(session.id),
         "org_id": str(user.org_id),
         "account_type": user.account_type,
-        "role_ids": roles})
+        "role_ids": roles or []})
 
     refresh_token = None
 

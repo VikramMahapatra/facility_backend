@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.role_approval_rules import RoleApprovalRule
-from facility_service.app.enum.access_control_enum import ApproverRoleEnum, CanApproveRoleEnum
+from facility_service.app.enum.access_control_enum import UserTypeEnum
 from shared.core.schemas import Lookup
 
 from ...schemas.access_control.role_approval_rules_schemas import (
@@ -18,17 +18,11 @@ def get_all_rules(db: Session, org_id: str):
 
     rules = (
         db.query(
-            RoleApprovalRule,
-            Roles.name.label("approver_name"),
-            Roles2.name.label("can_approve_name")
+            RoleApprovalRule
         )
-        .join(Roles, Roles.id == RoleApprovalRule.approver_role_id)
-        .join(Roles2, Roles2.id == RoleApprovalRule.can_approve_role_id)
         .filter(
             RoleApprovalRule.org_id == org_id,
-            RoleApprovalRule.is_deleted == False,
-            Roles.is_deleted == False,
-            Roles2.is_deleted == False
+            RoleApprovalRule.is_deleted == False
         )
         .order_by(RoleApprovalRule.created_at.desc())
         .all()
@@ -36,19 +30,7 @@ def get_all_rules(db: Session, org_id: str):
 
     total = len(rules)
 
-    result = []
-    for rule, approver_name, can_approve_name in rules:
-        result.append({
-            "id": rule.id,
-            "org_id": rule.org_id,
-            "approver_role_id": rule.approver_role_id,
-            "approver_role_name": approver_name,
-            "can_approve_role_id": rule.can_approve_role_id,
-            "can_approve_role_name": can_approve_name,
-            "created_at": rule.created_at,
-            "is_deleted": rule.is_deleted,
-            "deleted_at": rule.deleted_at
-        })
+    result = [RoleApprovalRuleOut.model_validate(r) for r in rules]
 
     return {"rules": result, "total": total}
 
@@ -74,26 +56,13 @@ def create_rule(db: Session, rule_data: dict, org_id: str):
         # Check if similar rule already exists
         existing_rule = db.query(RoleApprovalRule).filter(
             RoleApprovalRule.org_id == org_id,
-            RoleApprovalRule.approver_role_id == rule_data['approver_role_id'],
-            RoleApprovalRule.can_approve_role_id == rule_data['can_approve_role_id'],
+            RoleApprovalRule.approver_type == rule_data['approver_type'],
+            RoleApprovalRule.can_approve_type == rule_data['can_approve_type'],
             RoleApprovalRule.is_deleted == False
         ).first()
 
         if existing_rule:
             raise ValueError("A similar role approval rule already exists")
-
-        # Check if both roles exist and get their details
-        approver_role = db.query(Roles).filter(
-            Roles.id == rule_data['approver_role_id']).first()
-        can_approve_role = db.query(Roles).filter(
-            Roles.id == rule_data['can_approve_role_id']).first()
-
-        if not approver_role:
-            raise ValueError(
-                f"Approver role with ID {rule_data['approver_role_id']} does not exist")
-        if not can_approve_role:
-            raise ValueError(
-                f"Can approve role with ID {rule_data['can_approve_role_id']} does not exist")
 
         db_rule = RoleApprovalRule(**rule_data)
         db.add(db_rule)
@@ -101,17 +70,7 @@ def create_rule(db: Session, rule_data: dict, org_id: str):
         db.refresh(db_rule)
 
         # Convert to RoleApprovalRuleOut with role names
-        return RoleApprovalRuleOut(
-            id=db_rule.id,
-            org_id=db_rule.org_id,
-            approver_role_id=db_rule.approver_role_id,
-            approver_role_name=approver_role.name,
-            can_approve_role_id=db_rule.can_approve_role_id,
-            can_approve_role_name=can_approve_role.name,
-            created_at=db_rule.created_at,
-            is_deleted=db_rule.is_deleted,
-            deleted_at=db_rule.deleted_at
-        )
+        return RoleApprovalRuleOut.model_validate(db_rule)
 
     except Exception as e:
         db.rollback()
@@ -137,21 +96,11 @@ def soft_delete_rule(db: Session, rule_id: str) -> Dict:
         return {"success": False, "message": f"Failed to delete rule: {str(e)}"}
 
 
-def approver_roles_lookup(db: Session, org_id: str):
+def user_type_lookup():
     """
     Get lookup values for approver roles
     """
     return [
         Lookup(id=role.value, name=role.value.capitalize())
-        for role in ApproverRoleEnum
-    ]
-
-
-def can_approve_roles_lookup(db: Session, org_id: str):
-    """
-    Get lookup values for roles that can be approved
-    """
-    return [
-        Lookup(id=role.value, name=role.value.capitalize())
-        for role in CanApproveRoleEnum
+        for role in UserTypeEnum
     ]

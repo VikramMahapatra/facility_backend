@@ -66,6 +66,18 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
         filters.append(Ticket.space_id == params.space_id)
 
     # -----------------------------------------------
+    # SEARCH FILTER (FIXED)
+    # -----------------------------------------------
+    if params.search:
+        search_term = f"%{params.search.lower()}%"
+        filters.append(
+            or_(
+                func.lower(Ticket.ticket_no).like(search_term),
+                or_(func.lower(Ticket.title).like(search_term),
+                func.lower(Ticket.description).like(search_term),
+            ))
+        )
+    # -----------------------------------------------
     # Priority Filter 
     # -----------------------------------------------
     if params.priority and params.priority.lower() != "all":

@@ -151,6 +151,8 @@ def get_site_lookup(db: Session, org_id: str, params: Optional[SiteRequest] = No
             site_query = site_query.offset(params.skip)
         if params.limit:
             site_query = site_query.limit(params.limit)
+    
+    site_query = site_query.order_by(Site.name.asc())
 
     return site_query.all()
 

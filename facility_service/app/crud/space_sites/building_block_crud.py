@@ -172,7 +172,7 @@ def get_building_lookup(db: Session, site_id: str, org_id: str):
         .filter(
             Building.is_deleted == False,  # Add this filter
             Site.is_deleted == False      # Add this filter
-        )
+        ).order_by(Building.name.asc())
     )
 
     if org_id:
@@ -189,25 +189,6 @@ def get_building_by_id(db: Session, building_id: str):
         Building.id == building_id,
         Building.is_deleted == False  # Add this filter
     ).first()
-
-
-def get_building_lookup(db: Session, site_id: str, org_id: str):
-    building_query = (
-        db.query(Building.id, Building.name)
-        .join(Site, Site.id == Building.site_id)
-        .filter(
-            Building.is_deleted == False,  # Add this filter
-            Site.is_deleted == False      # Add this filter
-        )
-    )
-
-    if org_id:
-        building_query = building_query.filter(Site.org_id == org_id)
-
-    if site_id and site_id.lower() != "all":
-        building_query = building_query.filter(Site.id == site_id)
-
-    return building_query.all()
 
 
 # In building_crud.py - update the delete_building function

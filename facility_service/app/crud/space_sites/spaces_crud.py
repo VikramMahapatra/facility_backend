@@ -273,6 +273,7 @@ def get_space_lookup(db: Session, site_id: str, building_id: str, org_id: str):
         .join(Site, Space.site_id == Site.id)
         .join(Building, Space.building_block_id == Building.id)
         .filter(Space.is_deleted == False)
+        .order_by(Space.name.asc())
     )
 
     if org_id:
@@ -298,6 +299,7 @@ def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
         .join(Building, Space.building_block_id == Building.id)
         # Updated filter
         .filter(Space.org_id == org_id, Space.is_deleted == False)
+        .order_by(Space.name.asc())
     )
 
     if site_id and site_id.lower() != "all":

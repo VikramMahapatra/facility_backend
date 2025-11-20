@@ -132,7 +132,7 @@ def service_request_filter_status_lookup(db: Session, org_id: str) -> List[Dict]
         # ✅ Add soft delete filter
         .filter(ServiceRequest.org_id == org_id, ServiceRequest.is_deleted == False)
         .distinct()
-        .order_by("name")
+        .order_by(ServiceRequest.status.asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
@@ -163,7 +163,7 @@ def service_request_filter_category_lookup(db: Session, org_id: str) -> List[Dic
             ServiceRequest.is_deleted == False  # ✅ Add soft delete filter
         )
         .distinct()
-        .order_by("name")
+        .order_by(func.lower(ServiceRequest.category).asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name.title()} for r in rows]
@@ -389,7 +389,7 @@ def service_request_filter_workorder_lookup(db: Session, org_id: str) -> List[Di
         )
         .filter(WorkOrder.org_id == org_id)
         .distinct()
-        .order_by(WorkOrder.wo_no)
+        .order_by(WorkOrder.wo_no.asc())
     )
 
     rows = query.all()

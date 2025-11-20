@@ -26,11 +26,10 @@ class LeasingOverviewResponse(BaseModel):
 
 
 class MaintenanceStatusResponse(BaseModel):
-    open_work_orders: int
-    closed_work_orders: int
+    open_tickets: int
+    closed_tickets: int
     upcoming_pm: int
-    open_service_requests: int
-    assets_at_risk: int
+    service_requests: int
 
     class Config:
         from_attributes = True
@@ -81,6 +80,25 @@ class EnergyConsumptionTrendResponse(BaseModel):
     electricity: float
     water: float
     gas: float
+
+    class Config:
+        from_attributes = True
+
+class OccupancyByFloorResponse(BaseModel):
+    floor: str
+    total: int
+    occupied: int
+    available: int
+    outOfService: int
+
+
+class Alert(BaseModel):
+    type: str
+    message: str = ""  # Default to empty string
+
+class EnergyStatusResponse(BaseModel):
+    totalConsumption: int
+    alerts: List[Alert]
 
     class Config:
         from_attributes = True

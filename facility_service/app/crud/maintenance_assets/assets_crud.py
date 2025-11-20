@@ -337,7 +337,7 @@ def asset_lookup(db: Session, org_id: UUID):
             Asset.name.label("name"))
         .filter(Asset.org_id == org_id, Asset.is_deleted == False)
         .distinct()
-        .order_by(Asset.name)
+        .order_by(Asset.name.asc())
         .all()
     )
     return assets
@@ -351,7 +351,7 @@ def asset_filter_status_lookup(db: Session, org_id: UUID):
         )
         .filter(Asset.org_id == org_id, Asset.is_deleted == False)
         .distinct()
-        .order_by(Asset.status)
+        .order_by(Asset.status.asc())
         .all()
     )
     return statuses
@@ -372,7 +372,7 @@ def assets_category_lookup(db: Session, org_id: UUID) -> List[Dict]:
         )
         .filter(AssetCategory.org_id == org_id, AssetCategory.is_deleted == False)
         .distinct()
-        .order_by(AssetCategory.name)
+        .order_by(AssetCategory.name.asc())
     )
     rows = query.all()
     return [Lookup(id=r.id, name=r.name) for r in rows]

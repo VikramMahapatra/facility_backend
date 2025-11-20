@@ -6,7 +6,7 @@ from uuid import UUID
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from ...schemas.overview.dasboard_schema import (
-    EnergyConsumptionTrendResponse, MonthlyRevenueTrendResponse, OverviewResponse, LeasingOverviewResponse, MaintenanceStatusResponse, AccessAndParkingResponse, FinancialSummaryResponse, SpaceOccupancyResponse)
+    EnergyConsumptionTrendResponse, EnergyStatusResponse, MonthlyRevenueTrendResponse, OccupancyByFloorResponse, OverviewResponse, LeasingOverviewResponse, MaintenanceStatusResponse, AccessAndParkingResponse, FinancialSummaryResponse, SpaceOccupancyResponse)
 from shared.core.schemas import UserToken
 
 
@@ -89,11 +89,21 @@ def get_energy_consumption_trend(
     return dashboard_crud.get_energy_consumption_trend(db, current_user.org_id)
 
 
-@router.get("/occupancy-by-floor")
-def get_occupancy_by_floor():
-    return dashboard_crud.get_occupancy_by_floor()
+@router.get("/occupancy-by-floor", response_model=List[OccupancyByFloorResponse])
+def get_occupancy_by_floor_endpoint(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return dashboard_crud.get_occupancy_by_floor(db, current_user.org_id)
 
 
-@router.get("/energy-status")
-def get_energy_status():
-    return dashboard_crud.get_energy_status()
+@router.get("/energy-status", response_model=EnergyStatusResponse)
+def energy_status(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get total consumption from all meters and system alerts
+    """
+    return dashboard_crud.get_energy_status(db, current_user.org_id)
+   

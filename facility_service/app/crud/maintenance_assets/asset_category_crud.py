@@ -168,5 +168,5 @@ def delete_asset_category(db: Session, category_id: str, org_id: UUID) -> bool:
 def get_asset_category_lookup(db: Session, org_id: str):
     categories = db.query(AssetCategory.id, AssetCategory.name).filter(
         # Updated filter
-        AssetCategory.org_id == org_id, AssetCategory.is_deleted == False).all()
+        AssetCategory.org_id == org_id, AssetCategory.is_deleted == False).order_by(AssetCategory.name.asc()).all()
     return categories

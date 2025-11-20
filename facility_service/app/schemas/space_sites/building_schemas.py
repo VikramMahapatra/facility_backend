@@ -17,7 +17,6 @@ class BuildingOut(BaseModel):
     occupied_spaces: Optional[int]
     occupancy_rate: Optional[float] = None  # ADD OCCUPANCY RATE FIELD
     attributes: Optional[Any] = None
-
     class Config:
         # Change from_attribute to from_attributes FOR CREATE AND UPDATE VALIDATION
         from_attributes = True

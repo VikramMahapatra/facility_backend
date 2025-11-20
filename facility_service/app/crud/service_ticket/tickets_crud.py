@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 from operator import or_
 from typing import Dict, List
 from requests import request
@@ -20,7 +20,7 @@ from ...enum.ticket_service_enum import TicketStatus
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.service_ticket.tickets_category import TicketCategory
 from ...models.space_sites.spaces import Space
-from ...schemas.mobile_app.help_desk_schemas import TicketWorkFlowOut
+from ...schemas.mobile_app.help_desk_schemas import ComplaintDetailsResponse, TicketWorkFlowOut
 
 from ...models.service_ticket.sla_policy import SlaPolicy
 from ...models.service_ticket.tickets_commets import TicketComment
@@ -104,11 +104,13 @@ def build_ticket_filters(
             filters.append(
                 and_(
                     Ticket.status != "closed",
-                    Ticket.is_overdue == True,
+                    func.extract('epoch', func.now() - Ticket.created_at) / 60 >
+                    func.coalesce(SlaPolicy.resolution_time_mins, 0)
+               )
                 )
-            )
+    
 
-            # Overdue requires scaling to SLA join
+            # Overdue requires scaling to SLA joins
             base_query = (
                 db.query(Ticket)
                 .join(Ticket.category)
@@ -185,7 +187,7 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
 
     return {"tickets": results, "total": total}
 
-
+#for mobile -----
 def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
     """
     Fetch full Tickets details along with all related comments and logs
@@ -263,7 +265,7 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
         )
 
     # Step 5: Return as schema
-    return TicketDetailsResponse.model_validate(
+    return ComplaintDetailsResponse.model_validate(
         {
             **service_req.__dict__,
             "category": category_name,
@@ -1276,7 +1278,7 @@ def send_ticket_post_comment_email(background_tasks, db, data, recipients):
 
 # for view ------------------------
 
-
+#for portal/web
 def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     """
     Fetch full Tickets details along with all related comments and logs

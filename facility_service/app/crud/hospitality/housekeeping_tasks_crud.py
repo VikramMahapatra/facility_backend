@@ -186,7 +186,7 @@ def housekeeping_tasks_filter_status_lookup(db: Session, org_id: str) -> List[Di
         )
         .filter(HousekeepingTask.org_id == org_id)
         .distinct()
-        .order_by(HousekeepingTask.status)
+        .order_by(HousekeepingTask.status.asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]

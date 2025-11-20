@@ -333,6 +333,7 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
                 )
             )
             .distinct()
+            .order_by(CommercialPartner.legal_name.asc())  
             .all()
         )
     else:
@@ -346,6 +347,7 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
                 )
             )
             .distinct()
+            .order_by(Tenant.name.asc())
             .all()
         )
 

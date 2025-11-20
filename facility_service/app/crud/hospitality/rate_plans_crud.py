@@ -85,7 +85,7 @@ def rate_plan_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
         )
         .filter(RatePlan.org_id == org_id)
         .distinct()
-        .order_by(RatePlan.status)
+        .order_by(RatePlan.status.asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]

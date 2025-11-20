@@ -1,7 +1,12 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 from sqlalchemy.orm import Session
-from sqlalchemy import extract, func, case , literal_column, or_
+from sqlalchemy import Integer, extract, func, case , literal_column, or_
 from datetime import date, datetime, timedelta
+
+from facility_service.app.models.service_ticket.tickets import Ticket
+from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
+
+from ...schemas.overview.dasboard_schema import OccupancyByFloorResponse
 
 from ...models.parking_access.access_events import AccessEvent
 
@@ -236,45 +241,35 @@ def get_leasing_overview(db: Session, org_id: UUID):
     }
 
 # ------------------------ Maintenance Status ------------------------
+
 def get_maintenance_status(db: Session, org_id: UUID):
     today = date.today()
     
-    # Open and Closed Work Orders
-    open_work_orders = db.query(func.count(WorkOrder.id))\
-        .filter(WorkOrder.org_id == org_id, WorkOrder.status == 'open')\
-        .scalar()
-    closed_work_orders = db.query(func.count(WorkOrder.id))\
-        .filter(WorkOrder.org_id == org_id, WorkOrder.status == 'close')\
-        .scalar()
+    # Open Tickets
+    open_tickets = db.query(func.count(Ticket.id))\
+        .filter(Ticket.org_id == org_id,
+                func.lower(Ticket.status)==  'open')\
+        .scalar() or 0
+        
+    # Closed Tickets
+    closed_tickets = db.query(func.count(Ticket.id))\
+        .filter(Ticket.org_id == org_id,
+                func.lower(Ticket.status) == 'closed')\
+        .scalar() or 0
 
-    # Upcoming PM
-    upcoming_pm = db.query(func.count(PMTemplate.id))\
-        .filter(PMTemplate.org_id == org_id,
-                PMTemplate.next_due >= today,
-                PMTemplate.status == 'active')\
-        .scalar()
+    # Upcoming PM - Set to 0
+    upcoming_pm = 0
 
-    # Open Service Requests
-    open_service_requests = db.query(func.count(ServiceRequest.id))\
-        .filter(ServiceRequest.org_id == org_id,
-                ServiceRequest.status == 'open')\
-        .scalar()
-
-    # Assets at risk
-    assets_at_risk = db.query(func.count(Asset.id))\
-        .filter(Asset.org_id == org_id,
-                ((Asset.warranty_expiry.between(today, today + timedelta(days=30))) |
-                 (Asset.status != 'active')))\
-        .scalar()
+    service_requests = db.query(func.count(Ticket.id))\
+        .filter(Ticket.org_id == org_id)\
+        .scalar() or 0
 
     return {
-        "open_work_orders": open_work_orders,
-        "closed_work_orders": closed_work_orders,
+        "open_tickets": open_tickets,
+        "closed_tickets": closed_tickets,
         "upcoming_pm": upcoming_pm,
-        "open_service_requests": open_service_requests,
-        "assets_at_risk": assets_at_risk
+        "service_requests": service_requests  
     }
-
 #-----------------access and parking -------------------
 def get_access_and_parking(db: Session, org_id: UUID):
     today = date.today()
@@ -638,21 +633,106 @@ def get_energy_consumption_trend(db: Session, org_id: UUID):
     
     return monthly_data
 
-def get_occupancy_by_floor():
-    return [
-     
-    { "floor": "Ground", "total": 65, "occupied": 52, "available": 10, "outOfService": 3 },
-    { "floor": "1st Floor", "total": 58, "occupied": 43, "available": 12, "outOfService": 3 },
-    { "floor": "2nd Floor", "total": 55, "occupied": 42, "available": 11, "outOfService": 2 },
-    { "floor": "3rd Floor", "total": 52, "occupied": 38, "available": 9, "outOfService": 5 },
-    { "floor": "Basement", "total": 18, "occupied": 12, "available": 3, "outOfService": 3 }
-    ]
 
-def get_energy_status():
+def get_occupancy_by_floor(db: Session, org_id: UUID) -> List[OccupancyByFloorResponse]:
+    """
+    Calculate occupancy statistics by floor for a given organization using dynamic grouping
+    Returns only: floor, total, occupied, available, outOfService
+    """
+    # Single query to get all occupancy stats grouped by floor
+    occupancy_stats = db.query(
+        Space.floor,
+        func.count(Space.id).label('total'),
+        func.sum(case((func.lower(Space.status) == 'occupied', 1), else_=0)).label('occupied'),
+        func.sum(case((func.lower(Space.status) == 'available', 1), else_=0)).label('available'),
+        func.sum(case((func.lower(Space.status) == 'out_of_service', 1), else_=0)).label('out_of_service')
+    ).filter(
+        Space.org_id == org_id,
+        Space.is_deleted == False,
+        Space.floor.isnot(None)
+    ).group_by(
+        Space.floor
+    ).order_by(
+        # Natural sorting: numeric floors first, then others
+        func.cast(Space.floor, Integer).nullsfirst(),  # Fixed: Use Integer from sqlalchemy
+        Space.floor
+    ).all()
+    
+        # Convert to the exact format requested
+    occupancy_data = []
+    for floor, total, occupied, available, out_of_service in occupancy_stats:
+        floor_str = str(floor) if floor is not None else "Unknown"
+        
+        # Dynamic floor name conversion - integrated directly
+        floor_lower = floor_str.lower().strip()
+        
+        # Special cases
+        if floor_lower == "0":
+            floor_display = "Ground Floor"
+        else:
+            # Numeric floors
+            try:
+                floor_num = int(floor_lower)
+                suffixes = {1: "st", 2: "nd", 3: "rd"}
+                suffix = suffixes.get(floor_num, "th") if floor_num < 4 else "th"
+                floor_display = f"{floor_num}{suffix} Floor"
+            except (ValueError, TypeError):
+                # If it's not a number, return the original string capitalized
+                floor_display = floor_str.title()
+        
+        occupancy_data.append(OccupancyByFloorResponse(
+            floor=floor_display,
+            total=total or 0,
+            occupied=occupied or 0,
+            available=available or 0,
+            outOfService=out_of_service or 0
+        ))
+    
+    return occupancy_data
+
+
+
+
+def get_energy_status(db: Session, org_id: UUID):
+    # Calculate total consumption for ALL meter kinds
+    total_consumption = db.query(func.coalesce(func.sum(MeterReading.reading), 0))\
+        .join(Meter, MeterReading.meter_id == Meter.id)\
+        .filter(Meter.org_id == org_id,
+                Meter.is_deleted == False,
+                MeterReading.is_deleted == False)\
+        .scalar() or 0
+
+    alerts = []
+    recent_threshold = datetime.utcnow() - timedelta(days=7)
+
+    # 1. Check for meters with no recent readings - USING LEFT JOIN
+    subquery = db.query(MeterReading.meter_id)\
+        .filter(MeterReading.ts >= recent_threshold,
+                MeterReading.is_deleted == False)\
+        .subquery()
+
+    meters_without_readings = db.query(Meter.kind)\
+        .outerjoin(subquery, Meter.id == subquery.c.meter_id)\
+        .filter(Meter.org_id == org_id,
+                Meter.is_deleted == False,
+                subquery.c.meter_id == None)\
+        .distinct()\
+        .all()
+
+    for (meter_kind,) in meters_without_readings:
+        alerts.append({
+            "type": meter_kind,
+            "message": ""
+        })
+
+    # If no issues found, return system status
+    if not alerts:
+        alerts.append({
+            "type": "System", 
+            "message": ""
+        })
+
     return {
-        "totalConsumption": 45680,
-        "alerts": [
-            {"type": "High Usage", "message": "Building A electricity usage 15% above normal"},
-            {"type": "Meter Issue", "message": "Water meter B-3 needs maintenance"}
-        ]
+        "totalConsumption": int(total_consumption),
+        "alerts": alerts
     }

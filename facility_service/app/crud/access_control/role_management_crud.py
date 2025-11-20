@@ -124,6 +124,7 @@ def get_role_lookup(db: Session, org_id: str):
             Roles.description
         )
         .filter(Roles.org_id == org_id, Roles.is_deleted == False)
+        .order_by(Roles.name.asc())
     )
 
     return role_query.all()

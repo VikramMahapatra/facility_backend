@@ -6,6 +6,8 @@ from typing import List, Optional
 from datetime import datetime
 
 from auth_service.app.models.users import Users
+from shared.helpers.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
 from ...models.space_sites.sites import Site
 from shared.core.config import Settings
 
@@ -176,9 +178,9 @@ def delete_ticket_category_soft(db: Session, category_id: UUID) -> bool:
 
     # Check if category has associated tickets
     if db_category.tickets:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete category with associated tickets"
+        return error_response(
+            message="Cannot delete category with associated tickets",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
         )
 
     # Soft delete
@@ -223,7 +225,7 @@ def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup
             SlaPolicy.is_deleted == False,
             SlaPolicy.site_id == site_id   # STRICT FILTER HERE
         )
-        .order_by(SlaPolicy.service_category)
+        .order_by(SlaPolicy.service_category.asc())  # ASCENDING ORDER
     )
 
     policies = query.all()
@@ -300,19 +302,21 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
 def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """
     Strictly fetch ticket categories filtered by site_id.
-    Returns categories only for that specific site.
+    Returns distinct category names sorted ASC.
     """
 
     if not site_id or site_id.lower() == "all":
-        # STRICT MODE: do NOT return all categories
         return []
 
     query = (
-        db.query(TicketCategory.id, TicketCategory.category_name)
+        db.query(
+            TicketCategory.id,
+            TicketCategory.category_name
+        )
         .filter(
             TicketCategory.is_deleted == False,
             TicketCategory.is_active == True,
-            TicketCategory.site_id == site_id   # STRICT FILTER HERE
+            TicketCategory.site_id == site_id
         )
         .distinct(TicketCategory.category_name)
         .order_by(TicketCategory.category_name)

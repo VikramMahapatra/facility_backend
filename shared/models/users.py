@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import TIMESTAMP, Boolean, Column, Integer, String, Text, func
-from shared.core.database import AuthBase
+from ..core.database import AuthBase
 from sqlalchemy.orm import relationship
 
 

@@ -4,7 +4,7 @@ from typing import List, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from facility_service.app.models.common.email_template import EmailTemplate
+from shared.models.email_template import EmailTemplate
 from ..utils.email_client import EmailClient
 from ..core.config import settings
 

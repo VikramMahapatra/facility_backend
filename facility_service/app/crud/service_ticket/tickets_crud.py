@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, desc
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
-from auth_service.app.models.users import Users
+from shared.models.users import Users
 from shared.core.config import Settings
 from shared.helpers.email_helper import EmailHelper
 from shared.utils.enums import UserAccountType
@@ -106,9 +106,8 @@ def build_ticket_filters(
                     Ticket.status != "closed",
                     func.extract('epoch', func.now() - Ticket.created_at) / 60 >
                     func.coalesce(SlaPolicy.resolution_time_mins, 0)
-               )
                 )
-    
+            )
 
             # Overdue requires scaling to SLA joins
             base_query = (
@@ -187,7 +186,9 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
 
     return {"tickets": results, "total": total}
 
-#for mobile -----
+# for mobile -----
+
+
 def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
     """
     Fetch full Tickets details along with all related comments and logs
@@ -441,7 +442,14 @@ async def create_ticket(
     )
 
 
-def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
+def escalate_ticket(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    auth_db: Session,
+    data: TicketActionRequest,
+    user: UserToken
+):
+
     # Fetch ticket
     ticket = db.execute(
         select(Ticket).where(Ticket.id == data.ticket_id)
@@ -456,7 +464,7 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
 
     if (
         not ticket.can_escalate
-        or str(ticket.created_by) != str(data.action_by)
+        or (str(ticket.created_by) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION))
     ):
         return error_response(
             message=f"Not authorize to perform this action",
@@ -590,7 +598,14 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     )
 
 
-async def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest, file: UploadFile = None):
+async def resolve_ticket(
+        background_tasks: BackgroundTasks,
+        db: Session,
+        auth_db: Session,
+        data: TicketActionRequest,
+        user: UserToken,
+        file: UploadFile = None
+):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
 
@@ -603,7 +618,7 @@ async def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db
 
     if (
         ticket.status == TicketStatus.CLOSED
-        or str(ticket.assigned_to) != str(data.action_by)
+        or str(ticket.assigned_to) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION)
     ):
         return error_response(
             message=f"Not authorize to perform this action",
@@ -726,13 +741,22 @@ async def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db
     )
 
 
-def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
+def reopen_ticket(
+        background_tasks: BackgroundTasks,
+        db: Session,
+        auth_db: Session,
+        data: TicketActionRequest,
+        user: UserToken
+):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
         raise Exception("Ticket not found")
 
-    if not ticket.can_reopen or str(ticket.created_by) != str(data.action_by):
+    if (
+        not ticket.can_reopen
+        or str(ticket.created_by) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION)
+    ):
         return error_response(
             message=f"Not authorize to perform this action",
             status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
@@ -843,7 +867,13 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     )
 
 
-def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
+def on_hold_ticket(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    auth_db: Session,
+    data: TicketActionRequest,
+    user: UserToken
+):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
@@ -851,7 +881,7 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
 
     if (
         ticket.status in (TicketStatus.CLOSED, TicketStatus.ON_HOLD)
-        or str(ticket.assigned_to) != str(data.action_by)
+        or str(ticket.assigned_to) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION)
     ):
         return error_response(
             message=f"Not authorize to perform this action",
@@ -1278,7 +1308,9 @@ def send_ticket_post_comment_email(background_tasks, db, data, recipients):
 
 # for view ------------------------
 
-#for portal/web
+# for portal/web
+
+
 def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     """
     Fetch full Tickets details along with all related comments and logs

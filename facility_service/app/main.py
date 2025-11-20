@@ -1,9 +1,10 @@
+from shared.models import email_template
 from .router.system import notifiaction_settings_router
 from .router.system import notifications_router
 from .router.procurement import contracts_router, vendor_router
 from .router.mobile_app import master_router, home_router, help_desk_router, user_profile_router
 from .router.common import export_router
-from .router.service_ticket import tickets_router, ticket_category_router,ticket_dashboard_router,ticket_workload_router
+from .router.service_ticket import tickets_router, ticket_category_router, ticket_dashboard_router, ticket_workload_router
 from .router.energy_iot import meter_readings_router, meters_router, consumption_report_router
 from .router.overview import analytics_router, dashboard_router
 from .router.hospitality import bookings_router, rate_plans_router, housekeeping_tasks_router
@@ -44,7 +45,7 @@ from .models.financials import invoices
 from .models.leasing_tenants import commercial_partners, leases, lease_charges, tenants
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.system import notifications, notification_settings
-from .models.common import comments, attachments, staff_sites, email_template
+from .models.common import comments, attachments, staff_sites
 from .models import (
     purchase_order_lines, purchase_orders
 )
@@ -131,4 +132,3 @@ app.include_router(notifiaction_settings_router.router)
 app.include_router(ticket_category_router.router)
 app.include_router(ticket_dashboard_router.router)
 app.include_router(ticket_workload_router.router)
-

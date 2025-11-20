@@ -7,7 +7,7 @@ from sqlalchemy import func, and_
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 
-from ..models.user_login_session import LoginPlatform, UserLoginSession
+from shared.models.user_login_session import LoginPlatform, UserLoginSession
 from ..schemas.authchemas import AuthenticationResponse
 from ..models.sites_safe import SiteSafe
 from ..models.commercial_partner_safe import CommercialPartnerSafe
@@ -16,7 +16,7 @@ from shared.core import auth
 from ..models.orgs_safe import OrgSafe
 from ..models.roles import Roles
 from ..models.userroles import UserRoles
-from ..models.users import Users
+from shared.models.users import Users
 from ..schemas.userschema import RoleOut, UserCreate
 from shared.core.config import settings
 from datetime import datetime

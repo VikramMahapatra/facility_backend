@@ -134,6 +134,7 @@ def contracts_filter_type_lookup(db: Session, org_id: str, contract_type: Option
         # Updated filter
         .filter(Contract.org_id == org_id, Contract.is_deleted == False)
         .distinct()
+        .order_by(Contract.type.asc())
     )
     if contract_type:
         query = query.filter(Contract.type == contract_type)

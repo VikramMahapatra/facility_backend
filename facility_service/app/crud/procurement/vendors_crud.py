@@ -86,6 +86,7 @@ def vendors_filter_status_lookup(db: Session, org_id: str, status: Optional[str]
         # ✅ Updated filter
         .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)
         .distinct()
+        .order_by(Vendor.status.asc())
     )
     if status:
         query = query.filter(Vendor.status == status)
@@ -118,7 +119,7 @@ def vendors_filter_categories_lookup(db: Session, org_id: str):
     query = db.query(
         categories_subquery.c.category.label("id"),
         categories_subquery.c.category.label("name")
-    )
+    ).order_by(categories_subquery.c.category.asc())
 
     return query.all()
 

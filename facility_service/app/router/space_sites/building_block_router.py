@@ -44,7 +44,7 @@ def create_building(
     return crud.create_building(db, building)
 
 
-@router.put("/", response_model=None)
+@router.put("/", response_model=BuildingOut)
 def update_building(
     building: BuildingUpdate,
     db: Session = Depends(get_db),

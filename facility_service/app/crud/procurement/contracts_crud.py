@@ -109,6 +109,7 @@ def contracts_filter_status_lookup(db: Session, org_id: str, status: Optional[st
         # Updated filter
         .filter(Contract.org_id == org_id,  Contract.is_deleted == False)
         .distinct()
+        .order_by(Contract.status.asc())
     )
     if status:
         query = query.filter(Contract.status == status)

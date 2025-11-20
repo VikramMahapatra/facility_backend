@@ -59,7 +59,7 @@ def site_name_filter_lookup(db: Session, org_id: str) -> List[Dict]:
         )
         .filter(Site.org_id == org_id)
         .distinct()
-        .order_by(Site.name)
+        .order_by(Site.name.asc())
         .all()
     )
 

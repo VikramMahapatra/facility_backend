@@ -78,7 +78,7 @@ def pm_templates_filter_frequency_lookup(db: Session, org_id: str):
             PMTemplate.is_deleted == False  # ✅ Add soft delete filter
         )
         .distinct()
-        .order_by(func.lower(PMTemplate.frequency))
+        .order_by(func.lower(PMTemplate.frequency).asc())
         .all()
     )
     return [{"id": r.id, "name": r.name} for r in rows]
@@ -107,7 +107,7 @@ def pm_templates_category_lookup(db: Session, org_id: str) -> List[Dict]:
             PMTemplate.is_deleted == False  # ✅ Add soft delete filter
         )
         .distinct()
-        .order_by(AssetCategory.name)
+        .order_by(AssetCategory.name.asc())
     )
 
     rows = query.all()
@@ -129,7 +129,7 @@ def pm_templates_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
             PMTemplate.is_deleted == False  # ✅ Add soft delete filter
         )
         .distinct()
-        .order_by(PMTemplate.status)
+        .order_by(PMTemplate.status.asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]

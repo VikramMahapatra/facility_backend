@@ -110,7 +110,7 @@ def build_ticket_filters(
                 )
     
 
-            # Overdue requires scaling to SLA join
+            # Overdue requires scaling to SLA joins
             base_query = (
                 db.query(Ticket)
                 .join(Ticket.category)

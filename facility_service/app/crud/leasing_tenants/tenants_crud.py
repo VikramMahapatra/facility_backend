@@ -668,7 +668,7 @@ def tenant_type_filter_lookup(db: Session, org_id: str) -> List[Dict]:
             Lease.is_deleted == False
         )
         .distinct()
-        .order_by(Lease.kind)
+        .order_by(Lease.kind.asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
@@ -694,7 +694,7 @@ def tenant_status_filter_lookup(db: Session, org_id: str) -> List[Dict]:
             Lease.is_deleted == False
         )
         .distinct()
-        .order_by(Lease.status)
+        .order_by(Lease.status.asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]

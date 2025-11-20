@@ -606,9 +606,10 @@ def user_roles_lookup(db: Session, org_id: str):
     query = (
         db.query(
             Roles.id.label("id"),
-            Roles.name.label("name")
+            Roles.name.label("name"),
         )
         .filter(Roles.org_id == org_id, Roles.is_deleted == False)
         .distinct()
+        .order_by(Roles.name.asc())
     )
     return query.all()

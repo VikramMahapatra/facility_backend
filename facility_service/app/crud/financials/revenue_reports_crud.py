@@ -24,7 +24,7 @@ def revenue_reports_filter_site_lookup(db: Session, org_id: str):
         )
         .filter(Site.org_id == org_id)
         .distinct()
-        .order_by(func.lower(Site.name))
+        .order_by(func.lower(Site.name).asc())
         .all()
     )
     return [{"id": r.id, "name": r.name} for r in rows]

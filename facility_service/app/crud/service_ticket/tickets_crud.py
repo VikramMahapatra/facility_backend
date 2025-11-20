@@ -35,13 +35,16 @@ from shared.helpers.json_response_helper import error_response, success_response
 from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut
 
 
-def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
-
+def build_ticket_filters(
+    db: Session, 
+    params: TicketFilterRequest, 
+    current_user: UserToken
+):
     account_type = current_user.account_type.lower()
 
-    # -----------------------------------------------
-    # Base filters based on user type
-    # -----------------------------------------------
+    # -------------------------------------------------
+    # BASE FILTERS (Based on user's account type)
+    # -------------------------------------------------
     if account_type in (UserAccountType.ORGANIZATION, UserAccountType.STAFF):
         filters = [Ticket.org_id == current_user.org_id]
 
@@ -56,55 +59,56 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
 
         filters = [Ticket.tenant_id == tenant_id]
 
-    # -----------------------------------------------
-    # Additional filters
-    # -----------------------------------------------
-    if params.site_id:
+    # -------------------------------------------------
+    # FILTER: SITE
+    # -------------------------------------------------
+    if params.site_id and params.site_id != "all":
         filters.append(Ticket.site_id == params.site_id)
 
+    # -------------------------------------------------
+    # FILTER: SPACE
+    # STAFF should not filter space by default
+    # -------------------------------------------------
     if params.space_id and account_type != UserAccountType.STAFF:
         filters.append(Ticket.space_id == params.space_id)
 
-    # -----------------------------------------------
-    # SEARCH FILTER (FIXED)
-    # -----------------------------------------------
+    # -------------------------------------------------
+    # FILTER: SEARCH (ticket no, title, description)
+    # -------------------------------------------------
     if params.search:
         search_term = f"%{params.search.lower()}%"
         filters.append(
             or_(
                 func.lower(Ticket.ticket_no).like(search_term),
-                or_(func.lower(Ticket.title).like(search_term),
-                func.lower(Ticket.description).like(search_term),
-            ))
+                func.lower(Ticket.title).like(search_term),
+            )
         )
-    # -----------------------------------------------
-    # Priority Filter 
-    # -----------------------------------------------
-    if params.priority and params.priority.lower() != "all":
-        filters.append(func.lower(Ticket.priority) == params.priority.lower())
 
-    # -----------------------------------------------
-    # Status Filters
-    # -----------------------------------------------
+    # -------------------------------------------------
+    # FILTER: PRIORITY
+    # -------------------------------------------------
+    if params.priority and params.priority.lower() != "all":
+        filters.append(
+            func.lower(Ticket.priority) == params.priority.lower()
+        )
+
+    # -------------------------------------------------
+    # FILTER: STATUS
+    # -------------------------------------------------
     if params.status and params.status.lower() != "all":
 
         status = params.status.lower()
 
-        # ------------------ OVERDUE ------------------
         if status == "overdue":
-
-            cutoff = (
-                func.now()
-                - func.make_interval(mins=SlaPolicy.resolution_time_mins)
-            )
-
+            # Overdue = open tickets with SLA breached
             filters.append(
                 and_(
                     Ticket.status != "closed",
-                    Ticket.created_at < cutoff
+                    Ticket.is_overdue == True,
                 )
             )
 
+            # Overdue requires scaling to SLA join
             base_query = (
                 db.query(Ticket)
                 .join(Ticket.category)
@@ -112,17 +116,18 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
                 .filter(*filters)
             )
 
-        # ------------------ OTHER STATUS -------------
         else:
+            # Normal status like 'open', 'inprogress', 'closed'
             filters.append(func.lower(Ticket.status) == status)
             base_query = db.query(Ticket).filter(*filters)
 
     else:
+        # Status not provided → regular query
         base_query = db.query(Ticket).filter(*filters)
 
-    # -----------------------------------------------
-    # PERFORMANCE: avoid loading BIG columns
-    # -----------------------------------------------
+    # -------------------------------------------------
+    # PERFORMANCE: Load only required fields
+    # -------------------------------------------------
     base_query = (
         base_query.options(
             load_only(
@@ -139,7 +144,8 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
                 Ticket.space_id,
             ),
             selectinload(Ticket.category).load_only(
-                TicketCategory.category_name)
+                TicketCategory.category_name
+            )
         )
     )
 
@@ -1945,7 +1951,7 @@ def tickets_filter_priority_lookup(db: Session, org_id: str) -> List[Dict]:
         )
         .filter(Ticket.org_id == org_id)
         .distinct()
-        .order_by(Ticket.priority)
+        .order_by(Ticket.priority.asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
@@ -1963,7 +1969,7 @@ def tickets_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
         )
         .filter(Ticket.org_id == org_id)
         .distinct()
-        .order_by(Ticket.status)
+        .order_by(Ticket.status.asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]

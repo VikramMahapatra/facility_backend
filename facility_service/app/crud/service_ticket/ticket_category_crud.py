@@ -119,9 +119,8 @@ def create_ticket_category(db: Session, category: TicketCategoryCreate) -> Ticke
     ).first()
 
     if existing_category:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Ticket category '{category.category_name}' already exists for this site"
+        return error_response(
+            message=f"Ticket category '{category.category_name}' already exists for this site"
         )
 
     db_category = TicketCategory(**category.model_dump())

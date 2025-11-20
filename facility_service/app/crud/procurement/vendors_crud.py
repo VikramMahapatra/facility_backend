@@ -1,9 +1,13 @@
 # app/crud/vendors.py
+from sqlite3 import IntegrityError
 import uuid
 from typing import Dict, List, Optional
 from sqlalchemy import case, func, lateral, literal, or_, select, String
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID
+
+from shared.helpers.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
 from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.procurement.vendors import Vendor
 from ...schemas.procurement.vendors_schemas import VendorCreate, VendorListResponse, VendorOut, VendorRequest, VendorUpdate
@@ -177,13 +181,28 @@ def update_vendor(db: Session, vendor: VendorUpdate) -> Optional[Vendor]:
     # ✅ Use the updated get_vendor_by_id
     db_vendor = get_vendor_by_id(db, vendor.id)
     if not db_vendor:
-        return None
-    # Update only provided fields
-    for k, v in vendor.dict(exclude_unset=True).items():
-        setattr(db_vendor, k, v)
-    db.commit()
-    db.refresh(db_vendor)
-    return db_vendor
+        return error_response(
+        message="Vendor not found",
+        status_code=str(AppStatusCode.OPERATION_ERROR),
+        http_status=404
+    )
+   
+    update_data = vendor.model_dump(exclude_unset=True, exclude={'rating'})
+    for key, value in update_data.items():
+        setattr(db_vendor, key, value)
+  
+    try:
+        db.commit()
+        return get_vendor_by_id(db, vendor.id)
+
+    except IntegrityError as e:
+        db.rollback()
+        return error_response(
+        message="Error updating vendor",
+        status_code=str(AppStatusCode.OPERATION_ERROR),
+        http_status=400
+    )
+
 
 # ----------------- Delete (Soft Delete) -----------------
 

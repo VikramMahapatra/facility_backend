@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Dict, List, Optional
 from auth_service.app.models.roles import Roles
-from auth_service.app.models.users import Users
+from shared.models.users import Users
 from auth_service.app.models.userroles import UserRoles
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant

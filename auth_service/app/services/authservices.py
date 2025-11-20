@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 import requests
 from datetime import datetime, timedelta, timezone
 from ..models.otp_verifications import OtpVerification
-from ..models.user_login_session import UserLoginSession
+from shared.models.user_login_session import UserLoginSession
 from shared.helpers.email_helper import EmailHelper
-from ..models.refresh_token import RefreshToken
+from shared.models.refresh_token import RefreshToken
 from ..schemas.userschema import UserCreate
 from shared.utils.app_status_code import AppStatusCode
 from shared.core.config import settings
@@ -16,7 +16,7 @@ from google.oauth2 import id_token
 from shared.core.database import get_auth_db as get_db
 from shared.core import auth
 from shared.helpers.json_response_helper import error_response, success_response
-from ..models.users import Users
+from shared.models.users import Users
 from ..schemas import authchemas
 from ..services import userservices
 

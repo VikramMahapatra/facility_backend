@@ -5,7 +5,7 @@ from uuid import UUID
 from typing import List, Optional
 from datetime import datetime
 
-from auth_service.app.models.users import Users
+from shared.models.users import Users
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
 from ...models.space_sites.sites import Site

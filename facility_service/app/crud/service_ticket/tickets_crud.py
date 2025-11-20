@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, desc
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
-from auth_service.app.models.users import Users
+from shared.models.users import Users
 from shared.core.config import Settings
 from shared.helpers.email_helper import EmailHelper
 from shared.utils.enums import UserAccountType

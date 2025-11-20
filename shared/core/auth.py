@@ -4,9 +4,9 @@ from typing import Optional
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
-from auth_service.app.models.refresh_token import RefreshToken
-from auth_service.app.models.user_login_session import LoginPlatform, UserLoginSession
-from auth_service.app.models.users import Users
+from shared.models.refresh_token import RefreshToken
+from shared.models.user_login_session import LoginPlatform, UserLoginSession
+from shared.models.users import Users
 from shared.utils.app_status_code import AppStatusCode
 from shared.core.config import settings
 from shared.helpers.json_response_helper import error_response

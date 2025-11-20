@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 from auth_service.app.models.commercial_partner_safe import CommercialPartnerSafe
 from auth_service.app.models.roles import Roles
-from auth_service.app.models.users import Users
+from shared.models.users import Users
 from auth_service.app.models.userroles import UserRoles
 from ...models.common.staff_sites import StaffSite
 from ...models.leasing_tenants.tenants import Tenant

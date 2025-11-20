@@ -4,7 +4,7 @@ from sqlalchemy import desc, func
 from typing import Dict, List, Optional
 
 from auth_service.app.models.roles import Roles
-from auth_service.app.models.users import Users
+from shared.models.users import Users
 from auth_service.app.models.userroles import UserRoles
 from shared.core.schemas import Lookup
 

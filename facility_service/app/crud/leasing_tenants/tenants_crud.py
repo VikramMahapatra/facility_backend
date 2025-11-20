@@ -9,8 +9,8 @@ from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 
 from ...models.leasing_tenants.lease_charges import LeaseCharge
-from facility_service.app.models.space_sites.spaces import Space
-from facility_service.app.models.space_sites.buildings import Building
+from ...models.space_sites.spaces import Space
+from ...models.space_sites.buildings import Building
 
 from ...schemas.leases_schemas import LeaseOut
 from ...enum.leasing_tenants_enum import TenantStatus, TenantType
@@ -485,13 +485,15 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 )
 
         # Check for duplicate legal_name (case-insensitive) if being updated
-        new_legal_name = update_dict.get("legal_name") or update_dict.get("name")
+        new_legal_name = update_dict.get(
+            "legal_name") or update_dict.get("name")
         if new_legal_name and new_legal_name != db_partner.legal_name:
             existing_partner_by_name = db.query(CommercialPartner).filter(
                 CommercialPartner.site_id == db_partner.site_id,
                 CommercialPartner.id != tenant_id,
                 CommercialPartner.is_deleted == False,
-                func.lower(CommercialPartner.legal_name) == func.lower(new_legal_name)
+                func.lower(CommercialPartner.legal_name) == func.lower(
+                    new_legal_name)
             ).first()
 
             if existing_partner_by_name:
@@ -503,10 +505,13 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
 
         # Update commercial partner
         if db_partner:
-            db_partner.legal_name = update_dict.get("legal_name", db_partner.legal_name)
+            db_partner.legal_name = update_dict.get(
+                "legal_name", db_partner.legal_name)
             db_partner.type = update_dict.get("type", db_partner.type)
-            db_partner.space_id = update_dict.get("space_id", db_partner.space_id)
-            db_partner.contact = update_dict.get("contact_info") or db_partner.contact
+            db_partner.space_id = update_dict.get(
+                "space_id", db_partner.space_id)
+            db_partner.contact = update_dict.get(
+                "contact_info") or db_partner.contact
             db_partner.status = update_dict.get("status", db_partner.status)
             db_partner.updated_at = datetime.utcnow()
 
@@ -700,8 +705,6 @@ def tenant_status_filter_lookup(db: Session, org_id: str) -> List[Dict]:
     return [{"id": r.id, "name": r.name} for r in rows]
 
 
-
-
 # Add to app/crud/leasing_tenants/tenants_crud.py
 
 def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
@@ -709,7 +712,7 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
     Get tenants filtered by both site_id and space_id
     Returns LIST of id and name
     """
-    
+
     # Individual tenants - filter by both site_id AND space_id
     individual_tenants = (
         db.query(
@@ -724,7 +727,7 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
         )
         .all()
     )
-    
+
     # Commercial partners - filter by both site_id AND space_id
     commercial_tenants = (
         db.query(
@@ -739,11 +742,12 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
         )
         .all()
     )
-    
+
     # Combine results - make sure we return a LIST
     all_tenants = []
-    all_tenants.extend([{"id": t.id, "name": t.name} for t in individual_tenants])
-    all_tenants.extend([{"id": t.id, "name": t.name} for t in commercial_tenants])
-    
-    
+    all_tenants.extend([{"id": t.id, "name": t.name}
+                       for t in individual_tenants])
+    all_tenants.extend([{"id": t.id, "name": t.name}
+                       for t in commercial_tenants])
+
     return all_tenants  # This should be a list

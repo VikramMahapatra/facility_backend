@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
-from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
+from ...models.leasing_tenants.commercial_partners import CommercialPartner
 
 from ...models.space_sites.sites import Site
 

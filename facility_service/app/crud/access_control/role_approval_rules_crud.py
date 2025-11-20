@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.role_approval_rules import RoleApprovalRule
-from facility_service.app.enum.access_control_enum import UserTypeEnum
+from ...enum.access_control_enum import UserTypeEnum
 from shared.core.schemas import Lookup
 
 from ...schemas.access_control.role_approval_rules_schemas import (

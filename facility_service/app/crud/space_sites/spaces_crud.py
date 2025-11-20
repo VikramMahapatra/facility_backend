@@ -210,7 +210,11 @@ def update_space(db: Session, space: SpaceUpdate):
     try:
         db.commit()
         db.refresh(db_space)
-        return db_space
+
+        building_name = db_space.building.name  # Joined building name
+        data = {**db_space.__dict__, "building_block": building_name}
+
+        return SpaceOut.model_validate(data)
     except IntegrityError as e:
         db.rollback()
         return error_response(

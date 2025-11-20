@@ -1,6 +1,6 @@
 # app/models/commercial_partners.py
 import uuid
-from sqlalchemy import Boolean, Column, DateTime, String, func
+from sqlalchemy import Boolean, Column, DateTime, String, func, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from shared.core.database import Base
@@ -12,8 +12,10 @@ class CommercialPartner(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True))
-    site_id = Column(UUID(as_uuid=True), nullable=False)
-    space_id = Column(UUID(as_uuid=True), nullable=False)
+    site_id = Column(UUID(as_uuid=True), ForeignKey(
+        "sites.id", ondelete="CASCADE"))
+    space_id = Column(UUID(as_uuid=True), ForeignKey(
+        "spaces.id", ondelete="CASCADE"))
     type = Column(String(16), nullable=False)  # merchant|brand|kiosk
     legal_name = Column(String(200), nullable=False)
     contact = Column(JSONB)
@@ -25,3 +27,5 @@ class CommercialPartner(Base):
                         server_default=func.now(), onupdate=func.now())
 
     leases = relationship("Lease", back_populates="partner")
+    site = relationship("Site", back_populates="partners")
+    space = relationship("Space", back_populates="partners")

@@ -32,7 +32,7 @@ def get_space_groups(db: Session, org_id: uuid.UUID, params: SpaceGroupRequest) 
     total = space_group_query.count()
 
     space_group_query = space_group_query.order_by(
-        SpaceGroup.created_at.desc()).offset(params.skip).limit(params.limit)
+        SpaceGroup.updated_at.desc()).offset(params.skip).limit(params.limit)
     space_groups = space_group_query.all()
 
     space_groups_with_members = []
@@ -134,7 +134,7 @@ def update_space_group(db: Session, group: SpaceGroupUpdate):
     try:
         db.commit()
         db.refresh(sg)
-        return sg
+        return get_space_response(sg)
     except IntegrityError as e:
         db.rollback()
         return error_response(

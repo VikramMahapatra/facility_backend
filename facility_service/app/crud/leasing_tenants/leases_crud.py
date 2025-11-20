@@ -191,8 +191,8 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 # ----------------------------------------------------
 # ✅ Update lease
 # ----------------------------------------------------
-def update(db: Session, payload: LeaseUpdate) -> Optional[Lease]:
-    obj = get_by_id(db, payload.id)
+def update(db: Session, payload: LeaseUpdate):
+    obj = get_by_id(db, payload.id)  # This gets basic lease data
     if not obj:
         return None
 
@@ -214,7 +214,8 @@ def update(db: Session, payload: LeaseUpdate) -> Optional[Lease]:
 
     db.commit()
     db.refresh(obj)
-    return obj
+    # Return complete lease data like building CRUD
+    return get_lease_by_id(db, payload.id)
 
 
 # ----------------------------------------------------
@@ -352,3 +353,35 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
         )
 
     return partners
+
+
+def get_lease_by_id(db: Session, lease_id: str):
+   
+    lease_query = (
+        db.query(
+            Lease,
+            Site.name.label("site_name"),
+            Space.code.label("space_code"),
+            func.coalesce(CommercialPartner.legal_name, Tenant.name).label("tenant_name")
+        )
+        .join(Site, Site.id == Lease.site_id)
+        .outerjoin(Space, Space.id == Lease.space_id)
+        .outerjoin(CommercialPartner, CommercialPartner.id == Lease.partner_id)
+        .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
+        .filter(
+            Lease.id == lease_id,
+            Lease.is_deleted == False
+        )
+    )
+
+    result = lease_query.first()
+    if result:
+        lease, site_name, space_code, tenant_name = result
+        data = {
+            **lease.__dict__,
+            "site_name": site_name,
+            "space_code": space_code,
+            "tenant_name": tenant_name
+        }
+        return LeaseOut.model_validate(data)
+    return None

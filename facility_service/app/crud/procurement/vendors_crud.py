@@ -226,25 +226,28 @@ def delete_vendor(db: Session, vendor_id: uuid.UUID, org_id: uuid.UUID) -> Optio
 
 def vendor_lookup(db: Session, org_id: UUID):
     contact_name = Vendor.contact["contact_name"].astext
-
+    subquery = (
+        db.query(Vendor.id)
+        .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)
+        .distinct()
+        .subquery()
+    )
     vendors = (
         db.query(
             Vendor.id.label("id"),
             func.concat(
                 Vendor.name,
-                # conditionally append " (contact_name)" only when it exists
                 case(
                     (
                         (contact_name.isnot(None)) & (contact_name != ""),
-                        func.concat(literal(" ("), contact_name, literal(")")),
+                        func.concat(" (", contact_name, ")"),
                     ),
-                    else_=literal(""),
+                    else_="",
                 ),
             ).label("name"),
         )
-        # ✅ Updated filter
-        .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)
-        .distinct()
+        .join(subquery, Vendor.id == subquery.c.id)
+        .order_by(Vendor.name.asc())
         .all()
     )
     return vendors

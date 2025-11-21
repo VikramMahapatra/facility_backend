@@ -234,7 +234,8 @@ def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup
         db.query(SlaPolicy.id, SlaPolicy.service_category)
         .filter(
             SlaPolicy.is_deleted == False,
-            SlaPolicy.site_id == site_id   # STRICT FILTER HERE
+            SlaPolicy.site_id == site_id ,
+            SlaPolicy.active == True # STRICT FILTER HERE
         )
         .order_by(SlaPolicy.service_category.asc())  # ASCENDING ORDER
     )

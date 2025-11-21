@@ -341,7 +341,8 @@ def contact_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None)
         auth_db.query(Users.id, Users.full_name)
         .filter(
             Users.id.in_(user_ids),
-            Users.is_deleted == False
+            Users.is_deleted == False,
+            Users.account_type == "organization" 
         )
         .order_by(Users.full_name.asc())
         .all()

@@ -97,8 +97,8 @@ def get_service_category_lookup(
 
 
 # ---------------- Default Contact Lookup ----------------
-@router.get("/default-contact-lookup", response_model=List[Lookup])
-def get_default_contact_lookup(
+@router.get("/user-contact-lookup", response_model=List[Lookup])
+def get_user_contact_lookup(
     site_id: Optional[str] = Query(None, description="Filter by site ID. Returns empty if no site_id provided."),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),  
@@ -110,18 +110,7 @@ def get_default_contact_lookup(
     return crud.contact_lookup(db, auth_db, site_id)
 
 
-# ---------------- Escalation Contact Lookup ----------------
-@router.get("/escalation-contact-lookup", response_model=List[Lookup])
-def get_escalation_contact_lookup(
-    site_id: Optional[str] = Query(None, description="Filter by site ID. Returns empty if no site_id provided."),
-    db: Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),  
-    current_user: UserToken = Depends(validate_current_token)
-):
-    """
-    Get escalation contacts (users) from staff_sites for dropdown/lookup.
-    """
-    return crud.contact_lookup(db, auth_db, site_id)
+
 
 @router.get("/org-lookup", response_model=List[Lookup])
 def get_org_lookup_endpoint(

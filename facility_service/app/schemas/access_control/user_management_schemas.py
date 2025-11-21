@@ -3,11 +3,13 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime
 from uuid import UUID
 from enum import Enum
+
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from ...schemas.access_control.role_management_schemas import RoleOut
 from shared.core.schemas import CommonQueryParams
 
 
-class UserBase(BaseModel):
+class UserBase(EmptyStringModel):
     org_id: Optional[UUID] = None
     full_name: str
     email: Optional[EmailStr] = None

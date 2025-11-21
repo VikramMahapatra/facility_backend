@@ -357,7 +357,8 @@ async def create_ticket(
         updated_at=datetime.utcnow(),
         preferred_time=data.preferred_time,
         request_type=data.request_type,
-        priority=data.priority
+        priority=data.priority if hasattr(
+            data, "priority") else PriorityType.low
     )
     if file and file.filename:
         file_bytes = await file.read()

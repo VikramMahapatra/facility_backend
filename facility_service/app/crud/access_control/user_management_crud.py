@@ -252,7 +252,8 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
             # Create staff site assignments
             if user.site_ids:
                 for site_id in user.site_ids:
-                    site = db.query(Site).filter(Site.id == site_id).first()
+                    site = facility_db.query(Site).filter(
+                        Site.id == site_id).first()
                     if site:
                         staff_site = StaffSite(
                             user_id=db_user.id,
@@ -371,7 +372,11 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
     # -----------------------
     # ✅ ADDED: VALIDATE EMAIL & PHONE DUPLICATES
     # -----------------------
-    update_data = user.model_dump(exclude_unset=True, exclude={'id', 'roles'})
+    update_data = user.model_dump(
+        exclude_unset=True,
+        exclude={'roles', 'role_ids', 'site_id',
+                 'space_id', 'site_ids', 'tenant_type'}
+    )
 
     # Check email duplicate (if email is being updated)
     if 'email' in update_data and update_data['email'] != db_user.email:
@@ -530,7 +535,8 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
 
             # Add new mappings
             for site_id in user.site_ids:
-                site = db.query(Site).filter(Site.id == site_id).first()
+                site = facility_db.query(Site).filter(
+                    Site.id == site_id).first()
                 if site:
                     facility_db.add(
                         StaffSite(

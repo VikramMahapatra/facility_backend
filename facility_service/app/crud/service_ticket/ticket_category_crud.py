@@ -1,4 +1,5 @@
 # crud/service_ticket/ticket_category_crud.py
+from sqlalchemy.exc import IntegrityError 
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, or_
 from uuid import UUID
@@ -132,36 +133,47 @@ def create_ticket_category(db: Session, category: TicketCategoryCreate) -> Ticke
 # ---------------- Update ----------------
 
 
-def update_ticket_category(db: Session, category: TicketCategoryUpdate) -> TicketCategoryOut:
+def update_ticket_category(db: Session, category: TicketCategoryUpdate):
     db_category = get_ticket_category_by_id(db, category.id)
     if not db_category:
-        raise HTTPException(
-            status_code=404,
-            detail="Ticket category not found"
+        return error_response(
+            message="Ticket category not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
         )
 
     update_data = category.model_dump(exclude_unset=True, exclude={'id'})
-
     # Check for duplicate category name
     new_name = update_data.get('category_name')
     if new_name and new_name != db_category.category_name:
-        if db.query(TicketCategory).filter(
+        existing_category = db.query(TicketCategory).filter(
             TicketCategory.category_name.ilike(new_name.strip()),
             TicketCategory.site_id == db_category.site_id,
             TicketCategory.id != category.id,
             TicketCategory.is_deleted == False
-        ).first():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Ticket category '{new_name}' already exists for this site"
-            )
+        ).first()
 
+        if existing_category:
+            return error_response(
+                message=f"Ticket category '{new_name}' already exists for this site",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
     for key, value in update_data.items():
         setattr(db_category, key, value)
 
-    db.commit()
-    db.refresh(db_category)
-    return db_category
+    try:
+        db.commit()
+        return get_ticket_category_with_site_for_update(db, category.id)
+
+    except IntegrityError as e:
+        db.rollback()
+        return error_response(
+        message="Error updating ticket category",
+        status_code=str(AppStatusCode.OPERATION_ERROR),
+        http_status=400
+    )
+
 
 # ---------------- Soft Delete ----------------
 
@@ -222,7 +234,8 @@ def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup
         db.query(SlaPolicy.id, SlaPolicy.service_category)
         .filter(
             SlaPolicy.is_deleted == False,
-            SlaPolicy.site_id == site_id   # STRICT FILTER HERE
+            SlaPolicy.site_id == site_id ,
+            SlaPolicy.active == True # STRICT FILTER HERE
         )
         .order_by(SlaPolicy.service_category.asc())  # ASCENDING ORDER
     )
@@ -327,3 +340,22 @@ def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
         Lookup(id=row.id, name=row.category_name)
         for row in categories
     ]
+
+
+def get_ticket_category_with_site_for_update(db: Session, category_id: UUID):
+    category = (
+        db.query(TicketCategory)
+        .options(joinedload(TicketCategory.site))
+        .filter(
+            TicketCategory.id == category_id,
+            TicketCategory.is_deleted == False
+        )
+        .first()
+    )
+    
+    if category:
+        return TicketCategoryOut.model_validate({
+            **category.__dict__,
+            "site_name": category.site.name if category.site else None
+        })
+    return None

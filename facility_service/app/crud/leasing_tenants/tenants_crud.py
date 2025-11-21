@@ -417,22 +417,33 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
             if has_active_leases:
                 return error_response(
                     message="Cannot update site, building, or space for a tenant that has active leases"
-                )
-        # ✅ Check if space_id is being updated and if new space already has an ACTIVE tenant
-        if 'space_id' in update_dict and update_dict['space_id'] != db_tenant.space_id:
-            existing_active_tenant_in_new_space = db.query(Tenant).filter(
-                Tenant.space_id == update_dict['space_id'],
-                Tenant.id != tenant_id,  # Exclude current tenant
-                Tenant.is_deleted == False,
-                Tenant.status == "active"  # Only check for active tenants
-            ).first()
+                    )
+            # ✅ Check if space_id is being updated and if new space already has an ACTIVE tenant OR commercial partner
+    if 'space_id' in update_dict and update_dict['space_id'] != db_tenant.space_id:
+        # First check for active individual tenants in the target space
+        existing_active_tenant_in_new_space = db.query(Tenant).filter(
+            Tenant.space_id == update_dict['space_id'],
+            Tenant.id != tenant_id,  # Exclude current tenant
+            Tenant.is_deleted == False,
+            Tenant.status == "active"
+        ).first()
 
-            if existing_active_tenant_in_new_space:
-                return error_response(
-                    message=f"Target space is already occupied by an active tenant. Please select another space.",
-                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                    http_status=400
-                )
+        if existing_active_tenant_in_new_space:
+            return error_response(
+                message=f"Target space is already occupied by an active tenant. Please select another space."
+            )
+        
+        # If no active tenant found, then check for active commercial partners
+        existing_active_partner_in_new_space = db.query(CommercialPartner).filter(
+            CommercialPartner.space_id == update_dict['space_id'],
+            CommercialPartner.is_deleted == False,
+            CommercialPartner.status == "active"
+        ).first()
+
+        if existing_active_partner_in_new_space:
+            return error_response(
+                message=f"Target space is already occupied by an active commercial partner. Please select another space."
+            )
 
         # Check for duplicate name (case-insensitive) if name is being updated
         if 'name' in update_dict and update_dict['name'] != db_tenant.name:
@@ -494,21 +505,32 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                     message="Cannot update site, building, or space for a commercial partner that has active leases"
                 )
 
-        # ✅ Check if space_id is being updated and if new space already has an ACTIVE commercial partner
-        if 'space_id' in update_dict and update_dict['space_id'] != db_partner.space_id:
-            existing_active_partner_in_new_space = db.query(CommercialPartner).filter(
-                CommercialPartner.space_id == update_dict['space_id'],
-                CommercialPartner.id != tenant_id,  # Exclude current partner
-                CommercialPartner.is_deleted == False,
-                CommercialPartner.status == "active"  # Only check for active partners
-            ).first()
+    # ✅ Check if space_id is being updated and if new space already has an ACTIVE commercial partner OR tenant
+    if 'space_id' in update_dict and update_dict['space_id'] != db_partner.space_id:
+        # First check for active commercial partners in the target space
+        existing_active_partner_in_new_space = db.query(CommercialPartner).filter(
+            CommercialPartner.space_id == update_dict['space_id'],
+            CommercialPartner.id != tenant_id,  # Exclude current partner
+            CommercialPartner.is_deleted == False,
+            CommercialPartner.status == "active"
+        ).first()
 
-            if existing_active_partner_in_new_space:
-                return error_response(
-                    message=f"Target space is already occupied by an active commercial partner. Please select another space.",
-                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                    http_status=400
-                )
+        if existing_active_partner_in_new_space:
+            return error_response(
+                message=f"Target space is already occupied by an active commercial partner. Please select another space."
+            )
+        
+        # If no active commercial partner found, then check for active tenants
+        existing_active_tenant_in_new_space = db.query(Tenant).filter(
+            Tenant.space_id == update_dict['space_id'],
+            Tenant.is_deleted == False,
+            Tenant.status == "active"
+        ).first()
+
+        if existing_active_tenant_in_new_space:
+            return error_response(
+                message=f"Target space is already occupied by an active tenant. Please select another space."
+            )
 
         # Check for duplicate legal_name (case-insensitive) if being updated
         new_legal_name = update_dict.get(

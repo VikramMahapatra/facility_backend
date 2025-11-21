@@ -4,7 +4,7 @@ from .router.system import notifications_router
 from .router.procurement import contracts_router, vendor_router
 from .router.mobile_app import master_router, home_router, help_desk_router, user_profile_router
 from .router.common import export_router
-from .router.service_ticket import tickets_router, ticket_category_router, ticket_dashboard_router, ticket_workload_router
+from .router.service_ticket import tickets_router, ticket_category_router, ticket_dashboard_router, ticket_workload_router ,sla_policy_router
 from .router.energy_iot import meter_readings_router, meters_router, consumption_report_router
 from .router.overview import analytics_router, dashboard_router
 from .router.hospitality import bookings_router, rate_plans_router, housekeeping_tasks_router
@@ -132,3 +132,4 @@ app.include_router(notifiaction_settings_router.router)
 app.include_router(ticket_category_router.router)
 app.include_router(ticket_dashboard_router.router)
 app.include_router(ticket_workload_router.router)
+app.include_router(sla_policy_router.router)

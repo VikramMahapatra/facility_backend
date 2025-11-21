@@ -104,9 +104,6 @@ def get_user_contact_lookup(
     auth_db: Session = Depends(get_auth_db),  
     current_user: UserToken = Depends(validate_current_token)
 ):
-    """
-    Get default contacts (users) from staff_sites for dropdown/lookup.
-    """
     return crud.contact_lookup(db, auth_db, site_id)
 
 

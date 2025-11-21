@@ -405,6 +405,20 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 status_code=str(AppStatusCode.OPERATION_ERROR),
                 http_status=404
             )
+    # Check if trying to update site/building/space when active leases exist
+        location_fields_updated = any(field in update_dict for field in ['site_id', 'building_id', 'space_id'])
+        if location_fields_updated:
+            # Check if tenant has any active leases
+            has_active_leases = db.query(Lease).filter(
+                Lease.tenant_id == tenant_id,
+                Lease.is_deleted == False,
+                func.lower(Lease.status) == func.lower('active')  
+            ).first()
+
+            if has_active_leases:
+                return error_response(
+                    message="Cannot update site, building, or space for a tenant that has active leases"
+                )
 
         # ✅ Check if space_id is being updated and if new space already has an ACTIVE tenant
         if 'space_id' in update_dict and update_dict['space_id'] != db_tenant.space_id:
@@ -467,6 +481,20 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 status_code=str(AppStatusCode.OPERATION_ERROR),
                 http_status=404
             )
+    #Check if trying to update site/building/space when active leases exist
+        location_fields_updated = any(field in update_dict for field in ['site_id', 'building_id', 'space_id'])
+        if location_fields_updated:
+            # Check if commercial partner has any active leases
+            has_active_leases = db.query(Lease).filter(
+                Lease.commercial_partner_id == tenant_id,
+                Lease.is_deleted == False,
+                func.lower(Lease.status) == func.lower('active')  
+            ).first()
+
+            if has_active_leases:
+                return error_response(
+                    message="Cannot update site, building, or space for a commercial partner that has active leases"
+                )
 
         # ✅ Check if space_id is being updated and if new space already has an ACTIVE commercial partner
         if 'space_id' in update_dict and update_dict['space_id'] != db_partner.space_id:

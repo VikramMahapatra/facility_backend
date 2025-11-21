@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 
 from auth_service.app.models.commercial_partner_safe import CommercialPartnerSafe
 from auth_service.app.models.roles import Roles
+from facility_service.app.models.leasing_tenants.leases import Lease
 from shared.models.users import Users
 from auth_service.app.models.userroles import UserRoles
 from ...models.common.staff_sites import StaffSite
@@ -443,8 +444,55 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
                 message="space & Site required for individual tenant",
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
             )
+    # VALIDATION: Check if trying to update site/space when active leases exist
+        # First, get the current tenant/partner to check existing site/space
+        current_tenant = facility_db.query(Tenant).filter(
+            Tenant.user_id == db_user.id,
+            Tenant.is_deleted == False,
+            func.lower(Tenant.status) == func.lower('active') 
+        ).first()
+        
+        current_partner = facility_db.query(CommercialPartnerSafe).filter(
+            CommercialPartnerSafe.user_id == db_user.id,
+            CommercialPartnerSafe.is_deleted == False
+        ).first()
+        
+        # Check if site/space is being updated
+        site_changing = user.site_id is not None and (
+            (current_tenant and user.site_id != current_tenant.site_id) or 
+            (current_partner and user.site_id != current_partner.site_id)
+        )
+        
+        space_changing = user.space_id is not None and (
+            (current_tenant and user.space_id != current_tenant.space_id) or 
+            (current_partner and user.space_id != current_partner.space_id)
+        )
+        
+        if site_changing or space_changing:
+            # Check if tenant user has any active leases
+            has_active_leases = False
+            
+            # Check for individual tenant leases
+            if current_tenant:
+                has_active_leases = facility_db.query(Lease).filter(
+                    Lease.tenant_id == current_tenant.id,
+                    Lease.is_deleted == False,
+                    func.lower(Lease.status) == func.lower('active')
+                ).first() is not None
+            
+            # Check for commercial partner leases
+            if not has_active_leases and current_partner:
+                has_active_leases = facility_db.query(Lease).filter(
+                    Lease.commercial_partner_id == current_partner.id,
+                    Lease.is_deleted == False,
+                    func.lower(Lease.status) == func.lower('active')
+                ).first() is not None
 
-        # ✅ ADDED: VALIDATE SPACE OCCUPANCY FOR TENANT
+            if has_active_leases:
+                return error_response(
+                    message="Cannot update site or space for a tenant user that has active leases"
+                )
+       
         if user.space_id:
             existing_tenant = facility_db.query(Tenant).filter(
                 Tenant.space_id == user.space_id,

@@ -164,7 +164,26 @@ def update_space(db: Session, space: SpaceUpdate):
 
     update_data = space.model_dump(
         exclude_unset=True, exclude={"building_block"})
+    # Check if trying to update site or building when tenants/leases exist
+    if ('site_id' in update_data or 'building_block_id' in update_data):
+        # Check if space has any active tenants
+        has_tenants = db.query(Tenant).filter(
+            Tenant.space_id == space.id,
+            Tenant.is_deleted == False
+        ).first()
+        
+        # Check if space has any active leases
+        has_leases = db.query(Lease).filter(
+            Lease.space_id == space.id,
+            Lease.is_deleted == False,
+            func.lower(Lease.status) == func.lower('active') 
+        ).first()
 
+        if has_tenants or has_leases:
+            return error_response(
+                message="Cannot update site or building for a space that has tenants or leases"
+            )
+        
     # Check for code duplicates within same building (if building exists and code is being updated)
     if 'code' in update_data and db_space.building_block_id:
         existing_space = db.query(Space).filter(

@@ -381,7 +381,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
             "space_id": tenant.space_id,
             "type": tenant.type or "merchant",
             "legal_name": legal_name,
-            "contact": tenant.contact_info.dict() if tenant.contact_info else None,
+            "contact": tenant.contact_info if tenant.contact_info else {},
             "status": "active",  # Default to active when creating
             "created_at": now,
             "updated_at": now,
@@ -414,12 +414,10 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 Lease.is_deleted == False,
                 func.lower(Lease.status) == func.lower('active')  
             ).first()
-
             if has_active_leases:
                 return error_response(
                     message="Cannot update site, building, or space for a tenant that has active leases"
                 )
-
         # ✅ Check if space_id is being updated and if new space already has an ACTIVE tenant
         if 'space_id' in update_dict and update_dict['space_id'] != db_tenant.space_id:
             existing_active_tenant_in_new_space = db.query(Tenant).filter(

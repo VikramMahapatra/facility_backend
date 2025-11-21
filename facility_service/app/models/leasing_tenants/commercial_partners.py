@@ -26,6 +26,6 @@ class CommercialPartner(Base):
     updated_at = Column(DateTime(timezone=True),
                         server_default=func.now(), onupdate=func.now())
 
-    leases = relationship("Lease", back_populates="partner")
+    leases = relationship("Lease", back_populates="partner",viewonly=True)
     site = relationship("Site", back_populates="partners")
     space = relationship("Space", back_populates="partners")

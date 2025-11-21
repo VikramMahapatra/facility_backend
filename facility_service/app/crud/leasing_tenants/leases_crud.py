@@ -334,7 +334,7 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
                 )
             )
             .distinct()
-            .order_by(CommercialPartner.legal_name.asc())  
+            .order_by(CommercialPartner.legal_name.asc())
             .all()
         )
     else:
@@ -356,32 +356,43 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
 
 
 def get_lease_by_id(db: Session, lease_id: str):
-   
-    lease_query = (
-        db.query(
-            Lease,
-            Site.name.label("site_name"),
-            Space.code.label("space_code"),
-            func.coalesce(CommercialPartner.legal_name, Tenant.name).label("tenant_name")
-        )
+    lease = (
+        db.query(Lease)
         .join(Site, Site.id == Lease.site_id)
-        .outerjoin(Space, Space.id == Lease.space_id)
-        .outerjoin(CommercialPartner, CommercialPartner.id == Lease.partner_id)
         .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
-        .filter(
-            Lease.id == lease_id,
-            Lease.is_deleted == False
-        )
+        .outerjoin(CommercialPartner, CommercialPartner.id == Lease.partner_id)
+        .filter(Lease.id == lease_id)
+        .first()
     )
 
-    result = lease_query.first()
-    if result:
-        lease, site_name, space_code, tenant_name = result
-        data = {
+    tenant_name = None
+    if lease.partner is not None:
+        tenant_name = lease.partner.legal_name
+    elif lease.tenant is not None:
+        tenant_name = lease.tenant.name
+    else:
+        tenant_name = "Unknown"
+
+    space_code = None
+    site_name = None
+    if lease.space_id:
+        space_code = (
+            db.query(Space.code)
+            .filter(Space.id == lease.space_id, Space.is_deleted == False)
+            .scalar()
+        )
+    if lease.site_id:
+        site_name = (
+            db.query(Site.name)
+            .filter(Site.id == lease.site_id, Site.is_deleted == False)
+            .scalar()
+        )
+
+    return LeaseOut.model_validate(
+        {
             **lease.__dict__,
-            "site_name": site_name,
             "space_code": space_code,
-            "tenant_name": tenant_name
+            "site_name": site_name,
+            "tenant_name": tenant_name,
         }
-        return LeaseOut.model_validate(data)
-    return None
+    )

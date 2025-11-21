@@ -128,6 +128,19 @@ def update_building(db: Session, building: BuildingUpdate):
 
     update_data = building.model_dump(exclude_unset=True)
 
+    # Check if trying to update site when spaces exist
+    if 'site_id' in update_data:
+        # Check if building has any active spaces
+        has_spaces = db.query(Space).filter(
+            Space.building_block_id == building.id,
+            Space.is_deleted == False,
+            func.lower(Space.status) == func.lower('occupied') 
+        ).first()
+
+        if has_spaces:
+            return error_response(
+                message="Cannot update site for a building that has spaces assigned to it"
+            )
     # Check for duplicates only if name is being updated
     if 'name' in update_data:
         existing_building = db.query(Building).filter(

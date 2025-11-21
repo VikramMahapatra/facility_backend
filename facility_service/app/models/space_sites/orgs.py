@@ -45,3 +45,6 @@ class Org(Base):
 
     staff_sites = relationship(
         "StaffSite", back_populates="org", cascade="all, delete-orphan")
+
+        # ✅ Relationship with SLA policies
+    sla_policies = relationship("SlaPolicy", back_populates="org", cascade="all, delete-orphan")

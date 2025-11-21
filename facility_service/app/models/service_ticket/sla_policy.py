@@ -25,7 +25,11 @@ class SlaPolicy(Base):
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"), nullable=True)
     # 🆕 Soft delete fields
     is_deleted = Column(Boolean, default=False)
+        # ✅ New column: Organization ID
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False)
 
     categories = relationship("TicketCategory", back_populates="sla_policy")
     # Optional relationship with Site (if you have a Site model)
     site = relationship("Site", back_populates="sla_policies", lazy="joined")
+     # ✅ New relationship with Organization
+    org = relationship("Org", back_populates="sla_policies", lazy="joined")

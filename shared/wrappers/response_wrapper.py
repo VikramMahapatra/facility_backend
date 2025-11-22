@@ -86,13 +86,34 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
             if isinstance(data, dict) and {
                 "status", "status_code", "message"
             }.issubset(data.keys()):
+
+                # --- FIX message if it contains embedded dict inside a string ---
+                msg = data.get("message")
+
+                # Detect bad message like: "400: {'data': ...}"
+                if isinstance(msg, str) and "{" in msg and "}" in msg:
+                    try:
+                        # Extract the JSON-like dict inside the string
+                        inner = msg.split(":", 1)[1].strip()
+                        # convert to valid JSON
+                        inner = inner.replace("'", "\"")
+                        parsed = json.loads(inner)
+
+                        # If parsed successfully, override the message + status_code
+                        if isinstance(parsed, dict):
+                            data["message"] = parsed.get(
+                                "message", data["message"])
+                            data["status_code"] = parsed.get(
+                                "status_code", data["status_code"])
+                    except Exception:
+                        pass  # fallback to original message
+
                 return JSONResponse(
                     status_code=response.status_code,
                     content=replace_nulls_with_empty(data),
                 )
 
             message = error_message
-            internal_status_code = str(response.status_code)
 
             if isinstance(data, dict):
                 if isinstance(data.get("detail"), dict):

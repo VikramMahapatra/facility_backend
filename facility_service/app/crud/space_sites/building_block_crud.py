@@ -103,6 +103,20 @@ def create_building(db: Session, building: BuildingCreate):
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
+    
+    # Check if site already has spaces before creating building
+    if building.site_id:
+        # Check if the site has any active spaces
+        has_spaces = db.query(Space).filter(
+            Space.site_id == building.site_id,
+            Space.is_deleted == False
+        ).first()
+
+        if has_spaces:
+            site_name = db.query(Site.name).filter(Site.id == building.site_id).scalar()
+            return error_response(
+                message=f"Cannot create building in site '{site_name}' that already has spaces assigned to it"
+            )
 
     # Create building - exclude org_id if not needed in model
     building_data = building.model_dump(exclude={"org_id"})

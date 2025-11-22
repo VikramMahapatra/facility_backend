@@ -271,8 +271,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                 db.delete(db_user)
                 db.commit()
                 return error_response(
-                    message="space & Site required for individual tenant",
-                    status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+                    message="space & Site required for individual tenant"
                 )
 
             # Check if space already has a tenant
@@ -286,8 +285,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                 db.delete(db_user)
                 db.commit()
                 return error_response(
-                    message="This space is already occupied by another tenant",
-                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+                    message="This space is already occupied by another tenant"
                 )
 
             # ==== NEW VALIDATION ADDED HERE ====

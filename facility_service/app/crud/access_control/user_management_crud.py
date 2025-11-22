@@ -290,6 +290,48 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                     status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
                 )
 
+            # ==== NEW VALIDATION ADDED HERE ====
+            # VALIDATION: Check if space has active leases before creating tenant user
+            if user.space_id:
+                # Check if the space has any active leases
+                has_active_leases = facility_db.query(Lease).filter(
+                    Lease.space_id == user.space_id,
+                    Lease.is_deleted == False,
+                    func.lower(Lease.status) == func.lower('active')
+                ).first()
+
+                if has_active_leases:
+                    # ✅ ROLLBACK user creation if space has active leases
+                    db.delete(db_user)
+                    db.commit()
+                    return error_response(
+                        message="Cannot create tenant user in a space that has active leases"
+                    )
+
+            # ADDITIONAL VALIDATION: Check if building has active leases
+            if user.space_id:
+                # Get the building ID from the space
+                space_record = facility_db.query(Space).filter(
+                    Space.id == user.space_id,
+                    Space.is_deleted == False
+                ).first()
+                
+                if space_record and space_record.building_block_id:
+                    # Check if any spaces in this building have active leases
+                    has_building_active_leases = facility_db.query(Lease).join(Space).filter(
+                        Space.building_block_id == space_record.building_block_id,
+                        Lease.is_deleted == False,
+                        func.lower(Lease.status) == func.lower('active')
+                    ).first()
+
+                    if has_building_active_leases:
+                        # ✅ ROLLBACK user creation if building has active leases
+                        db.delete(db_user)
+                        db.commit()
+                        return error_response(
+                            message="Cannot create tenant user in a building that has active leases" 
+                        )
+
             if user.tenant_type == "individual":
                 tenant_obj = Tenant(
                     site_id=user.site_id,

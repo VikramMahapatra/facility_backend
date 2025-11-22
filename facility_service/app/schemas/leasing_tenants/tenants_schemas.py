@@ -51,9 +51,11 @@ class TenantOut(BaseModel):
     contact_info: Optional[Any] = None
     tenant_leases: Optional[List[LeaseOut]] = None
 
-    # ADD ONLY THESE - frontend will handle name lookups
-    space_id: Optional[UUID] = None
-    building_block_id: Optional[UUID] = None  # ✅ Correct name
+    # ADD THESE FIELDS FOR DISPLAY
+    site_name: Optional[str] = None
+    building_name: Optional[str] = None  
+    space_name: Optional[str] = None
+    building_block_id: Optional[UUID] = None
 
     model_config = {"from_attributes": True}
 

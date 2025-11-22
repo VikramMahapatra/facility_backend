@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import String, func, extract, or_, cast, Date
 from sqlalchemy import desc
 
+from shared.helpers.json_response_helper import error_response
+
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
@@ -168,6 +170,12 @@ def get_lease_charge_by_id(db: Session, charge_id: UUID):
 
 
 def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
+        # ✅ ADD VALIDATION
+    if payload.tax_pct is not None:
+        if payload.tax_pct < Decimal('0') or payload.tax_pct > Decimal('100'):
+            return error_response(
+                        message="Tax percentage must be between 0 and 100"
+                    )
     obj = LeaseCharge(**payload.model_dump())
     db.add(obj)
     db.commit()
@@ -179,6 +187,11 @@ def update_lease_charge(
     db: Session,
     payload: LeaseChargeUpdate
 ) -> Optional[LeaseCharge]:
+    if payload.tax_pct is not None:
+        if payload.tax_pct < Decimal('0') or payload.tax_pct > Decimal('100'):
+            return error_response(
+                        message="Tax percentage must be between 0 and 100"
+            )
     obj = get_lease_charge_by_id(db, payload.id)
     if not obj:
         return None

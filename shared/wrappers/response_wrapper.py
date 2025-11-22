@@ -1,3 +1,4 @@
+import ast
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
@@ -89,7 +90,6 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
 
                 # --- FIX message if it contains embedded dict inside a string ---
                 msg = data.get("message")
-
                 # Detect bad message like: "400: {'data': ...}"
                 if isinstance(msg, str) and "{" in msg and "}" in msg:
                     try:
@@ -97,7 +97,7 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
                         inner = msg.split(":", 1)[1].strip()
                         # convert to valid JSON
                         inner = inner.replace("'", "\"")
-                        parsed = json.loads(inner)
+                        parsed = ast.literal_eval(inner)
 
                         # If parsed successfully, override the message + status_code
                         if isinstance(parsed, dict):
@@ -105,12 +105,13 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
                                 "message", data["message"])
                             data["status_code"] = parsed.get(
                                 "status_code", data["status_code"])
-                    except Exception:
+                    except Exception as e :
                         pass  # fallback to original message
-
                 return JSONResponse(
                     status_code=response.status_code,
                     content=replace_nulls_with_empty(data),
+                    headers={k: v for k, v in response.headers.items(
+                    ) if k.lower() != "content-length"},
                 )
 
             message = error_message

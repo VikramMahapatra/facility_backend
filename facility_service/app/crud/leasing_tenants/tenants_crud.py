@@ -109,7 +109,7 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
                     # ✅ ADD THESE FIELDS
             Site.name.label("site_name"),
             Building.name.label("building_name"), 
-            Space.code.label("space_name"),
+            Space.name.label("space_name"),
             Tenant.updated_at.label("sort_field"),  # ← newest first
         )
         .select_from(Tenant)                     # 👈 ADD THIS LINE
@@ -158,7 +158,7 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
                         # ✅ ADD THESE FIELDS
             Site.name.label("site_name"),
             Building.name.label("building_name"),
-            Space.code.label("space_name"),
+            Space.name.label("space_name"),
             CommercialPartner.updated_at.label("sort_field"),  # ← newest first
         )
         .select_from(CommercialPartner)                     # 👈 ADD THIS LINE

@@ -139,9 +139,29 @@ def create_space(db: Session, space: SpaceCreate):
             building_name = db.query(Building.name).filter(
                 Building.id == space.building_block_id).scalar()
             return error_response(
-                message=f"Space with name '{space.name}' already exists in building '{building_name}'",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message=f"Space with name '{space.name}' already exists in building '{building_name}'"
+            )
+    
+        # VALIDATION: Check if building has tenants or leases before creating space
+    if space.building_block_id:
+        # Check if any spaces in this building have active tenants
+        has_tenants = db.query(Tenant).join(Space).filter(
+            Space.building_block_id == space.building_block_id,
+            Tenant.is_deleted == False
+        ).first()
+        
+        # Check if any spaces in this building have active leases
+        has_leases = db.query(Lease).join(Space).filter(
+            Space.building_block_id == space.building_block_id,
+            Lease.is_deleted == False,
+            func.lower(Lease.status) == func.lower('active')
+        ).first()
+
+        if has_tenants or has_leases:
+            building_name = db.query(Building.name).filter(
+                Building.id == space.building_block_id).scalar()
+            return error_response(
+                message=f"Cannot create space in building '{building_name}' that already has tenants or active leases",
             )
 
     # Create space - exclude building_block field
@@ -164,7 +184,26 @@ def update_space(db: Session, space: SpaceUpdate):
 
     update_data = space.model_dump(
         exclude_unset=True, exclude={"building_block"})
+    # Check if trying to update site or building when tenants/leases exist
+    if ('site_id' in update_data or 'building_block_id' in update_data):
+        # Check if space has any active tenants
+        has_tenants = db.query(Tenant).filter(
+            Tenant.space_id == space.id,
+            Tenant.is_deleted == False
+        ).first()
+        
+        # Check if space has any active leases
+        has_leases = db.query(Lease).filter(
+            Lease.space_id == space.id,
+            Lease.is_deleted == False,
+            func.lower(Lease.status) == func.lower('active') 
+        ).first()
 
+        if has_tenants or has_leases:
+            return error_response(
+                message="Cannot update site or building for a space that has tenants or leases"
+            )
+        
     # Check for code duplicates within same building (if building exists and code is being updated)
     if 'code' in update_data and db_space.building_block_id:
         existing_space = db.query(Space).filter(

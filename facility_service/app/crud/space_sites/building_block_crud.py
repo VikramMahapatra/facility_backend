@@ -103,6 +103,20 @@ def create_building(db: Session, building: BuildingCreate):
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
+    
+    # Check if site already has spaces before creating building
+    if building.site_id:
+        # Check if the site has any active spaces
+        has_spaces = db.query(Space).filter(
+            Space.site_id == building.site_id,
+            Space.is_deleted == False
+        ).first()
+
+        if has_spaces:
+            site_name = db.query(Site.name).filter(Site.id == building.site_id).scalar()
+            return error_response(
+                message=f"Cannot create building in site '{site_name}' that already has spaces assigned to it"
+            )
 
     # Create building - exclude org_id if not needed in model
     building_data = building.model_dump(exclude={"org_id"})
@@ -128,6 +142,19 @@ def update_building(db: Session, building: BuildingUpdate):
 
     update_data = building.model_dump(exclude_unset=True)
 
+    # Check if trying to update site when spaces exist
+    if 'site_id' in update_data:
+        # Check if building has any active spaces
+        has_spaces = db.query(Space).filter(
+            Space.building_block_id == building.id,
+            Space.is_deleted == False,
+            func.lower(Space.status) == func.lower('occupied') 
+        ).first()
+
+        if has_spaces:
+            return error_response(
+                message="Cannot update site for a building that has spaces assigned to it"
+            )
     # Check for duplicates only if name is being updated
     if 'name' in update_data:
         existing_building = db.query(Building).filter(

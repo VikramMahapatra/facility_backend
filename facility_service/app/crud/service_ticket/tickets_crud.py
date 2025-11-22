@@ -160,7 +160,7 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
     subq = base_query.with_entities(Ticket.id).subquery()
     total = db.query(func.count()).select_from(subq).scalar()
 
-    query = base_query.order_by(desc(Ticket.created_at))
+    query = base_query.order_by(desc(Ticket.updated_at))
 
     if params.skip is not None:
         query = query.offset(params.skip)

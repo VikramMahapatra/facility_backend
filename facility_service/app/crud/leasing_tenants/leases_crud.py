@@ -7,7 +7,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.leasing_tenants.lease_charges import LeaseCharge
-
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response
 from ...enum.leasing_tenants_enum import LeaseKind, LeaseStatus
 from shared.core.schemas import Lookup
 
@@ -171,13 +172,27 @@ def get_by_id(db: Session, lease_id: str) -> Optional[Lease]:
 
 
 # ----------------------------------------------------
-# ✅ Create new lease
+# ✅ Create new lease with space validation
 # ----------------------------------------------------
 def create(db: Session, payload: LeaseCreate) -> Lease:
     if payload.kind == "commercial" and not payload.partner_id:
         raise ValueError("partner_id is required for commercial leases")
     if payload.kind == "residential" and not payload.tenant_id:
         raise ValueError("tenant_id is required for residential leases")
+
+    # ✅ Validate that space doesn't have another ACTIVE lease
+    existing_active_lease = db.query(Lease).filter(
+        Lease.space_id == payload.space_id,
+        Lease.is_deleted == False,
+        Lease.status == "active"  # ONLY check for ACTIVE leases
+    ).first()
+
+    if existing_active_lease:
+        return error_response(
+            message="Space is already occupied by an active lease. Please select another space or terminate the existing lease first.",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
 
     lease_data = payload.model_dump(exclude={"reference"})
 
@@ -189,14 +204,46 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
 
 # ----------------------------------------------------
-# ✅ Update lease
+# ✅ Update lease with space validation
 # ----------------------------------------------------
 def update(db: Session, payload: LeaseUpdate):
-    obj = get_by_id(db, payload.id)  # This gets basic lease data
+    obj = get_by_id(db, payload.id)
     if not obj:
         return None
 
     data = payload.model_dump(exclude_unset=True)
+
+    # ✅ If space_id is being changed, validate the new space doesn't have ACTIVE leases
+    if 'space_id' in data and data['space_id'] != obj.space_id:
+        existing_active_lease = db.query(Lease).filter(
+            Lease.space_id == data['space_id'],
+            Lease.is_deleted == False,
+            Lease.status == "active",  
+            Lease.id != payload.id  
+        ).first()
+
+        if existing_active_lease:
+            return error_response(
+                message="Target space already has an active lease. Please select another space.",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
+
+    # ✅ If status is being changed to ACTIVE, validate the space doesn't have other ACTIVE leases
+    if 'status' in data and data['status'] == 'active':
+        existing_active_lease = db.query(Lease).filter(
+            Lease.space_id == obj.space_id,
+            Lease.is_deleted == False,
+            Lease.status == "active",  # ONLY check for ACTIVE
+            Lease.id != payload.id  # Exclude current lease
+        ).first()
+
+        if existing_active_lease:
+            return error_response(
+                message="Cannot set lease to active because the space already has an active lease.",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
 
     kind = data.get("kind", obj.kind)
     partner_id = data.get("partner_id", obj.partner_id)
@@ -214,9 +261,7 @@ def update(db: Session, payload: LeaseUpdate):
 
     db.commit()
     db.refresh(obj)
-    # Return complete lease data like building CRUD
     return get_lease_by_id(db, payload.id)
-
 
 # ----------------------------------------------------
 # ✅ Delete lease (with safety checks)

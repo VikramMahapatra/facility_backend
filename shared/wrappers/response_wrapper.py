@@ -82,31 +82,42 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
         error_message = "An unexpected error occurred"
         # Error responses (4xx/5xx)
         if not (200 <= response.status_code < 400):
+            # If custom handler returned already wrapped error — use it directly
+            if isinstance(data, dict) and {
+                "status", "status_code", "message"
+            }.issubset(data.keys()):
+                return JSONResponse(
+                    status_code=response.status_code,
+                    content=replace_nulls_with_empty(data),
+                )
+
             message = error_message
             internal_status_code = str(response.status_code)
 
-            print(f"status code: {str(response.status_code)}")
-
             if isinstance(data, dict):
-                message = data.get("detail") or data.get("message") or ""
-                internal_status_code = (
-                    str(data.get("detail", {}).get("status_code"))
-                    if isinstance(data.get("detail"), dict)
-                    else str(data.get("status_code") or response.status_code)
-                )
-            elif isinstance(data, str):
-                message = data
+                if isinstance(data.get("detail"), dict):
+                    message = data["detail"].get("message", message)
+                    internal_status = data["detail"].get(
+                        "status_code", str(response.status_code))
+                else:
+                    # Sometimes FastAPI gives: {"detail": "some message"}
+                    message = data.get("detail") or data.get(
+                        "message") or message
+                    internal_status = str(response.status_code)
+            else:
+                message = data if isinstance(data, str) else message
+                internal_status = str(response.status_code)
 
-            print(f"Status Code : {internal_status_code},  Error : {message}")
+            print(f"Status Code : {internal_status},  Error : {message}")
 
-            if internal_status_code == "11":
+            if internal_status == "11":
                 message = error_message
 
             wrapped_error = JsonOutResult(
                 data="",
                 status="Failed",
-                status_code=internal_status_code,
-                message=message,
+                status_code=str(internal_status),
+                message=str(message),
             ).model_dump(exclude_none=False)
 
             wrapped_error = replace_nulls_with_empty(wrapped_error)

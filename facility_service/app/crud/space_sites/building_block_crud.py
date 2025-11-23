@@ -147,8 +147,7 @@ def update_building(db: Session, building: BuildingUpdate):
         # Check if building has any active spaces
         has_spaces = db.query(Space).filter(
             Space.building_block_id == building.id,
-            Space.is_deleted == False,
-            func.lower(Space.status) == func.lower('occupied') 
+            Space.is_deleted == False
         ).first()
 
         if has_spaces:

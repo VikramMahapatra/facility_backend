@@ -180,16 +180,17 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
     if payload.kind == "residential" and not payload.tenant_id:
         raise ValueError("tenant_id is required for residential leases")
 
-    # ✅ Validate that space doesn't have another ACTIVE lease
-    existing_active_lease = db.query(Lease).filter(
+    # ✅ STRICT VALIDATION: Check if space already has ANY lease (active OR inactive)
+    existing_any_lease = db.query(Lease).filter(
         Lease.space_id == payload.space_id,
-        Lease.is_deleted == False,
-        Lease.status == "active"  # ONLY check for ACTIVE leases
+        Lease.is_deleted == False
+        # NO status filter - check ALL leases regardless of status
+        # NO kind filter - check BOTH commercial and residential
     ).first()
 
-    if existing_active_lease:
+    if existing_any_lease:
         return error_response(
-            message="Space is already occupied by an active lease. Please select another space or terminate the existing lease first.",
+            message="This space is already occupied by active commercial partner or tenant.",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
@@ -213,6 +214,34 @@ def update(db: Session, payload: LeaseUpdate):
 
     data = payload.model_dump(exclude_unset=True)
 
+    # ✅ STRICT VALIDATION: Prevent updating partner_id/tenant_id on the same space
+    if 'partner_id' in data or 'tenant_id' in data:
+        # If space is not changing OR we're not changing space_id
+        target_space_id = data.get('space_id', obj.space_id)
+        
+        if target_space_id == obj.space_id:
+            return error_response(
+                message="This space is already occupied by active commercial partner or tenant.",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
+
+    # ✅ STRICT VALIDATION: Check if space already has ANY lease (active OR inactive)
+    target_space_id = data.get('space_id', obj.space_id)
+    
+    existing_any_lease = db.query(Lease).filter(
+        Lease.space_id == target_space_id,
+        Lease.is_deleted == False,
+        Lease.id != payload.id  # Exclude current lease
+    ).first()
+
+    if existing_any_lease:
+        return error_response(
+            message="This space is already occupied by active commercial partner or tenant.",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
+
     # ✅ If space_id is being changed, validate the new space doesn't have ACTIVE leases
     if 'space_id' in data and data['space_id'] != obj.space_id:
         existing_active_lease = db.query(Lease).filter(
@@ -224,7 +253,7 @@ def update(db: Session, payload: LeaseUpdate):
 
         if existing_active_lease:
             return error_response(
-                message="Target space already has an active lease. Please select another space.",
+                message="This space is already occupied by active lease",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
@@ -240,7 +269,7 @@ def update(db: Session, payload: LeaseUpdate):
 
         if existing_active_lease:
             return error_response(
-                message="Cannot set lease to active because the space already has an active lease.",
+                message="This space is already occupied by active lease.",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
@@ -297,7 +326,7 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
     if active_charges_count > 0:
         return {
             "success": True,
-            "message": f"Lease and {active_charges_count} associated charge(s) deleted successfully"
+            "message": f"Lease and {active_charges_count} associated charge deleted successfully"
         }
     else:
         return {"success": True, "message": "Lease deleted successfully"}

@@ -310,7 +310,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
 
         if existing_active_tenant_in_space:
             return error_response(
-                message=f"Space is already occupied by an active tenant. Please select another space.",
+                message=f"This space is already occupied by an active tenant.",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
@@ -324,7 +324,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
 
         if existing_active_partner_in_space:
             return error_response(
-                message=f"Space is already occupied by an active commercial partner. Please select another space.",
+                message=f"This space is already occupied by an active commercial partner.",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
@@ -371,7 +371,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
 
         if existing_active_partner_in_space:
             return error_response(
-            message=f"Space is already occupied by an active commercial partner. Please select another space.",
+            message=f"This space is already occupied by an active commercial partner.",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
@@ -385,7 +385,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
 
         if existing_active_tenant_in_space:
             return error_response(
-            message=f"Space is already occupied by an active tenant. Please select another space.",
+            message=f"This space is already occupied by an active tenant.",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
@@ -459,7 +459,7 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
 
         if existing_active_tenant_in_new_space:
             return error_response(
-                message=f"Target space is already occupied by an active tenant. Please select another space."
+                message=f"This space is already occupied by an active tenant"
             )
         
         # If no active tenant found, then check for active commercial partners
@@ -471,7 +471,7 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
 
         if existing_active_partner_in_new_space:
             return error_response(
-                message=f"Target space is already occupied by an active commercial partner. Please select another space."
+                message=f"This space is already occupied by an active commercial partner."
             )
 
         # Check for duplicate name (case-insensitive) if name is being updated
@@ -546,7 +546,7 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
 
         if existing_active_partner_in_new_space:
             return error_response(
-                message=f"Target space is already occupied by an active commercial partner. Please select another space."
+                message=f"This space is already occupied by an active commercial partner."
             )
         
         # If no active commercial partner found, then check for active tenants
@@ -558,7 +558,7 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
 
         if existing_active_tenant_in_new_space:
             return error_response(
-                message=f"Target space is already occupied by an active tenant. Please select another space."
+                message=f"This space is already occupied by an active tenant"
             )
 
         # Check for duplicate legal_name (case-insensitive) if being updated
@@ -666,7 +666,7 @@ def delete_individual_tenant(db: Session, tenant_id: UUID) -> Dict:
         if active_lease_count > 0:
             return {
                 "success": True,
-                "message": f"Tenant with {active_lease_count} active lease(s) deleted successfully"
+                "message": f"Tenant with {active_lease_count} active lease deleted successfully"
             }
         else:
             return {"success": True, "message": "Tenant deleted successfully"}
@@ -721,7 +721,7 @@ def delete_commercial_partner(db: Session, partner_id: UUID) -> Dict:
         if active_lease_count > 0:
             return {
                 "success": True,
-                "message": f"Commercial partner with {active_lease_count} active lease(s) deleted successfully"
+                "message": f"Commercial partner with {active_lease_count} active lease deleted successfully"
             }
         else:
             return {"success": True, "message": "Commercial partner deleted successfully"}

@@ -51,13 +51,13 @@ def create_user(
 
 
 @router.delete("/{user_id}", response_model=Dict[str, Any])
-def delete_user(user_id: str, db: Session = Depends(get_db)):
-    result = crud.delete_user(db, user_id)
-
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["message"])
-
-    return result
+def delete_user(
+    user_id: str, 
+    db: Session = Depends(get_db),
+    facility_db: Session = Depends(get_facility_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.delete_user(db, facility_db, user_id)
 
 
 @router.get("/status-lookup", response_model=List[Lookup])

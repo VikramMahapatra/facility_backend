@@ -1,9 +1,12 @@
+from datetime import datetime
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from typing import Dict, List, Optional
 
 from auth_service.app.models.commercial_partner_safe import CommercialPartnerSafe
 from auth_service.app.models.roles import Roles
+from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
+from facility_service.app.models.leasing_tenants.lease_charges import LeaseCharge
 from facility_service.app.models.leasing_tenants.leases import Lease
 from shared.models.users import Users
 from auth_service.app.models.userroles import UserRoles
@@ -285,7 +288,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                 db.delete(db_user)
                 db.commit()
                 return error_response(
-                    message="This space is already occupied by another tenant"
+                    message="This space is already occupied by an active tenant"
                 )
 
             # ==== NEW VALIDATION ADDED HERE ====
@@ -497,7 +500,7 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
 
                 if existing_tenant:
                     return error_response(
-                        message="This space is already occupied by another tenant",
+                        message="This space is already occupied by an active tenant",
                         status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
                     )
 
@@ -693,22 +696,190 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
     # FIX: Pass both db and facility_db to get_user
     return get_user(db, db_user.id, facility_db)
 
+def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
+    """Soft delete user and all related data (tenant/partner, leases, charges)"""
+    try:
+        user = get_user_by_id(db, user_id)
+        if not user:
+            return {"success": False, "message": "User not found"}
 
-def delete_user(db: Session, user_id: str) -> Dict:
-    """Soft delete user"""
-    user = get_user_by_id(db, user_id)
-    if not user:
-        return {"success": False, "message": "User not found"}
+        # Store user info for logging/messages
+        user_account_type = user.account_type.lower() if user.account_type else ""
+        user_name = user.full_name or user.email
 
-    # Soft delete the user
-    user.is_deleted = True
-    user.status = "inactive"
+        # ✅ 1. SOFT DELETE THE USER
+        user.is_deleted = True
+        user.status = "inactive"
+        user.updated_at = datetime.utcnow()
+        db.commit()
 
-    db.commit()
+        deleted_entities = []
+        lease_count = 0
+        charge_count = 0
 
-    return {"success": True, "message": "User deleted successfully"}
+        # ✅ 2. DELETE RELATED DATA BASED ON ACCOUNT TYPE
+        if user_account_type == "tenant":
+            # Handle individual tenant
+            tenant = facility_db.query(Tenant).filter(
+                Tenant.user_id == user_id,
+                Tenant.is_deleted == False
+            ).first()
+            
+            if tenant:
+                # Get leases before deletion for counting
+                leases = facility_db.query(Lease).filter(
+                    Lease.tenant_id == tenant.id,
+                    Lease.is_deleted == False
+                ).all()
+                
+                lease_ids = [lease.id for lease in leases]
+                lease_count = len(leases)
+                
+                # Count lease charges
+                if lease_ids:
+                    charge_count = facility_db.query(LeaseCharge).filter(
+                        LeaseCharge.lease_id.in_(lease_ids),
+                        LeaseCharge.is_deleted == False
+                    ).count()
 
+                # Soft delete tenant
+                tenant.is_deleted = True
+                tenant.updated_at = datetime.utcnow()
+                deleted_entities.append("tenant")
 
+                # Soft delete leases
+                if lease_ids:
+                    facility_db.query(Lease).filter(
+                        Lease.id.in_(lease_ids)
+                    ).update({
+                        "is_deleted": True,
+                        "updated_at": datetime.utcnow()
+                    }, synchronize_session=False)
+
+                # Soft delete lease charges
+                if lease_ids:
+                    facility_db.query(LeaseCharge).filter(
+                        LeaseCharge.lease_id.in_(lease_ids),
+                        LeaseCharge.is_deleted == False
+                    ).update({
+                        "is_deleted": True,
+                        "updated_at": datetime.utcnow()
+                    }, synchronize_session=False)
+
+            # Handle commercial partner
+            partner = facility_db.query(CommercialPartnerSafe).filter(
+                CommercialPartnerSafe.user_id == user_id,
+                CommercialPartnerSafe.is_deleted == False
+            ).first()
+            
+            if partner:
+                # Get leases before deletion for counting
+                leases = facility_db.query(Lease).filter(
+                    Lease.partner_id == partner.id,
+                    Lease.is_deleted == False
+                ).all()
+                
+                lease_ids = [lease.id for lease in leases]
+                lease_count = len(leases)
+                
+                # Count lease charges
+                if lease_ids:
+                    charge_count = facility_db.query(LeaseCharge).filter(
+                        LeaseCharge.lease_id.in_(lease_ids),
+                        LeaseCharge.is_deleted == False
+                    ).count()
+
+                # Soft delete commercial partner
+                partner.is_deleted = True
+                partner.updated_at = datetime.utcnow()
+                deleted_entities.append("commercial partner")
+
+                # Soft delete leases
+                if lease_ids:
+                    facility_db.query(Lease).filter(
+                        Lease.id.in_(lease_ids)
+                    ).update({
+                        "is_deleted": True,
+                        "updated_at": datetime.utcnow()
+                    }, synchronize_session=False)
+
+                # Soft delete lease charges
+                if lease_ids:
+                    facility_db.query(LeaseCharge).filter(
+                        LeaseCharge.lease_id.in_(lease_ids),
+                        LeaseCharge.is_deleted == False
+                    ).update({
+                        "is_deleted": True,
+                        "updated_at": datetime.utcnow()
+                    }, synchronize_session=False)
+
+        elif user_account_type == "vendor":
+            # Handle vendor deletion
+            vendor = facility_db.query(Vendor).filter(
+                Vendor.contact['user_id'].astext == str(user_id),
+                Vendor.is_deleted == False
+            ).first()
+            
+            if vendor:
+                vendor.is_deleted = True
+                vendor.updated_at = datetime.utcnow()
+                deleted_entities.append("vendor")
+
+        elif user_account_type == "staff":
+            # Handle staff site assignments deletion
+            staff_sites = facility_db.query(StaffSite).filter(
+                StaffSite.user_id == user_id
+            ).all()
+            
+            if staff_sites:
+                for staff_site in staff_sites:
+                    facility_db.delete(staff_site)
+                deleted_entities.append("staff site assignments")
+
+        # ✅ 3. DELETE USER ROLES
+        user_roles = db.query(UserRoles).filter(
+            UserRoles.user_id == user_id
+        ).all()
+        
+        if user_roles:
+            for user_role in user_roles:
+                db.delete(user_role)
+            deleted_entities.append("user roles")
+
+        # Commit all facility database changes
+        facility_db.commit()
+        db.commit()
+
+        # ✅ 4. PREPARE SUCCESS MESSAGE
+        message_parts = [f"User '{user_name}' deleted successfully"]
+        
+        if deleted_entities:
+            message_parts.append(f"Deleted related: {', '.join(deleted_entities)}")
+        
+        if lease_count > 0:
+            message_parts.append(f"{lease_count} lease(s)")
+        
+        if charge_count > 0:
+            message_parts.append(f"{charge_count} charge(s)")
+
+        return {
+            "success": True,
+            "message": ". ".join(message_parts),
+            "deleted_entities": deleted_entities,
+            "lease_count": lease_count,
+            "charge_count": charge_count
+        }
+
+    except Exception as e:
+        # ✅ ROLLBACK EVERYTHING IF ANY ERROR OCCURS
+        db.rollback()
+        facility_db.rollback()
+        
+        return {
+            "success": False, 
+            "message": f"Error deleting user and related data: {str(e)}"
+        }
+    
 def user_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
     return [
         Lookup(id=status.value, name=status.name.capitalize())

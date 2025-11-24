@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.core.database import get_auth_db as get_db, get_facility_db
@@ -21,10 +21,10 @@ router = APIRouter(prefix="/api/users",
 def get_all_users(
     params: UserRequest = Depends(),
     db: Session = Depends(get_db),
+    facility_db: Session = Depends(get_facility_db),  
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_users(db, current_user.org_id, params)
-
+    return crud.get_users(db, facility_db, current_user.org_id, params)  
 
 @router.put("/", response_model=UserOut)
 def update_user(
@@ -51,13 +51,13 @@ def create_user(
 
 
 @router.delete("/{user_id}", response_model=Dict[str, Any])
-def delete_user(user_id: str, db: Session = Depends(get_db)):
-    result = crud.delete_user(db, user_id)
-
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result["message"])
-
-    return result
+def delete_user(
+    user_id: str, 
+    db: Session = Depends(get_db),
+    facility_db: Session = Depends(get_facility_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.delete_user(db, facility_db, user_id)
 
 
 @router.get("/status-lookup", response_model=List[Lookup])
@@ -68,8 +68,8 @@ def user_status_lookup(
     return crud.user_status_lookup(db, current_user.org_id)
 
 
-@router.get("/user-roles-lookup", response_model=List[Lookup])
-def user_roles_lookup(
+@router.get("/roles-lookup", response_model=List[Lookup])
+def user_roles_lookup_endpoint(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):

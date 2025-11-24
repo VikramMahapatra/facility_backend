@@ -7,7 +7,7 @@ from sqlalchemy import func, and_
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 
-from ..models.user_login_session import LoginPlatform, UserLoginSession
+from shared.models.user_login_session import LoginPlatform, UserLoginSession
 from ..schemas.authchemas import AuthenticationResponse
 from ..models.sites_safe import SiteSafe
 from ..models.commercial_partner_safe import CommercialPartnerSafe
@@ -16,7 +16,7 @@ from shared.core import auth
 from ..models.orgs_safe import OrgSafe
 from ..models.roles import Roles
 from ..models.userroles import UserRoles
-from ..models.users import Users
+from shared.models.users import Users
 from ..schemas.userschema import RoleOut, UserCreate
 from shared.core.config import settings
 from datetime import datetime
@@ -84,21 +84,21 @@ def create_user(
         db.flush()
 
         # ✅ Assign Role
-        role_name = ("admin" if user.accountType.lower() ==
-                     "organization" else user.accountType.lower())
-        role_obj = (
-            db.query(Roles).filter(and_(func.lower(Roles.name) ==
-                                        func.lower(role_name), Roles.is_deleted == False)).first()
-        )
+        # role_name = ("admin" if user.accountType.lower() ==
+        #              "organization" else user.accountType.lower())
+        # role_obj = (
+        #     db.query(Roles).filter(and_(func.lower(Roles.name) ==
+        #                                 func.lower(role_name), Roles.is_deleted == False)).first()
+        # )
 
-        if not role_obj:
-            return error_response(
-                message=f"Role '{role_name}' not found",
-                status_code=str(AppStatusCode.INVALID_INPUT),
-                http_status=status.HTTP_400_BAD_REQUEST
-            )
+        # if not role_obj:
+        #     return error_response(
+        #         message=f"Role '{role_name}' not found",
+        #         status_code=str(AppStatusCode.INVALID_INPUT),
+        #         http_status=status.HTTP_400_BAD_REQUEST
+        #     )
 
-        user_instance.roles.append(role_obj)
+        # user_instance.roles.append(role_obj)
 
         # ✅ ACCOUNT TYPE: ORGANIZATION
         if user.accountType.lower() == "organization":
@@ -124,7 +124,6 @@ def create_user(
                 return error_response(
                     message="Invalid site selected",
                     status_code=str(AppStatusCode.INVALID_INPUT),
-                    http_status=status.HTTP_400_BAD_REQUEST
                 )
 
             user_instance.org_id = site.org_id
@@ -133,16 +132,24 @@ def create_user(
                 return error_response(
                     message="Selected site has no organization assigned",
                     status_code=str(AppStatusCode.INVALID_INPUT),
-                    http_status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not user.space_id:
+                return error_response(
+                    message="Space required for tenant",
+                    status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 )
 
             if user.tenant_type == "individual":
-                if not user.space_id:
+
+                existing_tenant = facility_db.query(TenantSafe).filter(
+                    and_(TenantSafe.space_id == user.space_id, TenantSafe.is_deleted == False)).first()
+
+                if existing_tenant:
                     return error_response(
-                        message="space_id required for individual tenant",
+                        message="Tenant already registered for selected space",
                         status_code=str(
-                            AppStatusCode.REQUIRED_VALIDATION_ERROR),
-                        http_status=status.HTTP_400_BAD_REQUEST
+                            AppStatusCode.USER_ALREADY_REGISTERED),
                     )
 
                 tenant_obj = TenantSafe(
@@ -157,8 +164,19 @@ def create_user(
                 facility_db.add(tenant_obj)
 
             elif user.tenant_type == "commercial":
+                existing_partner = facility_db.query(CommercialPartnerSafe).filter(
+                    and_(CommercialPartnerSafe.space_id == user.space_id, CommercialPartnerSafe.is_deleted == False)).first()
+
+                if existing_partner:
+                    return error_response(
+                        message="Tenant already registered for selected space",
+                        status_code=str(
+                            AppStatusCode.USER_ALREADY_REGISTERED),
+                    )
+
                 partner_obj = CommercialPartnerSafe(
                     site_id=user.site_id,
+                    space_id=user.space_id,
                     type="merchant",
                     legal_name=full_name,
                     contact={
@@ -216,12 +234,30 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     auth_db.commit()
     auth_db.refresh(session)
 
+    tenant = facility_db.query(TenantSafe).filter(
+        TenantSafe.user_id == user.id,
+        TenantSafe.is_deleted == False
+    ).first()
+
+    partner = facility_db.query(CommercialPartnerSafe).filter(
+        CommercialPartnerSafe.user_id == user.id,
+        CommercialPartnerSafe.is_deleted == False
+    ).first()
+
+    tenant_type = None
+
+    if tenant:
+        tenant_type = "individual"
+    elif partner:
+        tenant_type = "commercial"
+
     token = auth.create_access_token({
         "user_id": str(user.id),
         "session_id": str(session.id),
         "org_id": str(user.org_id),
         "account_type": user.account_type,
-        "role_ids": roles})
+        "tenant_type": tenant_type,
+        "role_ids": roles or []})
 
     refresh_token = None
 

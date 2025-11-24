@@ -47,4 +47,4 @@ class Lease(Base):
         "LeaseCharge", back_populates="lease", cascade="all, delete")
     site = relationship("Site", back_populates="leases")
     space = relationship("Space", back_populates="leases")
-    partner = relationship("CommercialPartner", back_populates="leases")
+    partner = relationship("CommercialPartner", back_populates="leases",foreign_keys=[partner_id])

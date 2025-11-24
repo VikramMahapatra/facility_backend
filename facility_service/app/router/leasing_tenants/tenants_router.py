@@ -49,7 +49,7 @@ def tenants_overview(
 # ----------------- Create Tenant -----------------
 
 
-@router.post("/", response_model=None)
+@router.post("/", response_model=TenantOut)
 def create_tenant_endpoint(
     tenant: TenantCreate,
     db: Session = Depends(get_db),
@@ -61,7 +61,7 @@ def create_tenant_endpoint(
 
 
 # ----------------- Update Tenant -----------------
-@router.put("/", response_model=None)
+@router.put("/", response_model=TenantOut)
 def update_tenant(
     update_data: TenantUpdate,  # Get full payload (includes id)
     db: Session = Depends(get_db)

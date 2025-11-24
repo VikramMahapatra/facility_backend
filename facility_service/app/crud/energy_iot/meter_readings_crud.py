@@ -154,7 +154,7 @@ def meter_reading_lookup(db: Session, org_id: str):
         .filter(Meter.org_id == org_id)
         .filter(Meter.status == 'active')
         .filter(Meter.is_deleted == False)
-        .order_by(func.lower(Meter.code))
+        .order_by(func.concat(Meter.code, ' - ', Site.name).asc())
         .all()
     )
     return [{"id": str(r.id), "name": r.name} for r in rows]

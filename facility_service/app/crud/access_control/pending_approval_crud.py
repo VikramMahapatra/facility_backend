@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Dict, List, Optional
 from auth_service.app.models.roles import Roles
-from auth_service.app.models.users import Users
+from shared.models.users import Users
 from auth_service.app.models.userroles import UserRoles
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant
@@ -75,6 +75,18 @@ def update_user_approval_status(db: Session, facility_db: Session, request: Appr
         CommercialPartner.id == request.user_id).first()
     if commercial_partner:
         commercial_partner.status = user.status
+
+    if request.role_ids:
+        for role_id in request.role_ids:
+            role = db.query(Roles).filter(
+                Roles.id == role_id).first()  # ✅ No org_id filter
+
+            if role:
+                user_role = UserRoles(
+                    user_id=user.id,
+                    role_id=role.id
+                )
+                db.add(user_role)
 
     facility_db.commit()
     db.commit()

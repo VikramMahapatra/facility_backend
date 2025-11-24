@@ -3,11 +3,13 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime
 from uuid import UUID
 from enum import Enum
+
+from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from ...schemas.access_control.role_management_schemas import RoleOut
 from shared.core.schemas import CommonQueryParams
 
 
-class UserBase(BaseModel):
+class UserBase(EmptyStringModel):
     org_id: Optional[UUID] = None
     full_name: str
     email: Optional[EmailStr] = None
@@ -45,6 +47,12 @@ class UserOut(BaseModel):
     roles: Optional[List[RoleOut]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # ADD THESE 5 NEW FIELDS
+    site_id: Optional[UUID] = None
+    space_id: Optional[UUID] = None
+    building_block_id: Optional[UUID] = None
+    tenant_type: Optional[str] = None
+    site_ids: Optional[List[UUID]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -67,6 +75,7 @@ class ApprovalStatus(str, Enum):
 class ApprovalStatusRequest(BaseModel):
     user_id: UUID
     status: ApprovalStatus = Field(..., description="User approval status")
+    role_ids: List[str]
 
     model_config = {
         "use_enum_values": True

@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  auth_service:
+    build:
+      context: .
+      dockerfile: auth_service/Dockerfile
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    networks:
+      - app_network
+
+  facility_service:
+    build:
+      context: .
+      dockerfile: facility_service/Dockerfile
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge

@@ -1,4 +1,4 @@
-from auth_service.app.models.users import Users as AuthUser
+from shared.models.users import Users as AuthUser
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.space_sites.spaces import Space
 from ...models.space_sites.buildings import Building

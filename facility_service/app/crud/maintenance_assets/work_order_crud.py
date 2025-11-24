@@ -81,7 +81,7 @@ def work_orders_filter_status_lookup(db: Session, org_id: str):
         # ✅ Add soft delete filter
         .filter(WorkOrder.org_id == org_id, WorkOrder.is_deleted == False)
         .distinct()
-        .order_by(func.lower(WorkOrder.status))
+        .order_by(func.lower(WorkOrder.status).asc())
         .all()
     )
     return [{"id": r.id, "name": r.name} for r in rows]
@@ -113,7 +113,7 @@ def work_orders_filter_priority_lookup(db: Session, org_id: str):
         # ✅ Add soft delete filter
         .filter(WorkOrder.org_id == org_id, WorkOrder.is_deleted == False)
         .distinct()
-        .order_by(func.lower(WorkOrder.priority))
+        .order_by(func.lower(WorkOrder.priority).asc())
         .all()
     )
     return [{"id": r.id, "name": r.name} for r in rows]

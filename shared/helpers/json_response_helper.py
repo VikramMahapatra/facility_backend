@@ -20,7 +20,7 @@ def error_response(message: str, status_code: str = AppStatusCode.OPERATION_FAIL
         status_code=http_status,
         detail=JsonOutResult(
             data=None,
-            status="Failure",
+            status="Failed",
             status_code=status_code,
             message=message
         ).dict()

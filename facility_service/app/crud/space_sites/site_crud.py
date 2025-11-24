@@ -144,6 +144,7 @@ def get_site_lookup(db: Session, org_id: str, params: Optional[SiteRequest] = No
         site_query = site_query.filter(
             or_(Site.name.ilike(search_term), Site.code.ilike(search_term))
         )
+    site_query = site_query.order_by(Site.name.asc())
 
     if params:
         site_query = site_query.group_by(Site.id)
@@ -193,8 +194,8 @@ def get_site(db: Session, site_id: str):
         .scalar()
     ) or 0
 
-    occupied_percent = max(
-        0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0))
+    occupied_percent = round(max(
+        0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0)),2)
 
     return SiteOut(
         id=site.id,

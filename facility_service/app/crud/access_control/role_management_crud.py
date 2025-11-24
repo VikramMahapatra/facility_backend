@@ -1,10 +1,10 @@
 from operator import or_
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import desc, func
 from typing import Dict, List, Optional
 
 from auth_service.app.models.roles import Roles
-from auth_service.app.models.users import Users
+from shared.models.users import Users
 from auth_service.app.models.userroles import UserRoles
 from shared.core.schemas import Lookup
 
@@ -24,6 +24,9 @@ def get_roles(db: Session, org_id: str, params: RoleRequest):
         role_query = role_query.filter(Roles.name.ilike(search_term))
 
     total = role_query.with_entities(func.count(Roles.id.distinct())).scalar()
+    role_query = role_query.order_by(
+        desc(Roles.updated_at)
+    )
     roles = role_query.offset(params.skip).limit(params.limit).all()
 
     result = [RoleOut.model_validate(role) for role in roles]
@@ -121,6 +124,7 @@ def get_role_lookup(db: Session, org_id: str):
             Roles.description
         )
         .filter(Roles.org_id == org_id, Roles.is_deleted == False)
+        .order_by(Roles.name.asc())
     )
 
     return role_query.all()

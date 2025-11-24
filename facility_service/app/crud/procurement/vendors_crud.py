@@ -1,9 +1,13 @@
 # app/crud/vendors.py
+from sqlite3 import IntegrityError
 import uuid
 from typing import Dict, List, Optional
 from sqlalchemy import case, func, lateral, literal, or_, select, String
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID
+
+from shared.helpers.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
 from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.procurement.vendors import Vendor
 from ...schemas.procurement.vendors_schemas import VendorCreate, VendorListResponse, VendorOut, VendorRequest, VendorUpdate
@@ -86,6 +90,7 @@ def vendors_filter_status_lookup(db: Session, org_id: str, status: Optional[str]
         # ✅ Updated filter
         .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)
         .distinct()
+        .order_by(Vendor.status.asc())
     )
     if status:
         query = query.filter(Vendor.status == status)
@@ -118,7 +123,7 @@ def vendors_filter_categories_lookup(db: Session, org_id: str):
     query = db.query(
         categories_subquery.c.category.label("id"),
         categories_subquery.c.category.label("name")
-    )
+    ).order_by(categories_subquery.c.category.asc())
 
     return query.all()
 
@@ -176,13 +181,28 @@ def update_vendor(db: Session, vendor: VendorUpdate) -> Optional[Vendor]:
     # ✅ Use the updated get_vendor_by_id
     db_vendor = get_vendor_by_id(db, vendor.id)
     if not db_vendor:
-        return None
-    # Update only provided fields
-    for k, v in vendor.dict(exclude_unset=True).items():
-        setattr(db_vendor, k, v)
-    db.commit()
-    db.refresh(db_vendor)
-    return db_vendor
+        return error_response(
+        message="Vendor not found",
+        status_code=str(AppStatusCode.OPERATION_ERROR),
+        http_status=404
+    )
+   
+    update_data = vendor.model_dump(exclude_unset=True, exclude={'rating'})
+    for key, value in update_data.items():
+        setattr(db_vendor, key, value)
+  
+    try:
+        db.commit()
+        return get_vendor_by_id(db, vendor.id)
+
+    except IntegrityError as e:
+        db.rollback()
+        return error_response(
+        message="Error updating vendor",
+        status_code=str(AppStatusCode.OPERATION_ERROR),
+        http_status=400
+    )
+
 
 # ----------------- Delete (Soft Delete) -----------------
 
@@ -206,25 +226,28 @@ def delete_vendor(db: Session, vendor_id: uuid.UUID, org_id: uuid.UUID) -> Optio
 
 def vendor_lookup(db: Session, org_id: UUID):
     contact_name = Vendor.contact["contact_name"].astext
-
+    subquery = (
+        db.query(Vendor.id)
+        .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)
+        .distinct()
+        .subquery()
+    )
     vendors = (
         db.query(
             Vendor.id.label("id"),
             func.concat(
                 Vendor.name,
-                # conditionally append " (contact_name)" only when it exists
                 case(
                     (
                         (contact_name.isnot(None)) & (contact_name != ""),
-                        func.concat(literal(" ("), contact_name, literal(")")),
+                        func.concat(" (", contact_name, ")"),
                     ),
-                    else_=literal(""),
+                    else_="",
                 ),
             ).label("name"),
         )
-        # ✅ Updated filter
-        .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)
-        .distinct()
+        .join(subquery, Vendor.id == subquery.c.id)
+        .order_by(Vendor.name.asc())
         .all()
     )
     return vendors

@@ -38,7 +38,7 @@ class TenantRequest(BaseModel):
 
 class TenantOut(BaseModel):
     id: UUID
-    org_id: UUID
+    org_id: Optional[UUID] = None
     site_id: UUID
     building_block_id: UUID
     space_id: UUID
@@ -51,9 +51,11 @@ class TenantOut(BaseModel):
     contact_info: Optional[Any] = None
     tenant_leases: Optional[List[LeaseOut]] = None
 
-    # ADD ONLY THESE - frontend will handle name lookups
-    space_id: Optional[UUID] = None
-    building_block_id: Optional[UUID] = None  # ✅ Correct name
+    # ADD THESE FIELDS FOR DISPLAY
+    site_name: Optional[str] = None
+    building_name: Optional[str] = None
+    space_name: Optional[str] = None
+    building_block_id: Optional[UUID] = None
 
     model_config = {"from_attributes": True}
 
@@ -74,9 +76,10 @@ class TenantOverviewResponse(BaseModel):
     }
 # Add to schemas/leasing_tenants/tenants_schemas.py
 
+
 class TenantDropdownResponse(BaseModel):
     id: UUID
     name: str
-    
+
     class Config:
         from_attributes = True

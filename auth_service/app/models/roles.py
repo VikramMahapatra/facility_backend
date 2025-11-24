@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Column, String, Text, Boolean
+from sqlalchemy import TIMESTAMP, Column, String, Text, Boolean, func
 from shared.core.database import AuthBase
 from sqlalchemy.orm import relationship
 
@@ -17,3 +17,6 @@ class Roles(AuthBase):
     users = relationship("Users", secondary="user_roles",
                          back_populates="roles")
     policies = relationship("RolePolicy", back_populates="roles")
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True),
+                        server_default=func.now(), onupdate=func.now())

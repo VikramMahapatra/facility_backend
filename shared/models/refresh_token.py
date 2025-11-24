@@ -5,7 +5,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, validates
-from shared.core.database import AuthBase
+from ..core.database import AuthBase
 import enum
 
 

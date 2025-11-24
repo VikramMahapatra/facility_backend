@@ -12,7 +12,8 @@ from ...models.space_sites.space_groups import SpaceGroup
 from ...models.space_sites.spaces import Space
 from ...models.space_sites.space_group_members import SpaceGroupMember
 from ...schemas.space_sites.space_group_members_schemas import SpaceGroupMemberBase, SpaceGroupMemberCreate, SpaceGroupMemberOut, SpaceGroupMemberRequest, SpaceGroupMemberResponse, SpaceGroupMemberUpdate
-
+from shared.utils.app_status_code import AppStatusCode
+from shared.helpers.json_response_helper import error_response
 
 def build_filters(org_id: UUID, params: SpaceGroupMemberRequest):
     filters = []
@@ -81,8 +82,24 @@ def get_members_overview(db: Session, org_id: UUID, params: SpaceGroupMemberRequ
 
 
 def get_assignment_preview(db: Session, org_id: UUID, params: SpaceGroupMemberRequest):
-    filters = build_filters(org_id, params)
+    # Remove SpaceGroupMember from filters since we're previewing BEFORE creation
+    filters = []
     
+    # org_id comes from Space
+    filters.append(Space.org_id == org_id)
+    
+    # Add soft-delete filters
+    filters.append(Space.is_deleted == False)
+    filters.append(Site.is_deleted == False)
+    filters.append(SpaceGroup.is_deleted == False)
+
+    # Add specific filters for the preview
+    if params.space_id:
+        filters.append(Space.id == params.space_id)
+    if params.group_id:
+        filters.append(SpaceGroup.id == params.group_id)
+    
+    # ✅ CHANGED: Query Space and SpaceGroup directly, not through SpaceGroupMember
     assignment_preview_query = (
         db.query(
             Site.name.label("site_name"),
@@ -92,23 +109,20 @@ def get_assignment_preview(db: Session, org_id: UUID, params: SpaceGroupMemberRe
             SpaceGroup.name.label("group_name"),
             SpaceGroup.specs
         )
-        .select_from(Space)
+        .select_from(Space)  # ✅ CHANGED: Start from Space table
         .join(Site, Site.id == Space.site_id)
-        .join(SpaceGroup, Space.kind == SpaceGroup.kind)
+        .join(SpaceGroup, SpaceGroup.id == params.group_id)  # ✅ CHANGED: Direct join on group_id
         .filter(*filters)
     )
-
-    if params.space_id:
-        assignment_preview_query = assignment_preview_query.filter(
-            Space.id == params.space_id)
-    if params.group_id:
-        assignment_preview_query = assignment_preview_query.filter(
-            SpaceGroup.id == params.group_id)
-
+    
     result = assignment_preview_query.first()
     if not result:
-        raise HTTPException(
-            status_code=404, detail="Assignment preview not found")
+        return error_response(
+            message="Space or Group not found for preview",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
+    
     return result
 
 

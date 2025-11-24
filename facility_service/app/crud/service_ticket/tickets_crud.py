@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 from operator import or_
 from typing import Dict, List
 from requests import request
@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, desc
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
-from auth_service.app.models.users import Users
+from shared.models.users import Users
 from shared.core.config import Settings
 from shared.helpers.email_helper import EmailHelper
 from shared.utils.enums import UserAccountType
@@ -20,7 +20,7 @@ from ...enum.ticket_service_enum import TicketStatus
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.service_ticket.tickets_category import TicketCategory
 from ...models.space_sites.spaces import Space
-from ...schemas.mobile_app.help_desk_schemas import TicketWorkFlowOut
+from ...schemas.mobile_app.help_desk_schemas import ComplaintDetailsResponse, TicketWorkFlowOut
 
 from ...models.service_ticket.sla_policy import SlaPolicy
 from ...models.service_ticket.tickets_commets import TicketComment
@@ -35,13 +35,16 @@ from shared.helpers.json_response_helper import error_response, success_response
 from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut
 
 
-def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user: UserToken):
-
+def build_ticket_filters(
+    db: Session,
+    params: TicketFilterRequest,
+    current_user: UserToken
+):
     account_type = current_user.account_type.lower()
 
-    # -----------------------------------------------
-    # Base filters based on user type
-    # -----------------------------------------------
+    # -------------------------------------------------
+    # BASE FILTERS (Based on user's account type)
+    # -------------------------------------------------
     if account_type in (UserAccountType.ORGANIZATION, UserAccountType.STAFF):
         filters = [Ticket.org_id == current_user.org_id]
 
@@ -56,43 +59,57 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
 
         filters = [Ticket.tenant_id == tenant_id]
 
-    # -----------------------------------------------
-    # Additional filters
-    # -----------------------------------------------
-    if params.site_id:
+    # -------------------------------------------------
+    # FILTER: SITE
+    # -------------------------------------------------
+    if params.site_id and params.site_id != "all":
         filters.append(Ticket.site_id == params.site_id)
 
+    # -------------------------------------------------
+    # FILTER: SPACE
+    # STAFF should not filter space by default
+    # -------------------------------------------------
     if params.space_id and account_type != UserAccountType.STAFF:
         filters.append(Ticket.space_id == params.space_id)
 
-    # -----------------------------------------------
-    # Priority Filter 
-    # -----------------------------------------------
-    if params.priority and params.priority.lower() != "all":
-        filters.append(func.lower(Ticket.priority) == params.priority.lower())
+    # -------------------------------------------------
+    # FILTER: SEARCH (ticket no, title, description)
+    # -------------------------------------------------
+    if params.search:
+        search_term = f"%{params.search.lower()}%"
+        filters.append(
+            or_(
+                func.lower(Ticket.ticket_no).like(search_term),
+                func.lower(Ticket.title).like(search_term),
+            )
+        )
 
-    # -----------------------------------------------
-    # Status Filters
-    # -----------------------------------------------
+    # -------------------------------------------------
+    # FILTER: PRIORITY
+    # -------------------------------------------------
+    if params.priority and params.priority.lower() != "all":
+        filters.append(
+            func.lower(Ticket.priority) == params.priority.lower()
+        )
+
+    # -------------------------------------------------
+    # FILTER: STATUS
+    # -------------------------------------------------
     if params.status and params.status.lower() != "all":
 
         status = params.status.lower()
 
-        # ------------------ OVERDUE ------------------
         if status == "overdue":
-
-            cutoff = (
-                func.now()
-                - func.make_interval(mins=SlaPolicy.resolution_time_mins)
-            )
-
+            # Overdue = open tickets with SLA breached
             filters.append(
                 and_(
                     Ticket.status != "closed",
-                    Ticket.created_at < cutoff
+                    func.extract('epoch', func.now() - Ticket.created_at) / 60 >
+                    func.coalesce(SlaPolicy.resolution_time_mins, 0)
                 )
             )
 
+            # Overdue requires scaling to SLA joins
             base_query = (
                 db.query(Ticket)
                 .join(Ticket.category)
@@ -100,17 +117,18 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
                 .filter(*filters)
             )
 
-        # ------------------ OTHER STATUS -------------
         else:
+            # Normal status like 'open', 'inprogress', 'closed'
             filters.append(func.lower(Ticket.status) == status)
             base_query = db.query(Ticket).filter(*filters)
 
     else:
+        # Status not provided → regular query
         base_query = db.query(Ticket).filter(*filters)
 
-    # -----------------------------------------------
-    # PERFORMANCE: avoid loading BIG columns
-    # -----------------------------------------------
+    # -------------------------------------------------
+    # PERFORMANCE: Load only required fields
+    # -------------------------------------------------
     base_query = (
         base_query.options(
             load_only(
@@ -127,7 +145,8 @@ def build_ticket_filters(db: Session, params: TicketFilterRequest, current_user:
                 Ticket.space_id,
             ),
             selectinload(Ticket.category).load_only(
-                TicketCategory.category_name)
+                TicketCategory.category_name
+            )
         )
     )
 
@@ -141,7 +160,7 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
     subq = base_query.with_entities(Ticket.id).subquery()
     total = db.query(func.count()).select_from(subq).scalar()
 
-    query = base_query.order_by(desc(Ticket.created_at))
+    query = base_query.order_by(desc(Ticket.updated_at))
 
     if params.skip is not None:
         query = query.offset(params.skip)
@@ -166,6 +185,8 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
         )
 
     return {"tickets": results, "total": total}
+
+# for mobile -----
 
 
 def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
@@ -245,7 +266,7 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
         )
 
     # Step 5: Return as schema
-    return TicketDetailsResponse.model_validate(
+    return ComplaintDetailsResponse.model_validate(
         {
             **service_req.__dict__,
             "category": category_name,
@@ -336,7 +357,8 @@ async def create_ticket(
         updated_at=datetime.utcnow(),
         preferred_time=data.preferred_time,
         request_type=data.request_type,
-        priority=data.priority
+        priority=data.priority if hasattr(
+            data, "priority") else PriorityType.low
     )
     if file and file.filename:
         file_bytes = await file.read()
@@ -421,7 +443,14 @@ async def create_ticket(
     )
 
 
-def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
+def escalate_ticket(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    auth_db: Session,
+    data: TicketActionRequest,
+    user: UserToken
+):
+
     # Fetch ticket
     ticket = db.execute(
         select(Ticket).where(Ticket.id == data.ticket_id)
@@ -436,7 +465,7 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
 
     if (
         not ticket.can_escalate
-        or str(ticket.created_by) != str(data.action_by)
+        or (str(ticket.created_by) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION))
     ):
         return error_response(
             message=f"Not authorize to perform this action",
@@ -570,7 +599,14 @@ def escalate_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Ses
     )
 
 
-async def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest, file: UploadFile = None):
+async def resolve_ticket(
+        background_tasks: BackgroundTasks,
+        db: Session,
+        auth_db: Session,
+        data: TicketActionRequest,
+        user: UserToken,
+        file: UploadFile = None
+):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
 
@@ -583,7 +619,7 @@ async def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db
 
     if (
         ticket.status == TicketStatus.CLOSED
-        or str(ticket.assigned_to) != str(data.action_by)
+        or str(ticket.assigned_to) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION)
     ):
         return error_response(
             message=f"Not authorize to perform this action",
@@ -706,13 +742,22 @@ async def resolve_ticket(background_tasks: BackgroundTasks, db: Session, auth_db
     )
 
 
-def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
+def reopen_ticket(
+        background_tasks: BackgroundTasks,
+        db: Session,
+        auth_db: Session,
+        data: TicketActionRequest,
+        user: UserToken
+):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
         raise Exception("Ticket not found")
 
-    if not ticket.can_reopen or str(ticket.created_by) != str(data.action_by):
+    if (
+        not ticket.can_reopen
+        or str(ticket.created_by) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION)
+    ):
         return error_response(
             message=f"Not authorize to perform this action",
             status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
@@ -823,7 +868,13 @@ def reopen_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     )
 
 
-def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
+def on_hold_ticket(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    auth_db: Session,
+    data: TicketActionRequest,
+    user: UserToken
+):
     ticket = db.execute(select(Ticket).where(
         Ticket.id == data.ticket_id)).scalar_one_or_none()
     if not ticket:
@@ -831,7 +882,7 @@ def on_hold_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sess
 
     if (
         ticket.status in (TicketStatus.CLOSED, TicketStatus.ON_HOLD)
-        or str(ticket.assigned_to) != str(data.action_by)
+        or str(ticket.assigned_to) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION)
     ):
         return error_response(
             message=f"Not authorize to perform this action",
@@ -1257,6 +1308,8 @@ def send_ticket_post_comment_email(background_tasks, db, data, recipients):
     )
 
 # for view ------------------------
+
+# for portal/web
 
 
 def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
@@ -1921,6 +1974,7 @@ def fetch_role_admin(session: Session, org_id):
 
     return data
 
+
 def tickets_filter_priority_lookup(db: Session, org_id: str) -> List[Dict]:
     """
     Get distinct priority values for filter dropdown
@@ -1933,7 +1987,7 @@ def tickets_filter_priority_lookup(db: Session, org_id: str) -> List[Dict]:
         )
         .filter(Ticket.org_id == org_id)
         .distinct()
-        .order_by(Ticket.priority)
+        .order_by(Ticket.priority.asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
@@ -1951,7 +2005,7 @@ def tickets_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
         )
         .filter(Ticket.org_id == org_id)
         .distinct()
-        .order_by(Ticket.status)
+        .order_by(Ticket.status.asc())
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]

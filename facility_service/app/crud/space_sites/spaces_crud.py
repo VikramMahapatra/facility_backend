@@ -139,9 +139,7 @@ def create_space(db: Session, space: SpaceCreate):
             building_name = db.query(Building.name).filter(
                 Building.id == space.building_block_id).scalar()
             return error_response(
-                message=f"Space with name '{space.name}' already exists in building '{building_name}'",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message=f"Space with name '{space.name}' already exists in building '{building_name}'"
             )
 
     # Create space - exclude building_block field
@@ -164,7 +162,26 @@ def update_space(db: Session, space: SpaceUpdate):
 
     update_data = space.model_dump(
         exclude_unset=True, exclude={"building_block"})
+    # Check if trying to update site or building when tenants/leases exist
+    if ('site_id' in update_data or 'building_block_id' in update_data):
+        # Check if space has any active tenants
+        has_tenants = db.query(Tenant).filter(
+            Tenant.space_id == space.id,
+            Tenant.is_deleted == False
+        ).first()
+        
+        # Check if space has any active leases
+        has_leases = db.query(Lease).filter(
+            Lease.space_id == space.id,
+            Lease.is_deleted == False,
+            func.lower(Lease.status) == func.lower('active') 
+        ).first()
 
+        if has_tenants or has_leases:
+            return error_response(
+                message="Cannot update site or building for a space that has tenants or leases"
+            )
+        
     # Check for code duplicates within same building (if building exists and code is being updated)
     if 'code' in update_data and db_space.building_block_id:
         existing_space = db.query(Space).filter(
@@ -210,7 +227,11 @@ def update_space(db: Session, space: SpaceUpdate):
     try:
         db.commit()
         db.refresh(db_space)
-        return db_space
+
+        building_name = db_space.building.name  # Joined building name
+        data = {**db_space.__dict__, "building_block": building_name}
+
+        return SpaceOut.model_validate(data)
     except IntegrityError as e:
         db.rollback()
         return error_response(
@@ -269,6 +290,7 @@ def get_space_lookup(db: Session, site_id: str, building_id: str, org_id: str):
         .join(Site, Space.site_id == Site.id)
         .join(Building, Space.building_block_id == Building.id)
         .filter(Space.is_deleted == False)
+        .order_by(Space.name.asc())
     )
 
     if org_id:
@@ -294,6 +316,7 @@ def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
         .join(Building, Space.building_block_id == Building.id)
         # Updated filter
         .filter(Space.org_id == org_id, Space.is_deleted == False)
+        .order_by(Space.name.asc())
     )
 
     if site_id and site_id.lower() != "all":

@@ -89,19 +89,12 @@ def get_buildings(db: Session, org_id: UUID, params: BuildingRequest):
     return {"buildings": results, "total": total}
 
 
-def get_building_by_id(db: Session, building_id: str):
-    return db.query(Building).filter(
-        Building.id == building_id,
-        Building.is_deleted == False  # Add this filter
-    ).first()
-
-
 def create_building(db: Session, building: BuildingCreate):
     # Check for duplicate building name within the same site (case-insensitive)
     existing_building = db.query(Building).filter(
         Building.site_id == building.site_id,
         Building.is_deleted == False,
-        func.lower(Building.name) == func.lower(building.name)
+        func.trim(func.lower(Building.name)) == func.trim(func.lower(building.name))
     ).first()
 
     if existing_building:
@@ -121,7 +114,11 @@ def create_building(db: Session, building: BuildingCreate):
 
 
 def update_building(db: Session, building: BuildingUpdate):
-    db_building = get_building_by_id(db, building.id)
+    db_building = db.query(Building).filter(
+        Building.id == building.id,
+        Building.is_deleted == False  # Add this filter
+     ).first()
+    
     if not db_building:
         return error_response(
             message="Building not found",
@@ -131,21 +128,30 @@ def update_building(db: Session, building: BuildingUpdate):
 
     update_data = building.model_dump(exclude_unset=True)
 
+    # Check if trying to update site when spaces exist
+    if 'site_id' in update_data and update_data['site_id'] != db_building.site_id:
+        # Check if building has any active spaces
+        has_spaces = db.query(Space).filter(
+            Space.building_block_id == building.id,
+            Space.is_deleted == False
+            ).first()
+
+        if has_spaces:
+                return error_response(
+                message="Cannot update site for a building that has spaces assigned to it"
+            )
     # Check for duplicates only if name is being updated
-    if 'name' in update_data:
+    if 'name' in update_data and update_data['name'] != db_building.name:
         existing_building = db.query(Building).filter(
             Building.site_id == db_building.site_id,
             Building.id != building.id,
             Building.is_deleted == False,
-            func.lower(Building.name) == func.lower(
-                update_data.get('name', ''))
+            func.trim(func.lower(Building.name)) == func.trim(func.lower(update_data.get('name', '')))
         ).first()
 
         if existing_building:
             return error_response(
-                message=f"Building with name '{update_data['name']}' already exists in this site",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message=f"Building with name '{update_data['name']}' already exists in this site"
             )
 
     # Update building
@@ -155,7 +161,8 @@ def update_building(db: Session, building: BuildingUpdate):
     try:
         db.commit()
         db.refresh(db_building)
-        return db_building  # Return the model directly like space CRUD
+        return get_building_by_id(db, building.id)
+        
     except IntegrityError as e:
         db.rollback()
         return error_response(
@@ -172,7 +179,7 @@ def get_building_lookup(db: Session, site_id: str, org_id: str):
         .filter(
             Building.is_deleted == False,  # Add this filter
             Site.is_deleted == False      # Add this filter
-        )
+        ).order_by(Building.name.asc())
     )
 
     if org_id:
@@ -184,36 +191,16 @@ def get_building_lookup(db: Session, site_id: str, org_id: str):
     return building_query.all()
 
 
-def get_building_by_id(db: Session, building_id: str):
-    return db.query(Building).filter(
-        Building.id == building_id,
-        Building.is_deleted == False  # Add this filter
-    ).first()
-
-
-def get_building_lookup(db: Session, site_id: str, org_id: str):
-    building_query = (
-        db.query(Building.id, Building.name)
-        .join(Site, Site.id == Building.site_id)
-        .filter(
-            Building.is_deleted == False,  # Add this filter
-            Site.is_deleted == False      # Add this filter
-        )
-    )
-
-    if org_id:
-        building_query = building_query.filter(Site.org_id == org_id)
-
-    if site_id and site_id.lower() != "all":
-        building_query = building_query.filter(Site.id == site_id)
-
-    return building_query.all()
 
 
 # In building_crud.py - update the delete_building function
 def delete_building(db: Session, building_id: str) -> Dict:
     """Delete building with protection - check for active spaces first"""
-    building = get_building_by_id(db, building_id)
+    building = db.query(Building).filter(
+        Building.id == building_id,
+        Building.is_deleted == False  # Add this filter
+    ).first()
+    
     if not building:
         return {"success": False, "message": "Building not found"}
 
@@ -235,3 +222,61 @@ def delete_building(db: Session, building_id: str) -> Dict:
     db.commit()
 
     return {"success": True, "message": "Building deleted successfully"}
+
+
+
+
+def get_building_by_id(db: Session, building_id: str):
+    now = datetime.utcnow()
+
+    # Subquery to calculate total_spaces and occupied per site
+    space_subq = (
+        db.query(
+            Space.building_block_id.label("building_id"),  # Changed this
+            func.count(Space.id).label("total_spaces"),
+            func.count(
+                case(
+                    (Space.status == 'occupied', 1)
+                )
+            ).label("occupied_spaces")
+
+        )
+        .filter(Space.is_deleted == False)  # Add this filter
+        .group_by(Space.building_block_id)  # Changed this
+    ).subquery()
+
+    building_query = (
+        db.query(
+            Building.id,
+            Building.site_id,
+            Building.name,
+            Building.floors,
+            Building.attributes,
+            Site.name.label("site_name"),
+            Site.kind.label("site_kind"),
+            func.coalesce(space_subq.c.total_spaces, 0).label("total_spaces"),
+            func.coalesce(space_subq.c.occupied_spaces,
+                          0).label("occupied_spaces"),
+            # ADD OCCUPANCY RATE CALCULATION
+            func.round(
+                case(
+                    (func.coalesce(space_subq.c.total_spaces, 0) > 0,
+                     (func.coalesce(space_subq.c.occupied_spaces, 0) * 100.0) /
+                     func.coalesce(space_subq.c.total_spaces, 1)),
+                    else_=0.0
+                ), 2
+            ).label("occupancy_rate")
+        )
+        .join(Site, Building.site_id == Site.id)
+        # Changed this
+        .outerjoin(space_subq, Building.id == space_subq.c.building_id)
+        .filter(
+            Building.id == building_id,
+         
+        )
+    )
+
+    building = building_query.first()
+    # Use _asdict() to convert Row objects to dictionaries
+    
+    return BuildingOut.model_validate(building._asdict())

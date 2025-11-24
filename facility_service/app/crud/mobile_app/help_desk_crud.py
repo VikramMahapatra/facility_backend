@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
 
-from facility_service.app.models.space_sites.spaces import Space
+from ...models.space_sites.spaces import Space
 
 from ...schemas.mobile_app.help_desk_schemas import ComplaintDetailsResponse, ComplaintOut, ComplaintResponse, ComplaintCreate
 from ...models.maintenance_assets.service_request import ServiceRequest

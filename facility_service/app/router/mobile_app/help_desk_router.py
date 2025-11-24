@@ -35,7 +35,7 @@ def get_complaints(
 @router.post("/raisecomplaint", response_model=ComplaintResponse)
 async def raise_complaint(
     background_tasks: BackgroundTasks,
-    complaint_data:ComplaintCreate = Depends(ComplaintCreate.as_form),
+    complaint_data: ComplaintCreate = Depends(ComplaintCreate.as_form),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
@@ -74,7 +74,7 @@ def escalate_ticket(
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.escalate_ticket(background_tasks, db, auth_db, request)
+    return tickets_crud.escalate_ticket(background_tasks, db, auth_db, request, current_user)
 
 
 @router.post("/ticket-resolved", response_model=None)
@@ -87,8 +87,8 @@ async def resolved_ticket(
     file: UploadFile = File(None)
 ):
     request.action_by = current_user.user_id
-    return await tickets_crud.resolve_ticket(background_tasks, db, auth_db, request , file)
-    
+    return await tickets_crud.resolve_ticket(background_tasks, db, auth_db, request, current_user, file)
+
 
 @router.post("/ticket-reopened", response_model=None)
 def reopen_ticket(
@@ -99,7 +99,7 @@ def reopen_ticket(
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.reopen_ticket(background_tasks, db, auth_db, request)
+    return tickets_crud.reopen_ticket(background_tasks, db, auth_db, request, current_user)
 
 
 @router.post("/ticket-returned", response_model=None)
@@ -123,4 +123,4 @@ def on_hold_ticket(
     current_user: UserToken = Depends(validate_current_token),
 ):
     request.action_by = current_user.user_id
-    return tickets_crud.on_hold_ticket(background_tasks, db, auth_db, request)
+    return tickets_crud.on_hold_ticket(background_tasks, db, auth_db, request, current_user)

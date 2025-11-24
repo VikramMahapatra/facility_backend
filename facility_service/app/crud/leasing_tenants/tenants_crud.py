@@ -412,9 +412,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
 
         if existing_active_tenant_in_space:
             return error_response(
-                message=f"This space is already occupied by an active tenant.",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message=f"This space is already occupied by an active tenant."
             )
 
         # If no active tenant found, then check for active commercial partners
@@ -426,9 +424,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
 
         if existing_active_partner_in_space:
             return error_response(
-                message=f"This space is already occupied by an active commercial partner.",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message=f"This space is already occupied by an active tenant."
             )
         # Check for duplicate name (case-insensitive) within the same site
         existing_tenant_by_name = db.query(Tenant).filter(
@@ -474,9 +470,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
 
         if existing_active_partner_in_space:
             return error_response(
-                message=f"This space is already occupied by an active commercial partner.",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message=f"This space is already occupied by an active tenant."
             )
 
     # If no active commercial partner found, then check for active tenants
@@ -488,9 +482,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
 
         if existing_active_tenant_in_space:
             return error_response(
-                message=f"This space is already occupied by an active tenant.",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message=f"This space is already occupied by an active tenant."
             )
         # Check for duplicate legal_name (case-insensitive) within the same site
         legal_name = tenant.legal_name or tenant.name
@@ -578,7 +570,7 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
 
         if existing_active_partner_in_new_space:
             return error_response(
-                message=f"This space is already occupied by an active commercial partner."
+                message=f"This space is already occupied by an active tenant."
             )
 
         # Check for duplicate name (case-insensitive) if name is being updated
@@ -631,7 +623,7 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
         if location_fields_updated:
             # Check if commercial partner has any active leases
             has_active_leases = db.query(Lease).filter(
-                Lease.commercial_partner_id == tenant_id,
+                Lease.partner_id == tenant_id,
                 Lease.is_deleted == False,
                 func.lower(Lease.status) == func.lower('active')
             ).first()
@@ -651,9 +643,9 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 CommercialPartner.status == "active"
             ).first()
 
-        if existing_active_partner_in_new_space:
-            return error_response(
-                message=f"This space is already occupied by an active commercial partner."
+            if existing_active_partner_in_new_space:
+                return error_response(
+                message=f"This space is already occupied by an active tenant."
             )
 
         # If no active commercial partner found, then check for active tenants

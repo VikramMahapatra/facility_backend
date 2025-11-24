@@ -140,6 +140,17 @@ def update_building(db: Session, building: BuildingUpdate):
                 return error_response(
                 message="Cannot update site for a building that has spaces assigned to it"
             )
+        existing_building = db.query(Building).filter(
+            Building.site_id == building.site_id,
+            Building.id != building.id,
+            Building.is_deleted == False,
+            func.trim(func.lower(Building.name)) == func.trim(func.lower(update_data.get('name', '')))
+        ).first()
+        if existing_building:
+            return error_response(
+                message=f"Building with name '{update_data['name']}' already exists in this site"
+            )
+        
     # Check for duplicates only if name is being updated
     if 'name' in update_data and update_data['name'] != db_building.name:
         existing_building = db.query(Building).filter(

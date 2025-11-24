@@ -499,13 +499,46 @@ def create_tenant(db: Session, tenant: TenantCreate):
                 http_status=400
             )
 
+        # ✅ AUTO-FILL CONTACT INFO IF EMPTY
+        contact_info = tenant.contact_info or {}
+        
+        # If contact info is empty, create it from top-level fields
+        if not contact_info:
+            contact_info = {
+                "name": tenant.name,  # Use the name from top form
+                "email": tenant.email,  # Use the email from top form  
+                "phone": tenant.phone,  # Use the phone from top form
+                "address": {
+                    "line1": "",
+                    "line2": "", 
+                    "city": "",
+                    "state": "",
+                    "pincode": ""
+                }
+            }
+        else:
+            # If contact info exists but some fields are missing, fill them from top-level
+            if not contact_info.get("name"):
+                contact_info["name"] = tenant.name
+            if not contact_info.get("email"):
+                contact_info["email"] = tenant.email
+            if not contact_info.get("phone"):
+                contact_info["phone"] = tenant.phone
+            if not contact_info.get("address"):
+                contact_info["address"] = {
+                    "line1": "",
+                    "line2": "",
+                    "city": "", 
+                    "state": "",
+                    "pincode": ""
+                }
         # Create CommercialPartner
         partner_data = {
             "site_id": tenant.site_id,
             "space_id": tenant.space_id,
             "type": tenant.type or "merchant",
             "legal_name": legal_name,
-            "contact": tenant.contact_info if tenant.contact_info else {},
+            "contact":  contact_info,  # ✅ Use the auto-filled contact info
             "status": "active",  # Default to active when creating
             "created_at": now,
             "updated_at": now,

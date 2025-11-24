@@ -82,14 +82,24 @@ def get_members_overview(db: Session, org_id: UUID, params: SpaceGroupMemberRequ
 
 
 def get_assignment_preview(db: Session, org_id: UUID, params: SpaceGroupMemberRequest):
-    filters = build_filters(org_id, params)
+    # Remove SpaceGroupMember from filters since we're previewing BEFORE creation
+    filters = []
     
+    # org_id comes from Space
+    filters.append(Space.org_id == org_id)
+    
+    # Add soft-delete filters
+    filters.append(Space.is_deleted == False)
+    filters.append(Site.is_deleted == False)
+    filters.append(SpaceGroup.is_deleted == False)
+
     # Add specific filters for the preview
     if params.space_id:
         filters.append(Space.id == params.space_id)
     if params.group_id:
         filters.append(SpaceGroup.id == params.group_id)
     
+    # ✅ CHANGED: Query Space and SpaceGroup directly, not through SpaceGroupMember
     assignment_preview_query = (
         db.query(
             Site.name.label("site_name"),
@@ -99,18 +109,18 @@ def get_assignment_preview(db: Session, org_id: UUID, params: SpaceGroupMemberRe
             SpaceGroup.name.label("group_name"),
             SpaceGroup.specs
         )
-        .select_from(SpaceGroupMember)  # Start from the membership table
-        .join(Space, Space.id == SpaceGroupMember.space_id)
+        .select_from(Space)  # ✅ CHANGED: Start from Space table
         .join(Site, Site.id == Space.site_id)
-        .join(SpaceGroup, SpaceGroup.id == SpaceGroupMember.group_id)
+        .join(SpaceGroup, SpaceGroup.id == params.group_id)  # ✅ CHANGED: Direct join on group_id
         .filter(*filters)
     )
+    
     result = assignment_preview_query.first()
     if not result:
         return error_response(
-            message="Assignment preview not found",
+            message="Space or Group not found for preview",
             status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=404  # Use 404 for not found
+            http_status=404
         )
     
     return result

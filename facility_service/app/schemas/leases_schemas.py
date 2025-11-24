@@ -44,7 +44,7 @@ class LeaseOut(LeaseBase):
     updated_at: Optional[datetime]
     space_code: Optional[str] = None
     site_name: Optional[str] = None
-
+    space_name: Optional[str] = None
     model_config = {"from_attributes": True}
 
 

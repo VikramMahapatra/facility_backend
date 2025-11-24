@@ -133,6 +133,7 @@ def get_list(db: Session, org_id: UUID, params: LeaseRequest) -> LeaseListRespon
 
         space_code = None
         site_name = None
+        space_name = None
         if row.space_id:
             space_code = (
                 db.query(Space.code)
@@ -145,7 +146,12 @@ def get_list(db: Session, org_id: UUID, params: LeaseRequest) -> LeaseListRespon
                 .filter(Site.id == row.site_id, Site.is_deleted == False)
                 .scalar()
             )
-
+        if row.space_id:
+            space_name = (
+                db.query(Space.name)
+                .filter(Space.id == row.space_id, Space.is_deleted == False)
+                .scalar()
+            )
         leases.append(
             LeaseOut.model_validate(
                 {
@@ -153,6 +159,7 @@ def get_list(db: Session, org_id: UUID, params: LeaseRequest) -> LeaseListRespon
                     "space_code": space_code,
                     "site_name": site_name,
                     "tenant_name": tenant_name,
+                    "space_name": space_name,
                 }
             )
         )

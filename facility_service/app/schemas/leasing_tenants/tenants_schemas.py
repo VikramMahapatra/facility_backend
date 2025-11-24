@@ -38,7 +38,7 @@ class TenantRequest(BaseModel):
 
 class TenantOut(BaseModel):
     id: UUID
-    org_id: UUID
+    org_id: Optional[UUID] = None
     site_id: UUID
     building_block_id: UUID
     space_id: UUID
@@ -53,7 +53,7 @@ class TenantOut(BaseModel):
 
     # ADD THESE FIELDS FOR DISPLAY
     site_name: Optional[str] = None
-    building_name: Optional[str] = None  
+    building_name: Optional[str] = None
     space_name: Optional[str] = None
     building_block_id: Optional[UUID] = None
 
@@ -76,9 +76,10 @@ class TenantOverviewResponse(BaseModel):
     }
 # Add to schemas/leasing_tenants/tenants_schemas.py
 
+
 class TenantDropdownResponse(BaseModel):
     id: UUID
     name: str
-    
+
     class Config:
         from_attributes = True

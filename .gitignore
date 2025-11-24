@@ -22,10 +22,6 @@ ENV/
 .git/
 .gitignore
 
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
 
 # Testing
 .pytest_cache/

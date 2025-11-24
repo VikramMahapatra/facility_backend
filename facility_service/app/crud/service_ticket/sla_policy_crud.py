@@ -133,21 +133,11 @@ def get_sla_policies_overview(db: Session, org_id: UUID) -> SlaPolicyOverviewRes
     
     avg_response_time_minutes = float(avg_response_time_result) if avg_response_time_result else 0.0
     
-    # Format average response time directly in the function
-    hours = int(avg_response_time_minutes // 60)
-    remaining_minutes = int(avg_response_time_minutes % 60)
-    
-    if hours > 0 and remaining_minutes > 0:
-        avg_response_time_formatted = f"{hours}h {remaining_minutes}min"
-    elif hours > 0:
-        avg_response_time_formatted = f"{hours}h"
-    else:
-        avg_response_time_formatted = f"{remaining_minutes}min"
 
     return {
         "total_sla_policies": total_policies_count,
         "total_organizations": organizations_count,
-        "average_response_time": avg_response_time_formatted
+        "average_response_time": avg_response_time_minutes
     }
 
 # ---------------- Helper function for getting policy with site and org ----------------

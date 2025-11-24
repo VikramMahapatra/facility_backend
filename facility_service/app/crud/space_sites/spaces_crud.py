@@ -141,28 +141,6 @@ def create_space(db: Session, space: SpaceCreate):
             return error_response(
                 message=f"Space with name '{space.name}' already exists in building '{building_name}'"
             )
-    
-        # VALIDATION: Check if building has tenants or leases before creating space
-    if space.building_block_id:
-        # Check if any spaces in this building have active tenants
-        has_tenants = db.query(Tenant).join(Space).filter(
-            Space.building_block_id == space.building_block_id,
-            Tenant.is_deleted == False
-        ).first()
-        
-        # Check if any spaces in this building have active leases
-        has_leases = db.query(Lease).join(Space).filter(
-            Space.building_block_id == space.building_block_id,
-            Lease.is_deleted == False,
-            func.lower(Lease.status) == func.lower('active')
-        ).first()
-
-        if has_tenants or has_leases:
-            building_name = db.query(Building.name).filter(
-                Building.id == space.building_block_id).scalar()
-            return error_response(
-                message=f"Cannot create space in building '{building_name}' that already has tenants or active leases",
-            )
 
     # Create space - exclude building_block field
     space_data = space.model_dump(exclude={"building_block"})

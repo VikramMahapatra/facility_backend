@@ -1,0 +1,43 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 960739390722.dkr.ecr.ap-south-1.amazonaws.com
+      
+      # Define Variables
+      - REPO_URL=960739390722.dkr.ecr.ap-south-1.amazonaws.com
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
+      
+  build:
+    commands:
+      - echo Build started on `date`
+      
+    
+      # AUTH SERVICE
+      - echo Building Auth Service...
+      - docker build -t $REPO_URL/facilitos-auth:latest -f auth_service/Dockerfile .
+      - docker tag $REPO_URL/facilitos-auth:latest $REPO_URL/facilitos-auth:$IMAGE_TAG
+      
+    
+      # FACILITY SERVICE
+    
+      - echo Building Facility Service...
+      - docker build -t $REPO_URL/facilitos-facility:latest -f facility_service/Dockerfile .
+      - docker tag $REPO_URL/facilitos-facility:latest $REPO_URL/facilitos-facility:$IMAGE_TAG
+
+  post_build:
+    commands:
+      - echo Pushing Docker images...
+      
+      # Push Auth Service
+      - docker push $REPO_URL/facilitos-auth:latest
+      - docker push $REPO_URL/facilitos-auth:$IMAGE_TAG
+      
+      # Push Facility Service
+      - docker push $REPO_URL/facilitos-facility:latest
+      - docker push $REPO_URL/facilitos-facility:$IMAGE_TAG
+      
+      - echo Build completed successfully!

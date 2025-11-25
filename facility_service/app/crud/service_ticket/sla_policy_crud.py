@@ -296,48 +296,54 @@ def service_category_lookup(db: Session, site_id: Optional[str] = None) -> List[
 # ---------------- Contact Lookup (for both default and escalation) ----------------
 def contact_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """
-    Fetch contacts (users) from staff_sites table.
-    STRICTLY filtered by site_id - returns empty if no site_id provided.
-    Uses auth_db for Users table.
+    Fetch contacts for a given site.
+    Includes:
+      1. All staff users assigned to the site with status='active'
+      2. All users with account_type='organization' and status='active'
     """
-    # Return empty if no site_id or invalid site_id
     if not site_id or not site_id.strip() or site_id.strip().lower() == "all":
         return []
 
-    # Step 1: Get user_ids from staff_sites for the given site
-    staff_records = (
+    # Fetch active staff users for the site
+    staff_user_ids = (
         db.query(StaffSite.user_id)
         .filter(
-            StaffSite.is_deleted == False,
             StaffSite.site_id == site_id,
-            StaffSite.user_id.isnot(None)
+            StaffSite.is_deleted == False
         )
-        .distinct()
         .all()
     )
+    staff_user_ids = [u.user_id for u in staff_user_ids if u.user_id is not None]
 
-    if not staff_records:
-        return []
+    staff_users = []
+    if staff_user_ids:
+        staff_users = (
+            auth_db.query(Users.id, Users.full_name)
+            .filter(
+                Users.id.in_(staff_user_ids),
+                Users.is_deleted == False,
+                Users.status == "active"
+            )
+            .all()
+        )
 
-    # Extract user_ids
-    user_ids = [record.user_id for record in staff_records]
-
-    # Step 2: Get user details from auth database
-    users = (
+    # Fetch all organization users with status='active'
+    org_users = (
         auth_db.query(Users.id, Users.full_name)
         .filter(
-            Users.id.in_(user_ids),
-            Users.is_deleted == False,
-            Users.account_type == "organization" 
+            Users.account_type == "organization",
+            Users.status == "active",
+            Users.is_deleted == False
         )
-        .order_by(Users.full_name.asc())
         .all()
     )
 
-    return [
-        Lookup(id=user.id, name=user.full_name)
-        for user in users
-    ]
+    # Combine both lists and remove duplicates
+    all_users_dict = {user.id: user.full_name for user in staff_users + org_users}
+
+    # Convert to Lookup objects
+    return [Lookup(id=uid, name=name) for uid, name in all_users_dict.items()]
+
 
 
 # ---------------- Org Lookup (Simple) ----------------

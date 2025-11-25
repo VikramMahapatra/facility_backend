@@ -177,7 +177,6 @@ def create_sla_policy(db: Session, policy: SlaPolicyCreate, org_id: UUID) -> Sla
     existing_policy = db.query(SlaPolicy).filter(
         SlaPolicy.service_category.ilike(policy.service_category.strip()),
         SlaPolicy.site_id == policy.site_id,
-        SlaPolicy.org_id == org_id,
         SlaPolicy.is_deleted == False
     ).first()
 
@@ -217,16 +216,13 @@ def update_sla_policy(db: Session, policy: SlaPolicyUpdate) -> SlaPolicyOut:
         existing_policy = db.query(SlaPolicy).filter(
             SlaPolicy.service_category.ilike(new_category.strip()),
             SlaPolicy.site_id == db_policy.site_id,
-            SlaPolicy.org_id == db_policy.org_id,  # Use existing org_id
             SlaPolicy.id != policy.id,
             SlaPolicy.is_deleted == False
         ).first()
 
         if existing_policy:
             return error_response(
-                message=f"SLA policy '{new_category}' already exists for this site and organization",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message=f"SLA policy '{new_category}' already exists for this site and organization"
             )
     
     # Update fields

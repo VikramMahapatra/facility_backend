@@ -210,6 +210,12 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
     for r in rows:
         record = dict(r._mapping)
 
+#----------------------------------------------for none building block id-------------changed
+        if not record.get("building_block_id"):
+            record.pop("building_block_id", None)
+            record.pop("building_name", None)
+
+
         if record.get("tenant_type") == "individual":
             record["contact_info"] = {
                 "name": record["name"],
@@ -310,6 +316,12 @@ def get_tenant_detail(db: Session, tenant_id: str, tenant_type: str) -> TenantOu
         )
 
     record = dict(tenant._mapping)
+
+#----------------------------------------------for none building block id-------------changed
+    if not record.get("building_block_id"):
+        record.pop("building_block_id", None)
+        record.pop("building_name", None)
+
 
     if record.get("tenant_type") == "individual":
         record["contact_info"] = {
@@ -638,6 +650,16 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 "updated_at": datetime.utcnow(),
             }
         )
+#----------------------------------------------for none building block id-------------changed
+        if 'building_block_id' in update_dict:
+            new_building_id = update_dict["building_block_id"]
+            if not new_building_id:  # covers None, "", or falsy values
+                new_building_id = None
+            db.query(Space).filter(
+                Space.id == update_dict.get("space_id", db_tenant.space_id)
+            ).update({
+                "building_block_id": new_building_id
+            })
 
         db.commit()
         db.refresh(db_tenant)

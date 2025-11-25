@@ -153,7 +153,11 @@ def update_space(db: Session, space: SpaceUpdate):
         )
 
     update_data = space.model_dump(
-        exclude_unset=True, exclude={"building_block"})
+        exclude_unset=False, exclude={"building_block"})
+        # Convert empty UUID strings to None---------------------changed
+    for field in ["building_block_id"]:
+        if update_data.get(field) == "":
+            update_data[field] = None
     # Check if trying to update site or building when tenants/leases exist
     if ('site_id' in update_data or 'building_block_id' in update_data):
         # Check if space has any active tenants
@@ -174,40 +178,33 @@ def update_space(db: Session, space: SpaceUpdate):
                 message="Cannot update site or building for a space that has tenants or leases"
             )
         
-    # Check for code duplicates within same building (if building exists and code is being updated)
-    if 'code' in update_data and db_space.building_block_id:
+    if space.building_block_id:
         existing_space = db.query(Space).filter(
-            Space.building_block_id == db_space.building_block_id,  # Same building
-            Space.id != space.id,  # Different space
+            and_(  Space.building_block_id == space.building_block_id,
             Space.is_deleted == False,
-            func.lower(Space.code) == func.lower(
-                update_data.get('code', ''))  # Case-insensitive
-        ).first()
-
-        if existing_space:
-            building_name = db.query(Building.name).filter(
-                Building.id == db_space.building_block_id).scalar()
-            return error_response(
-                message=f"Space with code '{update_data['code']}' already exists in building '{building_name}'",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+            Space.id != space.id,  
+            or_(
+                func.lower(Space.code) == func.lower(update_data.get("code", "")),
+                func.lower(Space.name) == func.lower(update_data.get("name", ""))
             )
-
-    # Check for name duplicates within same building (if building exists and name is being updated)
-    if 'name' in update_data and db_space.building_block_id:
-        existing_space_by_name = db.query(Space).filter(
-            Space.building_block_id == db_space.building_block_id,  # Same building
-            Space.id != space.id,  # Different space
+        )).first()
+        
+    else:
+        existing_space = db.query(Space).filter(
+        and_(
+            or_(
+                func.lower(Space.code) == func.lower(update_data.get("code", "")),
+                func.lower(Space.name) == func.lower(update_data.get("name", ""))
+            ),
             Space.is_deleted == False,
-            func.lower(Space.name) == func.lower(
-                update_data.get('name', ''))  # Case-insensitive
-        ).first()
+            Space.id != space.id  
+        )
+    ).first()
 
-        if existing_space_by_name:
-            building_name = db.query(Building.name).filter(
-                Building.id == db_space.building_block_id).scalar()
-            return error_response(
-                message=f"Space with name '{update_data['name']}' already exists in building '{building_name}'",
+
+    if existing_space:
+        return error_response(
+                message=f"Space with code/name already exists ",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
@@ -220,7 +217,8 @@ def update_space(db: Session, space: SpaceUpdate):
         db.commit()
         db.refresh(db_space)
 
-        building_name = db_space.building.name  # Joined building name
+        
+        building_name = db_space.building.name if space.building_block_id else None # Joined building name ------changed
         data = {**db_space.__dict__, "building_block": building_name}
 
         return SpaceOut.model_validate(data)

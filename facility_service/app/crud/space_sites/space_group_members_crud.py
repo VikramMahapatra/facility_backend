@@ -153,6 +153,7 @@ def get_members(db: Session, org_id: UUID, params: SpaceGroupMemberRequest) -> S
         .join(SpaceGroup, SpaceGroup.id == SpaceGroupMember.group_id)
         .join(Site, Site.id == Space.site_id)
         .filter(*filters)
+        .order_by(SpaceGroupMember.updated_at.desc())   # ⬅ Order by latest updated
         .offset(params.skip)
         .limit(params.limit)
     )

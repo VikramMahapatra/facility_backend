@@ -469,6 +469,14 @@ def get_lease_by_id(db: Session, lease_id: str):
 
     space_code = None
     site_name = None
+    space_name = None
+    
+    if lease.space_id:
+        space_name = (
+            db.query(Space.name)
+            .filter(Space.id == lease.space_id, Space.is_deleted == False)
+            .scalar()
+        )
     if lease.space_id:
         space_code = (
             db.query(Space.code)
@@ -488,5 +496,6 @@ def get_lease_by_id(db: Session, lease_id: str):
             "space_code": space_code,
             "site_name": site_name,
             "tenant_name": tenant_name,
+            "space_name": space_name,
         }
     )

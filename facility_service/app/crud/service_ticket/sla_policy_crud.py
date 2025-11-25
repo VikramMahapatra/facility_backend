@@ -222,7 +222,7 @@ def update_sla_policy(db: Session, policy: SlaPolicyUpdate) -> SlaPolicyOut:
 
         if existing_policy:
             return error_response(
-                message=f"SLA policy '{new_category}' already exists for this site and organization"
+                message=f"SLA policy '{new_category}' already exists for this site"
             )
     
     # Update fields

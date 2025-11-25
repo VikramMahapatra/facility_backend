@@ -1,3 +1,4 @@
+from datetime import datetime
 from sqlalchemy import Column, ForeignKey, String, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -17,8 +18,9 @@ class SpaceGroupMember(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now()   # Automatically updates on row update
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
     )
     group = relationship("SpaceGroup", back_populates="members")
     space = relationship("Space")

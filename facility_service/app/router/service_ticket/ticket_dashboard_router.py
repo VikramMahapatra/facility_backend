@@ -45,9 +45,10 @@ def last_30_days_performance(
 def team_workload(
     site_id: UUID = Query(..., description="Site ID"),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),  # ✅ ADD THIS
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_team_workload(db, site_id, current_user.org_id)
+    return crud.get_team_workload(db,auth_db, site_id, current_user.org_id)
 
 # 4. Ticket Category Statistics
 @router.get("/category-statistics", response_model=CategoryStatisticsResponse)
@@ -73,6 +74,7 @@ def recent_tickets(
 def complete_dashboard(
     site_id: UUID = Query(..., description="Site ID"),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),  # ✅ ADD THIS
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_complete_dashboard(db, site_id, current_user.org_id)
+    return crud.get_complete_dashboard(db, auth_db,site_id,current_user.org_id)

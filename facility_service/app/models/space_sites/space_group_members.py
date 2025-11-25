@@ -1,3 +1,4 @@
+from datetime import datetime
 from sqlalchemy import Column, ForeignKey, String, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -14,6 +15,13 @@ class SpaceGroupMember(Base):
         "spaces.id", ondelete="CASCADE"), primary_key=True)
     assigned_date = Column(DateTime(timezone=True), server_default=func.now())
     assigned_by = Column(String(128), nullable=False)
-
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
     group = relationship("SpaceGroup", back_populates="members")
     space = relationship("Space")
+    

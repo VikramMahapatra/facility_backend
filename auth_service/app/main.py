@@ -41,3 +41,8 @@ setup_exception_handlers(app)
 # Routers
 app.include_router(authrouter.router)
 app.include_router(userrouter.router)
+
+
+@app.get("/api/auth/health")
+def health():
+    return {"status": "healthy"}

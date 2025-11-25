@@ -11,7 +11,7 @@ class LeaseBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
-
+    space_name: Optional[str] = None
     kind: Optional[str] = None                 # "commercial" | "residential"
     partner_id: Optional[UUID] = None          # when kind="commercial"
     tenant_id: Optional[UUID] = None           # when kind="residential"

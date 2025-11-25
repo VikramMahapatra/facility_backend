@@ -219,7 +219,7 @@ def update(db: Session, payload: LeaseUpdate):
 
     data = payload.model_dump(exclude_unset=True)
 
-    # ✅ STRICT VALIDATION: Prevent updating partner_id/tenant_id on the same space
+    # ✅ STRICT VALIDATION: Prevent updating partner_id/tenant_id on the same spaces
     if 'partner_id' in data or 'tenant_id' in data:
         # If space is not changing OR we're not changing space_id
         target_space_id = data.get('space_id', obj.space_id)

@@ -16,7 +16,7 @@ class CommercialPartner(Base):
         "sites.id", ondelete="CASCADE"))
     space_id = Column(UUID(as_uuid=True), ForeignKey(
         "spaces.id", ondelete="CASCADE"))
-    type = Column(String(16), nullable=False)  # merchant|brand|kiosk
+    type = Column(String(16), default="merchant")  # merchant|brand|kiosk
     legal_name = Column(String(200), nullable=False)
     contact = Column(JSONB)
     status = Column(String(16), default="active")

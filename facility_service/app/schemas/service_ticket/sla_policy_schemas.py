@@ -63,7 +63,7 @@ class SlaPolicyListResponse(BaseModel):
 class SlaPolicyOverviewResponse(BaseModel):
     total_sla_policies: int
     total_organizations: int
-    average_response_time: str
+    average_response_time: float
 
     class Config:
         from_attributes = True

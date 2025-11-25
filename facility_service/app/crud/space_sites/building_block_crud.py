@@ -94,7 +94,7 @@ def create_building(db: Session, building: BuildingCreate):
     existing_building = db.query(Building).filter(
         Building.site_id == building.site_id,
         Building.is_deleted == False,
-        func.lower(Building.name) == func.lower(building.name)
+        func.trim(func.lower(Building.name)) == func.trim(func.lower(building.name))
     ).first()
 
     if existing_building:
@@ -103,20 +103,6 @@ def create_building(db: Session, building: BuildingCreate):
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
-    
-    # Check if site already has spaces before creating building
-    if building.site_id:
-        # Check if the site has any active spaces
-        has_spaces = db.query(Space).filter(
-            Space.site_id == building.site_id,
-            Space.is_deleted == False
-        ).first()
-
-        if has_spaces:
-            site_name = db.query(Site.name).filter(Site.id == building.site_id).scalar()
-            return error_response(
-                message=f"Cannot create building in site '{site_name}' that already has spaces assigned to it"
-            )
 
     # Create building - exclude org_id if not needed in model
     building_data = building.model_dump(exclude={"org_id"})
@@ -143,31 +129,40 @@ def update_building(db: Session, building: BuildingUpdate):
     update_data = building.model_dump(exclude_unset=True)
 
     # Check if trying to update site when spaces exist
-    if 'site_id' in update_data:
+    if 'site_id' in update_data and update_data['site_id'] != db_building.site_id:
         # Check if building has any active spaces
         has_spaces = db.query(Space).filter(
             Space.building_block_id == building.id,
             Space.is_deleted == False
-        ).first()
+            ).first()
 
         if has_spaces:
-            return error_response(
+                return error_response(
                 message="Cannot update site for a building that has spaces assigned to it"
             )
+        existing_building = db.query(Building).filter(
+            Building.site_id == building.site_id,
+            Building.id != building.id,
+            Building.is_deleted == False,
+            func.trim(func.lower(Building.name)) == func.trim(func.lower(update_data.get('name', '')))
+        ).first()
+        if existing_building:
+            return error_response(
+                message=f"Building with name '{update_data['name']}' already exists in this site"
+            )
+        
     # Check for duplicates only if name is being updated
-    if 'name' in update_data:
+    if 'name' in update_data and update_data['name'] != db_building.name:
         existing_building = db.query(Building).filter(
             Building.site_id == db_building.site_id,
             Building.id != building.id,
             Building.is_deleted == False,
-            func.lower(Building.name) == func.lower(update_data.get('name', ''))
+            func.trim(func.lower(Building.name)) == func.trim(func.lower(update_data.get('name', '')))
         ).first()
 
         if existing_building:
             return error_response(
-                message=f"Building with name '{update_data['name']}' already exists in this site",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message=f"Building with name '{update_data['name']}' already exists in this site"
             )
 
     # Update building

@@ -4,7 +4,7 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, or_, case, literal
+from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
 from shared.utils.app_status_code import AppStatusCode
@@ -111,60 +111,30 @@ def create_space(db: Session, space: SpaceCreate):
     # Check for duplicate space code within the same building (case-insensitive)
     if space.building_block_id:
         existing_space = db.query(Space).filter(
-            Space.building_block_id == space.building_block_id,
+            and_(  Space.building_block_id == space.building_block_id,
             Space.is_deleted == False,
             # Case-insensitive code within same building
-            func.lower(Space.code) == func.lower(space.code)
-        ).first()
+            or_ (func.lower(Space.code) == func.lower(space.code),
+                 func.lower(Space.name) == func.lower(space.name))
+        )).first()
+        
+    else:
+        existing_space=db.query(Space).filter(
+            and_(or_(func.lower(Space.name) == func.lower(space.name),
+                 func.lower(Space.code) == func.lower(space.code)),
+            Space.is_deleted==False,
+        )).first()
 
-        if existing_space:
-            building_name = db.query(Building.name).filter(
-                Building.id == space.building_block_id).scalar()
-            return error_response(
-                message=f"Space with code '{space.code}' already exists in building '{building_name}'",
+    if existing_space:
+        return error_response(
+                message=f"Space with code/name already exists ",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
-
-    # Check for duplicate space name within the same building (if building and name are specified)
-    if space.building_block_id and space.name:
-        existing_space_by_name = db.query(Space).filter(
-            Space.building_block_id == space.building_block_id,
-            Space.is_deleted == False,
-            # Case-insensitive name within same building
-            func.lower(Space.name) == func.lower(space.name)
-        ).first()
-
-        if existing_space_by_name:
-            building_name = db.query(Building.name).filter(
-                Building.id == space.building_block_id).scalar()
-            return error_response(
-                message=f"Space with name '{space.name}' already exists in building '{building_name}'"
-            )
     
-        # VALIDATION: Check if building has tenants or leases before creating space
-    if space.building_block_id:
-        # Check if any spaces in this building have active tenants
-        has_tenants = db.query(Tenant).join(Space).filter(
-            Space.building_block_id == space.building_block_id,
-            Tenant.is_deleted == False
-        ).first()
-        
-        # Check if any spaces in this building have active leases
-        has_leases = db.query(Lease).join(Space).filter(
-            Space.building_block_id == space.building_block_id,
-            Lease.is_deleted == False,
-            func.lower(Lease.status) == func.lower('active')
-        ).first()
 
-        if has_tenants or has_leases:
-            building_name = db.query(Building.name).filter(
-                Building.id == space.building_block_id).scalar()
-            return error_response(
-                message=f"Cannot create space in building '{building_name}' that already has tenants or active leases",
-            )
-
-    # Create space - exclude building_block field
+    # Create space - exclude building_block 
+    space.building_block_id =space.building_block_id if space.building_block_id else None
     space_data = space.model_dump(exclude={"building_block"})
     db_space = Space(**space_data)
     db.add(db_space)
@@ -310,7 +280,7 @@ def get_space_lookup(db: Session, site_id: str, building_id: str, org_id: str):
             Space.name
         )
         .join(Site, Space.site_id == Site.id)
-        .join(Building, Space.building_block_id == Building.id)
+        .outerjoin(Building, Space.building_block_id == Building.id)
         .filter(Space.is_deleted == False)
         .order_by(Space.name.asc())
     )

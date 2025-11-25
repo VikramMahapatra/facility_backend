@@ -194,8 +194,8 @@ def get_site(db: Session, site_id: str):
         .scalar()
     ) or 0
 
-    occupied_percent = max(
-        0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0))
+    occupied_percent = round(max(
+        0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0)),2)
 
     return SiteOut(
         id=site.id,

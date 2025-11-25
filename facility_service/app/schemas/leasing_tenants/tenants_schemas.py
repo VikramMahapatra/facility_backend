@@ -33,7 +33,7 @@ class TenantRequest(BaseModel):
     skip: int = 0
     limit: int = 10
     status: Optional[str] = None
-    type: Optional[str] = None
+    type: Optional[str] = "merchant"
 
 
 class TenantOut(BaseModel):
@@ -46,11 +46,11 @@ class TenantOut(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     tenant_type: str
-    type: Optional[str] = None
+    type: Optional[str] = "merchant"
     status: str
     contact_info: Optional[Any] = None
     tenant_leases: Optional[List[LeaseOut]] = None
-
+    legal_name: Optional[str] = None
     # ADD THESE FIELDS FOR DISPLAY
     site_name: Optional[str] = None
     building_name: Optional[str] = None

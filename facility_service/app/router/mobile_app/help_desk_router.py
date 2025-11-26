@@ -4,15 +4,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Qu
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from ...schemas.service_ticket.tickets_schemas import TicketActionRequest, TicketFilterRequest
+from ...schemas.service_ticket.tickets_schemas import TicketActionRequest, TicketAssignedToRequest, TicketFilterRequest
 
-from ...crud.service_ticket import tickets_crud
+from ...crud.service_ticket import tickets_crud, ticket_category_crud
 
 from ...schemas.mobile_app.help_desk_schemas import ComplaintCreate, ComplaintDetailsRequest, ComplaintDetailsResponse, ComplaintOut, ComplaintResponse
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
-from shared.core.schemas import MasterQueryParams, UserToken
-from ...crud.mobile_app import help_desk_crud
+from shared.core.schemas import Lookup, MasterQueryParams, UserToken
 
 
 router = APIRouter(
@@ -124,3 +123,58 @@ def on_hold_ticket(
 ):
     request.action_by = current_user.user_id
     return tickets_crud.on_hold_ticket(background_tasks, db, auth_db, request, current_user)
+
+
+@router.post("/category-lookup", response_model=List[Lookup])
+def get_category_lookup(
+    params: MasterQueryParams = None,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get ticket categories for dropdown/lookup.
+    Returns both site-specific and global categories.
+    """
+    return ticket_category_crud.category_lookup(db, params.site_id)
+
+
+@router.post("/assign-to", response_model=List[Lookup])
+def get_employees_for_ticket(
+    params: TicketActionRequest = None,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get all employees for a specific ticket based on site_id
+    """
+    employees = ticket_category_crud.get_employees_by_ticket(
+        db,
+        auth_db,
+        params.ticket_id
+    )
+
+    return [
+        Lookup(id=emp.user_id, name=emp.full_name)
+        for emp in employees
+    ]
+
+
+@router.post("/assign-ticket")
+def assign_ticket_route(
+    request: TicketAssignedToRequest,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Update ticket assigned_to
+    """
+    return tickets_crud.update_ticket_assigned_to(
+        background_tasks,
+        session=session,
+        auth_db=auth_db,
+        data=request,
+        current_user=current_user
+    )

@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Qu
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from ...schemas.service_ticket.tickets_schemas import TicketActionRequest, TicketFilterRequest
+from ...schemas.service_ticket.tickets_schemas import TicketActionRequest, TicketAssignedToRequest, TicketFilterRequest
 
 from ...crud.service_ticket import tickets_crud, ticket_category_crud
 
@@ -158,3 +158,23 @@ def get_employees_for_ticket(
         Lookup(id=emp.user_id, name=emp.full_name)
         for emp in employees
     ]
+
+
+@router.post("/assign-ticket")
+def assign_ticket_route(
+    request: TicketAssignedToRequest,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Update ticket assigned_to
+    """
+    return tickets_crud.update_ticket_assigned_to(
+        background_tasks,
+        session=session,
+        auth_db=auth_db,
+        data=request,
+        current_user=current_user
+    )

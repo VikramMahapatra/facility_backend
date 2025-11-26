@@ -4,7 +4,7 @@ import uuid
 from typing import List, Optional, Tuple, Dict, Any
 from datetime import datetime, date, timedelta
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import String, func, extract, or_, cast, Date
+from sqlalchemy import String, and_, func, extract, or_, cast, Date
 from sqlalchemy import desc
 
 from shared.helpers.json_response_helper import error_response
@@ -21,7 +21,6 @@ from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, 
 from uuid import UUID
 from decimal import Decimal
 
-
 def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
     filters = [
         Lease.org_id == org_id,
@@ -34,22 +33,22 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
                        == params.charge_code.lower())
 
     if params.month and params.month != "all":
-        # Check if selected month falls within the period range
         selected_month = int(params.month)
-        current_year = datetime.now().year
         
-        # Calculate first and last day of the selected month
-        first_day = date(current_year, selected_month, 1)
-        
-        # Get last day of the month
-        if selected_month == 12:
-            last_day = date(current_year, 12, 31)
-        else:
-            last_day = date(current_year, selected_month + 1, 1) - timedelta(days=1)
-        
-        
-        filters.append(LeaseCharge.period_start <= last_day)
-        filters.append(LeaseCharge.period_end >= first_day)
+        # ✅ BEST: Simple 3-case approach that handles all scenarios
+        filters.append(
+            or_(
+                # Case 1: Period starts in the selected month
+                extract('month', LeaseCharge.period_start) == selected_month,
+                # Case 2: Period ends in the selected month  
+                extract('month', LeaseCharge.period_end) == selected_month,
+                # Case 3: Period spans across the selected month
+                and_(
+                    extract('month', LeaseCharge.period_start) < selected_month,
+                    extract('month', LeaseCharge.period_end) > selected_month
+                )
+            )
+        )
 
     if params.search:
         search_term = f"%{params.search}%"

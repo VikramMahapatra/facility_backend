@@ -29,12 +29,13 @@ router = APIRouter(
 def get_sla_policies_endpoint(
     params: SlaPolicyRequest = Depends(),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),  # ✅ ADD auth_db
     current_user: UserToken = Depends(validate_current_token)
 ):
-    
     return crud.get_sla_policies(
         db=db,
-        org_id=current_user.org_id,  # ✅ ADD THIS - use same org as overview
+        auth_db=auth_db,  # ✅ PASS auth_db
+        org_id=current_user.org_id,
         params=params
     )
 
@@ -62,10 +63,10 @@ def create_sla_policy(
 def update_sla_policy(
     policy: SlaPolicyUpdate,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),  # ✅ ADD THIS
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.update_sla_policy(db, policy)
-
+    return crud.update_sla_policy(db, auth_db, policy)  # ✅ PASS auth_db
 
 # ---------------- Delete (Soft Delete) ----------------
 @router.delete("/{policy_id}")

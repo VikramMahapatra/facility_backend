@@ -47,6 +47,8 @@ class SlaPolicyOut(SlaPolicyBase):
     updated_at: Optional[datetime] = None
     site_name: Optional[str] = None
     org_name: Optional[str] = None
+    default_contact_name: Optional[str] = None
+    escalation_contact_name: Optional[str] = None
 
     class Config:
         from_attributes = True

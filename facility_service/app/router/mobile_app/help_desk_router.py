@@ -138,7 +138,7 @@ def get_category_lookup(
     return ticket_category_crud.category_lookup(db, params.site_id)
 
 
-@router.get("/assign-to", response_model=List[Lookup])
+@router.post("/assign-to", response_model=List[Lookup])
 def get_employees_for_ticket(
     params: TicketActionRequest = None,
     db: Session = Depends(get_db),

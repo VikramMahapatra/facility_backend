@@ -30,19 +30,17 @@ from fastapi import HTTPException
 
 
 # ---------------- Build Filters ----------------
-def build_sla_policies_filters(params: SlaPolicyRequest):
+# ---------------- Build Filters ----------------
+def build_sla_policies_filters(org_id: UUID, params: SlaPolicyRequest):
     filters = [
-        SlaPolicy.is_deleted == False
+        SlaPolicy.is_deleted == False,
+        SlaPolicy.org_id == org_id  # ✅ ALWAYS filter by org_id
     ]
 
-    # Organization filter - only apply if org_id is provided in params
-    if params.org_id and params.org_id.lower() != "all":
-        filters.append(SlaPolicy.org_id == params.org_id)
-    # If no org_id filter, show all organizations (no org filter applied)
-
-    # site filter
+    # ✅ SITE FILTER - Show policies for specific site or all sites in org
     if params.site_id and params.site_id.lower() != "all":
         filters.append(SlaPolicy.site_id == params.site_id)
+    # If "all" or no site_id, show all sites within the org (no additional filter)
 
     # Active status filter
     if params.active and params.active.lower() != "all":
@@ -65,10 +63,11 @@ def build_sla_policies_filters(params: SlaPolicyRequest):
 # ---------------- Get All ----------------
 def get_sla_policies(
     db: Session,
+    org_id: UUID,  # ✅ Add org_id parameter
     params: SlaPolicyRequest
 ) -> SlaPolicyListResponse:
 
-    filters = build_sla_policies_filters(params)
+    filters = build_sla_policies_filters(org_id, params)  # ✅ Pass org_id
 
     # Base query with joins for site and org
     base_query = (
@@ -108,39 +107,39 @@ def get_sla_policies(
         "total": total
     }
 
+
 # ---------------- Overview Endpoint ----------------
-def get_sla_policies_overview(db: Session, org_id: UUID) -> SlaPolicyOverviewResponse:
+def get_sla_policies_overview(db: Session, org_id: UUID, site_id: Optional[UUID] = None) -> SlaPolicyOverviewResponse:
     """
-    Calculate overview statistics for SLA policies
+    Calculate overview statistics for SLA policies - CONSISTENT with site filtering
     """
-    # Total SLA policies count - filtered by org_id
-    total_policies_count = db.query(SlaPolicy).filter(
+    # Base filter - always by org_id
+    base_filters = [
         SlaPolicy.is_deleted == False,
         SlaPolicy.org_id == org_id
-    ).count()
+    ]
+    
+    # ✅ Apply site filter to overview if provided
+    if site_id and site_id != "all":
+        base_filters.append(SlaPolicy.site_id == site_id)
 
-    # Count of organizations across all sites (distinct orgs with SLA policies)
-    organizations_count = db.query(SlaPolicy.org_id).filter(
-        SlaPolicy.is_deleted == False,
-        SlaPolicy.org_id == org_id
-    ).distinct().count()
+    # Total SLA policies count - filtered by org_id and optional site
+    total_policies_count = db.query(SlaPolicy).filter(*base_filters).count()
 
-    # Average response time across all policies - filtered by org_id
-    avg_response_time_result = db.query(func.avg(SlaPolicy.response_time_mins)).filter(
-        SlaPolicy.is_deleted == False,
-        SlaPolicy.org_id == org_id
-    ).scalar()
+    # Count of organizations - always 1 since we're scoped to org
+    organizations_count = 1
+
+    # Average response time - with same filters
+    avg_response_time_result = db.query(func.avg(SlaPolicy.response_time_mins)).filter(*base_filters).scalar()
     
     avg_response_time_minutes = float(avg_response_time_result) if avg_response_time_result else 0.0
-    
 
     return {
         "total_sla_policies": total_policies_count,
         "total_organizations": organizations_count,
         "average_response_time": avg_response_time_minutes
     }
-
-# ---------------- Helper function for getting policy with site and org ----------------
+    # ---------------- Helper function for getting policy with site and org ----------------
 def get_sla_policy_with_site_org(db: Session, policy_id: UUID):
     policy = (
         db.query(SlaPolicy)

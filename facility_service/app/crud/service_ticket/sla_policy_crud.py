@@ -30,19 +30,17 @@ from fastapi import HTTPException
 
 
 # ---------------- Build Filters ----------------
-def build_sla_policies_filters(params: SlaPolicyRequest):
+# ---------------- Build Filters ----------------
+def build_sla_policies_filters(org_id: UUID, params: SlaPolicyRequest):
     filters = [
-        SlaPolicy.is_deleted == False
+        SlaPolicy.is_deleted == False,
+        SlaPolicy.org_id == org_id  # ✅ ALWAYS filter by org_id
     ]
 
-    # Organization filter - only apply if org_id is provided in params
-    if params.org_id and params.org_id.lower() != "all":
-        filters.append(SlaPolicy.org_id == params.org_id)
-    # If no org_id filter, show all organizations (no org filter applied)
-
-    # site filter
+    # ✅ SITE FILTER - Show policies for specific site or all sites in org
     if params.site_id and params.site_id.lower() != "all":
         filters.append(SlaPolicy.site_id == params.site_id)
+    # If "all" or no site_id, show all sites within the org (no additional filter)
 
     # Active status filter
     if params.active and params.active.lower() != "all":
@@ -65,10 +63,11 @@ def build_sla_policies_filters(params: SlaPolicyRequest):
 # ---------------- Get All ----------------
 def get_sla_policies(
     db: Session,
+    org_id: UUID,  # ✅ Add org_id parameter
     params: SlaPolicyRequest
 ) -> SlaPolicyListResponse:
 
-    filters = build_sla_policies_filters(params)
+    filters = build_sla_policies_filters(org_id, params)  # ✅ Pass org_id
 
     # Base query with joins for site and org
     base_query = (
@@ -108,39 +107,39 @@ def get_sla_policies(
         "total": total
     }
 
+
 # ---------------- Overview Endpoint ----------------
-def get_sla_policies_overview(db: Session, org_id: UUID) -> SlaPolicyOverviewResponse:
+def get_sla_policies_overview(db: Session, org_id: UUID, site_id: Optional[UUID] = None) -> SlaPolicyOverviewResponse:
     """
-    Calculate overview statistics for SLA policies
+    Calculate overview statistics for SLA policies - CONSISTENT with site filtering
     """
-    # Total SLA policies count - filtered by org_id
-    total_policies_count = db.query(SlaPolicy).filter(
+    # Base filter - always by org_id
+    base_filters = [
         SlaPolicy.is_deleted == False,
         SlaPolicy.org_id == org_id
-    ).count()
+    ]
+    
+    # ✅ Apply site filter to overview if provided
+    if site_id and site_id != "all":
+        base_filters.append(SlaPolicy.site_id == site_id)
 
-    # Count of organizations across all sites (distinct orgs with SLA policies)
-    organizations_count = db.query(SlaPolicy.org_id).filter(
-        SlaPolicy.is_deleted == False,
-        SlaPolicy.org_id == org_id
-    ).distinct().count()
+    # Total SLA policies count - filtered by org_id and optional site
+    total_policies_count = db.query(SlaPolicy).filter(*base_filters).count()
 
-    # Average response time across all policies - filtered by org_id
-    avg_response_time_result = db.query(func.avg(SlaPolicy.response_time_mins)).filter(
-        SlaPolicy.is_deleted == False,
-        SlaPolicy.org_id == org_id
-    ).scalar()
+    # Count of organizations - always 1 since we're scoped to org
+    organizations_count = 1
+
+    # Average response time - with same filters
+    avg_response_time_result = db.query(func.avg(SlaPolicy.response_time_mins)).filter(*base_filters).scalar()
     
     avg_response_time_minutes = float(avg_response_time_result) if avg_response_time_result else 0.0
-    
 
     return {
         "total_sla_policies": total_policies_count,
         "total_organizations": organizations_count,
         "average_response_time": avg_response_time_minutes
     }
-
-# ---------------- Helper function for getting policy with site and org ----------------
+    # ---------------- Helper function for getting policy with site and org ----------------
 def get_sla_policy_with_site_org(db: Session, policy_id: UUID):
     policy = (
         db.query(SlaPolicy)
@@ -296,48 +295,54 @@ def service_category_lookup(db: Session, site_id: Optional[str] = None) -> List[
 # ---------------- Contact Lookup (for both default and escalation) ----------------
 def contact_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """
-    Fetch contacts (users) from staff_sites table.
-    STRICTLY filtered by site_id - returns empty if no site_id provided.
-    Uses auth_db for Users table.
+    Fetch contacts for a given site.
+    Includes:
+      1. All staff users assigned to the site with status='active'
+      2. All users with account_type='organization' and status='active'
     """
-    # Return empty if no site_id or invalid site_id
     if not site_id or not site_id.strip() or site_id.strip().lower() == "all":
         return []
 
-    # Step 1: Get user_ids from staff_sites for the given site
-    staff_records = (
+    # Fetch active staff users for the site
+    staff_user_ids = (
         db.query(StaffSite.user_id)
         .filter(
-            StaffSite.is_deleted == False,
             StaffSite.site_id == site_id,
-            StaffSite.user_id.isnot(None)
+            StaffSite.is_deleted == False
         )
-        .distinct()
         .all()
     )
+    staff_user_ids = [u.user_id for u in staff_user_ids if u.user_id is not None]
 
-    if not staff_records:
-        return []
+    staff_users = []
+    if staff_user_ids:
+        staff_users = (
+            auth_db.query(Users.id, Users.full_name)
+            .filter(
+                Users.id.in_(staff_user_ids),
+                Users.is_deleted == False,
+                Users.status == "active"
+            )
+            .all()
+        )
 
-    # Extract user_ids
-    user_ids = [record.user_id for record in staff_records]
-
-    # Step 2: Get user details from auth database
-    users = (
+    # Fetch all organization users with status='active'
+    org_users = (
         auth_db.query(Users.id, Users.full_name)
         .filter(
-            Users.id.in_(user_ids),
-            Users.is_deleted == False,
-            Users.account_type == "organization" 
+            Users.account_type == "organization",
+            Users.status == "active",
+            Users.is_deleted == False
         )
-        .order_by(Users.full_name.asc())
         .all()
     )
 
-    return [
-        Lookup(id=user.id, name=user.full_name)
-        for user in users
-    ]
+    # Combine both lists and remove duplicates
+    all_users_dict = {user.id: user.full_name for user in staff_users + org_users}
+
+    # Convert to Lookup objects
+    return [Lookup(id=uid, name=name) for uid, name in all_users_dict.items()]
+
 
 
 # ---------------- Org Lookup (Simple) ----------------

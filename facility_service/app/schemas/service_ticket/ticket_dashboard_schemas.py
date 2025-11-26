@@ -30,6 +30,7 @@ class PerformanceResponse(BaseModel):
 # 3. Team Workload Distribution
 class TechnicianWorkloadOut(BaseModel):
     technician_id: str
+    technician_name: str  # ✅ ADD THIS FIELD
     open: int
     in_progress: int
     escalated: int

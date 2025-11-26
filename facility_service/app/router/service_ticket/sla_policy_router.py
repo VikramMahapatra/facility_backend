@@ -31,12 +31,10 @@ def get_sla_policies_endpoint(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    """
-    Get SLA policies with search, site filter, org filter, and pagination
-    Default: Show all SLA policies from all organizations
-    """
+    
     return crud.get_sla_policies(
         db=db,
+        org_id=current_user.org_id,  # ✅ ADD THIS - use same org as overview
         params=params
     )
 
@@ -47,14 +45,8 @@ def get_sla_policies_overview(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    """
-    Get SLA policies overview with statistics:
-    - Total SLA policies count
-    - Count of organizations across all sites
-    - Average response time across all policies
-    """
+    
     return crud.get_sla_policies_overview(db, current_user.org_id)
-
 # ---------------- Create ----------------
 @router.post("/", response_model=SlaPolicyOut)
 def create_sla_policy(

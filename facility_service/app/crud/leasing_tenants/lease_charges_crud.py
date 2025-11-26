@@ -2,9 +2,9 @@
 import calendar
 import uuid
 from typing import List, Optional, Tuple, Dict, Any
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import String, func, extract, or_, cast, Date
+from sqlalchemy import String, and_, func, extract, or_, cast, Date
 from sqlalchemy import desc
 
 from shared.helpers.json_response_helper import error_response
@@ -21,7 +21,6 @@ from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, 
 from uuid import UUID
 from decimal import Decimal
 
-
 def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
     filters = [
         Lease.org_id == org_id,
@@ -34,18 +33,31 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
                        == params.charge_code.lower())
 
     if params.month and params.month != "all":
-        filters.append(func.extract(
-            "month", LeaseCharge.period_start) == params.month.lower())
+        selected_month = int(params.month)
+        
+        # ✅ BEST: Simple 3-case approach that handles all scenarios
+        filters.append(
+            or_(
+                # Case 1: Period starts in the selected month
+                extract('month', LeaseCharge.period_start) == selected_month,
+                # Case 2: Period ends in the selected month  
+                extract('month', LeaseCharge.period_end) == selected_month,
+                # Case 3: Period spans across the selected month
+                and_(
+                    extract('month', LeaseCharge.period_start) < selected_month,
+                    extract('month', LeaseCharge.period_end) > selected_month
+                )
+            )
+        )
 
     if params.search:
         search_term = f"%{params.search}%"
-        # Search in multiple fields INCLUDING charge_code (your existing search)
         filters.append(or_(
-            LeaseCharge.charge_code.ilike(search_term),  # ← Your existing charge_code search
-            CommercialPartner.legal_name.ilike(search_term),  # Partner name
-            Tenant.name.ilike(search_term),                   # Tenant name
-            Site.name.ilike(search_term),                     # Site name
-            Space.name.ilike(search_term)                     # Space name
+            LeaseCharge.charge_code.ilike(search_term),
+            CommercialPartner.legal_name.ilike(search_term),
+            Tenant.name.ilike(search_term),
+            Site.name.ilike(search_term),
+            Space.name.ilike(search_term)
         ))
 
     return filters
@@ -170,12 +182,35 @@ def get_lease_charge_by_id(db: Session, charge_id: UUID):
 
 
 def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
-        # ✅ ADD VALIDATION
+    # ✅ Tax percentage validation
     if payload.tax_pct is not None:
         if payload.tax_pct < Decimal('0') or payload.tax_pct > Decimal('100'):
             return error_response(
-                        message="Tax percentage must be between 0 and 100"
-                    )
+                message="Tax percentage must be between 0 and 100"
+            )
+    
+    # ✅ Date validation - End date should not be before start date
+    if payload.period_end < payload.period_start:
+        return error_response(
+            message="End date cannot be before start date"
+        )
+    
+    # ✅ SIMPLE VALIDATION: Same charge code cannot have overlapping periods
+    existing_charge = db.query(LeaseCharge).join(Lease).filter(
+        LeaseCharge.lease_id == payload.lease_id,
+        LeaseCharge.charge_code == payload.charge_code,
+        LeaseCharge.is_deleted == False,
+        Lease.is_deleted == False,
+        # Check if periods overlap
+        LeaseCharge.period_start <= payload.period_end,
+        LeaseCharge.period_end >= payload.period_start
+    ).first()
+    
+    if existing_charge:
+        return error_response(
+            message=f"Charge code '{payload.charge_code}' already exists for this lease with overlapping period"
+        )
+    
     obj = LeaseCharge(**payload.model_dump())
     db.add(obj)
     db.commit()
@@ -187,19 +222,51 @@ def update_lease_charge(
     db: Session,
     payload: LeaseChargeUpdate
 ) -> Optional[LeaseCharge]:
+    # ✅ Tax percentage validation
     if payload.tax_pct is not None:
         if payload.tax_pct < Decimal('0') or payload.tax_pct > Decimal('100'):
             return error_response(
-                        message="Tax percentage must be between 0 and 100"
+                message="Tax percentage must be between 0 and 100"
             )
+    
     obj = get_lease_charge_by_id(db, payload.id)
     if not obj:
         return None
-
+    
+    # ✅ Date validation - End date should not be before start date
+    period_start = payload.period_start if payload.period_start is not None else obj.period_start
+    period_end = payload.period_end if payload.period_end is not None else obj.period_end
+    
+    if period_end < period_start:
+        return error_response(
+            message="End date cannot be before start date"
+        )
+    
+    # ✅ SIMPLE VALIDATION: Same charge code cannot have overlapping periods
+    charge_code = payload.charge_code if payload.charge_code is not None else obj.charge_code
+    lease_id = payload.lease_id if payload.lease_id is not None else obj.lease_id
+    
+    existing_charge = db.query(LeaseCharge).join(Lease).filter(
+        LeaseCharge.id != payload.id,  # Exclude current record
+        LeaseCharge.lease_id == lease_id,
+        LeaseCharge.charge_code == charge_code,
+        LeaseCharge.is_deleted == False,
+        Lease.is_deleted == False,
+        # Check if periods overlap
+        LeaseCharge.period_start <= period_end,
+        LeaseCharge.period_end >= period_start
+    ).first()
+    
+    if existing_charge:
+        return error_response(
+            message=f"Charge code '{charge_code}' already exists for this lease with overlapping period"
+        )
+    
+    # Update the object with new values
     for k, v in payload.dict(exclude_unset=True).items():
         setattr(obj, k, v)
     
-    # ADD THIS LINE: Update the timestamp
+    # Update the timestamp
     obj.updated_at = datetime.utcnow()
     
     db.commit()

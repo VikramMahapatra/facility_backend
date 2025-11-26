@@ -3,7 +3,7 @@ from sqlalchemy import func, case
 from datetime import datetime, timedelta
 from typing import List
 from sqlalchemy.orm import Session, joinedload
-
+from shared.models.users import Users
 from ...enum.ticket_service_enum import TicketStatus
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_category import TicketCategory
@@ -26,30 +26,27 @@ def get_dashboard_overview(db: Session, site_id: UUID, org_id: UUID) -> Dashboar
     """
     1. Dashboard Overview - Get main dashboard overview with current ticket counts
     """
-    try:
-        base_query = db.query(Ticket).filter(
-            Ticket.site_id == site_id,
-            Ticket.org_id == org_id
-        )
-        
-        total_tickets = base_query.count()
-        new_tickets = base_query.filter(Ticket.status == TicketStatus.OPEN).count()
-        escalated_tickets = base_query.filter(Ticket.status == TicketStatus.ESCALATED).count()
-        in_progress_tickets = base_query.filter(Ticket.status == TicketStatus.IN_PROGRESS).count()
-        closed_tickets = base_query.filter(Ticket.status == TicketStatus.CLOSED).count()
-        high_priority_tickets = base_query.filter(Ticket.priority == "HIGH").count()
-        
-        return DashboardOverviewResponse(
-            total_tickets=total_tickets,
-            new_tickets=new_tickets,
-            escalated_tickets=escalated_tickets,
-            in_progress_tickets=in_progress_tickets,
-            closed_tickets=closed_tickets,
-            high_priority_tickets=high_priority_tickets
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching dashboard overview: {str(e)}")
-
+    base_query = db.query(Ticket).filter(
+        Ticket.site_id == site_id,
+        Ticket.org_id == org_id
+    )
+    
+    total_tickets = base_query.count()
+    new_tickets = base_query.filter(Ticket.status == TicketStatus.OPEN).count()
+    escalated_tickets = base_query.filter(Ticket.status == TicketStatus.ESCALATED).count()
+    in_progress_tickets = base_query.filter(Ticket.status == TicketStatus.IN_PROGRESS).count()
+    closed_tickets = base_query.filter(Ticket.status == TicketStatus.CLOSED).count()
+    high_priority_tickets = base_query.filter(Ticket.priority == "HIGH").count()
+    
+    return DashboardOverviewResponse(
+        total_tickets=total_tickets,
+        new_tickets=new_tickets,
+        escalated_tickets=escalated_tickets,
+        in_progress_tickets=in_progress_tickets,
+        closed_tickets=closed_tickets,
+        high_priority_tickets=high_priority_tickets
+    )
+    
 def get_last_30_days_performance(db: Session, site_id: UUID, org_id: UUID) -> PerformanceResponse:
     """
     2. Last 30 Days Performance - Get performance metrics for the last 30 days
@@ -82,9 +79,9 @@ def get_last_30_days_performance(db: Session, site_id: UUID, org_id: UUID) -> Pe
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching performance metrics: {str(e)}")
 
-def get_team_workload(db: Session, site_id: UUID, org_id: UUID) -> TeamWorkloadResponse:
+def get_team_workload(db: Session, auth_db: Session, site_id: UUID, org_id: UUID) -> TeamWorkloadResponse:
     """
-    3. Team Workload Distribution - Get team workload distribution by technician
+    3. Team Workload Distribution - Get team workload distribution by technician with names
     """
     try:
         workload_query = db.query(
@@ -99,10 +96,25 @@ def get_team_workload(db: Session, site_id: UUID, org_id: UUID) -> TeamWorkloadR
             Ticket.assigned_to.isnot(None)
         ).group_by(Ticket.assigned_to)
         
+        # Get technician names
+        workload_results = workload_query.all()
+        technician_ids = [str(workload.assigned_to) for workload in workload_results]
+        
+        technician_names = {}
+        if technician_ids:
+            users = auth_db.query(Users.id, Users.full_name).filter(
+                Users.id.in_(technician_ids)
+            ).all()
+            technician_names = {str(user.id): user.full_name for user in users}
+        
         technicians_workload = []
-        for workload in workload_query.all():
+        for workload in workload_results:
+            tech_id = str(workload.assigned_to)
+            technician_name = technician_names.get(tech_id, f"Technician {tech_id}")
+            
             technicians_workload.append(TechnicianWorkloadOut(
-                technician_id=str(workload.assigned_to),
+                technician_id=tech_id,
+                technician_name=technician_name,  # Add this field
                 open=workload.open_tickets or 0,
                 in_progress=workload.in_progress_tickets or 0,
                 escalated=workload.escalated_tickets or 0,
@@ -211,24 +223,22 @@ def get_recent_tickets(db: Session, site_id: UUID, org_id: UUID, limit: int = 10
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching recent tickets: {str(e)}")
-
-def get_complete_dashboard(db: Session, site_id: UUID, org_id: UUID) -> CompleteDashboardResponse:
+    
+def get_complete_dashboard(db: Session, auth_db: Session, site_id: UUID, org_id: UUID) -> CompleteDashboardResponse:
     """
     6. Complete Dashboard - Get all dashboard data in one call
     """
-    try:
-        overview = get_dashboard_overview(db, site_id, org_id)
-        performance = get_last_30_days_performance(db, site_id, org_id)
-        recent_tickets = get_recent_tickets(db, site_id, org_id)
-        team_workload = get_team_workload(db, site_id, org_id)
-        category_statistics = get_category_statistics(db, site_id, org_id)  # Add this line
-        
-        return CompleteDashboardResponse(
-            overview=overview,
-            performance=performance,
-            recent_tickets=recent_tickets,
-            team_workload=team_workload,
-            category_statistics=category_statistics  # Add this line
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching complete dashboard: {str(e)}")
+    overview = get_dashboard_overview(db, site_id, org_id)
+    performance = get_last_30_days_performance(db, site_id, org_id)
+    recent_tickets = get_recent_tickets(db, site_id, org_id)
+    team_workload = get_team_workload(db, auth_db, site_id, org_id)
+    category_statistics = get_category_statistics(db, site_id, org_id)
+    
+    return CompleteDashboardResponse(
+        overview=overview,
+        performance=performance,
+        recent_tickets=recent_tickets,
+        team_workload=team_workload,
+        category_statistics=category_statistics
+    )
+    

@@ -156,6 +156,8 @@ def tickets_filter_priority_lookup_endpoint(
     return crud.tickets_filter_priority_lookup(db, current_user.org_id)
 
 # ----------------filter(DB) Status ----------------
+
+
 @router.get("/filter-status-lookup", response_model=List[Lookup])
 def tickets_filter_status_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -166,3 +168,11 @@ def tickets_filter_status_lookup_endpoint(
     Follows same pattern as housekeeping_tasks_filter_status_lookup_endpoint
     """
     return crud.tickets_filter_status_lookup(db, current_user.org_id)
+
+
+@router.get("/ticket-no-lookup", response_model=List[Lookup])
+def ticket_no_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.ticket_no_lookup(db, current_user.org_id)

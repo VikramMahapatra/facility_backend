@@ -2005,3 +2005,24 @@ def tickets_filter_status_lookup(db: Session, org_id: str) -> List[Dict]:
     )
     rows = query.all()
     return [{"id": r.id, "name": r.name} for r in rows]
+
+
+def ticket_no_lookup(db: Session, org_id: str) -> List[Dict]:
+    query = (
+        db.query(
+            Ticket.id.label("id"),
+            Ticket.ticket_no.label("name")
+        )
+        .filter(
+            and_(
+                Ticket.org_id == org_id,
+                Ticket.status != TicketStatus.CLOSED
+            )
+        )
+        .distinct()
+        .order_by(Ticket.wo_no.asc())
+    )
+
+    rows = query.all()
+    # Convert UUID to string for JSON serialization
+    return [{"id": str(r.id), "name": r.name} for r in rows]

@@ -310,23 +310,19 @@ async def create_ticket(
 
     tenant_id = None
     title = None
-    category_id = None
+
+    category_name = session.query(
+        TicketCategory.category_name).filter(TicketCategory.id == data.category_id).scalar()
 
     if account_type == UserAccountType.ORGANIZATION:
         tenant_id = data.tenant_id
         title = data.title
-        category_id = data.category_id
     else:
         tenant_id = session.query(Tenant.id).filter(and_(
             Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
-        title = f"{data.category} - {space.name}"
         # ✅ FIXED: Case-insensitive search with site check
-        category_id = session.query(TicketCategory.id).filter(
-            and_(func.lower(TicketCategory.category_name) == func.lower(data.category),
-                 or_(TicketCategory.site_id == space.site_id,
-                 TicketCategory.site_id.is_(None)),
-                 TicketCategory.is_active == True,
-                 TicketCategory.is_deleted == False)).scalar()
+
+        title = f"{category_name} - {space.name}"
 
         if not tenant_id:
             return error_response(
@@ -335,10 +331,10 @@ async def create_ticket(
                 http_status=400
             )
 
-    if not category_id:
+    if not category_name:
         # ✅ Better error message to debug
         return error_response(
-            message=f"Invalid category: '{data.category}' not found for site {space.site_id}",
+            message=f"Invalid category",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
@@ -348,7 +344,7 @@ async def create_ticket(
         site_id=space.site_id if space.site_id else data.site_id,
         space_id=data.space_id,
         tenant_id=tenant_id,
-        category_id=category_id,
+        category_id=data.category_id,
         title=title,
         description=data.description,
         status=TicketStatus.OPEN,

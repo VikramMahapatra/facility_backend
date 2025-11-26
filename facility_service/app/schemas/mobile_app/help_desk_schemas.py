@@ -26,7 +26,7 @@ class ComplaintOut(EmptyStringModel):
 
 class ComplaintCreate(EmptyStringModel):
     space_id: UUID  # ✅ unit_id → space_id
-    category: str
+    category_id: UUID
     request_type: str
     description: str
     preferred_time: Optional[str] = None

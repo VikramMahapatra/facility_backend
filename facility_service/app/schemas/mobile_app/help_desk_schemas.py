@@ -35,7 +35,7 @@ class ComplaintCreate(EmptyStringModel):
     def as_form(
         cls,
         space_id: UUID = Form(...),
-        category: Optional[str] = Form(None),
+        category_id: UUID = Form(...),
         request_type: str = Form(...),
         description: str = Form(...),
         preferred_time: Optional[str] = Form(None),
@@ -43,7 +43,7 @@ class ComplaintCreate(EmptyStringModel):
     ):
         return cls(
             space_id=space_id,
-            category=category,
+            category_id=category_id,
             request_type=request_type,
             description=description,
             preferred_time=preferred_time,

@@ -22,3 +22,10 @@ class AutoAssignRoleEnum(str, Enum):
 class StatusEnum(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
+
+
+class TicketWorkOrderStatusEnum(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress" 
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"    

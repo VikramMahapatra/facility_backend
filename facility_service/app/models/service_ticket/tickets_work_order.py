@@ -16,6 +16,8 @@ class TicketWorkOrder(Base):
     description = Column(Text)
     assigned_to = Column(UUID(as_uuid=True))
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    is_deleted = Column(Boolean, default=False)
     status = Column(String(50), default="PENDING")
 
     ticket = relationship("Ticket", back_populates="work_orders")

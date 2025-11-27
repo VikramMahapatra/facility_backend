@@ -42,7 +42,7 @@ def create_ticket_work_order_endpoint(
 
 
 # ---------------- Get All (with filters) ----------------
-@router.get("/", response_model=TicketWorkOrderListResponse)
+@router.get("/all", response_model=TicketWorkOrderListResponse)
 def get_ticket_work_orders_endpoint(
     params: TicketWorkOrderRequest = Depends(),
     db: Session = Depends(get_db),

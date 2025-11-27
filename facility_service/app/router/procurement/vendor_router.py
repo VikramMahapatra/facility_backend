@@ -37,7 +37,7 @@ def overview(
 # -----Update------------------------
 
 
-# ---------------- Update Vendor ----------------
+# ---------------- Update Vendors ----------------
 @router.put("/", response_model=VendorOut)
 def update_vendor(
     vendor: VendorUpdate,

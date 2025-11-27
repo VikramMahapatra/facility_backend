@@ -4,7 +4,7 @@ from uuid import UUID
 from datetime import datetime
 from shared.core.schemas import CommonQueryParams
 
-# ---------------- Base Vendor ----------------
+# ---------------- Base Vendors ----------------
 
 
 class VendorBase(BaseModel):

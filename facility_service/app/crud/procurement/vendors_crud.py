@@ -234,7 +234,7 @@ def update_vendor(db: Session, vendor: VendorUpdate) -> Optional[Vendor]:
                 http_status=400
             )
 
-    # ---------------- Duplicate Phone Check ----------------
+    # ---------------- Duplicate Phone Checks ----------------
     new_phone = update_data.get("contact", {}).get("phone") if update_data.get("contact") else None
     current_phone = db_vendor.contact.get("phone") if db_vendor.contact else None
     if new_phone and new_phone != current_phone:

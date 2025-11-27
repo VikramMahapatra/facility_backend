@@ -4,7 +4,7 @@ from uuid import UUID
 from datetime import datetime
 from shared.core.schemas import CommonQueryParams
 
-# ---------------- Base Vendor ----------------
+# ---------------- Base Vendors ----------------
 
 
 class VendorBase(BaseModel):
@@ -34,7 +34,7 @@ class VendorRequest(CommonQueryParams):
 
 # ---------------- Vendor Create/Update ----------------
 class VendorCreate(VendorBase):
-    org_id: Optional[UUID] = None
+    pass
 
 
 class VendorUpdate(VendorBase):

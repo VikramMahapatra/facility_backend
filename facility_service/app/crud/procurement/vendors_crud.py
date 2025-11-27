@@ -169,8 +169,38 @@ def get_vendor_by_id(db: Session, vendor_id: str) -> Optional[Vendor]:
     return db.query(Vendor).filter(Vendor.id == vendor_id, Vendor.is_deleted == False).first()
 
 
-def create_vendor(db: Session, vendor: VendorCreate) -> Vendor:
-    db_vendor = Vendor(**vendor.model_dump())
+# ---------------- Create ----------------
+def create_vendor(db: Session, vendor: VendorCreate, org_id: UUID) -> VendorOut:
+    # Check for duplicate name
+    existing_vendor = db.query(Vendor).filter(
+        Vendor.name.ilike(vendor.name.strip()),
+        Vendor.org_id == org_id,
+        Vendor.is_deleted == False
+    ).first()
+    
+    if existing_vendor:
+        return error_response(
+            message=f"Vendor '{vendor.name}' already exists in this organization"
+        )
+
+    # Check for duplicate phone if provided
+    phone = vendor.contact.get("phone") if vendor.contact else None
+    if phone:
+        existing_phone = db.query(Vendor).filter(
+            Vendor.contact["phone"].astext == phone,
+            Vendor.org_id == org_id,
+            Vendor.is_deleted == False
+        ).first()
+        if existing_phone:
+            return error_response(
+                message=f"Phone number '{phone}' already exists in this organization"
+            )
+
+    # Add org_id to vendor data
+    vendor_data = vendor.model_dump()
+    vendor_data['org_id'] = org_id
+
+    db_vendor = Vendor(**vendor_data)
     db.add(db_vendor)
     db.commit()
     db.refresh(db_vendor)
@@ -178,30 +208,64 @@ def create_vendor(db: Session, vendor: VendorCreate) -> Vendor:
 
 
 def update_vendor(db: Session, vendor: VendorUpdate) -> Optional[Vendor]:
-    # ✅ Use the updated get_vendor_by_id
     db_vendor = get_vendor_by_id(db, vendor.id)
     if not db_vendor:
         return error_response(
-        message="Vendor not found",
-        status_code=str(AppStatusCode.OPERATION_ERROR),
-        http_status=404
-    )
-   
+            message="Vendor not found",
+            status_code="OPERATION_ERROR",
+            http_status=404
+        )
+
     update_data = vendor.model_dump(exclude_unset=True, exclude={'rating'})
+
+    # ---------------- Duplicate Name Check ----------------
+    new_name = update_data.get("name")
+    if new_name and new_name.strip() != db_vendor.name:
+        existing_vendor = db.query(Vendor).filter(
+            Vendor.name.ilike(new_name.strip()),
+            Vendor.org_id == db_vendor.org_id,
+            Vendor.id != vendor.id,
+            Vendor.is_deleted == False
+        ).first()
+        if existing_vendor:
+            return error_response(
+                message=f"Vendor name '{new_name}' already exists",
+                status_code="OPERATION_ERROR",
+                http_status=400
+            )
+
+    # ---------------- Duplicate Phone Checks ----------------
+    new_phone = update_data.get("contact", {}).get("phone") if update_data.get("contact") else None
+    current_phone = db_vendor.contact.get("phone") if db_vendor.contact else None
+    if new_phone and new_phone != current_phone:
+        existing_phone = db.query(Vendor).filter(
+            Vendor.contact["phone"].astext == new_phone,
+            Vendor.org_id == db_vendor.org_id,
+            Vendor.id != vendor.id,
+            Vendor.is_deleted == False
+        ).first()
+        if existing_phone:
+            return error_response(
+                message=f"Phone number '{new_phone}' already exists",
+                status_code="OPERATION_ERROR",
+                http_status=400
+            )
+
+    # ---------------- Update Fields ----------------
     for key, value in update_data.items():
         setattr(db_vendor, key, value)
-  
+
     try:
         db.commit()
         return get_vendor_by_id(db, vendor.id)
 
-    except IntegrityError as e:
+    except IntegrityError:
         db.rollback()
         return error_response(
-        message="Error updating vendor",
-        status_code=str(AppStatusCode.OPERATION_ERROR),
-        http_status=400
-    )
+            message="Error updating vendor",
+            status_code="OPERATION_ERROR",
+            http_status=400
+        )
 
 
 # ----------------- Delete (Soft Delete) -----------------

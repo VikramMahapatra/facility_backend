@@ -34,7 +34,7 @@ class VendorRequest(CommonQueryParams):
 
 # ---------------- Vendor Create/Update ----------------
 class VendorCreate(VendorBase):
-    org_id: Optional[UUID] = None
+    pass
 
 
 class VendorUpdate(VendorBase):

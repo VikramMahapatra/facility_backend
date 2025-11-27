@@ -41,4 +41,4 @@ COPY facility_service/ facility_service/
 COPY auth_service/ auth_service/
 
 #entry point
-CMD ["uvicorn", "facility_service.app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "facility_service.app.main:app", "--host", "0.0.0.0", "--port", "8002", "--root-path", "/facility"]

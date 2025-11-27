@@ -20,6 +20,6 @@ class StaffSite(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    #  Relationships
+    #  Relationshipss
     org = relationship("Org", back_populates="staff_sites")
     site = relationship("Site", back_populates="staff_sites")

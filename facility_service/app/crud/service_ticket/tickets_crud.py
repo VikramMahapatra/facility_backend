@@ -2020,7 +2020,7 @@ def ticket_no_lookup(db: Session, org_id: str) -> List[Dict]:
             )
         )
         .distinct()
-        .order_by(Ticket.wo_no.asc())
+        .order_by(Ticket.ticket_no.asc())
     )
 
     rows = query.all()

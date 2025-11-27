@@ -29,14 +29,13 @@ router = APIRouter(
 def get_sla_policies_endpoint(
     params: SlaPolicyRequest = Depends(),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),  # ✅ ADD auth_db
     current_user: UserToken = Depends(validate_current_token)
 ):
-    """
-    Get SLA policies with search, site filter, org filter, and pagination
-    Default: Show all SLA policies from all organizations
-    """
     return crud.get_sla_policies(
         db=db,
+        auth_db=auth_db,  # ✅ PASS auth_db
+        org_id=current_user.org_id,
         params=params
     )
 
@@ -47,14 +46,8 @@ def get_sla_policies_overview(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    """
-    Get SLA policies overview with statistics:
-    - Total SLA policies count
-    - Count of organizations across all sites
-    - Average response time across all policies
-    """
+    
     return crud.get_sla_policies_overview(db, current_user.org_id)
-
 # ---------------- Create ----------------
 @router.post("/", response_model=SlaPolicyOut)
 def create_sla_policy(
@@ -70,10 +63,10 @@ def create_sla_policy(
 def update_sla_policy(
     policy: SlaPolicyUpdate,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),  # ✅ ADD THIS
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.update_sla_policy(db, policy)
-
+    return crud.update_sla_policy(db, auth_db, policy)  # ✅ PASS auth_db
 
 # ---------------- Delete (Soft Delete) ----------------
 @router.delete("/{policy_id}")

@@ -54,5 +54,5 @@ class TicketWorkOrderOverviewResponse(BaseModel):
 
 
 class TicketWorkOrderRequest(CommonQueryParams):
-    site_id: Optional[str] = "all"  # Same pattern as status filter
-    status: Optional[str] = "all"   # Status filter
+    site_id: Optional[str] = None # Same pattern as status filter
+    status: Optional[str] = None   # Status filter

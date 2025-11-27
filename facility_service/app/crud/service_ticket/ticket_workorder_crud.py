@@ -27,24 +27,25 @@ from ...enum.ticket_service_enum import TicketWorkOrderStatusEnum
 def build_ticket_work_order_filters(org_id: UUID, params: TicketWorkOrderRequest):
     filters = [
         TicketWorkOrder.is_deleted == False,
-        Site.org_id == org_id  # Organization security through site
+        Site.org_id == org_id  
     ]
 
-    # Site filter - exactly like status filter
+    
     if params.site_id and params.site_id.lower() != "all":
         filters.append(Ticket.site_id == params.site_id)
+    # If "all" or no site_id, show all sites within the org (no additional filter)
 
-    # Status filter - same pattern as site filter
+    # ✅ STATUS FILTER - Show work orders for specific status or all statuses
     if params.status and params.status.lower() != "all":
         filters.append(func.lower(TicketWorkOrder.status) == params.status.lower())
 
-    # Search filter
+    # Search across description, ticket number, and site name
     if params.search:
         search_term = f"%{params.search}%"
         filters.append(or_(
             TicketWorkOrder.description.ilike(search_term),
             Ticket.ticket_no.ilike(search_term),
-            Site.name.ilike(search_term)  # Search by site name too
+            Site.name.ilike(search_term),
         ))
 
     return filters
@@ -56,10 +57,10 @@ def get_ticket_work_orders(
     org_id: UUID,
     params: TicketWorkOrderRequest
 ) -> TicketWorkOrderListResponse:
-    
+
     filters = build_ticket_work_order_filters(org_id, params)
 
-    # Base query with joins for site and ticket
+    # Base query with joins
     base_query = (
         db.query(TicketWorkOrder)
         .join(Ticket, TicketWorkOrder.ticket_id == Ticket.id)
@@ -83,27 +84,27 @@ def get_ticket_work_orders(
 
     results = []
     for wo, ticket_no, site_name in work_orders_data:
-                # ✅ FIX: Get assigned vendor name from WORK ORDER's assigned_to from VENDOR table
+        # ✅ Get assigned vendor name from VENDOR table
         assigned_to_name = None
-        if wo.assigned_to:
+        if wo.assigned_to:  # ✅ KEEP original field name
             vendor = db.query(Vendor).filter(
-                Vendor.id == wo.assigned_to,
-                Vendor.is_deleted == False  # Add soft delete filter if needed
+                Vendor.id == wo.assigned_to,  # ✅ KEEP original field name
+                Vendor.is_deleted == False
             ).first()
             assigned_to_name = vendor.name if vendor else None
-
-        results.append(TicketWorkOrderOut.model_validate({
+        
+        work_order_out = TicketWorkOrderOut.model_validate({
             **wo.__dict__,
             "ticket_no": ticket_no,
-            "assigned_to_name": assigned_to_name,
-            "site_name": site_name  # Add site name for display
-        }))
+            "site_name": site_name,
+            "assigned_to_name": assigned_to_name
+        })
+        results.append(work_order_out)
 
     return TicketWorkOrderListResponse(
         work_orders=results,
         total=total
     )
-
 
 # ---------------- Overview Endpoint ----------------
 def get_ticket_work_orders_overview(db: Session, org_id: UUID, site_id: Optional[str] = None) -> TicketWorkOrderOverviewResponse:

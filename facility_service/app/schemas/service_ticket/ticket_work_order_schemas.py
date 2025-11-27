@@ -25,6 +25,7 @@ class TicketWorkOrderUpdate(TicketWorkOrderBase):
 class TicketWorkOrderOut(TicketWorkOrderBase):
     id: UUID
     ticket_no: Optional[str] = None  # From ticket relationship
+    wo_no: Optional[str] = None 
     assigned_to_name: Optional[str] = None  # From users relationship
     site_name: Optional[str] = None  # From site relationship
     created_at: Optional[datetime] = None

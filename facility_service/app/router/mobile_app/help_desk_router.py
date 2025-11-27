@@ -155,7 +155,7 @@ def get_employees_for_ticket(
     )
 
     return [
-        Lookup(id=emp.user_id, name=emp.full_name)
+        Lookup(id=emp["user_id"], name=emp["full_name"])
         for emp in employees
     ]
 

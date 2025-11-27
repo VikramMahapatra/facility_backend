@@ -89,6 +89,7 @@ def get_user(db: Session, user_id: str, facility_db: Session):
     building_block_id = None
     tenant_type = None
     site_ids = []
+    staff_role = None
 
     # Normalize account_type for case-insensitive comparison
     account_type = user.account_type.lower() if user.account_type else ""
@@ -168,8 +169,9 @@ def get_user(db: Session, user_id: str, facility_db: Session):
 
         if staff_sites:
             site_ids = [staff_site.site_id for staff_site in staff_sites]
-        else:
-            site_ids = []
+            # ADD THIS: Get staff_role from the first staff site assignment
+            if staff_sites and staff_sites[0].staff_role:
+                staff_role = staff_sites[0].staff_role
 
     # FOR VENDOR USERS - USE FACILITY_DB
     elif account_type == "vendor":
@@ -197,7 +199,8 @@ def get_user(db: Session, user_id: str, facility_db: Session):
         space_id=space_id,
         building_block_id=building_block_id,
         tenant_type=tenant_type,
-        site_ids=site_ids
+        site_ids=site_ids,
+        staff_role=staff_role
     )
 
 
@@ -224,7 +227,7 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                 raise ValueError("User with this phone number already exists")
 
         user_data = user.model_dump(
-            exclude={'roles', 'role_ids', 'site_id', 'space_id', 'site_ids', 'tenant_type'})
+            exclude={'roles', 'role_ids', 'site_id', 'space_id', 'site_ids', 'tenant_type' ,'staff_role'})
 
         db_user = Users(**user_data)
         db.add(db_user)
@@ -262,7 +265,8 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
                         staff_site = StaffSite(
                             user_id=db_user.id,
                             site_id=site.id,
-                            org_id=user.org_id
+                            org_id=user.org_id,
+                            staff_role=user.staff_role  # ADD THIS LINE - store staff_role
                         )
                         facility_db.add(staff_site)
                 facility_db.commit()
@@ -421,7 +425,7 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
     update_data = user.model_dump(
         exclude_unset=True,
         exclude={'roles', 'role_ids', 'site_id',
-                 'space_id', 'site_ids', 'tenant_type'}
+                 'space_id', 'site_ids', 'tenant_type' , 'staff_role'}
     )
 
     # Check email duplicate (if email is being updated)
@@ -646,7 +650,8 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
                         StaffSite(
                             user_id=db_user.id,
                             site_id=site.id,
-                            org_id=user.org_id
+                            org_id=user.org_id,
+                            staff_role=user.staff_role  # ADD THIS LINE - update staff_role
                         )
                     )
 
@@ -695,6 +700,8 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
 
     # FIX: Pass both db and facility_db to get_user
     return get_user(db, db_user.id, facility_db)
+
+
 
 def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
     """Soft delete user and all related data (tenant/partner, leases, charges)"""

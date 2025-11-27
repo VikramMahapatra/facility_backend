@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Integer, extract, func, case , literal_column, or_
 from datetime import date, datetime, timedelta
 
-from facility_service.app.models.service_ticket.tickets import Ticket
-from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
+from ...models.service_ticket.tickets import Ticket
+from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 
 from ...schemas.overview.dasboard_schema import OccupancyByFloorResponse
 

@@ -1428,6 +1428,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             ticket_no = ticket_data.ticket_no
         ticket_workorders.append({
             "id": wo.id,
+            "wo_no": wo.wo_no,  # <-- Add this line
             "ticket_id": wo.ticket_id,
             "description": wo.description,
             "status": wo.status,

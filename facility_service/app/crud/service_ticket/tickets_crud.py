@@ -1406,7 +1406,10 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
         # ---------------- Add Work Orders ----------------
     ticket_workorders = []
 
+    
     for wo in service_req.work_orders:
+        if wo.is_deleted:  # Skip deleted work orders
+            continue
         # Get assigned vendor name from Vendor table
         assigned_to_name = None
         if wo.assigned_to:

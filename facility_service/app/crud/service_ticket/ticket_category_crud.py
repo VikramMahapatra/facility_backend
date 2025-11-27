@@ -43,8 +43,6 @@ def build_ticket_categories_filters(org_id: UUID, params: TicketCategoryRequest)
     if params.is_active and params.is_active.lower() != "all":
         if params.is_active.lower() == "true":
             filters.append(TicketCategory.is_active == True)
-        elif params.is_active.lower() == "false":
-            filters.append(TicketCategory.is_active == False)
 
     # Search across category name and auto assign role
     if params.search:

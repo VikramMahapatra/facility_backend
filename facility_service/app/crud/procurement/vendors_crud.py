@@ -292,6 +292,38 @@ def delete_vendor(db: Session, vendor_id: uuid.UUID, org_id: uuid.UUID) -> Optio
 
 def vendor_lookup(db: Session, org_id: UUID):
     contact_name = Vendor.contact["contact_name"].astext
+    subquery = (
+        db.query(Vendor.id)
+        .filter(Vendor.org_id == org_id, 
+                Vendor.is_deleted == False,
+                Vendor.status == "active" )
+        .distinct()
+        .subquery()
+    )
+    vendors = (
+        db.query(
+            Vendor.id.label("id"),
+            func.concat(
+                Vendor.name,
+                case(
+                    (
+                        (contact_name.isnot(None)) & (contact_name != ""),
+                        func.concat(" (", contact_name, ")"),
+                    ),
+                    else_="",
+                ),
+            ).label("name"),
+        )
+        .join(subquery, Vendor.id == subquery.c.id)
+        .order_by(Vendor.name.asc())
+        .all()
+    )
+    return vendors
+
+
+
+def vendor_workorder_lookup(db: Session, org_id: UUID):
+    contact_name = Vendor.contact["contact_name"].astext
     
     # ✅ SUBQUERY: Get vendors who have ACTIVE contracts
     vendors_with_active_contracts = (

@@ -79,7 +79,7 @@ def vendor_lookup(
 
 
 
-@router.get("/vendor-workorder-lookup", response_model=List[Lookup])
+@router.get("/vendor-workorder-lookup", response_model=List[Lookup])#lookup for work order creation
 def vendor_lookup(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)

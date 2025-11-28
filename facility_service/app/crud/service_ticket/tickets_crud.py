@@ -1406,7 +1406,6 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
         # ---------------- Add Work Orders ----------------
     ticket_workorders = []
 
-    
     for wo in service_req.work_orders:
         if wo.is_deleted:  # Skip deleted work orders
             continue
@@ -1432,7 +1431,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "ticket_id": wo.ticket_id,
             "description": wo.description,
             "status": wo.status,
-            "ticket_no":ticket_no,
+            "ticket_no": ticket_no,
             "assigned_to": wo.assigned_to,
             "assigned_to_name": assigned_to_name,
             "site_name": wo.ticket.site.name if wo.ticket and wo.ticket.site else "",
@@ -1737,7 +1736,7 @@ def post_ticket_comment(background_tasks: BackgroundTasks, session: Session, aut
         created_at=datetime.utcnow()
     )
     session.add(comment)
-    session.flush(comment)
+    session.flush()
 
     current_user_details = (
         auth_db.query(Users)

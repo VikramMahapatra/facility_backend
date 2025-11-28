@@ -75,6 +75,17 @@ def vendor_lookup(
 ):
     return crud.vendor_lookup(db, current_user.org_id)
 
+
+
+
+
+@router.get("/vendor-workorder-lookup", response_model=List[Lookup])
+def vendor_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.vendor_workorder_lookup(db, current_user.org_id)
+
 # ----------status_lookup-------------
 
 

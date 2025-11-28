@@ -322,7 +322,7 @@ def vendor_lookup(db: Session, org_id: UUID):
 
 
 
-def vendor_workorder_lookup(db: Session, org_id: UUID):
+def vendor_workorder_lookup(db: Session, org_id: UUID): #lookup for work order creation
     contact_name = Vendor.contact["contact_name"].astext
     
     # ✅ SUBQUERY: Get vendors who have ACTIVE contracts

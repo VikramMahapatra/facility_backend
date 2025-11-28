@@ -234,7 +234,7 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
         if contract.start_date >= contract.end_date:
             return error_response(
                 message="End date must be after start date",
-                status_code=str(AppStatusCode.VALIDATION_ERROR),
+                status_code=str(AppStatusCode.OPERATION_ERROR),
                 http_status=400
             )
         
@@ -242,7 +242,7 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
         if contract.start_date < date.today():
             return error_response(
                 message="Start date cannot be in the past",
-                status_code=str(AppStatusCode.VALIDATION_ERROR),
+                status_code=str(AppStatusCode.OPERATION_ERROR),
                 http_status=400
             )
 
@@ -360,7 +360,7 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
     if start_date and end_date and start_date >= end_date:
         return error_response(
             message="End date must be after start date",
-            status_code=str(AppStatusCode.VALIDATION_ERROR),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )
 

@@ -1,4 +1,5 @@
 # app/crud/vendors.py
+from datetime import date
 from sqlite3 import IntegrityError
 import uuid
 from typing import Dict, List, Optional
@@ -6,6 +7,7 @@ from sqlalchemy import case, func, lateral, literal, or_, select, String
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID
 
+from ...models.procurement.contracts import Contract
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
 from ...models.maintenance_assets.asset_category import AssetCategory
@@ -290,14 +292,24 @@ def delete_vendor(db: Session, vendor_id: uuid.UUID, org_id: uuid.UUID) -> Optio
 
 def vendor_lookup(db: Session, org_id: UUID):
     contact_name = Vendor.contact["contact_name"].astext
-    subquery = (
-        db.query(Vendor.id)
-        .filter(Vendor.org_id == org_id, 
-                Vendor.is_deleted == False,
-                Vendor.status == "active" )
+    
+    # ✅ SUBQUERY: Get vendors who have ACTIVE contracts
+    vendors_with_active_contracts = (
+        db.query(Contract.vendor_id)
+        .filter(
+            Contract.org_id == org_id,
+            Contract.is_deleted == False,
+            Contract.status == "active",
+            or_(
+                Contract.end_date == None,
+                Contract.end_date >= date.today()
+            )
+        )
         .distinct()
         .subquery()
     )
+    
+    # ✅ MAIN QUERY: Active vendors + have active contracts
     vendors = (
         db.query(
             Vendor.id.label("id"),
@@ -312,7 +324,12 @@ def vendor_lookup(db: Session, org_id: UUID):
                 ),
             ).label("name"),
         )
-        .join(subquery, Vendor.id == subquery.c.id)
+        .filter(
+            Vendor.org_id == org_id,
+            Vendor.is_deleted == False,
+            Vendor.status == "active",  # ✅ Vendor active
+            Vendor.id.in_(select(vendors_with_active_contracts.c.vendor_id))  # ✅ Has active contracts
+        )
         .order_by(Vendor.name.asc())
         .all()
     )

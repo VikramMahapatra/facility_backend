@@ -355,7 +355,10 @@ async def create_ticket(
         preferred_time=data.preferred_time,
         request_type=data.request_type,
         priority=data.priority if hasattr(
-            data, "priority") else PriorityType.low
+            data, "priority") else PriorityType.low,
+                # ✅ Add assigned_to and vendor_id fields
+        assigned_to=data.assigned_to if hasattr(data, "assigned_to") else None,
+        vendor_id=data.vendor_id if hasattr(data, "vendor_id") else None
     )
     if file and file.filename:
         file_bytes = await file.read()
@@ -376,32 +379,38 @@ async def create_ticket(
     assigned_to_user = None
     sla = None
 
-    if new_ticket.category and new_ticket.category.sla_policy:
+    # ✅ UPDATED LOGIC: Use provided assigned_to OR fallback to default contact
+    assigned_to = None
+    
+    # First priority: Use assigned_to from request if provided
+    if hasattr(data, 'assigned_to') and data.assigned_to:
+        assigned_to = data.assigned_to
+    # Second priority: Use SLA default contact
+    elif new_ticket.category and new_ticket.category.sla_policy:
         sla = new_ticket.category.sla_policy
+        assigned_to = sla.default_contact if sla else None
 
-    assigned_to = sla.default_contact if sla else None
-
-    if not assigned_to:
-        return error_response(
-            message="No default contact for assignment"
-        )
-
+    # Update the ticket with the final assigned_to value
     if assigned_to:
+        new_ticket.assigned_to = assigned_to
+        
         assigned_to_user = (
             auth_db.query(Users)
             .filter(Users.id == assigned_to)
             .scalar()
         )
-        new_ticket.assigned_to = assigned_to
 
-        assignment_log = TicketAssignment(
-            ticket_id=new_ticket.id,
-            assigned_from=user.user_id,
-            assigned_to=assigned_to,
-            reason="Auto-assigned via SLA"
-        )
-        session.add(assignment_log)
+        # Only create assignment log if this is different from initial value
+        if not hasattr(data, 'assigned_to') or not data.assigned_to:
+            assignment_log = TicketAssignment(
+                ticket_id=new_ticket.id,
+                assigned_from=user.user_id,
+                assigned_to=assigned_to,
+                reason="Auto-assigned via SLA"
+            )
+            session.add(assignment_log)
 
+        # Send notification to assigned user
         notification = Notification(
             user_id=assigned_to,
             type=NotificationType.alert,
@@ -427,6 +436,29 @@ async def create_ticket(
     session.commit()
     session.refresh(new_ticket)
 
+        # ✅ NEW: Fetch vendor name and assigned to name
+    assigned_to_name = ""
+    vendor_name = ""
+
+    # Fetch assigned_to user name
+    if new_ticket.assigned_to:
+        assigned_user = (
+            auth_db.query(Users)
+            .filter(Users.id == new_ticket.assigned_to)
+            .first()
+        )
+        if assigned_user:
+            assigned_to_name = assigned_user.full_name or ""
+
+    # Fetch vendor name (assuming you have a Vendor model)
+    if new_ticket.vendor_id:
+        vendor = (
+            session.query(Vendor)  # Replace with your actual Vendor model
+            .filter(Vendor.id == new_ticket.vendor_id)
+            .first()
+        )
+        if vendor:
+            vendor_name = vendor.name or ""  # Replace with actual vendor name field
     # email
     if assigned_to_user:
         send_ticket_created_email(
@@ -435,7 +467,10 @@ async def create_ticket(
     return TicketOut.model_validate(
         {
             **new_ticket.__dict__,
-            "category": new_ticket.category.category_name
+            "category": new_ticket.category.category_name,
+            # ✅ Include the names in response
+            "assigned_to_name": assigned_to_name,
+            "vendor_name": vendor_name
         }
     )
 

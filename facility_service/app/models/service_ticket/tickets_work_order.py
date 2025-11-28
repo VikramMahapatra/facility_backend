@@ -1,4 +1,4 @@
-from sqlalchemy import TIMESTAMP, Column, Sequence, Text, func
+from sqlalchemy import TIMESTAMP, Column, Numeric, Sequence, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Boolean, Column, Integer, String, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
@@ -26,6 +26,13 @@ class TicketWorkOrder(Base):
     
     # Auto-generated work order number
     wo_no = Column(String(20), unique=True, nullable=False)
+
+    # ✅ NEW COLUMNS ADDED 
+    labour_cost = Column(Numeric(10, 2), nullable=True)  # Labour cost
+    material_cost = Column(Numeric(10, 2), nullable=True)  # Material Cost
+    other_expenses = Column(Numeric(10, 2), nullable=True)  # Other Expenses
+    estimated_time = Column(Integer, nullable=True)  # Estimated time in minutes
+    special_instructions = Column(Text, nullable=True)  # Special Instructions
 
     ticket = relationship("Ticket", back_populates="work_orders")
 

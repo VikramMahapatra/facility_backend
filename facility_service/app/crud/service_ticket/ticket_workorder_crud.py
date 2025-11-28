@@ -176,7 +176,7 @@ def get_ticket_work_order_by_id(
             assigned_to_name = vendor.name if vendor else None
 
         return TicketWorkOrderOut.model_validate({
-            **wo.__dict__,
+            **wo.__dict__,    
             "ticket_no": ticket_no,
             "assigned_to_name": assigned_to_name,
             "site_name": site_name

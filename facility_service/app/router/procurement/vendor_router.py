@@ -37,16 +37,15 @@ def overview(
 # -----Update------------------------
 
 
-@router.put("/", response_model=None)
-def update_vendor_endpoint(
+# ---------------- Update Vendors ----------------
+@router.put("/", response_model=VendorOut)
+def update_vendor(
     vendor: VendorUpdate,
-    db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    db: Session = Depends(get_db)
 ):
     return crud.update_vendor(db, vendor)
 
 # -------create-------------------------------
-
 
 @router.post("/", response_model=VendorOut)
 def create_vendor(
@@ -54,8 +53,7 @@ def create_vendor(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    vendor.org_id = current_user.org_id
-    return crud.create_vendor(db, vendor)
+    return crud.create_vendor(db, vendor, org_id=current_user.org_id)
 
 # ---------------- Delete (Soft Delete) ----------------
 
@@ -76,6 +74,17 @@ def vendor_lookup(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.vendor_lookup(db, current_user.org_id)
+
+
+
+
+
+@router.get("/vendor-workorder-lookup", response_model=List[Lookup])#lookup for work order creation
+def vendor_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.vendor_workorder_lookup(db, current_user.org_id)
 
 # ----------status_lookup-------------
 

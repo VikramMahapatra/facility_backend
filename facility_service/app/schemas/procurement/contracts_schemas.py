@@ -5,7 +5,7 @@ from datetime import date, datetime
 
 # -------------------- Base Schema --------------------
 class ContractBase(BaseModel):
-    org_id: UUID
+    org_id: Optional[UUID] = None
     vendor_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
     title: str
@@ -34,7 +34,7 @@ class ContractOut(ContractBase):
 
 # -------------------- Create / Update --------------------
 class ContractCreate(ContractBase):
-    org_id: UUID
+    org_id: Optional[UUID] = None
 
 class ContractUpdate(ContractBase):
     id: UUID

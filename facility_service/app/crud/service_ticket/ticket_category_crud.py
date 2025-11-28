@@ -43,8 +43,6 @@ def build_ticket_categories_filters(org_id: UUID, params: TicketCategoryRequest)
     if params.is_active and params.is_active.lower() != "all":
         if params.is_active.lower() == "true":
             filters.append(TicketCategory.is_active == True)
-        elif params.is_active.lower() == "false":
-            filters.append(TicketCategory.is_active == False)
 
     # Search across category name and auto assign role
     if params.search:
@@ -255,7 +253,7 @@ def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup
 def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
     """
     Get all employees for a ticket based on site_id from staff_sites table
-    Simplified version - returns users directly
+    Returns format: "Full Name (Role)"
     """
     # Step 1: Fetch ticket with related data
     ticket = (
@@ -265,8 +263,7 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
     )
 
     if not ticket:
-        raise HTTPException(
-            status_code=404, detail="Ticket not found")
+        raise HTTPException(status_code=404, detail="Ticket not found")
 
     # Step 2: Get site_id and org_id from ticket
     site_id = ticket.site_id
@@ -275,9 +272,9 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
     if not site_id or not org_id:
         return []  # No site or org associated with ticket
 
-    # Step 3: Get all user_ids from staff_sites for this site_id and org_id
+    # Step 3: Get all staff_sites entries for this site_id and org_id with role
     staff_sites = (
-        db.query(StaffSite)
+        db.query(StaffSite.user_id, StaffSite.staff_role)
         .filter(
             and_(
                 StaffSite.site_id == site_id,
@@ -294,22 +291,28 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
     # Step 4: Extract user_ids
     user_ids = [staff.user_id for staff in staff_sites]
 
-    # Step 5: Fetch all user names from auth db and return directly
+    # Step 5: Fetch all user names from auth db
     users = (
         auth_db.query(Users.id, Users.full_name)
         .filter(Users.id.in_(user_ids))
         .all()
     )
 
-    # Return directly -
+    # Create a mapping of user_id to user data for quick lookup
+    user_map = {user.id: user.full_name for user in users}
+    
+    # Create a mapping of user_id to staff_role
+    role_map = {staff.user_id: staff.staff_role for staff in staff_sites}
+
+    # Return with formatted name including role
     return [
         {
-            "user_id": user.id,
-            "full_name": user.full_name
+            "user_id": user_id,
+            "full_name": f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
         }
-        for user in users
+        for user_id in user_ids
+        if user_id in user_map  # Only include users found in auth db
     ]
-
 
 def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """

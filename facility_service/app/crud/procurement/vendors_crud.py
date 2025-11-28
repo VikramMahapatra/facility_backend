@@ -1,4 +1,5 @@
 # app/crud/vendors.py
+from datetime import date
 from sqlite3 import IntegrityError
 import uuid
 from typing import Dict, List, Optional
@@ -6,6 +7,7 @@ from sqlalchemy import case, func, lateral, literal, or_, select, String
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID
 
+from ...models.procurement.contracts import Contract
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
 from ...models.maintenance_assets.asset_category import AssetCategory
@@ -169,8 +171,38 @@ def get_vendor_by_id(db: Session, vendor_id: str) -> Optional[Vendor]:
     return db.query(Vendor).filter(Vendor.id == vendor_id, Vendor.is_deleted == False).first()
 
 
-def create_vendor(db: Session, vendor: VendorCreate) -> Vendor:
-    db_vendor = Vendor(**vendor.model_dump())
+# ---------------- Create ----------------
+def create_vendor(db: Session, vendor: VendorCreate, org_id: UUID) -> VendorOut:
+    # Check for duplicate name
+    existing_vendor = db.query(Vendor).filter(
+        Vendor.name.ilike(vendor.name.strip()),
+        Vendor.org_id == org_id,
+        Vendor.is_deleted == False
+    ).first()
+    
+    if existing_vendor:
+        return error_response(
+            message=f"Vendor '{vendor.name}' already exists in this organization"
+        )
+
+    # Check for duplicate phone if provided
+    phone = vendor.contact.get("phone") if vendor.contact else None
+    if phone:
+        existing_phone = db.query(Vendor).filter(
+            Vendor.contact["phone"].astext == phone,
+            Vendor.org_id == org_id,
+            Vendor.is_deleted == False
+        ).first()
+        if existing_phone:
+            return error_response(
+                message=f"Phone number '{phone}' already exists in this organization"
+            )
+
+    # Add org_id to vendor data
+    vendor_data = vendor.model_dump()
+    vendor_data['org_id'] = org_id
+
+    db_vendor = Vendor(**vendor_data)
     db.add(db_vendor)
     db.commit()
     db.refresh(db_vendor)
@@ -178,30 +210,64 @@ def create_vendor(db: Session, vendor: VendorCreate) -> Vendor:
 
 
 def update_vendor(db: Session, vendor: VendorUpdate) -> Optional[Vendor]:
-    # ✅ Use the updated get_vendor_by_id
     db_vendor = get_vendor_by_id(db, vendor.id)
     if not db_vendor:
         return error_response(
-        message="Vendor not found",
-        status_code=str(AppStatusCode.OPERATION_ERROR),
-        http_status=404
-    )
-   
+            message="Vendor not found",
+            status_code="OPERATION_ERROR",
+            http_status=404
+        )
+
     update_data = vendor.model_dump(exclude_unset=True, exclude={'rating'})
+
+    # ---------------- Duplicate Name Check ----------------
+    new_name = update_data.get("name")
+    if new_name and new_name.strip() != db_vendor.name:
+        existing_vendor = db.query(Vendor).filter(
+            Vendor.name.ilike(new_name.strip()),
+            Vendor.org_id == db_vendor.org_id,
+            Vendor.id != vendor.id,
+            Vendor.is_deleted == False
+        ).first()
+        if existing_vendor:
+            return error_response(
+                message=f"Vendor name '{new_name}' already exists",
+                status_code="OPERATION_ERROR",
+                http_status=400
+            )
+
+    # ---------------- Duplicate Phone Checks ----------------
+    new_phone = update_data.get("contact", {}).get("phone") if update_data.get("contact") else None
+    current_phone = db_vendor.contact.get("phone") if db_vendor.contact else None
+    if new_phone and new_phone != current_phone:
+        existing_phone = db.query(Vendor).filter(
+            Vendor.contact["phone"].astext == new_phone,
+            Vendor.org_id == db_vendor.org_id,
+            Vendor.id != vendor.id,
+            Vendor.is_deleted == False
+        ).first()
+        if existing_phone:
+            return error_response(
+                message=f"Phone number '{new_phone}' already exists",
+                status_code="OPERATION_ERROR",
+                http_status=400
+            )
+
+    # ---------------- Update Fields ----------------
     for key, value in update_data.items():
         setattr(db_vendor, key, value)
-  
+
     try:
         db.commit()
         return get_vendor_by_id(db, vendor.id)
 
-    except IntegrityError as e:
+    except IntegrityError:
         db.rollback()
         return error_response(
-        message="Error updating vendor",
-        status_code=str(AppStatusCode.OPERATION_ERROR),
-        http_status=400
-    )
+            message="Error updating vendor",
+            status_code="OPERATION_ERROR",
+            http_status=400
+        )
 
 
 # ----------------- Delete (Soft Delete) -----------------
@@ -216,9 +282,19 @@ def delete_vendor(db: Session, vendor_id: uuid.UUID, org_id: uuid.UUID) -> Optio
     if not db_vendor:
         return None
 
-    # ✅ Soft delete - set is_deleted to True instead of actually deleting
+    # ✅ Remove the variable assignment
+    db.query(Contract).filter(
+        Contract.vendor_id == vendor_id,
+        Contract.org_id == org_id,
+        Contract.is_deleted == False
+    ).update({
+        "is_deleted": True,
+        "updated_at": func.now()
+    })
+
     db_vendor.is_deleted = True
     db_vendor.updated_at = func.now()
+    
     db.commit()
     db.refresh(db_vendor)
     return db_vendor
@@ -228,7 +304,9 @@ def vendor_lookup(db: Session, org_id: UUID):
     contact_name = Vendor.contact["contact_name"].astext
     subquery = (
         db.query(Vendor.id)
-        .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)
+        .filter(Vendor.org_id == org_id, 
+                Vendor.is_deleted == False,
+                Vendor.status == "active" )
         .distinct()
         .subquery()
     )
@@ -247,6 +325,53 @@ def vendor_lookup(db: Session, org_id: UUID):
             ).label("name"),
         )
         .join(subquery, Vendor.id == subquery.c.id)
+        .order_by(Vendor.name.asc())
+        .all()
+    )
+    return vendors
+
+
+
+def vendor_workorder_lookup(db: Session, org_id: UUID): #lookup for work order creation
+    contact_name = Vendor.contact["contact_name"].astext
+    
+    # ✅ SUBQUERY: Get vendors who have ACTIVE contracts
+    vendors_with_active_contracts = (
+        db.query(Contract.vendor_id)
+        .filter(
+            Contract.org_id == org_id,
+            Contract.is_deleted == False,
+            Contract.status == "active",
+            or_(
+                Contract.end_date == None,
+                Contract.end_date >= date.today()
+            )
+        )
+        .distinct()
+        .subquery()
+    )
+    
+    # ✅ MAIN QUERY: Active vendors + have active contracts
+    vendors = (
+        db.query(
+            Vendor.id.label("id"),
+            func.concat(
+                Vendor.name,
+                case(
+                    (
+                        (contact_name.isnot(None)) & (contact_name != ""),
+                        func.concat(" (", contact_name, ")"),
+                    ),
+                    else_="",
+                ),
+            ).label("name"),
+        )
+        .filter(
+            Vendor.org_id == org_id,
+            Vendor.is_deleted == False,
+            Vendor.status == "active",  # ✅ Vendor active
+            Vendor.id.in_(select(vendors_with_active_contracts.c.vendor_id))  # ✅ Has active contracts
+        )
         .order_by(Vendor.name.asc())
         .all()
     )

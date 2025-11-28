@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, desc
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
+from ...models.procurement.vendors import Vendor
 from shared.models.users import Users
 from shared.core.config import Settings
 from shared.helpers.email_helper import EmailHelper
@@ -1401,6 +1402,43 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
                 action_time=w.action_time
             )
         )
+
+        # ---------------- Add Work Orders ----------------
+    ticket_workorders = []
+
+    for wo in service_req.work_orders:
+        if wo.is_deleted:  # Skip deleted work orders
+            continue
+        # Get assigned vendor name from Vendor table
+        assigned_to_name = None
+        if wo.assigned_to:
+            vendor = db.query(Vendor).filter(
+                Vendor.id == wo.assigned_to,
+                Vendor.is_deleted == False
+            ).first()
+            assigned_to_name = vendor.name if vendor else None
+            # Ticket No from Ticket table
+        ticket_no = None
+        ticket_data = db.query(Ticket).filter(
+            Ticket.id == wo.ticket_id
+        ).first()
+
+        if ticket_data:
+            ticket_no = ticket_data.ticket_no
+        ticket_workorders.append({
+            "id": wo.id,
+            "wo_no": wo.wo_no,  # <-- Add this line
+            "ticket_id": wo.ticket_id,
+            "description": wo.description,
+            "status": wo.status,
+            "ticket_no": ticket_no,
+            "assigned_to": wo.assigned_to,
+            "assigned_to_name": assigned_to_name,
+            "site_name": wo.ticket.site.name if wo.ticket and wo.ticket.site else "",
+            "created_at": wo.created_at.isoformat() if wo.created_at else None,
+            "updated_at": wo.updated_at.isoformat() if wo.updated_at else None,
+        })
+
     attachments_out = []
     if service_req.file_data:
         attachments_out.append(
@@ -1423,6 +1461,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "assigned_to_name": assigned_to_name,
             "comments": comments_out,
             "logs": workflows_out,
+            "workorders": ticket_workorders,  # <-- Add this
             "can_escalate": service_req.can_escalate,
             "can_reopen": service_req.can_reopen,
             "is_overdue": service_req.is_overdue,
@@ -1697,6 +1736,7 @@ def post_ticket_comment(background_tasks: BackgroundTasks, session: Session, aut
         created_at=datetime.utcnow()
     )
     session.add(comment)
+    session.flush()
 
     current_user_details = (
         auth_db.query(Users)
@@ -1770,15 +1810,71 @@ def post_ticket_comment(background_tasks: BackgroundTasks, session: Session, aut
         background_tasks, session, context, email_list)
 
     return success_response(
-        data={
-            "comment_id": comment.id,
-            "ticket_id": comment.ticket_id,
-            "user_id": comment.user_id,
-            "comment_text": comment.comment_text,
-            "created_at": comment.created_at
-        },
+        data=TicketWorkFlowOut(
+            id=comment.id,
+            ticket_id=comment.ticket_id,
+            type="comment",
+            action_taken=comment.comment_text,
+            created_at=comment.created_at,
+            action_by=comment.user_id,
+            action_by_name=current_user_details.full_name
+        ),
         message="Comment posted successfully"
     )
+
+
+def get_ticket_logs(db: Session, auth_db: Session, ticket_id: str):
+    # Step 1: Fetch service request with joins for related data
+    service_req = (
+        db.query(Ticket)
+        .filter(Ticket.id == ticket_id)
+        .first()
+    )
+
+    if not service_req:
+        raise HTTPException(
+            status_code=404, detail="Service request not found")
+
+    # Combine both logs
+    all_logs = []
+
+    # Add workflow logs
+    for log in service_req.comments:
+        all_logs.append(TicketWorkFlowOut(
+            id=log.id,
+            ticket_id=log.ticket_id,
+            type="comment",
+            action_taken=log.comment_text,
+            created_at=log.created_at,
+            action_by=log.user_id
+        ))
+
+    # Add assignment logs
+    for log in service_req.workflows:
+        all_logs.append(TicketWorkFlowOut(
+            id=log.id,
+            ticket_id=log.ticket_id,
+            type="audit",
+            action_taken=log.action_taken,
+            created_at=log.action_time,
+            action_by=log.action_by
+        ))
+
+    # Sort all logs by created_at
+    user_ids = [t.action_by for t in all_logs]
+
+    # fetch all user names from auth db in one go
+    users = auth_db.query(Users.id, Users.full_name).filter(
+        Users.id.in_(user_ids)).all()
+    user_map = {uid: uname for uid, uname in users}
+
+    for l in all_logs:
+        l.action_by_name = user_map.get(l.action_by, "Unknown User")
+
+    all_logs.sort(key=lambda x: x.created_at, reverse=True)
+
+    # Step 5: Return as schema
+    return all_logs
 
 
 def get_possible_next_statuses(db: Session, ticket_id: str):

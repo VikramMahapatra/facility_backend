@@ -209,23 +209,67 @@ def get_contract_by_id(db: Session, contract_id: str) -> Optional[Contract]:
 
 # -------- Create Contract --------
 def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
-    # Case-INSENSITIVE validation: Check for duplicate contract title in same org
+    # ✅ VALIDATION 1: Vendor status validation - ensure vendor is active
+    vendor = db.query(Vendor).filter(
+        Vendor.id == contract.vendor_id,
+        Vendor.is_deleted == False
+    ).first()
+
+    if not vendor:
+        return error_response(
+            message="Vendor not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
+
+    if vendor.status != "active":
+        return error_response(
+            message="Cannot create contract with inactive vendor",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
+   
+        
+        
+    # ✅ VALIDATION 3: No overlapping contracts for same vendor+site+contract type
+    overlapping_contract = db.query(Contract).filter(
+        Contract.vendor_id == contract.vendor_id,
+        Contract.site_id == contract.site_id,
+        Contract.type == contract.type,  # Only check same contract type
+        Contract.org_id == contract.org_id,
+        Contract.is_deleted == False,
+        # Check date overlaps
+        and_(
+            Contract.start_date <= contract.end_date,
+            Contract.end_date >= contract.start_date
+        )
+    ).first()
+
+    if overlapping_contract:
+        return error_response(
+            message=f"Vendor already has a {contract.type} contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
+    # Your existing duplicate title check
     existing_contract = db.query(Contract).filter(
         and_(
-            Contract.org_id == contract.org_id,
-            func.lower(Contract.title) == func.lower(
-                contract.title),  # Case-insensitive comparison
+            Contract.site_id == contract.site_id,
+            func.lower(Contract.title) == func.lower(contract.title),
             Contract.is_deleted == False
         )
     ).first()
 
     if existing_contract:
         return error_response(
-            message=f"Contract with title '{contract.title}' already exists in this organization",
+            message=f"Contract with title '{contract.title}' already exists",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
 
+    # Create contract if all validations pass
     db_contract = Contract(id=uuid.uuid4(), **contract.model_dump())
     db.add(db_contract)
     db.commit()
@@ -257,6 +301,7 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
     return ContractOut.model_validate(contract_data)
 
 
+
 # -------- Update Contract --------
 def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractOut]:
     db_contract = (
@@ -266,29 +311,84 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
     )
     if not db_contract:
         return error_response(
-        message="Contract not found",
-        status_code=str(AppStatusCode.OPERATION_ERROR),
-        http_status=404
-    )
+            message="Contract not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
 
     update_data = contract.model_dump(exclude_unset=True)
 
-    # Check for duplicate title only if title is being updated
-    if 'title' in update_data:
-        existing_contract = db.query(Contract).filter(
-        Contract.org_id == db_contract.org_id,
-        Contract.id != contract.id,
-        Contract.is_deleted == False,
-        func.lower(Contract.title) == func.lower(update_data['title'])
-    ).first()
+    # ✅ VALIDATION 1: Vendor status validation (if vendor_id is being updated)
+    if 'vendor_id' in update_data:
+        vendor = db.query(Vendor).filter(
+            Vendor.id == update_data['vendor_id'],
+            Vendor.is_deleted == False
+        ).first()
 
-    if existing_contract:
-        return error_response(
-            message=f"Contract with title '{update_data['title']}' already exists",
-            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-            http_status=400
-        )
+        if not vendor:
+            return error_response(
+                message="Vendor not found",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=404
+            )
+
+        if vendor.status != "active":
+            return error_response(
+                message="Cannot assign contract to inactive vendor",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=400
+            )
+
     
+
+    # ✅ VALIDATION 3: No overlapping contracts for same vendor+site+type
+    vendor_id = update_data.get('vendor_id', db_contract.vendor_id)
+    site_id = update_data.get('site_id', db_contract.site_id)
+    contract_type = update_data.get('type', db_contract.type)
+    start_date = update_data.get('start_date', db_contract.start_date)
+    end_date = update_data.get('end_date', db_contract.end_date)
+
+    # Check overlaps only if relevant fields are being updated
+    if any(key in update_data for key in ['vendor_id', 'site_id', 'type', 'start_date', 'end_date']):
+        overlapping_contract = db.query(Contract).filter(
+            Contract.vendor_id == vendor_id,
+            Contract.site_id == site_id,
+            Contract.type == contract_type,  # Only check same contract type
+            Contract.org_id == db_contract.org_id,
+            Contract.id != contract.id,  # Exclude current contract
+            Contract.is_deleted == False,
+            # Check date overlaps
+            and_(
+                Contract.start_date <= end_date,
+                Contract.end_date >= start_date
+            )
+        ).first()
+
+        if overlapping_contract:
+            return error_response(
+                message=f"Vendor already has a {contract_type} contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=400
+            )
+
+    # Your existing duplicate title check
+    if 'title' in update_data:
+        site_id_to_check = update_data.get('site_id', db_contract.site_id)
+        existing_contract = db.query(Contract).filter(and_(
+            Contract.site_id == site_id_to_check,
+            Contract.id != contract.id,
+            Contract.is_deleted == False,
+            func.lower(Contract.title) == func.lower(update_data['title'])
+        )).first()
+
+        if existing_contract:
+            return error_response(
+                message=f"Contract with title '{update_data['title']}' already exists",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
+    
+    # Update contract if all validations pass
     for key, value in update_data.items():
         setattr(db_contract, key, value)
     
@@ -304,7 +404,6 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )
-
 # -------- Delete Contract (Soft Delete) --------
 def delete_contract(db: Session, contract_id: UUID, org_id: UUID) -> bool:
     # Verify contract exists and belongs to org

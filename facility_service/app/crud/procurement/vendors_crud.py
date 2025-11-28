@@ -282,9 +282,19 @@ def delete_vendor(db: Session, vendor_id: uuid.UUID, org_id: uuid.UUID) -> Optio
     if not db_vendor:
         return None
 
-    # ✅ Soft delete - set is_deleted to True instead of actually deleting
+    # ✅ Remove the variable assignment
+    db.query(Contract).filter(
+        Contract.vendor_id == vendor_id,
+        Contract.org_id == org_id,
+        Contract.is_deleted == False
+    ).update({
+        "is_deleted": True,
+        "updated_at": func.now()
+    })
+
     db_vendor.is_deleted = True
     db_vendor.updated_at = func.now()
+    
     db.commit()
     db.refresh(db_vendor)
     return db_vendor

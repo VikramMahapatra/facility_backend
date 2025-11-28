@@ -95,7 +95,6 @@ def get_ticket_work_orders(
         
         work_order_out = TicketWorkOrderOut.model_validate({
             **wo.__dict__,
-            "wo_no": wo.wo_no, 
             "ticket_no": ticket_no,
             "site_name": site_name,
             "assigned_to_name": assigned_to_name
@@ -177,8 +176,7 @@ def get_ticket_work_order_by_id(
             assigned_to_name = vendor.name if vendor else None
 
         return TicketWorkOrderOut.model_validate({
-            **wo.__dict__,
-            "wo_no": wo.wo_no,    
+            **wo.__dict__,    
             "ticket_no": ticket_no,
             "assigned_to_name": assigned_to_name,
             "site_name": site_name
@@ -232,7 +230,6 @@ def create_ticket_work_order(
     
     return TicketWorkOrderOut(
         **db_work_order.__dict__,
-        wo_no=db_work_order.wo_no,
         ticket_no=ticket.ticket_no,
         assigned_to_name=assigned_to_name,  # This will now come from Vendor table
         site_name=site_name
@@ -292,7 +289,6 @@ def update_ticket_work_order(
     # Return complete response like create endpoint
     return TicketWorkOrderOut(
         **db_work_order.__dict__,
-        wo_no=db_work_order.wo_no,
         ticket_no=ticket_no,
         assigned_to_name=assigned_to_name,
         site_name=site_name

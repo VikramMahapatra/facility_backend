@@ -212,7 +212,7 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
     # Case-INSENSITIVE validation: Check for duplicate contract title in same org
     existing_contract = db.query(Contract).filter(
         and_(
-            Contract.org_id == contract.org_id,
+            Contract.site_id == contract.site_id,
             func.lower(Contract.title) == func.lower(
                 contract.title),  # Case-insensitive comparison
             Contract.is_deleted == False
@@ -221,7 +221,7 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
 
     if existing_contract:
         return error_response(
-            message=f"Contract with title '{contract.title}' already exists in this organization",
+            message=f"Contract with title '{contract.title}' already exists ",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
@@ -275,11 +275,12 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
 
     # Check for duplicate title only if title is being updated
     if 'title' in update_data:
-        existing_contract = db.query(Contract).filter(
-        Contract.org_id == db_contract.org_id,
+        site_id_to_check = update_data.get('site_id', db_contract.site_id)
+        existing_contract = db.query(Contract).filter(and_(
+        Contract.site_id == site_id_to_check,
         Contract.id != contract.id,
         Contract.is_deleted == False,
-        func.lower(Contract.title) == func.lower(update_data['title'])
+        func.lower(Contract.title) == func.lower(update_data['title']))
     ).first()
 
     if existing_contract:

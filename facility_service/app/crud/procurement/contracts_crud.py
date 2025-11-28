@@ -229,23 +229,9 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
             http_status=400
         )
 
-    # ✅ VALIDATION 2: Date validation
-    if contract.start_date and contract.end_date:
-        if contract.start_date >= contract.end_date:
-            return error_response(
-                message="End date must be after start date",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
-                http_status=400
-            )
+   
         
-        # Optional: Prevent contracts starting in the past
-        if contract.start_date < date.today():
-            return error_response(
-                message="Start date cannot be in the past",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
-                http_status=400
-            )
-
+        
     # ✅ VALIDATION 3: No overlapping contracts for same vendor+site+contract type
     overlapping_contract = db.query(Contract).filter(
         Contract.vendor_id == contract.vendor_id,
@@ -353,16 +339,7 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
                 http_status=400
             )
 
-    # ✅ VALIDATION 2: Date validation (if dates are updated)
-    start_date = update_data.get('start_date', db_contract.start_date)
-    end_date = update_data.get('end_date', db_contract.end_date)
     
-    if start_date and end_date and start_date >= end_date:
-        return error_response(
-            message="End date must be after start date",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=400
-        )
 
     # ✅ VALIDATION 3: No overlapping contracts for same vendor+site+type
     vendor_id = update_data.get('vendor_id', db_contract.vendor_id)

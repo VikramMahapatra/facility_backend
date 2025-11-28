@@ -64,7 +64,7 @@ class SlaPolicyListResponse(BaseModel):
 
 class SlaPolicyOverviewResponse(BaseModel):
     total_sla_policies: int
-    total_organizations: int
+    active_sla_policies: int 
     average_response_time: float
 
     class Config:

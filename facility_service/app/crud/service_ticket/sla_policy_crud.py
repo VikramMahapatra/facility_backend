@@ -127,6 +127,7 @@ def get_sla_policies(
     }
 
 # ---------------- Overview Endpoint ----------------
+# ---------------- Overview Endpoint ----------------
 def get_sla_policies_overview(db: Session, org_id: UUID, site_id: Optional[UUID] = None) -> SlaPolicyOverviewResponse:
     """
     Calculate overview statistics for SLA policies - CONSISTENT with site filtering
@@ -144,8 +145,11 @@ def get_sla_policies_overview(db: Session, org_id: UUID, site_id: Optional[UUID]
     # Total SLA policies count - filtered by org_id and optional site
     total_policies_count = db.query(SlaPolicy).filter(*base_filters).count()
 
-    # Count of organizations - always 1 since we're scoped to org
-    organizations_count = 1
+    # ✅ CHANGED: Count of ACTIVE SLA policies with proper field name
+    active_policies_count = db.query(SlaPolicy).filter(
+        *base_filters,
+        SlaPolicy.active == True  # ✅ Only count active policies
+    ).count()
 
     # Average response time - with same filters
     avg_response_time_result = db.query(func.avg(SlaPolicy.response_time_mins)).filter(*base_filters).scalar()
@@ -154,10 +158,9 @@ def get_sla_policies_overview(db: Session, org_id: UUID, site_id: Optional[UUID]
 
     return {
         "total_sla_policies": total_policies_count,
-        "total_organizations": organizations_count,
+        "active_sla_policies": active_policies_count,  # ✅ CHANGED FIELD NAME
         "average_response_time": avg_response_time_minutes
     }
-   
 
 # ---------------- Helper function for getting policy with site and org ----------------
 def get_sla_policy_with_site_org(db: Session, auth_db: Session, policy_id: UUID):

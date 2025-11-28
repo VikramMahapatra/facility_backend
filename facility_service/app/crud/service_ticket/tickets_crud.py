@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, desc
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
+from ...models.procurement.vendors import Vendor
 from shared.models.users import Users
 from shared.core.config import Settings
 from shared.helpers.email_helper import EmailHelper
@@ -1401,6 +1402,44 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
                 action_time=w.action_time
             )
         )
+
+        # ---------------- Add Work Orders ----------------
+    ticket_workorders = []
+
+    
+    for wo in service_req.work_orders:
+        if wo.is_deleted:  # Skip deleted work orders
+            continue
+        # Get assigned vendor name from Vendor table
+        assigned_to_name = None
+        if wo.assigned_to:
+            vendor = db.query(Vendor).filter(
+                Vendor.id == wo.assigned_to,
+                Vendor.is_deleted == False
+            ).first()
+            assigned_to_name = vendor.name if vendor else None
+            # Ticket No from Ticket table
+        ticket_no = None
+        ticket_data = db.query(Ticket).filter(
+            Ticket.id == wo.ticket_id
+        ).first()
+
+        if ticket_data:
+            ticket_no = ticket_data.ticket_no
+        ticket_workorders.append({
+            "id": wo.id,
+            "wo_no": wo.wo_no,  # <-- Add this line
+            "ticket_id": wo.ticket_id,
+            "description": wo.description,
+            "status": wo.status,
+            "ticket_no":ticket_no,
+            "assigned_to": wo.assigned_to,
+            "assigned_to_name": assigned_to_name,
+            "site_name": wo.ticket.site.name if wo.ticket and wo.ticket.site else "",
+            "created_at": wo.created_at.isoformat() if wo.created_at else None,
+            "updated_at": wo.updated_at.isoformat() if wo.updated_at else None,
+        })
+
     attachments_out = []
     if service_req.file_data:
         attachments_out.append(
@@ -1423,6 +1462,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "assigned_to_name": assigned_to_name,
             "comments": comments_out,
             "logs": workflows_out,
+            "workorders": ticket_workorders,  # <-- Add this
             "can_escalate": service_req.can_escalate,
             "can_reopen": service_req.can_reopen,
             "is_overdue": service_req.is_overdue,

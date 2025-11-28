@@ -25,7 +25,7 @@ class UserCreate(UserBase):
     tenant_type: Optional[str] = None
     space_id: Optional[UUID] = None
     site_ids: Optional[List[str]] = []
-
+    staff_role: Optional[str] = None  # ADD HERE - for input only
     pass
 
 
@@ -53,6 +53,8 @@ class UserOut(BaseModel):
     building_block_id: Optional[UUID] = None
     tenant_type: Optional[str] = None
     site_ids: Optional[List[UUID]] = None
+    staff_role: Optional[str] = None  # ADD THIS LINE
+
 
     model_config = ConfigDict(from_attributes=True)
 

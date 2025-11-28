@@ -7,6 +7,8 @@ from datetime import datetime
 
 from sqlalchemy import LargeBinary
 
+from ...schemas.service_ticket.ticket_work_order_schemas import TicketWorkOrderOut
+
 from ...enum.ticket_service_enum import TicketStatus
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from shared.core.schemas import CommonQueryParams
@@ -235,6 +237,7 @@ class TicketDetailsResponse(EmptyStringModel):
     can_reopen: Optional[bool] = False
     comments: List[TicketCommentOut] = []
     logs: List[TicketWorkflowOut] = []
+    workorders: Optional[List[TicketWorkOrderOut]] = []  # <-- Add this
     preferred_time: Optional[str] = None
     assigned_to: Optional[UUID] = None
     assigned_to_name: Optional[str] = None

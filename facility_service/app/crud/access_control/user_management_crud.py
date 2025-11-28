@@ -483,6 +483,31 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
             )
 
+        # ======================================================
+        # ================= STAFF ACCOUNT UPDATE ===============
+        # ======================================================
+        if user.site_ids is not None:
+            # Remove old mappings
+            facility_db.query(StaffSite).filter(
+                StaffSite.user_id == db_user.id
+            ).delete()
+
+            # Add new mappings
+            for site_id in user.site_ids:
+                site = facility_db.query(Site).filter(
+                    Site.id == site_id).first()
+                if site:
+                    facility_db.add(
+                        StaffSite(
+                            user_id=db_user.id,
+                            site_id=site.id,
+                            org_id=user.org_id,
+                            staff_role=user.staff_role  # This will work now
+                        )
+                    )
+
+            facility_db.commit()
+
             # ======================================================
         # =============== TENANT ACCOUNT UPDATE ================
         # ======================================================
@@ -630,32 +655,6 @@ def update_user(db: Session, facility_db: Session, user: UserUpdate):
 
             facility_db.commit()
 
-    # ======================================================
-    # ================= STAFF ACCOUNT UPDATE ===============
-    # ======================================================
-    elif db_user.account_type.lower() == "staff":
-
-        if user.site_ids is not None:
-            # Remove old mappings
-            facility_db.query(StaffSite).filter(
-                StaffSite.user_id == db_user.id
-            ).delete()
-
-            # Add new mappings
-            for site_id in user.site_ids:
-                site = facility_db.query(Site).filter(
-                    Site.id == site_id).first()
-                if site:
-                    facility_db.add(
-                        StaffSite(
-                            user_id=db_user.id,
-                            site_id=site.id,
-                            org_id=user.org_id,
-                            staff_role=user.staff_role  # ADD THIS LINE - update staff_role
-                        )
-                    )
-
-            facility_db.commit()
 
     # ======================================================
     # ================= VENDOR ACCOUNT UPDATE ==============

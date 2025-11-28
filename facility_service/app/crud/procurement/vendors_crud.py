@@ -292,7 +292,9 @@ def vendor_lookup(db: Session, org_id: UUID):
     contact_name = Vendor.contact["contact_name"].astext
     subquery = (
         db.query(Vendor.id)
-        .filter(Vendor.org_id == org_id, Vendor.is_deleted == False)
+        .filter(Vendor.org_id == org_id, 
+                Vendor.is_deleted == False,
+                Vendor.status == "active" )
         .distinct()
         .subquery()
     )

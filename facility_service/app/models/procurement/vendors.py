@@ -27,3 +27,6 @@ class Vendor(Base):
     contracts = relationship("Contract", back_populates="vendor")
 
     work_orders = relationship("WorkOrder", back_populates="vendor")
+    # In your Vendor model, add this relationship
+    tickets = relationship("Ticket", back_populates="vendor")
+   

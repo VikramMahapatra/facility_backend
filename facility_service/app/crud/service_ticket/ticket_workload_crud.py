@@ -18,7 +18,7 @@ from ...schemas.service_ticket.ticket_workload_management_schemas import (
 )
 from uuid import UUID
 from fastapi import HTTPException
-
+from shared.models.users import Users
 
 def get_team_workload_management(
     db: Session,
@@ -30,7 +30,6 @@ def get_team_workload_management(
     Get complete team workload management data - ONLY for staff assigned to this site
     """
     try:
-        from shared.models.users import Users
 
         # 1. Get Available Technicians for this site (from StaffSite + Users)
         available_technicians = get_available_technicians_for_site(
@@ -93,6 +92,10 @@ def get_team_workload_management(
                 Users.id == ticket.assigned_to).first()
             technician_name = user.full_name if user else f"User {ticket.assigned_to}"
 
+                        # Only include if assignee is NOT ORGANIZATION type
+            if user and user.account_type.lower() != "organization":
+                technician_name = user.full_name if user else f"User {ticket.assigned_to}"
+
             assigned_tickets.append(AssignedTicketOut(
                 id=ticket.id,
                 ticket_no=ticket.ticket_no,
@@ -107,8 +110,9 @@ def get_team_workload_management(
                 is_overdue=ticket.is_overdue,
                 can_escalate=ticket.can_escalate
             ))
+
         # 4. Get All Unassigned Tickets - ONLY for this site with specific conditions
-        # First, get all unassigned open tickets
+        # Get tickets assigned to ORGANIZATION users
         unassigned_tickets_query = db.query(Ticket).options(
             joinedload(Ticket.category).joinedload(TicketCategory.sla_policy)
         ).filter(
@@ -121,31 +125,36 @@ def get_team_workload_management(
         for ticket in unassigned_tickets_query.all():
             # Check if ticket has category with SLA policy
             if ticket.category and ticket.category.sla_policy:
-                # Since you said default_contact can never be null, we don't need to check
                 default_contact = ticket.category.sla_policy.default_contact
                 
                 # Check if default contact user type is ORGANIZATION
-                user = auth_db.query(Users).filter(
+                default_contact_user = auth_db.query(Users).filter(
                     Users.id == default_contact,
-                    Users.account_type.ilike("organization")  # Case-insensitive check
+                    Users.account_type.ilike("organization")
                 ).first()
                 
-                if user:
-                    # All conditions met: add ticket to response
-                    unassigned_tickets.append(UnassignedTicketOut(
-                        id=ticket.id,
-                        ticket_no=ticket.ticket_no,
-                        title=ticket.title,
-                        category=ticket.category.category_name if ticket.category else "Unknown",
-                        status=ticket.status.value if hasattr(ticket.status, 'value') else ticket.status,
-                        priority=ticket.priority,
-                        created_at=ticket.created_at,
-                        is_overdue=ticket.is_overdue,
-                        # Add default contact info
-                        default_contact=default_contact,
-                        default_contact_name=user.full_name
-                    ))
+                if default_contact_user:
+                    # Check if current assignee is ORGANIZATION type
+                    current_assignee_user = auth_db.query(Users).filter(
+                        Users.id == ticket.assigned_to
+                    ).first()
+                    
+                    if default_contact_user and default_contact_user.account_type.lower() == "organization":
+                        # Assigned to ORGANIZATION user = "unassigned" for workload
+                        unassigned_tickets.append(UnassignedTicketOut(
+                            id=ticket.id,
+                            ticket_no=ticket.ticket_no,
+                            title=ticket.title,
+                            category=ticket.category.category_name if ticket.category else "Unknown",
+                            status=ticket.status.value if hasattr(ticket.status, 'value') else ticket.status,
+                            priority=ticket.priority,
+                            created_at=ticket.created_at,
+                            is_overdue=ticket.is_overdue,
+                            default_contact=default_contact,
+                            default_contact_name=default_contact_user.full_name
+                        ))
 
+                        
         return TeamWorkloadManagementResponse(
             technicians_workload=technicians_workload,
             assigned_tickets=assigned_tickets,

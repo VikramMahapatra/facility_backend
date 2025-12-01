@@ -16,21 +16,20 @@ AuthBase.metadata.create_all(bind=auth_engine)
 app = FastAPI(title="Unified Auth (Google + Mobile)")
 
 # Allow requests from your React app
-origins = [
-    "http://localhost:8080",
-    "http://127.0.0.1:8001"
-    # Add other origins if deploying later
-]
+# ... imports ...
 
-# 1️⃣ CORS middleware
+# Allow requests from ANYWHERE (Fixes the CORS error)
+origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    # or ["*"] to allow all origins (not recommended for production)
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ... rest of code ...
 
 # 2️⃣ Custom JSON response wrapper middleware
 app.add_middleware(JsonResponseMiddleware)

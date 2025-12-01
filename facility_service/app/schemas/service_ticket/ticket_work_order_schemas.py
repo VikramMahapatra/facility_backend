@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pydantic import BaseModel
 from typing import List, Optional
 from uuid import UUID
@@ -12,6 +13,13 @@ class TicketWorkOrderBase(BaseModel):
     description: str
     assigned_to: Optional[UUID] = None
     status: Optional[TicketWorkOrderStatusEnum] = TicketWorkOrderStatusEnum.PENDING
+
+     # ✅ ADD NEW FIELDS HERE ONLY
+    labour_cost: Optional[float] = None
+    material_cost: Optional[float] = None
+    other_expenses: Optional[float] = None
+    estimated_time: Optional[int] = None
+    special_instructions: Optional[str] = None
 
 
 class TicketWorkOrderCreate(TicketWorkOrderBase):

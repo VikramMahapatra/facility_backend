@@ -41,9 +41,10 @@ async def create_ticket_route(
 def get_tickets(
     params: TicketFilterRequest = Depends(),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),  
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_tickets(db, params, current_user)
+    return crud.get_tickets(db, auth_db,params, current_user)
 
 
 @router.get("/tickets/{ticket_id}", response_model=TicketDetailsResponse)

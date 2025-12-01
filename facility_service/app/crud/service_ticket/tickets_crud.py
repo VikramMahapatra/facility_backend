@@ -144,6 +144,8 @@ def build_ticket_filters(
                 Ticket.created_at,
                 Ticket.closed_date,
                 Ticket.space_id,
+                Ticket.assigned_to,
+                Ticket.vendor_id,
             ),
             selectinload(Ticket.category).load_only(
                 TicketCategory.category_name
@@ -154,7 +156,7 @@ def build_ticket_filters(
     return base_query
 
 
-def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToken):
+def get_tickets(db: Session,auth_db: Session, params: TicketFilterRequest, current_user: UserToken):
 
     base_query = build_ticket_filters(db, params, current_user)
 
@@ -170,22 +172,60 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
         query = query.limit(params.limit)
 
     tickets = query.all()
+    
+  # ✅ Pre-fetch all names in bulk for better performance
+    assigned_user_ids = [t.assigned_to for t in tickets if t.assigned_to]
+    vendor_ids = [t.vendor_id for t in tickets if t.vendor_id]
+    
+    # Fetch all assigned users in one query
+    assigned_users = {}
+    if assigned_user_ids:
+        users = auth_db.query(Users.id, Users.full_name).filter(
+            Users.id.in_(assigned_user_ids)
+        ).all()
+        assigned_users = {str(uid): uname for uid, uname in users}
+    
+    # Fetch all vendors in one query
+    vendors = {}
+    if vendor_ids:
+        vendor_list = db.query(Vendor.id, Vendor.name).filter(
+            Vendor.id.in_(vendor_ids)
+        ).all()
+        vendors = {str(vid): vname for vid, vname in vendor_list}
+    
 
     results = []
     for t in tickets:
         data = t.__dict__.copy()
         data.pop("category", None)  # remove SA relationship
+
+                # They're already in t.__dict__ so we need to remove them
+        data.pop("assigned_to", None)
+        data.pop("vendor_id", None)
+
+        assigned_to_str = str(t.assigned_to) if t.assigned_to else None
+        vendor_id_str = str(t.vendor_id) if t.vendor_id else None
+        assigned_to_name = assigned_users.get(assigned_to_str) if assigned_to_str else None
+        vendor_name = vendors.get(vendor_id_str) if vendor_id_str else None
+
         results.append(
             TicketOut(
                 **data,
                 category=t.category.category_name if t.category else None,
                 can_escalate=t.can_escalate,
                 can_reopen=t.can_reopen,
-                is_overdue=t.is_overdue
+                is_overdue=t.is_overdue,
+                assigned_to=t.assigned_to,
+                vendor_id=t.vendor_id,
+                assigned_to_name=assigned_to_name,
+                vendor_name=vendor_name
+
             )
         )
 
     return {"tickets": results, "total": total}
+
+
 
 # for mobile -----
 
@@ -1358,18 +1398,32 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     if not service_req:
         raise HTTPException(
             status_code=404, detail="Service request not found")
-
-    # Step 2: Get assigned_to from SLA policies based on category - FIXED
-    category_name = service_req.category.category_name if service_req.category else None
-
+    
+        # Step 2: Initialize name variables
     assigned_to_name = None
-    # Fetch assigned user full_name from auth.db user table
-    assigned_user = (
-        auth_db.query(Users)
-        .filter(Users.id == service_req.assigned_to)
-        .first()
-    )
-    assigned_to_name = assigned_user.full_name if assigned_user else None
+    vendor_name = None
+
+    # Step 3: Fetch assigned user full_name from auth.db user table
+    if service_req.assigned_to:
+        assigned_user = (
+            auth_db.query(Users)
+            .filter(Users.id == service_req.assigned_to)
+            .first()
+        )
+        assigned_to_name = assigned_user.full_name if assigned_user else None
+
+    # Step 4: Fetch vendor name from Vendor table (assuming you have a Vendor model)
+    if service_req.vendor_id:
+        vendor = (
+            db.query(Vendor)  # Use db session (not auth_db) for Vendor
+            .filter(Vendor.id == service_req.vendor_id)
+            .filter(Vendor.is_deleted == False)  # Optional: exclude deleted vendors
+            .first()
+        )
+        vendor_name = vendor.name if vendor else None
+
+     # Step 5: Get category name
+    category_name = service_req.category.category_name if service_req.category else None
 
     #  COMMENTS SECTION (TicketComment schema)
     comments = service_req.comments or []
@@ -1472,6 +1526,12 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "site_name": wo.ticket.site.name if wo.ticket and wo.ticket.site else "",
             "created_at": wo.created_at.isoformat() if wo.created_at else None,
             "updated_at": wo.updated_at.isoformat() if wo.updated_at else None,
+            #added new fileds
+            "labour_cost": float(wo.labour_cost) if wo.labour_cost else None,
+            "material_cost": float(wo.material_cost) if wo.material_cost else None,
+            "other_expenses": float(wo.other_expenses) if wo.other_expenses else None,
+            "estimated_time": wo.estimated_time,  # in minutes
+            "special_instructions": wo.special_instructions,
         })
 
     attachments_out = []
@@ -1493,7 +1553,10 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "building_name": service_req.space.building.name if service_req.space and service_req.space.building else None,
             "site_name": service_req.site.name if service_req.site else None,
             "closed_date": service_req.closed_date.isoformat() if service_req.closed_date else None,
+            "assigned_to": service_req.assigned_to,
+            "vendor_id": service_req.vendor_id,
             "assigned_to_name": assigned_to_name,
+            "vendor_name": vendor_name,
             "comments": comments_out,
             "logs": workflows_out,
             "workorders": ticket_workorders,  # <-- Add this

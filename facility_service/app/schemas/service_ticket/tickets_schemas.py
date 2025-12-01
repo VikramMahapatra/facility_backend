@@ -257,6 +257,8 @@ class TicketDetailsResponse(EmptyStringModel):
     request_type: Optional[str] = None
     is_overdue: Optional[bool] = False
     attachments: Optional[List[TicketAttachmentOut]] = None
+    vendor_id: Optional[UUID] = None     #--------added
+    vendor_name: Optional[str] = None
 
     class Config:
         from_attributes = True

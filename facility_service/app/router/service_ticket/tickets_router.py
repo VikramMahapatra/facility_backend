@@ -8,7 +8,7 @@ from shared.core.schemas import Lookup, UserToken
 from ...crud.service_ticket import tickets_crud as crud
 from ...schemas.service_ticket.tickets_schemas import (
     TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentRequest, TicketCreate, TicketDetailsResponse, TicketFilterRequest,
-    TicketListResponse, TicketOut, TicketReactionRequest, TicketUpdateRequest
+    TicketListResponse, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketVendorRequest
 )
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
@@ -177,3 +177,23 @@ def ticket_no_lookup(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.ticket_no_lookup(db, current_user.org_id)
+
+
+@router.put("/assign-vendor")
+def assign_vendor_route(
+    request: TicketVendorRequest,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Update ticket vendor
+    """
+    return crud.update_ticket_vendor(
+        background_tasks,
+        session=session,
+        auth_db=auth_db,
+        data=request,
+        current_user=current_user
+    )

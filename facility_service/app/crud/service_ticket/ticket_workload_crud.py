@@ -3,6 +3,8 @@ from sqlalchemy import func, case, and_
 from typing import List
 from sqlalchemy.orm import joinedload
 
+from facility_service.app.models.service_ticket.sla_policy import SlaPolicy
+from shared.models.users import Users
 from ...enum.ticket_service_enum import TicketStatus
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_category import TicketCategory
@@ -105,29 +107,44 @@ def get_team_workload_management(
                 is_overdue=ticket.is_overdue,
                 can_escalate=ticket.can_escalate
             ))
-
-        # 4. Get All Unassigned Tickets - ONLY for this site
+        # 4. Get All Unassigned Tickets - ONLY for this site with specific conditions
+        # First, get all unassigned open tickets
         unassigned_tickets_query = db.query(Ticket).options(
-            joinedload(Ticket.category)
+            joinedload(Ticket.category).joinedload(TicketCategory.sla_policy)
         ).filter(
             *base_filter,
-            Ticket.assigned_to.is_(None),
-            Ticket.status == TicketStatus.OPEN  # Typically unassigned tickets are OPEN
+            Ticket.status == TicketStatus.OPEN,  # Status must be OPEN
+            Ticket.category.has(TicketCategory.sla_id.isnot(None))  # Has SLA policy
         ).order_by(Ticket.created_at.desc())
 
         unassigned_tickets = []
         for ticket in unassigned_tickets_query.all():
-            unassigned_tickets.append(UnassignedTicketOut(
-                id=ticket.id,
-                ticket_no=ticket.ticket_no,
-                title=ticket.title,
-                category=ticket.category.category_name if ticket.category else "Unknown",
-                status=ticket.status.value if hasattr(
-                    ticket.status, 'value') else ticket.status,
-                priority=ticket.priority,
-                created_at=ticket.created_at,
-                is_overdue=ticket.is_overdue
-            ))
+            # Check if ticket has category with SLA policy
+            if ticket.category and ticket.category.sla_policy:
+                # Since you said default_contact can never be null, we don't need to check
+                default_contact = ticket.category.sla_policy.default_contact
+                
+                # Check if default contact user type is ORGANIZATION
+                user = auth_db.query(Users).filter(
+                    Users.id == default_contact,
+                    Users.account_type.ilike("organization")  # Case-insensitive check
+                ).first()
+                
+                if user:
+                    # All conditions met: add ticket to response
+                    unassigned_tickets.append(UnassignedTicketOut(
+                        id=ticket.id,
+                        ticket_no=ticket.ticket_no,
+                        title=ticket.title,
+                        category=ticket.category.category_name if ticket.category else "Unknown",
+                        status=ticket.status.value if hasattr(ticket.status, 'value') else ticket.status,
+                        priority=ticket.priority,
+                        created_at=ticket.created_at,
+                        is_overdue=ticket.is_overdue,
+                        # Add default contact info
+                        default_contact=default_contact,
+                        default_contact_name=user.full_name
+                    ))
 
         return TeamWorkloadManagementResponse(
             technicians_workload=technicians_workload,
@@ -153,7 +170,6 @@ def get_available_technicians_for_site(
     Get available technicians for a site (for dropdowns) using StaffSite + Users
     """
     try:
-        from shared.models.users import Users
 
         # Step 1: Get all user_ids from staff_sites for this site_id and org_id
         staff_sites = (

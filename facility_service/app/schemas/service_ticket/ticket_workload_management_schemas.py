@@ -51,6 +51,9 @@ class UnassignedTicketOut(BaseModel):
     priority: str
     created_at: datetime
     is_overdue: bool = False
+        # ✅ Add these optional fields for default contact
+    default_contact: Optional[UUID] = None
+    default_contact_name: Optional[str] = None
 
     class Config:
         from_attributes = True

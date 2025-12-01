@@ -33,7 +33,7 @@ from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketWorkflowOut
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketVendorRequest, TicketWorkflowOut
 
 
 def build_ticket_filters(
@@ -2245,3 +2245,152 @@ def ticket_no_lookup(db: Session, org_id: str) -> List[Dict]:
     rows = query.all()
     # Convert UUID to string for JSON serialization
     return [{"id": str(r.id), "name": r.name} for r in rows]
+
+
+
+def update_ticket_vendor(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketVendorRequest, current_user: UserToken):
+    ticket = (
+        session.query(Ticket)
+        .filter(Ticket.id == data.ticket_id)
+        .first()
+    )
+
+    if not ticket:
+        return error_response(
+            message="Invalid Ticket",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+
+    # Get new vendor details
+    vendor = (
+        session.query(Vendor) 
+        .filter(Vendor.id == data.vendor_id)
+        .scalar() 
+    )
+
+    if not vendor:
+        return error_response(
+            message="Invalid vendor",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+
+    action_by = current_user.user_id
+    # Get action_by user details
+    action_by_user = (
+        auth_db.query(Users)
+        .filter(Users.id == action_by)
+        .scalar()
+    )
+
+    # Update ticket vendor_id (EXACTLY like assigned_to pattern)
+    ticket.vendor_id = data.vendor_id
+    ticket.updated_at = datetime.utcnow()
+
+    # Vendor Assignment Log - Using TicketAssignment model like in update_ticket_assigned_to
+    vendor_assignment_log = TicketAssignment(
+        ticket_id=ticket.id,
+        assigned_from=action_by,
+        assigned_to=data.vendor_id,  # Storing vendor_id (not user_id)
+        reason="Vendor assigned"  
+    )
+
+    # Notification Log
+    recipient_ids = []
+
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+
+    recipient_ids.append(current_user.user_id)  # action_by
+
+    if ticket.tenant and ticket.tenant.user_id:
+        recipient_ids.append(ticket.tenant.user_id)
+
+    admin_user_ids = fetch_role_admin(auth_db, current_user.org_id)
+    recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+    recipient_ids = list(set(recipient_ids))
+
+    notifications = []
+
+    for recipient_id in recipient_ids:
+        notification = Notification(
+            user_id=recipient_id,
+            type=NotificationType.alert,
+            title="Vendor Assigned to Ticket",  # Different title
+            # Different message
+            message=f"Vendor {vendor.name} has been assigned to ticket {ticket.ticket_no}: {ticket.title}",
+            posted_date=datetime.utcnow(),
+            priority=PriorityType(ticket.priority),
+            read=False,
+            is_deleted=False
+        )
+        notifications.append(notification)
+
+    # Workflow Log - EXACTLY same pattern
+    workflow_log = TicketWorkflow(
+        ticket_id=ticket.id,
+        action_by=action_by,
+        old_status=None,
+        new_status=None,
+        # Different action taken message
+        action_taken=f"Vendor {vendor.name} assigned by {action_by_user.full_name if action_by_user else 'Unknown User'}"
+    )
+
+    objects_to_add = [workflow_log, vendor_assignment_log] + notifications
+
+    session.add_all(objects_to_add)
+    session.commit()
+    session.refresh(ticket)
+
+    # Email - EXACTLY same pattern
+    emails = (
+        auth_db.query(Users.email)
+        .filter(Users.id.in_(recipient_ids))
+        .all()
+    )
+    email_list = [e[0] for e in emails]
+
+    context = {
+        "vendor_name": vendor.name,
+        "ticket_no": ticket.ticket_no,
+        "assigned_by": action_by_user.full_name if action_by_user else "System"
+    }
+
+    send_ticket_update_vendor_email(
+        background_tasks, session, context, email_list)
+
+    # Fetch vendor name for response
+    vendor_name = vendor.name
+
+    # Response - EXACTLY same pattern
+    updated_ticket = TicketOut.model_validate(
+        {
+            **ticket.__dict__,
+            "category": ticket.category.category_name if ticket.category else None,
+            "vendor_name": vendor_name  # Different field name
+        }
+    )
+
+    # ✅ EXACTLY same return format
+    return {
+        "success": True,
+        "data": updated_ticket,
+        "status": "Success", 
+        "status_code": AppStatusCode.DATA_RETRIEVED_SUCCESSFULLY,
+        "message": f"Vendor {vendor.name} assigned to ticket successfully"
+    }
+
+
+def send_ticket_update_vendor_email(background_tasks, db, data, recipients):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="ticket_update_vendor",  # Different template code
+        recipients=recipients,
+        subject=f"Vendor Assigned to Ticket - {data['ticket_no']}",  # Different subject
+        context=data,
+    )

@@ -1653,6 +1653,9 @@ def update_ticket_status(
     db.add_all(objects_to_add)
     db.commit()
     db.refresh(ticket)
+ # ✅ ADDED: Refresh workflow log to get ID
+    db.refresh(workflow_log)
+    action_by_name = action_by_user.full_name if action_by_user else "System User"
 
     # Email
     emails = (
@@ -1678,10 +1681,26 @@ def update_ticket_status(
         }
     )
 
-    return success_response(
-        data=updated_ticket,
-        message=f"Ticket status updated to {data.new_status.value} successfully"
-    )
+    # ✅ CHANGED: Return both ticket and log using model_validate
+    response_data = {
+        "ticket": updated_ticket,
+        "log": TicketWorkflowOut.model_validate(
+            {
+                **workflow_log.__dict__,
+                "workflow_id": workflow_log.id,
+                "action_by_name": action_by_name
+            }
+        )
+    }
+
+   # ✅ SIMPLEST: Return dictionary with success=true
+    return {
+    "success": True,
+    "data": response_data,
+    "status": "Success",
+    "status_code": AppStatusCode.DATA_RETRIEVED_SUCCESSFULLY,
+    "message": f"Ticket status updated to {data.new_status.value} successfully"
+    }
 
 
 def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketAssignedToRequest, current_user: UserToken):
@@ -1801,14 +1820,20 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
     updated_ticket = TicketOut.model_validate(
         {
             **ticket.__dict__,
-            "category": ticket.category.category_name if ticket.category else None
+            "category": ticket.category.category_name if ticket.category else None,
+            "assigned_to_name": assigned_to_user.full_name  # ✅ Add name separately # The person who got assigned
+            
         }
     )
 
-    return success_response(
-        data=updated_ticket,
-        message=f"Ticket assigned to {assigned_to_user.full_name} successfully"
-    )
+    # ✅ CHANGED: Return dictionary with success=true
+    return {
+        "success": True,
+        "data": updated_ticket,
+        "status": "Success", 
+        "status_code": AppStatusCode.DATA_RETRIEVED_SUCCESSFULLY,
+        "message": f"Ticket assigned to {assigned_to_user.full_name} successfully"
+    }
 
 
 def post_ticket_comment(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketCommentRequest, current_user: UserToken):

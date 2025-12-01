@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, desc
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
+from facility_service.app.models.common.staff_sites import StaffSite
 from ...models.procurement.vendors import Vendor
 from shared.models.users import Users
 from shared.core.config import Settings
@@ -439,6 +440,11 @@ async def create_ticket(
             .filter(Users.id == assigned_to)
             .scalar()
         )
+        # Check if assigned to ADMIN/ORGANIZATION (considered "unassigned" for workload)-----------CHANGED
+        # This doesn't change anything, just for understanding
+        if assigned_to_user and assigned_to_user.account_type.lower() in ["admin", "organization"]:
+            # Ticket will appear in "unassigned tickets" in workload management
+            pass
 
         # Only create assignment log if this is different from initial value
         if not hasattr(data, 'assigned_to') or not data.assigned_to:
@@ -1730,6 +1736,15 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
+    
+    # ✅ ADD THIS - Check if user has account_type = "staff"
+    if assigned_to_user.account_type.lower() != "staff":
+        return error_response(
+            message="User must have account type STAFF",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+
     action_by = current_user.user_id
     # Get action_by user details
     action_by_user = (
@@ -1772,7 +1787,7 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
 
     for recipient_id in recipient_ids:
         notification = Notification(
-            user_id=data.assigned_to,
+            user_id=recipient_id,
             type=NotificationType.alert,
             title="Ticket Assigned",
             message=f"You have been assigned ticket {ticket.ticket_no}: {ticket.title}",
@@ -1781,7 +1796,7 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
             read=False,
             is_deleted=False
         )
-    notifications.append(notification)
+        notifications.append(notification)
 
     # Workflow Log
     workflow_log = TicketWorkflow(
@@ -1835,6 +1850,24 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
         "message": f"Ticket assigned to {assigned_to_user.full_name} successfully"
     }
 
+
+'''   # ✅ THEN CHECK if user is assigned as STAFF to this ticket's site
+    staff_check = (
+        session.query(StaffSite)
+        .filter(
+            StaffSite.user_id == data.assigned_to,
+            StaffSite.site_id == ticket.site_id,
+            StaffSite.is_deleted == False
+        )
+        .first()
+    )
+
+    if not staff_check:
+        return error_response(
+            message="User is not assigned as STAFF to this site",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )'''
 
 def post_ticket_comment(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketCommentRequest, current_user: UserToken):
 

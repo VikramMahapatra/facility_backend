@@ -144,6 +144,8 @@ def build_ticket_filters(
                 Ticket.created_at,
                 Ticket.closed_date,
                 Ticket.space_id,
+                Ticket.assigned_to,
+                Ticket.vendor_id,
             ),
             selectinload(Ticket.category).load_only(
                 TicketCategory.category_name
@@ -154,7 +156,7 @@ def build_ticket_filters(
     return base_query
 
 
-def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToken):
+def get_tickets(db: Session,auth_db: Session, params: TicketFilterRequest, current_user: UserToken):
 
     base_query = build_ticket_filters(db, params, current_user)
 
@@ -170,22 +172,60 @@ def get_tickets(db: Session, params: TicketFilterRequest, current_user: UserToke
         query = query.limit(params.limit)
 
     tickets = query.all()
+    
+  # ✅ Pre-fetch all names in bulk for better performance
+    assigned_user_ids = [t.assigned_to for t in tickets if t.assigned_to]
+    vendor_ids = [t.vendor_id for t in tickets if t.vendor_id]
+    
+    # Fetch all assigned users in one query
+    assigned_users = {}
+    if assigned_user_ids:
+        users = auth_db.query(Users.id, Users.full_name).filter(
+            Users.id.in_(assigned_user_ids)
+        ).all()
+        assigned_users = {str(uid): uname for uid, uname in users}
+    
+    # Fetch all vendors in one query
+    vendors = {}
+    if vendor_ids:
+        vendor_list = db.query(Vendor.id, Vendor.name).filter(
+            Vendor.id.in_(vendor_ids)
+        ).all()
+        vendors = {str(vid): vname for vid, vname in vendor_list}
+    
 
     results = []
     for t in tickets:
         data = t.__dict__.copy()
         data.pop("category", None)  # remove SA relationship
+
+                # They're already in t.__dict__ so we need to remove them
+        data.pop("assigned_to", None)
+        data.pop("vendor_id", None)
+
+        assigned_to_str = str(t.assigned_to) if t.assigned_to else None
+        vendor_id_str = str(t.vendor_id) if t.vendor_id else None
+        assigned_to_name = assigned_users.get(assigned_to_str) if assigned_to_str else None
+        vendor_name = vendors.get(vendor_id_str) if vendor_id_str else None
+
         results.append(
             TicketOut(
                 **data,
                 category=t.category.category_name if t.category else None,
                 can_escalate=t.can_escalate,
                 can_reopen=t.can_reopen,
-                is_overdue=t.is_overdue
+                is_overdue=t.is_overdue,
+                assigned_to=t.assigned_to,
+                vendor_id=t.vendor_id,
+                assigned_to_name=assigned_to_name,
+                vendor_name=vendor_name
+
             )
         )
 
     return {"tickets": results, "total": total}
+
+
 
 # for mobile -----
 
@@ -355,7 +395,10 @@ async def create_ticket(
         preferred_time=data.preferred_time,
         request_type=data.request_type,
         priority=data.priority if hasattr(
-            data, "priority") else PriorityType.low
+            data, "priority") else PriorityType.low,
+                # ✅ Add assigned_to and vendor_id fields
+        assigned_to=data.assigned_to if hasattr(data, "assigned_to") else None,
+        vendor_id=data.vendor_id if hasattr(data, "vendor_id") else None
     )
     if file and file.filename:
         file_bytes = await file.read()
@@ -376,32 +419,38 @@ async def create_ticket(
     assigned_to_user = None
     sla = None
 
-    if new_ticket.category and new_ticket.category.sla_policy:
+    # ✅ UPDATED LOGIC: Use provided assigned_to OR fallback to default contact
+    assigned_to = None
+    
+    # First priority: Use assigned_to from request if provided
+    if hasattr(data, 'assigned_to') and data.assigned_to:
+        assigned_to = data.assigned_to
+    # Second priority: Use SLA default contact
+    elif new_ticket.category and new_ticket.category.sla_policy:
         sla = new_ticket.category.sla_policy
+        assigned_to = sla.default_contact if sla else None
 
-    assigned_to = sla.default_contact if sla else None
-
-    if not assigned_to:
-        return error_response(
-            message="No default contact for assignment"
-        )
-
+    # Update the ticket with the final assigned_to value
     if assigned_to:
+        new_ticket.assigned_to = assigned_to
+        
         assigned_to_user = (
             auth_db.query(Users)
             .filter(Users.id == assigned_to)
             .scalar()
         )
-        new_ticket.assigned_to = assigned_to
 
-        assignment_log = TicketAssignment(
-            ticket_id=new_ticket.id,
-            assigned_from=user.user_id,
-            assigned_to=assigned_to,
-            reason="Auto-assigned via SLA"
-        )
-        session.add(assignment_log)
+        # Only create assignment log if this is different from initial value
+        if not hasattr(data, 'assigned_to') or not data.assigned_to:
+            assignment_log = TicketAssignment(
+                ticket_id=new_ticket.id,
+                assigned_from=user.user_id,
+                assigned_to=assigned_to,
+                reason="Auto-assigned via SLA"
+            )
+            session.add(assignment_log)
 
+        # Send notification to assigned user
         notification = Notification(
             user_id=assigned_to,
             type=NotificationType.alert,
@@ -427,6 +476,29 @@ async def create_ticket(
     session.commit()
     session.refresh(new_ticket)
 
+        # ✅ NEW: Fetch vendor name and assigned to name
+    assigned_to_name = ""
+    vendor_name = ""
+
+    # Fetch assigned_to user name
+    if new_ticket.assigned_to:
+        assigned_user = (
+            auth_db.query(Users)
+            .filter(Users.id == new_ticket.assigned_to)
+            .first()
+        )
+        if assigned_user:
+            assigned_to_name = assigned_user.full_name or ""
+
+    # Fetch vendor name (assuming you have a Vendor model)
+    if new_ticket.vendor_id:
+        vendor = (
+            session.query(Vendor)  # Replace with your actual Vendor model
+            .filter(Vendor.id == new_ticket.vendor_id)
+            .first()
+        )
+        if vendor:
+            vendor_name = vendor.name or ""  # Replace with actual vendor name field
     # email
     if assigned_to_user:
         send_ticket_created_email(
@@ -435,7 +507,10 @@ async def create_ticket(
     return TicketOut.model_validate(
         {
             **new_ticket.__dict__,
-            "category": new_ticket.category.category_name
+            "category": new_ticket.category.category_name,
+            # ✅ Include the names in response
+            "assigned_to_name": assigned_to_name,
+            "vendor_name": vendor_name
         }
     )
 
@@ -1323,18 +1398,32 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     if not service_req:
         raise HTTPException(
             status_code=404, detail="Service request not found")
-
-    # Step 2: Get assigned_to from SLA policies based on category - FIXED
-    category_name = service_req.category.category_name if service_req.category else None
-
+    
+        # Step 2: Initialize name variables
     assigned_to_name = None
-    # Fetch assigned user full_name from auth.db user table
-    assigned_user = (
-        auth_db.query(Users)
-        .filter(Users.id == service_req.assigned_to)
-        .first()
-    )
-    assigned_to_name = assigned_user.full_name if assigned_user else None
+    vendor_name = None
+
+    # Step 3: Fetch assigned user full_name from auth.db user table
+    if service_req.assigned_to:
+        assigned_user = (
+            auth_db.query(Users)
+            .filter(Users.id == service_req.assigned_to)
+            .first()
+        )
+        assigned_to_name = assigned_user.full_name if assigned_user else None
+
+    # Step 4: Fetch vendor name from Vendor table (assuming you have a Vendor model)
+    if service_req.vendor_id:
+        vendor = (
+            db.query(Vendor)  # Use db session (not auth_db) for Vendor
+            .filter(Vendor.id == service_req.vendor_id)
+            .filter(Vendor.is_deleted == False)  # Optional: exclude deleted vendors
+            .first()
+        )
+        vendor_name = vendor.name if vendor else None
+
+     # Step 5: Get category name
+    category_name = service_req.category.category_name if service_req.category else None
 
     #  COMMENTS SECTION (TicketComment schema)
     comments = service_req.comments or []
@@ -1437,6 +1526,12 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "site_name": wo.ticket.site.name if wo.ticket and wo.ticket.site else "",
             "created_at": wo.created_at.isoformat() if wo.created_at else None,
             "updated_at": wo.updated_at.isoformat() if wo.updated_at else None,
+            #added new fileds
+            "labour_cost": float(wo.labour_cost) if wo.labour_cost else None,
+            "material_cost": float(wo.material_cost) if wo.material_cost else None,
+            "other_expenses": float(wo.other_expenses) if wo.other_expenses else None,
+            "estimated_time": wo.estimated_time,  # in minutes
+            "special_instructions": wo.special_instructions,
         })
 
     attachments_out = []
@@ -1458,7 +1553,10 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "building_name": service_req.space.building.name if service_req.space and service_req.space.building else None,
             "site_name": service_req.site.name if service_req.site else None,
             "closed_date": service_req.closed_date.isoformat() if service_req.closed_date else None,
+            "assigned_to": service_req.assigned_to,
+            "vendor_id": service_req.vendor_id,
             "assigned_to_name": assigned_to_name,
+            "vendor_name": vendor_name,
             "comments": comments_out,
             "logs": workflows_out,
             "workorders": ticket_workorders,  # <-- Add this
@@ -1555,6 +1653,9 @@ def update_ticket_status(
     db.add_all(objects_to_add)
     db.commit()
     db.refresh(ticket)
+ # ✅ ADDED: Refresh workflow log to get ID
+    db.refresh(workflow_log)
+    action_by_name = action_by_user.full_name if action_by_user else "System User"
 
     # Email
     emails = (
@@ -1580,10 +1681,26 @@ def update_ticket_status(
         }
     )
 
-    return success_response(
-        data=updated_ticket,
-        message=f"Ticket status updated to {data.new_status.value} successfully"
-    )
+    # ✅ CHANGED: Return both ticket and log using model_validate
+    response_data = {
+        "ticket": updated_ticket,
+        "log": TicketWorkflowOut.model_validate(
+            {
+                **workflow_log.__dict__,
+                "workflow_id": workflow_log.id,
+                "action_by_name": action_by_name
+            }
+        )
+    }
+
+   # ✅ SIMPLEST: Return dictionary with success=true
+    return {
+    "success": True,
+    "data": response_data,
+    "status": "Success",
+    "status_code": AppStatusCode.DATA_RETRIEVED_SUCCESSFULLY,
+    "message": f"Ticket status updated to {data.new_status.value} successfully"
+    }
 
 
 def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketAssignedToRequest, current_user: UserToken):
@@ -1703,14 +1820,20 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
     updated_ticket = TicketOut.model_validate(
         {
             **ticket.__dict__,
-            "category": ticket.category.category_name if ticket.category else None
+            "category": ticket.category.category_name if ticket.category else None,
+            "assigned_to_name": assigned_to_user.full_name  # ✅ Add name separately # The person who got assigned
+            
         }
     )
 
-    return success_response(
-        data=updated_ticket,
-        message=f"Ticket assigned to {assigned_to_user.full_name} successfully"
-    )
+    # ✅ CHANGED: Return dictionary with success=true
+    return {
+        "success": True,
+        "data": updated_ticket,
+        "status": "Success", 
+        "status_code": AppStatusCode.DATA_RETRIEVED_SUCCESSFULLY,
+        "message": f"Ticket assigned to {assigned_to_user.full_name} successfully"
+    }
 
 
 def post_ticket_comment(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketCommentRequest, current_user: UserToken):

@@ -30,6 +30,7 @@ class ComplaintCreate(EmptyStringModel):
     request_type: str
     description: str
     preferred_time: Optional[str] = None
+    priority: Optional[str] = None
 
     @classmethod
     def as_form(
@@ -39,7 +40,7 @@ class ComplaintCreate(EmptyStringModel):
         request_type: str = Form(...),
         description: str = Form(...),
         preferred_time: Optional[str] = Form(None),
-
+        priority: Optional[str] = Form(None)
     ):
         return cls(
             space_id=space_id,
@@ -47,6 +48,7 @@ class ComplaintCreate(EmptyStringModel):
             request_type=request_type,
             description=description,
             preferred_time=preferred_time,
+            priority=priority
 
         )
     model_config = {"from_attributes": True}

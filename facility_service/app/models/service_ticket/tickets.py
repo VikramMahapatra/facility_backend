@@ -27,6 +27,8 @@ class Ticket(Base):
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"))
     space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"))
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True)  # ✅ MADE NULLABLE
+    # In your Ticket model, add this line after tenant_id
+    vendor_id = Column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=True)
     category_id = Column(UUID(as_uuid=True),
                          ForeignKey("ticket_categories.id"))
 
@@ -67,6 +69,8 @@ class Ticket(Base):
     comments = relationship("TicketComment", back_populates="ticket")
     feedbacks = relationship("TicketFeedback", back_populates="ticket")
     work_orders = relationship("TicketWorkOrder", back_populates="ticket")
+     # Add this to your relationships in Ticket model
+    vendor = relationship("Vendor", back_populates="tickets")
 
     __table_args__ = (
 

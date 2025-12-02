@@ -56,6 +56,11 @@ class TicketOut(BaseModel):
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
     is_overdue: Optional[bool] = False
+        # ✅ ADD THESE OPTIONAL FIELDS
+    assigned_to: Optional[UUID] = None
+    vendor_id: Optional[UUID] = None
+    assigned_to_name: Optional[str] = None  # For displaying assigned user name
+    vendor_name: Optional[str] = None      # For displaying vendor name
 
     class Config:
         from_attributes = True
@@ -81,6 +86,9 @@ class TicketCreate(BaseModel):
     preferred_time: Optional[str] = None
     request_type: str
     priority: Optional[str] = None
+    # ✅ ADD THESE 2 OPTIONAL FIELDS
+    assigned_to: Optional[UUID] = None
+    vendor_id: Optional[UUID] = None
 
     @classmethod
     def as_form(
@@ -96,6 +104,9 @@ class TicketCreate(BaseModel):
         preferred_time: Optional[str] = Form(None),
         request_type: str = Form(...),
         priority: Optional[str] = Form(None),
+                # ✅ ADD THESE TO FORM METHOD
+        assigned_to: Optional[UUID] = Form(None),
+        vendor_id: Optional[UUID] = Form(None),
     ):
         return cls(
             org_id=org_id,
@@ -109,6 +120,8 @@ class TicketCreate(BaseModel):
             preferred_time=preferred_time,
             request_type=request_type,
             priority=priority,
+            assigned_to=assigned_to,  # ✅ ADDED
+            vendor_id=vendor_id,      # ✅ ADDED
         )
 
 # For Comment/Reaction/Feedback ADD
@@ -244,6 +257,8 @@ class TicketDetailsResponse(EmptyStringModel):
     request_type: Optional[str] = None
     is_overdue: Optional[bool] = False
     attachments: Optional[List[TicketAttachmentOut]] = None
+    vendor_id: Optional[UUID] = None     #--------added
+    vendor_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -282,3 +297,9 @@ class TicketReactionRequest(BaseModel):
 
 class TicketAdminRoleRequest(BaseModel):
     org_id: UUID
+
+
+# In your schemas file (tickets_schemas.py)
+class TicketVendorRequest(BaseModel):
+    ticket_id: UUID
+    vendor_id: UUID

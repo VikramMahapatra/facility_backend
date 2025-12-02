@@ -1745,6 +1745,24 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
             http_status=400
         )
 
+      # ✅ THEN CHECK if user is assigned as STAFF to this ticket's site
+    staff_check = (
+        session.query(StaffSite)
+        .filter(
+            StaffSite.user_id == data.assigned_to,
+            StaffSite.site_id == ticket.site_id,
+            StaffSite.is_deleted == False
+        )
+        .first()
+    )
+
+    if not staff_check:
+        return error_response(
+            message="User is not assigned as STAFF to this site",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            http_status=400
+        )
+    
     action_by = current_user.user_id
     # Get action_by user details
     action_by_user = (
@@ -1851,23 +1869,7 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
     }
 
 
-'''   # ✅ THEN CHECK if user is assigned as STAFF to this ticket's site
-    staff_check = (
-        session.query(StaffSite)
-        .filter(
-            StaffSite.user_id == data.assigned_to,
-            StaffSite.site_id == ticket.site_id,
-            StaffSite.is_deleted == False
-        )
-        .first()
-    )
 
-    if not staff_check:
-        return error_response(
-            message="User is not assigned as STAFF to this site",
-            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
-            http_status=400
-        )'''
 
 def post_ticket_comment(background_tasks: BackgroundTasks, session: Session, auth_db: Session, data: TicketCommentRequest, current_user: UserToken):
 

@@ -25,8 +25,9 @@ router = APIRouter(
 def get_complaints(
         params: TicketFilterRequest = None,
         db: Session = Depends(get_db),
+        auth_db: Session = Depends(get_auth_db),
         current_user: UserToken = Depends(validate_current_token)):
-    result = tickets_crud.get_tickets(db, params, current_user)
+    result = tickets_crud.get_tickets(db,auth_db, params, current_user)
     return result["tickets"]
 
 

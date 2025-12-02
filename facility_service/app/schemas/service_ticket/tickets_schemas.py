@@ -297,3 +297,9 @@ class TicketReactionRequest(BaseModel):
 
 class TicketAdminRoleRequest(BaseModel):
     org_id: UUID
+
+
+# In your schemas file (tickets_schemas.py)
+class TicketVendorRequest(BaseModel):
+    ticket_id: UUID
+    vendor_id: UUID

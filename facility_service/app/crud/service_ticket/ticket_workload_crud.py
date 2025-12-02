@@ -3,6 +3,7 @@ from sqlalchemy import func, case, and_
 from typing import List
 from sqlalchemy.orm import joinedload
 
+from shared.models.users import Users
 from ...enum.ticket_service_enum import TicketStatus
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_category import TicketCategory
@@ -42,7 +43,7 @@ def get_team_workload_management(
             Ticket.status != TicketStatus.CLOSED  # Exclude closed tickets
         ]
 
-        # 2. Get Technician Workload Summary - ONLY site staff
+        # 2. Get Technician Workload Summary - ONLY NON-ADMIN/NON-ORGANIZATION site staff
         workload_query = db.query(
             Ticket.assigned_to,
             func.count(Ticket.id).label('total_tickets'),
@@ -62,19 +63,23 @@ def get_team_workload_management(
         for workload in workload_query.all():
             # Get technician name from auth database
             user = auth_db.query(Users).filter(
-                Users.id == workload.assigned_to).first()
-            technician_name = user.full_name if user else f"User {workload.assigned_to}"
+                Users.id == workload.assigned_to
+            ).first()
+            
+            # ✅ ONLY count if assignee is NOT ORGANIZATION and NOT ADMIN
+            if user and user.account_type.lower() not in ["organization", "admin"]:
+                technician_name = user.full_name if user else f"User {workload.assigned_to}"
 
-            technicians_workload.append(TechnicianWorkloadSummary(
-                technician_id=workload.assigned_to,
-                technician_name=technician_name,
-                total_tickets=workload.total_tickets or 0,
-                open_tickets=workload.open_tickets or 0,
-                in_progress_tickets=workload.in_progress_tickets or 0,
-                escalated_tickets=workload.escalated_tickets or 0
-            ))
+                technicians_workload.append(TechnicianWorkloadSummary(
+                    technician_id=workload.assigned_to,
+                    technician_name=technician_name,
+                    total_tickets=workload.total_tickets or 0,
+                    open_tickets=workload.open_tickets or 0,
+                    in_progress_tickets=workload.in_progress_tickets or 0,
+                    escalated_tickets=workload.escalated_tickets or 0
+                ))
 
-        # 3. Get All Assigned Tickets - ONLY assigned to site staff
+        # 3. Get All Assigned Tickets - ONLY assigned to NON-ADMIN/NON-ORGANIZATION site staff
         assigned_tickets_query = db.query(Ticket).options(
             joinedload(Ticket.category)
         ).filter(
@@ -88,46 +93,69 @@ def get_team_workload_management(
         for ticket in assigned_tickets_query.all():
             # Get technician name from auth database
             user = auth_db.query(Users).filter(
-                Users.id == ticket.assigned_to).first()
-            technician_name = user.full_name if user else f"User {ticket.assigned_to}"
+                Users.id == ticket.assigned_to
+            ).first()
+            
+            # ✅ ONLY include if assignee is NOT ORGANIZATION and NOT ADMIN type
+            if user and user.account_type.lower() not in ["organization", "admin"]:
+                technician_name = user.full_name if user else f"User {ticket.assigned_to}"
+                
+                assigned_tickets.append(AssignedTicketOut(
+                    id=ticket.id,
+                    ticket_no=ticket.ticket_no,
+                    title=ticket.title,
+                    category=ticket.category.category_name if ticket.category else "Unknown",
+                    assigned_to=ticket.assigned_to,
+                    technician_name=technician_name,
+                    status=ticket.status.value if hasattr(ticket.status, 'value') else ticket.status,
+                    priority=ticket.priority,
+                    created_at=ticket.created_at,
+                    is_overdue=ticket.is_overdue,
+                    can_escalate=ticket.can_escalate
+                ))
 
-            assigned_tickets.append(AssignedTicketOut(
-                id=ticket.id,
-                ticket_no=ticket.ticket_no,
-                title=ticket.title,
-                category=ticket.category.category_name if ticket.category else "Unknown",
-                assigned_to=ticket.assigned_to,
-                technician_name=technician_name,
-                status=ticket.status.value if hasattr(
-                    ticket.status, 'value') else ticket.status,
-                priority=ticket.priority,
-                created_at=ticket.created_at,
-                is_overdue=ticket.is_overdue,
-                can_escalate=ticket.can_escalate
-            ))
-
-        # 4. Get All Unassigned Tickets - ONLY for this site
+        # 4. Get All "Unassigned" Tickets - Actually assigned to ADMIN/ORGANIZATION users
+        # ✅ Since assigned_to is never NULL, "unassigned" means assigned to ADMIN/ORGANIZATION
         unassigned_tickets_query = db.query(Ticket).options(
-            joinedload(Ticket.category)
+            joinedload(Ticket.category).joinedload(TicketCategory.sla_policy)
         ).filter(
             *base_filter,
-            Ticket.assigned_to.is_(None),
-            Ticket.status == TicketStatus.OPEN  # Typically unassigned tickets are OPEN
+            Ticket.status == TicketStatus.OPEN,  # Typically "unassigned" tickets are OPEN
+            Ticket.assigned_to.isnot(None)  # All tickets have assignee
         ).order_by(Ticket.created_at.desc())
 
         unassigned_tickets = []
         for ticket in unassigned_tickets_query.all():
-            unassigned_tickets.append(UnassignedTicketOut(
-                id=ticket.id,
-                ticket_no=ticket.ticket_no,
-                title=ticket.title,
-                category=ticket.category.category_name if ticket.category else "Unknown",
-                status=ticket.status.value if hasattr(
-                    ticket.status, 'value') else ticket.status,
-                priority=ticket.priority,
-                created_at=ticket.created_at,
-                is_overdue=ticket.is_overdue
-            ))
+            # Get the assigned user
+            assigned_user = auth_db.query(Users).filter(
+                Users.id == ticket.assigned_to
+            ).first()
+                    
+                    # ✅ FIXED: Also include tickets where assigned_user is None (invalid user ID)
+        if (not assigned_user) or (assigned_user and assigned_user.account_type.lower() in ["organization", "admin"]):
+                # Get default contact from SLA
+                default_contact = None
+                default_contact_name = None
+                if ticket.category and ticket.category.sla_policy:
+                    default_contact = ticket.category.sla_policy.default_contact
+                    if default_contact:
+                        default_user = auth_db.query(Users).filter(
+                            Users.id == default_contact
+                        ).first()
+                        default_contact_name = default_user.full_name if default_user else None
+                
+                unassigned_tickets.append(UnassignedTicketOut(
+                    id=ticket.id,
+                    ticket_no=ticket.ticket_no,
+                    title=ticket.title,
+                    category=ticket.category.category_name if ticket.category else "Unknown",
+                    status=ticket.status.value if hasattr(ticket.status, 'value') else ticket.status,
+                    priority=ticket.priority,
+                    created_at=ticket.created_at,
+                    is_overdue=ticket.is_overdue,
+                    default_contact=default_contact,
+                    default_contact_name=default_contact_name
+                ))
 
         return TeamWorkloadManagementResponse(
             technicians_workload=technicians_workload,
@@ -143,6 +171,7 @@ def get_team_workload_management(
             status_code=500, detail=f"Error fetching team workload management data: {str(e)}")
 
 
+
 def get_available_technicians_for_site(
     db: Session,
     auth_db: Session,
@@ -153,7 +182,6 @@ def get_available_technicians_for_site(
     Get available technicians for a site (for dropdowns) using StaffSite + Users
     """
     try:
-        from shared.models.users import Users
 
         # Step 1: Get all user_ids from staff_sites for this site_id and org_id
         staff_sites = (

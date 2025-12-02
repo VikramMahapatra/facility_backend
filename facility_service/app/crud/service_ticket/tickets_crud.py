@@ -1853,9 +1853,7 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
     updated_ticket = TicketOut.model_validate(
         {
             **ticket.__dict__,
-            "category": ticket.category.category_name if ticket.category else None,
-            "assigned_to_name": assigned_to_user.full_name  # ✅ Add name separately # The person who got assigned
-            
+            "category": ticket.category.category_name if ticket.category else None
         }
     )
 

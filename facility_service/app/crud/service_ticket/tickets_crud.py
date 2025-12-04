@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from operator import or_
 from typing import Dict, List
 from requests import request
@@ -203,6 +203,8 @@ def get_tickets(db: Session,auth_db: Session, params: TicketFilterRequest, curre
                 # They're already in t.__dict__ so we need to remove them
         data.pop("assigned_to", None)
         data.pop("vendor_id", None)
+        data.pop("preferred_time", None)   # <-- remove to avoid duplicate
+        data.pop("preferred_date", None)   # <-- remove if also passing explicitly
 
         assigned_to_str = str(t.assigned_to) if t.assigned_to else None
         vendor_id_str = str(t.vendor_id) if t.vendor_id else None
@@ -219,7 +221,9 @@ def get_tickets(db: Session,auth_db: Session, params: TicketFilterRequest, curre
                 assigned_to=t.assigned_to,
                 vendor_id=t.vendor_id,
                 assigned_to_name=assigned_to_name,
-                vendor_name=vendor_name
+                vendor_name=vendor_name,
+                preferred_time=t.preferred_time or datetime.utcnow().strftime("%H:%M"),  # ✅ required
+                preferred_date=t.preferred_date or date.today()    
 
             )
         )
@@ -322,6 +326,8 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
             "can_reopen": service_req.can_reopen,
             "is_overdue": service_req.is_overdue,
             "attachments": attachments_out,
+            "preferred_time": service_req.preferred_time or datetime.utcnow().strftime("%H:%M"),  # ✅ required
+            "preferred_date": service_req.preferred_date or date.today(),      
         }
     )
 
@@ -394,6 +400,7 @@ async def create_ticket(
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
         preferred_time=data.preferred_time,
+        preferred_date=data.preferred_date or date.today(),   # ✅ ADD THIS HERE
         request_type=data.request_type,
         priority=data.priority if hasattr(
             data, "priority") else PriorityType.low,
@@ -534,22 +541,24 @@ def escalate_ticket(
         select(Ticket).where(Ticket.id == data.ticket_id)
     ).scalar_one_or_none()
 
+
     if not ticket:
         return error_response(
             message=f"Invalid Ticket",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
-
+    
     if (
-        not ticket.can_escalate
-        or (str(ticket.created_by) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION))
-    ):
-        return error_response(
-            message=f"Not authorize to perform this action",
-            status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
-            http_status=400
-        )
+            not ticket.can_escalate
+            or (str(ticket.created_by) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION))
+        ):
+        
+            return error_response(
+                message=f"Not authorize to perform this action",
+                status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
+                http_status=400
+            )
 
     # Fetch SLA Policy using category_id
     if not ticket.category or not ticket.category.sla_policy or not ticket.category.sla_policy.escalation_contact:
@@ -1512,6 +1521,16 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
                 Vendor.is_deleted == False
             ).first()
             assigned_to_name = vendor.name if vendor else None
+
+
+                # ✅ ADDED: Get vendor name from Vendor table (for vendor_id field)
+        vendor_name = None
+        if wo.vendor_id:  # Check if vendor_id exists on work order
+            vendor_for_id = db.query(Vendor).filter(
+                Vendor.id == wo.vendor_id,
+                Vendor.is_deleted == False
+            ).first()
+            vendor_name = vendor_for_id.name if vendor_for_id else None
             # Ticket No from Ticket table
         ticket_no = None
         ticket_data = db.query(Ticket).filter(
@@ -1529,6 +1548,8 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "ticket_no": ticket_no,
             "assigned_to": wo.assigned_to,
             "assigned_to_name": assigned_to_name,
+            "vendor_id": wo.vendor_id,  # Add this field
+            "vendor_name": vendor_name,  # Add this field
             "site_name": wo.ticket.site.name if wo.ticket and wo.ticket.site else "",
             "created_at": wo.created_at.isoformat() if wo.created_at else None,
             "updated_at": wo.updated_at.isoformat() if wo.updated_at else None,
@@ -2427,3 +2448,12 @@ def send_ticket_update_vendor_email(background_tasks, db, data, recipients):
         subject=f"Vendor Assigned to Ticket - {data['ticket_no']}",  # Different subject
         context=data,
     )
+
+
+
+
+
+
+
+
+

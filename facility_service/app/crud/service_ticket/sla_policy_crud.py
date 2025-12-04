@@ -342,20 +342,22 @@ def contact_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None)
     if not site_id or not site_id.strip() or site_id.strip().lower() == "all":
         return []
 
-    # Fetch active staff users for the site
-    staff_user_ids = (
-        db.query(StaffSite.user_id)
+    # Step 1: Fetch staff users with roles for this site
+    staff_sites = (
+        db.query(StaffSite.user_id, StaffSite.staff_role)
         .filter(
             StaffSite.site_id == site_id,
             StaffSite.is_deleted == False
         )
         .all()
     )
-    staff_user_ids = [u.user_id for u in staff_user_ids if u.user_id is not None]
 
+    staff_user_ids = [s.user_id for s in staff_sites if s.user_id]
+
+    # Step 2: Fetch staff user names from auth_db
     staff_users = []
     if staff_user_ids:
-        staff_users = (
+        users = (
             auth_db.query(Users.id, Users.full_name)
             .filter(
                 Users.id.in_(staff_user_ids),
@@ -365,6 +367,22 @@ def contact_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None)
             .all()
         )
 
+        # Map user_id -> full_name
+        user_map = {u.id: u.full_name for u in users}
+
+        # Map user_id -> role
+        role_map = {s.user_id: s.staff_role for s in staff_sites}
+
+        # Combine full name with role
+        staff_users = [
+            Lookup(
+                id=user_id,
+                name=f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
+            )
+            for user_id in staff_user_ids
+            if user_id in user_map
+        ]
+    # Step 3:
     # Fetch all organization users with status='active'
     org_users = (
         auth_db.query(Users.id, Users.full_name)
@@ -376,11 +394,15 @@ def contact_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None)
         .all()
     )
 
-    # Combine both lists and remove duplicates
-    all_users_dict = {user.id: user.full_name for user in staff_users + org_users}
+    # Convert org users to Lookup
+    org_users_lookup = [Lookup(id=u.id, name=u.full_name) for u in org_users]
 
-    # Convert to Lookup objects
-    return [Lookup(id=uid, name=name) for uid, name in all_users_dict.items()]
+    # Combine staff (with roles) + org users
+    all_users = staff_users + org_users_lookup
+
+    # Return
+    return all_users
+
 
 
 

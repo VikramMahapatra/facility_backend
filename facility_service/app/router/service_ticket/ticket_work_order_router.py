@@ -46,6 +46,7 @@ def create_ticket_work_order_endpoint(
 def get_ticket_work_orders_endpoint(
     params: TicketWorkOrderRequest = Depends(),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     """
@@ -54,6 +55,7 @@ def get_ticket_work_orders_endpoint(
     """
     return crud.get_ticket_work_orders(
         db=db,
+        auth_db=auth_db,
         org_id=current_user.org_id,
         params=params
     )

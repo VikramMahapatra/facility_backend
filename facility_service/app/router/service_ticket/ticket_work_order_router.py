@@ -30,10 +30,11 @@ router = APIRouter(
 def create_ticket_work_order_endpoint(
     work_order:TicketWorkOrderCreate,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     """Create a new work order from a ticket"""
-    return crud.create_ticket_work_order(db, work_order, current_user.org_id)
+    return crud.create_ticket_work_order(db,auth_db, work_order, current_user.org_id)
 
 
 

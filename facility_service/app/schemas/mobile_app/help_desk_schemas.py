@@ -21,6 +21,7 @@ class ComplaintOut(EmptyStringModel):
     can_reopen: Optional[bool] = False
     closed_date: Optional[datetime] = None
     is_overdue: Optional[bool] = False
+    priority: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -32,6 +33,7 @@ class ComplaintCreate(EmptyStringModel):
     description: str
     preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime("%H:%M"))                    # REQUIRED
     preferred_date: date = Field(default_factory=date.today)
+    priority: Optional[str] = None
 
     @classmethod
     def as_form(
@@ -42,6 +44,7 @@ class ComplaintCreate(EmptyStringModel):
         description: str = Form(...),
         preferred_time: str = Form(default_factory=lambda: datetime.utcnow().strftime("%H:%M")),      # REQUIRED in form
         preferred_date: date = Form(default_factory=date.today),
+        priority: Optional[str] = Form(None)
 
 
     ):
@@ -52,6 +55,7 @@ class ComplaintCreate(EmptyStringModel):
             description=description,
             preferred_time=preferred_time,
             preferred_date=preferred_date,
+            priority=priority,
 
         )
     model_config = {"from_attributes": True}
@@ -67,6 +71,8 @@ class ComplaintResponse(EmptyStringModel):
     preferred_date: date = date.today()
     created_at: datetime
     closed_date: Optional[datetime] = None
+    priority: Optional[str] = None
+
     model_config = {"from_attributes": True}
 
 

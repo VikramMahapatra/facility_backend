@@ -1425,7 +1425,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             .filter(Users.id == service_req.assigned_to)
             .first()
         )
-        assigned_to_name = assigned_user.full_name if assigned_user else None
+    assigned_to_name = assigned_user.full_name if assigned_user else None
 
     # Step 4: Fetch vendor name from Vendor table (assuming you have a Vendor model)
     if service_req.vendor_id:
@@ -1521,16 +1521,6 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
                 Vendor.is_deleted == False
             ).first()
             assigned_to_name = vendor.name if vendor else None
-
-
-                # ✅ ADDED: Get vendor name from Vendor table (for vendor_id field)
-        vendor_name = None
-        if wo.vendor_id:  # Check if vendor_id exists on work order
-            vendor_for_id = db.query(Vendor).filter(
-                Vendor.id == wo.vendor_id,
-                Vendor.is_deleted == False
-            ).first()
-            vendor_name = vendor_for_id.name if vendor_for_id else None
             # Ticket No from Ticket table
         ticket_no = None
         ticket_data = db.query(Ticket).filter(
@@ -1548,8 +1538,6 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "ticket_no": ticket_no,
             "assigned_to": wo.assigned_to,
             "assigned_to_name": assigned_to_name,
-            "vendor_id": wo.vendor_id,  # Add this field
-            "vendor_name": vendor_name,  # Add this field
             "site_name": wo.ticket.site.name if wo.ticket and wo.ticket.site else "",
             "created_at": wo.created_at.isoformat() if wo.created_at else None,
             "updated_at": wo.updated_at.isoformat() if wo.updated_at else None,

@@ -54,6 +54,7 @@ def build_ticket_work_order_filters(org_id: UUID, params: TicketWorkOrderRequest
 # ---------------- Get All ----------------
 def get_ticket_work_orders(
     db: Session,
+    auth_db: Session,
     org_id: UUID,
     params: TicketWorkOrderRequest
 ) -> TicketWorkOrderListResponse:
@@ -84,20 +85,35 @@ def get_ticket_work_orders(
 
     results = []
     for wo, ticket_no, site_name in work_orders_data:
-        # ✅ Get assigned vendor name from VENDOR table
+        # ------- Fetch Ticket (we need vendor_id & assigned_to) -------
+        ticket = db.query(Ticket).filter(Ticket.id == wo.ticket_id).first()
+
         assigned_to_name = None
-        if wo.assigned_to:  # ✅ KEEP original field name
-            vendor = db.query(Vendor).filter(
-                Vendor.id == wo.assigned_to,  # ✅ KEEP original field name
-                Vendor.is_deleted == False
-            ).first()
-            assigned_to_name = vendor.name if vendor else None
+        vendor_name = None
+
+        if ticket:
+            # Assigned To Name from Ticket.assigned_to
+            if ticket.assigned_to:
+                assigned_user = (
+                auth_db.query(Users)
+            .filter(Users.id == ticket.assigned_to)
+            .first())
+            assigned_to_name = assigned_user.full_name if assigned_user else None
+
+            # Vendor Name from Ticket.vendor_id
+            if ticket.vendor_id:
+                vendor = db.query(Vendor).filter(
+                    Vendor.id == ticket.vendor_id,
+                    Vendor.is_deleted == False
+                ).first()
+                vendor_name = vendor.name if vendor else None
         
         work_order_out = TicketWorkOrderOut.model_validate({
             **wo.__dict__,
             "ticket_no": ticket_no,
             "site_name": site_name,
-            "assigned_to_name": assigned_to_name
+            "assigned_to_name": assigned_to_name,
+            "vendor_name": vendor_name,
         })
         results.append(work_order_out)
 

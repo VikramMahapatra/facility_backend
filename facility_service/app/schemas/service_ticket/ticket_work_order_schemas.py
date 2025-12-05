@@ -35,6 +35,7 @@ class TicketWorkOrderOut(TicketWorkOrderBase):
     ticket_no: Optional[str] = None  # From ticket relationship
     wo_no: Optional[str] = None 
     assigned_to_name: Optional[str] = None  # From users relationship
+    vendor_name: Optional[str] = None  # From vendor relationship
     site_name: Optional[str] = None  # From site relationship
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

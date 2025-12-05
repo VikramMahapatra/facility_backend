@@ -17,7 +17,7 @@ from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.sla_policy import SlaPolicy
 from sqlalchemy.orm import joinedload
 from ...enum.ticket_service_enum import AutoAssignRoleEnum, StatusEnum
-from ...schemas.service_ticket.ticket_category_schemas import TicketCategoryListResponse, TicketCategoryRequest
+from ...schemas.service_ticket.ticket_category_schemas import EmployeeOut, TicketCategoryListResponse, TicketCategoryRequest
 from ...models.service_ticket.tickets_category import TicketCategory
 from ...schemas.service_ticket.ticket_category_schemas import (
     TicketCategoryCreate,
@@ -304,8 +304,18 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
     # Create a mapping of user_id to staff_role
     role_map = {staff.user_id: staff.staff_role for staff in staff_sites}
 
+    org_users = (
+        auth_db.query(Users.id, Users.full_name)
+        .filter(
+            Users.account_type == "organization",
+            Users.status == "active",
+            Users.is_deleted == False
+        )
+        .all()
+    )
+
     # Return with formatted name including role
-    return [
+    staff_users= [
         {
             "user_id": user_id,
             "full_name": f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
@@ -313,6 +323,15 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         for user_id in user_ids
         if user_id in user_map  # Only include users found in auth db
     ]
+        # Convert org users to EmployeeOut
+    org_users_lookup = [
+        EmployeeOut(
+            user_id=u.id,
+            full_name=u.full_name
+        )
+        for u in org_users
+    ]
+    return staff_users + org_users_lookup
 
 def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """

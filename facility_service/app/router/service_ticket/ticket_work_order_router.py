@@ -107,6 +107,7 @@ def get_ticket_work_order_by_id_endpoint(
 def update_ticket_work_order_endpoint(
     work_order_update: TicketWorkOrderUpdate,  # Remove Path parameter
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     """
@@ -114,6 +115,7 @@ def update_ticket_work_order_endpoint(
     """
     return crud.update_ticket_work_order(
         db=db, 
+        auth_db=auth_db,
         work_order_update=work_order_update,
         org_id=current_user.org_id
     )

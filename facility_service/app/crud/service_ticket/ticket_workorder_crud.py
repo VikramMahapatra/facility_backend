@@ -316,7 +316,6 @@ def update_ticket_work_order(
             .filter(Users.id == ticket.assigned_to)
             .first())
             assigned_to_name = assigned_user.full_name if assigned_user else None
-        print("ticket assigned_to:", assigned_to_name)
             # Vendor Name from Ticket.vendor_id
         if ticket.vendor_id:
             vendor = db.query(Vendor).filter(

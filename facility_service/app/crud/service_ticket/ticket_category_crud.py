@@ -308,6 +308,7 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         auth_db.query(Users.id, Users.full_name)
         .filter(
             Users.account_type == "organization",
+            Users.org_id == org_id,
             Users.status == "active",
             Users.is_deleted == False
         )

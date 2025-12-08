@@ -228,27 +228,25 @@ def create_ticket_work_order(
             http_status=404
         )
     
-    ticket, site_name = ticket_data
+    # Unpack the tuple correctly
+    ticket, site_name = ticket_data  # ticket_data is (Ticket, site_name)
     
-        # ------- Fetch Ticket (we need vendor_id & assigned_to) -------
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_data.ticket_id).first()
-
     assigned_to_name = None
     vendor_name = None
 
-    if ticket:
-        if ticket.assigned_to:
-            assigned_user = (
-            auth_db.query(Users)
-            .filter(Users.id == ticket.assigned_to)
-            .first())
+    # Fetch assigned_to_name from ticket
+    if ticket.assigned_to:
+        assigned_user = auth_db.query(Users).filter(
+            Users.id == ticket.assigned_to
+        ).first()
         assigned_to_name = assigned_user.full_name if assigned_user else None
 
-            # Vendor Name from Ticket.vendor_id
-        if ticket.vendor_id:
-            vendor = db.query(Vendor).filter(
-                    Vendor.id == ticket.vendor_id,
-                    Vendor.is_deleted == False).first()
+    # Fetch vendor_name from ticket.vendor_id
+    if ticket.vendor_id:
+        vendor = db.query(Vendor).filter(
+            Vendor.id == ticket.vendor_id,
+            Vendor.is_deleted == False
+        ).first()
         vendor_name = vendor.name if vendor else None
 
     # Create work order
@@ -260,11 +258,10 @@ def create_ticket_work_order(
     return TicketWorkOrderOut(
         **db_work_order.__dict__,
         ticket_no=ticket.ticket_no,
-        assigned_to_name=assigned_to_name,  # This will now come from Vendor table
+        assigned_to_name=assigned_to_name,
         vendor_name=vendor_name,
         site_name=site_name
     )
-
 
 # ---------------- Update ----------------
 def update_ticket_work_order(

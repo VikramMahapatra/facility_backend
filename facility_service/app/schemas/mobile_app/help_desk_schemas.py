@@ -14,12 +14,14 @@ class ComplaintOut(EmptyStringModel):
     category: str
     status: str
     description: Optional[str] = None
-    preferred_time: Optional[str] = None
+    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime("%H:%M"))                    # ✅ REQUIRED
+    preferred_date: date = Field(default_factory=date.today)
     created_at: datetime
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
     closed_date: Optional[datetime] = None
     is_overdue: Optional[bool] = False
+    priority: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -29,7 +31,9 @@ class ComplaintCreate(EmptyStringModel):
     category_id: UUID
     request_type: str
     description: str
-    preferred_time: Optional[str] = None
+    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime("%H:%M"))                    # REQUIRED
+    preferred_date: date = Field(default_factory=date.today)
+    priority: Optional[str] = None
 
     @classmethod
     def as_form(
@@ -38,7 +42,10 @@ class ComplaintCreate(EmptyStringModel):
         category_id: UUID = Form(...),
         request_type: str = Form(...),
         description: str = Form(...),
-        preferred_time: Optional[str] = Form(None),
+        preferred_time: str = Form(default_factory=lambda: datetime.utcnow().strftime("%H:%M")),      # REQUIRED in form
+        preferred_date: date = Form(default_factory=date.today),
+        priority: Optional[str] = Form(None)
+
 
     ):
         return cls(
@@ -47,6 +54,8 @@ class ComplaintCreate(EmptyStringModel):
             request_type=request_type,
             description=description,
             preferred_time=preferred_time,
+            preferred_date=preferred_date,
+            priority=priority,
 
         )
     model_config = {"from_attributes": True}
@@ -59,8 +68,11 @@ class ComplaintResponse(EmptyStringModel):
     request_type: str
     description: str
     preferred_time: Optional[str] = None
+    preferred_date: date = date.today()
     created_at: datetime
     closed_date: Optional[datetime] = None
+    priority: Optional[str] = None
+
     model_config = {"from_attributes": True}
 
 
@@ -87,7 +99,8 @@ class ComplaintDetailsResponse(EmptyStringModel):
     can_reopen: Optional[bool] = False
     comments: List[CommentOut] = []
     logs: List[TicketWorkFlowOut] = []
-    preferred_time: Optional[str] = None
+    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime("%H:%M"))                # ✅ REQUIRED
+    preferred_date: date = Field(default_factory=date.today)
     assigned_to: Optional[UUID] = None
     assigned_to_name: Optional[str] = None
     request_type: Optional[str] = None

@@ -3,7 +3,7 @@ from fastapi import Form
 from pydantic import BaseModel, Field, field_serializer
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import LargeBinary
 
@@ -33,7 +33,7 @@ class TicketBase(BaseModel):
     description: str
     priority: Optional[str] = "LOW"
     request_type: Optional[str] = "UNIT"
-    prefered_time: Optional[str] = None
+    preferred_time: Optional[str] = None
 
 
 class TicketCreate(TicketBase):
@@ -51,6 +51,7 @@ class TicketOut(BaseModel):
     priority: str
     request_type: str
     preferred_time: Optional[str] = None
+    preferred_date: date = date.today()
     created_at: datetime
     closed_date: Optional[datetime] = None
     can_escalate: Optional[bool] = False
@@ -83,12 +84,14 @@ class TicketCreate(BaseModel):
     category_id: Optional[UUID] = None
     title: Optional[str] = None
     description: str
-    preferred_time: Optional[str] = None
+    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime("%H:%M"))
     request_type: str
     priority: Optional[str] = None
     # ✅ ADD THESE 2 OPTIONAL FIELDS
     assigned_to: Optional[UUID] = None
     vendor_id: Optional[UUID] = None
+    preferred_date: date = Field(default_factory=date.today)
+
 
     @classmethod
     def as_form(
@@ -101,7 +104,8 @@ class TicketCreate(BaseModel):
         category_id: Optional[UUID] = Form(None),
         title: Optional[str] = Form(None),
         description: str = Form(...),
-        preferred_time: Optional[str] = Form(None),
+        preferred_time: str = Form(default_factory=lambda: datetime.utcnow().strftime("%H:%M")),
+        preferred_date: date = Form(default_factory=date.today),
         request_type: str = Form(...),
         priority: Optional[str] = Form(None),
                 # ✅ ADD THESE TO FORM METHOD
@@ -118,6 +122,7 @@ class TicketCreate(BaseModel):
             title=title,
             description=description,
             preferred_time=preferred_time,
+            preferred_date=preferred_date,
             request_type=request_type,
             priority=priority,
             assigned_to=assigned_to,  # ✅ ADDED

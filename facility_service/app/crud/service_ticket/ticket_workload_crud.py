@@ -130,9 +130,9 @@ def get_team_workload_management(
             assigned_user = auth_db.query(Users).filter(
                 Users.id == ticket.assigned_to
             ).first()
-                    
-                    # ✅ FIXED: Also include tickets where assigned_user is None (invalid user ID)
-        if (not assigned_user) or (assigned_user and assigned_user.account_type.lower() in ["organization", "admin"]):
+            
+            # ✅ CORRECTED: Only include tickets assigned to organization/admin users
+            if assigned_user and assigned_user.account_type.lower() in ["organization", "admin"]:
                 # Get default contact from SLA
                 default_contact = None
                 default_contact_name = None
@@ -156,7 +156,6 @@ def get_team_workload_management(
                     default_contact=default_contact,
                     default_contact_name=default_contact_name
                 ))
-
         return TeamWorkloadManagementResponse(
             technicians_workload=technicians_workload,
             assigned_tickets=assigned_tickets,

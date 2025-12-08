@@ -1734,31 +1734,42 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
             http_status=400
         )
     
-    # ✅ ADD THIS - Check if user has account_type = "staff"
-    if assigned_to_user.account_type.lower() != "staff":
+   # ✅ MODIFIED: Allow both admin and staff users
+    valid_account_types = ["organization", "staff"]
+    if assigned_to_user.account_type.lower() not in valid_account_types:
         return error_response(
-            message="User must have account type STAFF",
+            message="User must have account type ADMIN or STAFF",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
 
-      # ✅ THEN CHECK if user is assigned as STAFF to this ticket's site
-    staff_check = (
-        session.query(StaffSite)
-        .filter(
-            StaffSite.user_id == data.assigned_to,
-            StaffSite.site_id == ticket.site_id,
-            StaffSite.is_deleted == False
+    # Check if user is authorized for this site based on account type
+    if assigned_to_user.account_type.lower() == "staff":
+        # ✅ For STAFF users, check if they're assigned to this site
+        staff_check = (
+            session.query(StaffSite)
+            .filter(
+                StaffSite.user_id == data.assigned_to,
+                StaffSite.site_id == ticket.site_id,
+                StaffSite.is_deleted == False
+            )
+            .first()
         )
-        .first()
-    )
 
-    if not staff_check:
-        return error_response(
-            message="User is not assigned as STAFF to this site",
-            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
-            http_status=400
-        )
+        if not staff_check:
+            return error_response(
+                message="User is not assigned as STAFF to this site",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                http_status=400
+            )
+    else:
+        # ✅ For ADMIN users, check if they belong to the same organization
+        if assigned_to_user.org_id != current_user.org_id:
+            return error_response(
+                message="Admin user must belong to the same organization",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                http_status=400
+            )
     
     action_by = current_user.user_id
     # Get action_by user details

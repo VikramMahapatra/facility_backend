@@ -296,6 +296,14 @@ def update_ticket_work_order(
         )
     
     db_work_order, ticket_no, site_name = work_order_data
+    # Update fields (exclude id from update data)
+    update_data = work_order_update.model_dump(exclude_unset=True, exclude={'id'})
+    for key, value in update_data.items():
+        setattr(db_work_order, key, value)
+
+    db.commit()
+    db.refresh(db_work_order)
+
     ticket = db.query(Ticket).filter(Ticket.id == db_work_order.ticket_id).first()
 
     assigned_to_name = None
@@ -307,23 +315,16 @@ def update_ticket_work_order(
             auth_db.query(Users)
             .filter(Users.id == ticket.assigned_to)
             .first())
-        assigned_to_name = assigned_user.full_name if assigned_user else None
-
+            assigned_to_name = assigned_user.full_name if assigned_user else None
+        print("ticket assigned_to:", assigned_to_name)
             # Vendor Name from Ticket.vendor_id
         if ticket.vendor_id:
             vendor = db.query(Vendor).filter(
                     Vendor.id == ticket.vendor_id,
                     Vendor.is_deleted == False).first()
-        vendor_name = vendor.name if vendor else None
-    # Update fields (exclude id from update data)
-    update_data = work_order_update.model_dump(exclude_unset=True, exclude={'id'})
-    for key, value in update_data.items():
-        setattr(db_work_order, key, value)
-
-    db.commit()
-    db.refresh(db_work_order)
+            vendor_name = vendor.name if vendor else None
     
-    # Return complete response like create endpoint
+    
     return TicketWorkOrderOut(
         **db_work_order.__dict__,
         ticket_no=ticket_no,

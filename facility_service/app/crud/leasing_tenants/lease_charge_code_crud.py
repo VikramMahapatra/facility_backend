@@ -1,0 +1,52 @@
+from typing import List, Optional
+from uuid import UUID
+from sqlalchemy.orm import Session
+
+from ...models.leasing_tenants.lease_charge_code import LeaseChargeCode
+from ...schemas.leasing_tenants.lease_charge_code_schemas import LeaseChargeCodeCreate, LeaseChargeCodeUpdate
+
+
+
+def create_lease_charge_code(db: Session, lease_charge_code: LeaseChargeCodeCreate,org_id: UUID) -> LeaseChargeCode:
+    data = lease_charge_code.model_dump()
+    data["org_id"] = org_id
+    db_lease_charge_code = LeaseChargeCode(**data)
+    db.add(db_lease_charge_code)
+    db.commit()
+    db.refresh(db_lease_charge_code)
+    return db_lease_charge_code
+
+
+def update_lease_charge_code(db: Session, charge_code_id: UUID, org_id: UUID, charge_code_update: LeaseChargeCodeUpdate) -> Optional[LeaseChargeCode]:  
+    db_charge_code = db.query(LeaseChargeCode).filter(
+        LeaseChargeCode.id == charge_code_id,
+        LeaseChargeCode.org_id == org_id,
+        LeaseChargeCode.is_deleted == False
+        ).first()
+    if not db_charge_code:
+        return None
+    update_data = charge_code_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_charge_code, key, value)
+    
+    db.commit()
+    db.refresh(db_charge_code)
+    return db_charge_code
+
+
+def delete_lease_charge_code(db: Session, charge_code_id: UUID, org_id: UUID) -> bool:
+    db_charge_code = db.query(LeaseChargeCode).filter(
+        LeaseChargeCode.id == charge_code_id,
+        LeaseChargeCode.org_id == org_id,
+        LeaseChargeCode.is_deleted == False
+    ).first()
+    
+    if not db_charge_code:
+        return False
+    db_charge_code.is_deleted = True
+    db.commit()
+    return True
+
+
+def get_all_lease_codes(db: Session) -> List[LeaseChargeCode]:
+    return db.query(LeaseChargeCode).filter(LeaseChargeCode.is_deleted == False).all()

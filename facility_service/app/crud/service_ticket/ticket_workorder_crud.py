@@ -296,7 +296,7 @@ def update_ticket_work_order(
         )
     
     db_work_order, ticket_no, site_name = work_order_data
-    ticket = db.query(Ticket).filter(Ticket.id == work_order_data.ticket_id).first()
+    ticket = db.query(Ticket).filter(Ticket.id == db_work_order.ticket_id).first()
 
     assigned_to_name = None
     vendor_name = None

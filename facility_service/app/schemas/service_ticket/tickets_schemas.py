@@ -195,10 +195,12 @@ class TicketWorkFlowOut(EmptyStringModel):
     ticket_id: Optional[UUID]
     type: Optional[str] = None
     action_taken: Optional[str] = None
-    created_at: datetime
-    action_by: UUID
+    created_at: Optional[datetime] = None
+    old_status: Optional[str] = None 
+    new_status: Optional[str] = None 
+    action_by:Optional[UUID]
     action_by_name: Optional[str] = None
-
+    action_time: Optional[datetime]
     class Config:
         from_attributes = True
 
@@ -213,14 +215,14 @@ class TicketListResponse(BaseModel):
 
 # FOR VIEW -------------------------------------------------------
 
-class TicketWorkflowOut(BaseModel):
-    workflow_id: UUID
-    ticket_id: UUID
-    action_by: Optional[UUID]
-    old_status: Optional[str]
-    new_status: Optional[str]
-    action_taken: Optional[str]
-    action_time: Optional[datetime]
+# class TicketWorkflowOut(BaseModel):
+#     workflow_id: UUID
+#     ticket_id: UUID
+#     action_by: Optional[UUID]
+#     old_status: Optional[str]
+#     new_status: Optional[str]
+#     action_taken: Optional[str]
+#     action_time: Optional[datetime]
 
 
 class TicketCommentOut(BaseModel):
@@ -249,7 +251,7 @@ class TicketDetailsResponse(EmptyStringModel):
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
     comments: List[TicketCommentOut] = []
-    logs: List[TicketWorkflowOut] = []
+    logs: List[TicketWorkFlowOut] = []
     workorders: Optional[List[TicketWorkOrderOut]] = []  # <-- Add this
     preferred_time: Optional[str] = None
     assigned_to: Optional[UUID] = None

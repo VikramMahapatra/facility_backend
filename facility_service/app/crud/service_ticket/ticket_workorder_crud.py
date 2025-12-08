@@ -54,6 +54,7 @@ def build_ticket_work_order_filters(org_id: UUID, params: TicketWorkOrderRequest
 # ---------------- Get All ----------------
 def get_ticket_work_orders(
     db: Session,
+    auth_db: Session,
     org_id: UUID,
     params: TicketWorkOrderRequest
 ) -> TicketWorkOrderListResponse:
@@ -84,20 +85,35 @@ def get_ticket_work_orders(
 
     results = []
     for wo, ticket_no, site_name in work_orders_data:
-        # ✅ Get assigned vendor name from VENDOR table
+        # ------- Fetch Ticket (we need vendor_id & assigned_to) -------
+        ticket = db.query(Ticket).filter(Ticket.id == wo.ticket_id).first()
+
         assigned_to_name = None
-        if wo.assigned_to:  # ✅ KEEP original field name
-            vendor = db.query(Vendor).filter(
-                Vendor.id == wo.assigned_to,  # ✅ KEEP original field name
-                Vendor.is_deleted == False
-            ).first()
-            assigned_to_name = vendor.name if vendor else None
+        vendor_name = None
+
+        if ticket:
+            # Assigned To Name from Ticket.assigned_to
+            if ticket.assigned_to:
+                assigned_user = (
+                auth_db.query(Users)
+            .filter(Users.id == ticket.assigned_to)
+            .first())
+            assigned_to_name = assigned_user.full_name if assigned_user else None
+
+            # Vendor Name from Ticket.vendor_id
+            if ticket.vendor_id:
+                vendor = db.query(Vendor).filter(
+                    Vendor.id == ticket.vendor_id,
+                    Vendor.is_deleted == False
+                ).first()
+                vendor_name = vendor.name if vendor else None
         
         work_order_out = TicketWorkOrderOut.model_validate({
             **wo.__dict__,
             "ticket_no": ticket_no,
             "site_name": site_name,
-            "assigned_to_name": assigned_to_name
+            "assigned_to_name": assigned_to_name,
+            "vendor_name": vendor_name,
         })
         results.append(work_order_out)
 
@@ -186,6 +202,7 @@ def get_ticket_work_order_by_id(
 
 def create_ticket_work_order(
     db: Session, 
+    auth_db: Session,
     work_order: TicketWorkOrderCreate,
     org_id: UUID
 ) -> TicketWorkOrderOut:
@@ -213,14 +230,26 @@ def create_ticket_work_order(
     
     ticket, site_name = ticket_data
     
-    # ✅ FIX: Get assigned vendor name from WORK ORDER's assigned_to from VENDOR table
+        # ------- Fetch Ticket (we need vendor_id & assigned_to) -------
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_data.ticket_id).first()
+
     assigned_to_name = None
-    if work_order.assigned_to:
-        vendor = db.query(Vendor).filter(
-            Vendor.id == work_order.assigned_to,
-            Vendor.is_deleted == False  # Add soft delete filter if needed
-        ).first()
-        assigned_to_name = vendor.name if vendor else None
+    vendor_name = None
+
+    if ticket:
+        if ticket.assigned_to:
+            assigned_user = (
+            auth_db.query(Users)
+            .filter(Users.id == ticket.assigned_to)
+            .first())
+        assigned_to_name = assigned_user.full_name if assigned_user else None
+
+            # Vendor Name from Ticket.vendor_id
+        if ticket.vendor_id:
+            vendor = db.query(Vendor).filter(
+                    Vendor.id == ticket.vendor_id,
+                    Vendor.is_deleted == False).first()
+        vendor_name = vendor.name if vendor else None
 
     # Create work order
     db_work_order = TicketWorkOrder(**work_order.model_dump())
@@ -232,6 +261,7 @@ def create_ticket_work_order(
         **db_work_order.__dict__,
         ticket_no=ticket.ticket_no,
         assigned_to_name=assigned_to_name,  # This will now come from Vendor table
+        vendor_name=vendor_name,
         site_name=site_name
     )
 
@@ -239,6 +269,7 @@ def create_ticket_work_order(
 # ---------------- Update ----------------
 def update_ticket_work_order(
     db: Session, 
+    auth_db: Session,
     work_order_update: TicketWorkOrderUpdate,
     org_id: UUID
 ) -> TicketWorkOrderOut:
@@ -268,7 +299,25 @@ def update_ticket_work_order(
         )
     
     db_work_order, ticket_no, site_name = work_order_data
+    ticket = db.query(Ticket).filter(Ticket.id == work_order_data.ticket_id).first()
 
+    assigned_to_name = None
+    vendor_name = None
+
+    if ticket:
+        if ticket.assigned_to:
+            assigned_user = (
+            auth_db.query(Users)
+            .filter(Users.id == ticket.assigned_to)
+            .first())
+        assigned_to_name = assigned_user.full_name if assigned_user else None
+
+            # Vendor Name from Ticket.vendor_id
+        if ticket.vendor_id:
+            vendor = db.query(Vendor).filter(
+                    Vendor.id == ticket.vendor_id,
+                    Vendor.is_deleted == False).first()
+        vendor_name = vendor.name if vendor else None
     # Update fields (exclude id from update data)
     update_data = work_order_update.model_dump(exclude_unset=True, exclude={'id'})
     for key, value in update_data.items():
@@ -277,20 +326,12 @@ def update_ticket_work_order(
     db.commit()
     db.refresh(db_work_order)
     
-    # Get assigned vendor name
-    assigned_to_name = None
-    if db_work_order.assigned_to:
-        vendor = db.query(Vendor).filter(
-            Vendor.id == db_work_order.assigned_to,
-            Vendor.is_deleted == False
-        ).first()
-        assigned_to_name = vendor.name if vendor else None
-    
     # Return complete response like create endpoint
     return TicketWorkOrderOut(
         **db_work_order.__dict__,
         ticket_no=ticket_no,
         assigned_to_name=assigned_to_name,
+        vendor_name=vendor_name,
         site_name=site_name
     )
 

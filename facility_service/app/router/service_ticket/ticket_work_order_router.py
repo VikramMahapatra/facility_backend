@@ -185,3 +185,13 @@ def contact_lookup_endpoint(
     Get contacts for work order assignment
     """
     return crud.contact_lookup(auth_db)
+
+
+@router.get("/tickets/{ticket_id}/assignments")
+def read_ticket_assignments(
+    ticket_id: UUID,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_names_for_ticket_id(db=db,auth_db=auth_db, ticket_id=ticket_id)

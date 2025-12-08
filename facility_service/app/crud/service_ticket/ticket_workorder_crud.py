@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from uuid import UUID
-from typing import List, Optional
+from typing import List, Optional , Dict, Any
 from datetime import datetime
 
 from ...models.procurement.vendors import Vendor
@@ -230,25 +230,6 @@ def create_ticket_work_order(
     
     # Unpack the tuple correctly
     ticket, site_name = ticket_data  # ticket_data is (Ticket, site_name)
-    
-    assigned_to_name = None
-    vendor_name = None
-
-    # Fetch assigned_to_name from ticket
-    if ticket.assigned_to:
-        assigned_user = auth_db.query(Users).filter(
-            Users.id == ticket.assigned_to
-        ).first()
-        assigned_to_name = assigned_user.full_name if assigned_user else None
-
-    # Fetch vendor_name from ticket.vendor_id
-    if ticket.vendor_id:
-        vendor = db.query(Vendor).filter(
-            Vendor.id == ticket.vendor_id,
-            Vendor.is_deleted == False
-        ).first()
-        vendor_name = vendor.name if vendor else None
-
     # Create work order
     db_work_order = TicketWorkOrder(**work_order.model_dump())
     db.add(db_work_order)
@@ -258,8 +239,6 @@ def create_ticket_work_order(
     return TicketWorkOrderOut(
         **db_work_order.__dict__,
         ticket_no=ticket.ticket_no,
-        assigned_to_name=assigned_to_name,
-        vendor_name=vendor_name,
         site_name=site_name
     )
 
@@ -303,32 +282,10 @@ def update_ticket_work_order(
 
     db.commit()
     db.refresh(db_work_order)
-
-    ticket = db.query(Ticket).filter(Ticket.id == db_work_order.ticket_id).first()
-
-    assigned_to_name = None
-    vendor_name = None
-
-    if ticket:
-        if ticket.assigned_to:
-            assigned_user = (
-            auth_db.query(Users)
-            .filter(Users.id == ticket.assigned_to)
-            .first())
-            assigned_to_name = assigned_user.full_name if assigned_user else None
-            # Vendor Name from Ticket.vendor_id
-        if ticket.vendor_id:
-            vendor = db.query(Vendor).filter(
-                    Vendor.id == ticket.vendor_id,
-                    Vendor.is_deleted == False).first()
-            vendor_name = vendor.name if vendor else None
-    
     
     return TicketWorkOrderOut(
         **db_work_order.__dict__,
         ticket_no=ticket_no,
-        assigned_to_name=assigned_to_name,
-        vendor_name=vendor_name,
         site_name=site_name
     )
 
@@ -442,3 +399,38 @@ def contact_lookup(auth_db: Session) -> List[Lookup]:
     )
     
     return [Lookup(id=user.id, name=user.full_name) for user in users]
+
+
+
+def get_names_for_ticket_id(
+    db: Session, 
+    auth_db: Session,
+    ticket_id: UUID
+) -> Optional[Dict[str, Any]]:
+
+    ticket = (db.query(Ticket).filter(Ticket.id == ticket_id).first())
+    if not ticket:
+        return None 
+    
+    assigned_to_id = ticket.assigned_to
+    vendor_id = ticket.vendor_id
+    
+    assigned_to_name = None
+    vendor_name = None
+
+    if assigned_to_id:
+        assigned_user = (auth_db.query(Users).filter(Users.id == assigned_to_id).first())
+        if assigned_user:
+            assigned_to_name = assigned_user.full_name
+
+    if vendor_id:
+        vendor = (db.query(Vendor).filter( Vendor.id == vendor_id,Vendor.is_deleted == False).first())
+        if vendor:
+            vendor_name = vendor.name
+    return {
+        "ticket_id": ticket_id,
+        "assigned_to_id": assigned_to_id,
+        "assigned_to_name": assigned_to_name,
+        "vendor_id": vendor_id,
+        "vendor_name": vendor_name
+    }

@@ -1,3 +1,4 @@
+from .router.leasing_tenants import lease_charge_code_router
 from shared.models import email_template
 from .router.system import notifiaction_settings_router
 from .router.system import notifications_router
@@ -42,7 +43,7 @@ from .models.energy_iot import meters, meter_readings
 from .models.parking_access import parking_zones, parking_pass, access_events, visitors
 from .models.crm import contacts, companies
 from .models.financials import invoices
-from .models.leasing_tenants import commercial_partners, leases, lease_charges, tenants
+from .models.leasing_tenants import commercial_partners, leases, lease_charges, tenants ,lease_charge_code
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.system import notifications, notification_settings
 from .models.common import comments, attachments, staff_sites
@@ -134,7 +135,7 @@ app.include_router(ticket_dashboard_router.router)
 app.include_router(ticket_workload_router.router)
 app.include_router(sla_policy_router.router)
 app.include_router(ticket_work_order_router.router)
-
+app.include_router(lease_charge_code_router.router)
 
 @app.get("/api/health")
 def health():

@@ -48,3 +48,4 @@ class Org(Base):
 
         # ✅ Relationship with SLA policies
     sla_policies = relationship("SlaPolicy", back_populates="org", cascade="all, delete-orphan")
+    lease_charge_codes = relationship("LeaseChargeCode", back_populates="org", cascade="all, delete-orphan")

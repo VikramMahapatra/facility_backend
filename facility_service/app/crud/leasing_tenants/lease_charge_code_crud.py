@@ -18,7 +18,7 @@ def create_lease_charge_code(db: Session, lease_charge_code: LeaseChargeCodeCrea
     
     if existing:
         return error_response(
-            meassage=f"Lease charge code '{lease_charge_code.code}' already exists"
+            message=f"Lease charge code '{lease_charge_code.code}' already exists"
         )
     data = lease_charge_code.model_dump()
     data["org_id"] = org_id
@@ -50,7 +50,7 @@ def update_lease_charge_code(db: Session, charge_code_id: UUID, org_id: UUID, ch
         
         if existing:
             return error_response(
-            meassage=f"Lease charge code '{update_data['code']}' already exists"
+            message=f"Lease charge code '{update_data['code']}' already exists"
         )
     
     for key, value in update_data.items():

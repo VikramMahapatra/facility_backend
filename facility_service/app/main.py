@@ -54,7 +54,7 @@ from .models.service_ticket import sla_policy, ticket_assignment, tickets_catego
 
 app = FastAPI(title="Facility Service API")
 
-# Create all tabless
+# Create all tablesss
 Base.metadata.create_all(bind=facility_engine)
 
 # Allow requests from your React app

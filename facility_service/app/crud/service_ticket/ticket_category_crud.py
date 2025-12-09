@@ -157,6 +157,19 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate):
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
+            
+    #if ticketcategory has ticket then can not update site
+    if 'site_id' in update_data and update_data['site_id'] != db_category.site_id:
+        # Check if category has any assigned tickets
+        has_tickets = db.query(Ticket).filter(
+            Ticket.category_id == category.id
+        ).first()
+
+        if has_tickets:
+            return error_response(
+                message="Cannot update site for category with assigned tickets"
+            )
+    
     for key, value in update_data.items():
         setattr(db_category, key, value)
 

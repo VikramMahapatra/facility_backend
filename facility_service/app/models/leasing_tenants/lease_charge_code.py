@@ -10,7 +10,7 @@ class LeaseChargeCode(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False)
-    code = Column(String(32), unique=True, nullable=True)
+    code = Column(String(32), nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False)
     
     

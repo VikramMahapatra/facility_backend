@@ -13,6 +13,7 @@ from ...schemas.leasing_tenants.lease_charge_code_schemas import LeaseChargeCode
 def create_lease_charge_code(db: Session, lease_charge_code: LeaseChargeCodeCreate, org_id: UUID) -> LeaseChargeCode:
     existing = db.query(LeaseChargeCode).filter(
         LeaseChargeCode.org_id == org_id,
+        LeaseChargeCode.is_deleted == False,
         func.lower(LeaseChargeCode.code) == func.lower(lease_charge_code.code)
     ).first()
     
@@ -45,6 +46,7 @@ def update_lease_charge_code(db: Session, charge_code_id: UUID, org_id: UUID, ch
         existing = db.query(LeaseChargeCode).filter(
             LeaseChargeCode.org_id == org_id,
             LeaseChargeCode.id != charge_code_id,
+            LeaseChargeCode.is_deleted == False,
             func.lower(LeaseChargeCode.code) == func.lower(update_data['code'])
         ).first()
         

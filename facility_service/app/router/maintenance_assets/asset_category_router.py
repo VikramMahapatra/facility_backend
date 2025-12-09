@@ -43,10 +43,8 @@ def create_category(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    # Set org_id from current user if not provided
-    if not category.org_id:
-        category.org_id = current_user.org_id
 
+    category.org_id = current_user.org_id
     return crud.create_asset_category(db, category)
 
 

@@ -35,12 +35,9 @@ def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCa
 
     if existing_category:
         return error_response(
-            message=f"Category with name '{category.name}' already exists in this organization",
-            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-            http_status=400
+            message=f"Category with name '{category.name}' already exists in this organization"
         )
 
-    # Check for duplicate code (case-insensitive) if provided
     if category.code:
         existing_code = db.query(AssetCategory).filter(
             AssetCategory.org_id == category.org_id,
@@ -49,12 +46,10 @@ def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCa
                 category.code)  # Case-insensitive
         ).first()
 
-        if existing_code:
-            return error_response(
-                message=f"Category with code '{category.code}' already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
-            )
+    if existing_code:
+        return error_response(
+            message=f"Category with code '{category.code}' already exists in this organization"
+        )
 
     # Create the category
     db_category = AssetCategory(id=str(uuid.uuid4()), **category.model_dump())

@@ -9,11 +9,12 @@ from sqlalchemy import desc
 
 from shared.helpers.json_response_helper import error_response
 
+from ...models.leasing_tenants.lease_charge_code import LeaseChargeCode
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.tenants import Tenant
-from ...enum.leasing_tenants_enum import LeaseChargeCode
+
 from shared.core.schemas import Lookup
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.leasing_tenants.leases import Lease
@@ -323,28 +324,15 @@ def lease_charge_month_lookup(
     # return query.all()
 
 
-def lease_charge_code_lookup(
-    db: Session,
-    org_id: UUID
-):
-    return [
-        Lookup(id=code.value, name=code.name.capitalize())
-        for code in LeaseChargeCode
-    ]
-
-    # If you want to use database-driven lookup with soft delete filters:
-    # query = (
-    #     db.query(
-    #         LeaseCharge.charge_code.label('id'),
-    #         LeaseCharge.charge_code.label('name')
-    #     )
-    #     .distinct()
-    #     .join(Lease, LeaseCharge.lease_id == Lease.id)
-    #     .filter(
-    #         Lease.org_id == org_id,
-    #         LeaseCharge.is_deleted == False,  # Add soft delete filter
-    #         Lease.is_deleted == False         # Add soft delete filter for leases
-    #     )
-    #     .order_by("id")
-    # )
-    # return query.all()
+def lease_charge_code_lookup(db: Session,org_id: UUID):
+    query = (
+        db.query(
+           LeaseChargeCode.code.label('id'),
+           LeaseChargeCode.code.label('name'))
+    .distinct()
+    .filter(
+        LeaseChargeCode.org_id == org_id, 
+        LeaseChargeCode.is_deleted == False)
+    .order_by("id")
+    )
+    return query.all()

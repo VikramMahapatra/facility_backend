@@ -74,6 +74,14 @@ def delete_lease_charge_code(db: Session, charge_code_id: UUID, org_id: UUID) ->
     db.commit()
     return True
 
-
-def get_all_lease_codes(db: Session) -> List[LeaseChargeCode]:
-    return db.query(LeaseChargeCode).filter(LeaseChargeCode.is_deleted == False).all()
+def get_all_lease_codes(db: Session, org_id: UUID, search: Optional[str] = None) -> List[LeaseChargeCode]:
+    query = db.query(LeaseChargeCode).filter(
+        LeaseChargeCode.org_id == org_id,
+        LeaseChargeCode.is_deleted == False
+    )
+    
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(LeaseChargeCode.code.ilike(search_term))
+    
+    return query.all()

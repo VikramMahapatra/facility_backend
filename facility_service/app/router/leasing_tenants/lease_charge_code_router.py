@@ -1,4 +1,4 @@
-from typing import List
+from typing import List ,Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from uuid import UUID
@@ -14,8 +14,12 @@ router = APIRouter(prefix="/api/lease-charge-codes",tags=["lease-charge-codes"],
 
 
 @router.get("/all", response_model=List[LeaseChargeCodeOut])
-def get_all_lease_codes(db: Session = Depends(get_db)):
-    return crud.get_all_lease_codes(db)
+def get_all_lease_codes(
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_all_lease_codes(db, org_id=current_user.org_id, search=search)
 
 
 @router.post("/", response_model=LeaseChargeCodeOut)

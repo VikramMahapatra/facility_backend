@@ -13,14 +13,6 @@ class LeaseStatus(str, Enum):
     draft = "draft"
 
 
-class LeaseChargeCode(str, Enum):
-    RENT = "RENT"
-    CAM = "CAM"
-    ELEC = "ELEC"
-    WATER = "WATER"
-    PARK = "PARK"
-    PENALTY = "PENALTY"
-    MAINTENANCE = "MAINTENANCE"
 
 
 class TenantStatus(str, Enum):

@@ -10,7 +10,7 @@ from shared.core.database import get_facility_db as get_db
 from ...schemas.leasing_tenants.lease_charge_code_schemas import LeaseChargeCodeCreate, LeaseChargeCodeOut, LeaseChargeCodeUpdate
 from ...crud.leasing_tenants import lease_charge_code_crud as crud
 
-router = APIRouter(prefix="/lease-charge-codes",tags=["lease-charge-codes"],dependencies=[Depends(validate_current_token)])
+router = APIRouter(prefix="/api/lease-charge-codes",tags=["lease-charge-codes"],dependencies=[Depends(validate_current_token)])
 
 
 @router.get("/all", response_model=List[LeaseChargeCodeOut])

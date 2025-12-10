@@ -43,8 +43,7 @@ def create_category(
     current_user: UserToken = Depends(validate_current_token)
 ):
 
-    category.org_id = current_user.org_id
-    return crud.create_asset_category(db, category)
+    return crud.create_asset_category(db, category,org_id=current_user.org_id)
 
 
 @router.put("/{category_id}", response_model=None)

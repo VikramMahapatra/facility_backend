@@ -50,10 +50,10 @@ def get_asset_category_by_id(db: Session, category_id: str) -> Optional[AssetCat
     return db.query(AssetCategory).filter(AssetCategory.id == category_id, AssetCategory.is_deleted == False).first()
 
 
-def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCategory:
+def create_asset_category(db: Session, category: AssetCategoryCreate ,org_id:UUID) -> AssetCategory:
     # Check for duplicate name (case-insensitive) within the same organization
     existing_category = db.query(AssetCategory).filter(
-        AssetCategory.org_id == category.org_id,
+        AssetCategory.org_id == org_id,
         AssetCategory.is_deleted == False,
         func.lower(AssetCategory.name) == func.lower(
             category.name)  # Case-insensitive
@@ -66,7 +66,7 @@ def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCa
 
     if category.code:
         existing_code = db.query(AssetCategory).filter(
-            AssetCategory.org_id == category.org_id,
+            AssetCategory.org_id == org_id,
             AssetCategory.is_deleted == False,
             func.lower(AssetCategory.code) == func.lower(
                 category.code)  # Case-insensitive
@@ -78,7 +78,9 @@ def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCa
         )
 
     # Create the category
-    db_category = AssetCategory(id=str(uuid.uuid4()), **category.model_dump())
+    category_data = category.model_dump()
+    category_data["org_id"] = org_id 
+    db_category = AssetCategory(id=str(uuid.uuid4()), **category_data)
     db.add(db_category)
     db.commit()
     db.refresh(db_category)

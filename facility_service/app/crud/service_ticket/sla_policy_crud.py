@@ -251,6 +251,24 @@ def update_sla_policy(db: Session, auth_db: Session, policy: SlaPolicyUpdate) ->
 
     update_data = policy.model_dump(exclude_unset=True, exclude={'id'})
     
+    if 'site_id' in update_data and update_data['site_id'] != db_policy.site_id:
+        categories_with_sla = db.query(TicketCategory.id).filter(
+            TicketCategory.sla_id == policy.id,
+            TicketCategory.is_deleted == False
+        ).subquery()
+        
+        has_active_tickets = db.query(Ticket).filter(
+            Ticket.category_id.in_(categories_with_sla),
+            Ticket.status.not_in(['closed', 'returned', 'escalated'])  
+        ).first()
+        
+        if has_active_tickets:
+            return error_response(
+                message="Cannot update site for SLA policy with active tickets",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=400
+            )
+    
     new_category = update_data.get('service_category')
     if new_category and new_category != db_policy.service_category:
         existing_policy = db.query(SlaPolicy).filter(

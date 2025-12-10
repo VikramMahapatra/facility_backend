@@ -15,8 +15,8 @@ router = APIRouter(
 )
 
 @router.get("/", response_model=AssetCategoryListResponse)
-def read_categories(search: Optional[str] = None,skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_asset_categories(db, skip=skip, limit=limit,search=search)
+def read_categories(search: Optional[str] = None,skip: int = 0, limit: int = 100, db: Session = Depends(get_db),current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_asset_categories(db,org_id=current_user.org_id,  skip=skip, limit=limit,search=search)
 
 #  MOVE THE LOOKUP ENDPOINT ABOVE THE PARAMETERIZED ROUTES
 

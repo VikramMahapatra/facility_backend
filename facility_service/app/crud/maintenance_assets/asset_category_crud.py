@@ -59,7 +59,7 @@ def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCa
     return db_category
 
 
-def update_asset_category(db: Session, category_id: str, category: AssetCategoryUpdate) -> Optional[AssetCategory]:
+def update_asset_category(db: Session, category_id: str, category: AssetCategoryUpdate) -> Optional['AssetCategory']:
     db_category = get_asset_category_by_id(db, category_id)
     if not db_category:
         return error_response(
@@ -68,48 +68,43 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
             http_status=404
         )
 
-    # Extract update data
+    # Extract update data, excluding fields not provided in the input
     update_data = category.model_dump(exclude_unset=True)
+    org_id = db_category.org_id
 
-    # Only validate if name or code are being updated
-    if any(field in update_data for field in ['name', 'code']):
-        # Build duplicate check query (exclude current category)
-        duplicate_filters = [
-            AssetCategory.org_id == db_category.org_id,
+    if 'name' in update_data:
+        new_name = update_data['name']
+        name_exists = db.query(AssetCategory).filter(
+            AssetCategory.org_id == org_id,
             AssetCategory.id != category_id,
-            AssetCategory.is_deleted == False
-        ]
+            AssetCategory.is_deleted == False,
+            AssetCategory.name.ilike(new_name) 
+        ).first()
 
-        duplicate_conditions = []
-        if 'name' in update_data:
-            duplicate_conditions.append(func.lower(
-                AssetCategory.name) == func.lower(update_data['name']))
-        if 'code' in update_data and update_data['code']:
-            duplicate_conditions.append(func.lower(
-                AssetCategory.code) == func.lower(update_data['code']))
+        if name_exists:
+            return error_response(
+                message=f"Category with name '{new_name}' already exists in this organization",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
 
-        if duplicate_conditions:
-            duplicate_filters.append(or_(*duplicate_conditions))
+    if 'code' in update_data and update_data['code']:
+        new_code = update_data['code']
+        code_exists = db.query(AssetCategory).filter(
+            AssetCategory.org_id == org_id,
+            AssetCategory.id != category_id,
+            AssetCategory.is_deleted == False,
+            AssetCategory.code.ilike(new_code)
+        ).first()
 
-            # Check for existing categories with same values
-            existing_category = db.query(AssetCategory).filter(
-                *duplicate_filters).first()
+        if code_exists:
+            return error_response(
+                message=f"Category with code '{new_code}' already exists",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
 
-            if existing_category:
-                if 'name' in update_data and func.lower(existing_category.name) == func.lower(update_data['name']):
-                    return error_response(
-                        message=f"Category with name '{update_data['name']}' already exists in this organization",
-                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                        http_status=400
-                    )
-                if 'code' in update_data and update_data['code'] and func.lower(existing_category.code) == func.lower(update_data['code']):
-                    return error_response(
-                        message=f"Category with code '{update_data['code']}' already exists",
-                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                        http_status=400
-                    )
-
-    # Update the category
+    # Apply updates
     for field, value in update_data.items():
         setattr(db_category, field, value)
 
@@ -119,14 +114,8 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
         return db_category
     except IntegrityError as e:
         db.rollback()
-        if "asset_categories_code_key" in str(e):
-            return error_response(
-                message=f"Category with code '{update_data.get('code', db_category.code)}' already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
-            )
         return error_response(
-            message="Duplicate category found during update",
+            message="Duplicate category found during update due to a database constraint violation",
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )

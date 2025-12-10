@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional
+from typing import Dict, List, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -182,3 +182,25 @@ def get_asset_category_lookup(db: Session, org_id: str):
         # Updated filter
         AssetCategory.org_id == org_id, AssetCategory.is_deleted == False).order_by(AssetCategory.name.asc()).all()
     return categories
+
+
+
+def asset_parent_category_lookup(db: Session, org_id: str, exclude_category_id: Optional[str] = None) -> List[Dict]:
+    query = (
+        db.query(
+            AssetCategory.id.label("id"),
+            AssetCategory.name.label("name")
+        )
+        .filter(
+            AssetCategory.org_id == org_id,
+            AssetCategory.is_deleted == False
+        )
+    )
+    if exclude_category_id:
+        query = query.filter(AssetCategory.id != exclude_category_id)
+    
+    query = query.distinct().order_by(AssetCategory.name.asc())
+    
+    rows = query.all()
+    
+    return [{"id": str(r.id), "name": r.name} for r in rows]

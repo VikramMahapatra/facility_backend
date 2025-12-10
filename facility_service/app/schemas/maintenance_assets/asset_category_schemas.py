@@ -1,7 +1,7 @@
 # app/schemas/asset_category.py
 from pydantic import BaseModel
-from typing import Optional, Any
-from datetime import date
+from typing import List, Optional, Any
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -19,7 +19,9 @@ class AssetCategoryUpdate(AssetCategoryBase):
 
 class AssetCategoryOut(AssetCategoryBase):
     id: UUID
-    org_id: UUID 
+    org_id: UUID
+    created_at: datetime
+    updated_at: datetime
 
     model_config = {
         "from_attributes": True
@@ -34,3 +36,8 @@ class AssetCategoryOutFilter(BaseModel):
     warranty_expiry: date | None = None
 
     model_config = {"from_attributes": True}
+    
+    
+class AssetCategoryListResponse(BaseModel):
+    assetcategories: List[AssetCategoryOut]
+    total: int

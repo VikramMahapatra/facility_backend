@@ -20,8 +20,8 @@ class AssetCategoryUpdate(AssetCategoryBase):
 class AssetCategoryOut(AssetCategoryBase):
     id: UUID
     org_id: UUID
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
 
     model_config = {
         "from_attributes": True

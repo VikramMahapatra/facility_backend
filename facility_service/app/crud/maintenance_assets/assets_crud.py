@@ -285,7 +285,8 @@ def update_asset(db: Session, asset_update: AssetUpdate):
 
     try:
         db.commit()
-        return get_asset_by_id(db, asset_update.id)
+        db.refresh(db_asset)
+        return db_asset
     except IntegrityError as e:
         db.rollback()
         if "uix_org_site_tag" in str(e):

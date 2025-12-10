@@ -7,7 +7,7 @@ from uuid import UUID
 
 class AssetCategoryBase(BaseModel):
     name: str
-    code: Optional[str] = None
+    code: str 
     parent_id: Optional[UUID] = None
     attributes: Optional[Any] = None
 

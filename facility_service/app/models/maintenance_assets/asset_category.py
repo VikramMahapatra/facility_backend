@@ -14,7 +14,7 @@ class AssetCategory(Base):
     org_id = Column(UUID(as_uuid=True), ForeignKey(
         "orgs.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(128), nullable=False)
-    code = Column(String(32), unique=True, nullable=True)
+    code = Column(String(32), unique=True, nullable=False)
     parent_id = Column(UUID(as_uuid=True), ForeignKey(
         "asset_categories.id"), nullable=True)
     children = relationship(

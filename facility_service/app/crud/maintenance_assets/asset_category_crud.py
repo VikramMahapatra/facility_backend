@@ -18,6 +18,8 @@ def get_asset_categories(db: Session, skip: int = 0, limit: int = 100,search:Opt
         db.query(
             AssetCategory.id,
             AssetCategory.name,
+            AssetCategory.code,
+            AssetCategory.parent_id,
             AssetCategory.org_id,
             AssetCategory.created_at,
             AssetCategory.updated_at,
@@ -185,7 +187,7 @@ def get_asset_category_lookup(db: Session, org_id: str):
 
 
 
-def asset_parent_category_lookup(db: Session, org_id: str, exclude_category_id: Optional[str] = None) -> List[Dict]:
+def asset_parent_category_lookup(db: Session, org_id: str, category_id: Optional[str] = None) -> List[Dict]:
     query = (
         db.query(
             AssetCategory.id.label("id"),
@@ -196,8 +198,17 @@ def asset_parent_category_lookup(db: Session, org_id: str, exclude_category_id: 
             AssetCategory.is_deleted == False
         )
     )
-    if exclude_category_id:
-        query = query.filter(AssetCategory.id != exclude_category_id)
+    if category_id:
+        query = query.filter(AssetCategory.id != category_id)
+        child_categories = db.query(AssetCategory.id).filter(
+            AssetCategory.parent_id == category_id,
+            AssetCategory.org_id == org_id,
+            AssetCategory.is_deleted == False
+        ).all()
+        
+        child_ids = [str(child[0]) for child in child_categories]
+        if child_ids:
+            query = query.filter(~AssetCategory.id.in_(child_ids))
     
     query = query.distinct().order_by(AssetCategory.name.asc())
     

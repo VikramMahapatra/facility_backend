@@ -1,11 +1,11 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.core.auth import validate_current_token
 from shared.core.database import get_facility_db as get_db
 from shared.helpers.json_response_helper import success_response
 from shared.core.schemas import Lookup, UserToken
-from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryOut, AssetCategoryCreate, AssetCategoryUpdate
+from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryListResponse, AssetCategoryOut, AssetCategoryCreate, AssetCategoryUpdate
 from ...crud.maintenance_assets import asset_category_crud as crud
 
 router = APIRouter(
@@ -14,10 +14,9 @@ router = APIRouter(
     dependencies=[Depends(validate_current_token)]
 )
 
-
-@router.get("/", response_model=List[AssetCategoryOut])
-def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_asset_categories(db, skip=skip, limit=limit)
+@router.get("/", response_model=AssetCategoryListResponse)
+def read_categories(search: Optional[str] = None,skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_asset_categories(db, skip=skip, limit=limit,search=search)
 
 #  MOVE THE LOOKUP ENDPOINT ABOVE THE PARAMETERIZED ROUTES
 

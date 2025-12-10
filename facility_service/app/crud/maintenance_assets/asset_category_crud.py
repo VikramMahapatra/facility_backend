@@ -7,16 +7,42 @@ from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.maintenance_assets.assets import Asset
-from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryCreate, AssetCategoryUpdate
+from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryCreate, AssetCategoryOut, AssetCategoryUpdate
 from uuid import UUID
 from sqlalchemy import func, or_, and_
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
+def get_asset_categories(db: Session, skip: int = 0, limit: int = 100,search:Optional[str]=None):
+    category_query = (
+        db.query(
+            AssetCategory.id,
+            AssetCategory.name,
+            AssetCategory.org_id,
+            AssetCategory.created_at,
+            AssetCategory.updated_at,
+        )
+        .filter(AssetCategory.is_deleted == False)
+    )
 
-def get_asset_categories(db: Session, skip: int = 0, limit: int = 100) -> List[AssetCategory]:
-    # Updated filter to exclude deleted categories
-    return db.query(AssetCategory).filter(AssetCategory.is_deleted == False).offset(skip).limit(limit).all()
+    total = db.query(func.count()).select_from(category_query.subquery()).scalar()
+
+    if search:
+        search_term = f"%{search}%"
+        category_query  =  category_query .filter( or_(AssetCategory.code.ilike(search_term),AssetCategory.name.ilike(search_term)))
+
+    category_query = category_query.order_by(
+        AssetCategory.updated_at.desc()
+    ).offset(skip).limit(limit)
+
+    categories = category_query.all()
+    results = [
+        AssetCategoryOut.model_validate(c._asdict())
+        for c in categories
+    ]
+    
+    return {"assetcategories": results, "total": total}
+
 
 
 def get_asset_category_by_id(db: Session, category_id: str) -> Optional[AssetCategory]:

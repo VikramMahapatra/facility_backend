@@ -6,7 +6,6 @@ from decimal import Decimal
 from uuid import UUID
 
 class AssetCategoryBase(BaseModel):
-    org_id: UUID
     name: str
     code: Optional[str] = None
     parent_id: Optional[UUID] = None
@@ -20,6 +19,7 @@ class AssetCategoryUpdate(AssetCategoryBase):
 
 class AssetCategoryOut(AssetCategoryBase):
     id: UUID
+    org_id: UUID 
 
     model_config = {
         "from_attributes": True

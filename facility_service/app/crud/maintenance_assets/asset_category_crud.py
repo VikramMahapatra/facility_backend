@@ -68,7 +68,7 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
             http_status=404
         )
 
-    # Extract update data, excluding fields not provided in the input
+    # Extract update data
     update_data = category.model_dump(exclude_unset=True)
     org_id = db_category.org_id
 
@@ -104,7 +104,7 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
                 http_status=400
             )
 
-    # Apply updates
+
     for field, value in update_data.items():
         setattr(db_category, field, value)
 

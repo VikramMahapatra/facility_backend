@@ -131,19 +131,13 @@ def get_assets(db: Session, org_id: UUID, params: AssetsRequest) -> AssetsRespon
 
         # ✅ FIXED: Simplified location query
         location = None
-        if asset.space_id and asset.site_id:
+        if asset.site_id:
             try:
-                location_data = (
-                    db.query(Space.name, Site.name)
-                    .join(Site, Site.id == Space.site_id)
-                    .filter(
-                        Space.id == asset.space_id,
-                        Site.id == asset.site_id
-                    )
-                    .first()
-                )
-                if location_data:
-                    location = f"{location_data[0]} - {location_data[1]}"
+                site = db.query(Site).filter(Site.id == asset.site_id).first()
+                if site:
+                    location = f"{site.name}"
+                else:
+                    location = "Site not found"
             except Exception as e:
                 print(f"Error fetching location for asset {asset.id}: {e}")
                 location = "Location not available"

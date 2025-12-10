@@ -13,7 +13,7 @@ from sqlalchemy import func, or_, and_
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
-def get_asset_categories(db: Session, skip: int = 0, limit: int = 100,search:Optional[str]=None):
+def get_asset_categories(db: Session, org_id: str, skip: int = 0, limit: int = 100,search:Optional[str]=None):
     category_query = (
         db.query(
             AssetCategory.id,
@@ -24,7 +24,8 @@ def get_asset_categories(db: Session, skip: int = 0, limit: int = 100,search:Opt
             AssetCategory.created_at,
             AssetCategory.updated_at,
         )
-        .filter(AssetCategory.is_deleted == False)
+        .filter(AssetCategory.is_deleted == False,
+                AssetCategory.org_id == org_id )
     )
 
     total = db.query(func.count()).select_from(category_query.subquery()).scalar()

@@ -25,6 +25,14 @@ def read_categories(search: Optional[str] = None,skip: int = 0, limit: int = 100
 def get_asset_category_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
     return crud.get_asset_category_lookup(db, current_user.org_id)
 
+@router.get("/asset-parent-category-lookup", response_model=List[Lookup])
+def get_asset_parent_category_lookup(
+    category_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.asset_parent_category_lookup(db, current_user.org_id, category_id)
+
 # Keep parameterized routes AFTER static routes
 
 
@@ -66,10 +74,3 @@ def delete_category(
     return crud.delete_asset_category(db, category_id, current_user.org_id)
 
 
-@router.get("/asset-parent-category-lookup", response_model=List[Lookup])
-def get_asset_parent_category_lookup(
-    exclude_category_id: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
-):
-    return crud.asset_parent_category_lookup(db, current_user.org_id, exclude_category_id)

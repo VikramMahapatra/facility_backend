@@ -274,7 +274,8 @@ def get_maintenance_status(db: Session, org_id: UUID):
             case(
                 (and_(
                     Asset.warranty_expiry.isnot(None),
-                    Asset.warranty_expiry < today
+                    Asset.warranty_expiry < today,
+                    Asset.is_deleted ==False
                 ), 1),
                 else_=0 
             )

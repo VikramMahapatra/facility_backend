@@ -195,7 +195,8 @@ def create_asset(db: Session, asset: AssetCreate):
             )
 
     # Check for duplicate tag (case-insensitive)
-    existing_tag = db.query(Asset).filter(
+    if asset.tag:
+        existing_tag = db.query(Asset).filter(
         Asset.org_id == asset.org_id,
         Asset.site_id == asset.site_id,
         Asset.is_deleted == False,

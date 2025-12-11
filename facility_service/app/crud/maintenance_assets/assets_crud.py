@@ -46,7 +46,7 @@ def get_assets_query(db: Session, org_id: UUID, params: AssetsRequest):
     filters = build_asset_filters(org_id, params)
 
     # ✅ FIXED: Always join with AssetCategory to get category name
-    query = db.query(Asset).join(
+    query = db.query(Asset).outerjoin(  
         AssetCategory, Asset.category_id == AssetCategory.id)
 
     # ✅ FIXED: Add category filter if provided
@@ -292,7 +292,6 @@ def update_asset(db: Session, asset_update: AssetUpdate):
             if site:
                 location = f"{site.name}"
         
-        # Return enhanced response with location
         return {
             **db_asset.__dict__,
             "location": location
@@ -328,7 +327,6 @@ def delete_asset(db: Session, asset_id: str, org_id: str) -> bool:
 
     # Perform soft delete
     db_asset.is_deleted = True
-    db_asset.deleted_at = func.now()
     db.commit()
 
     return True

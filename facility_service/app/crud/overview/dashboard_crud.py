@@ -269,13 +269,17 @@ def get_maintenance_status(db: Session, org_id: UUID):
                 func.lower(Ticket.status)==  'open')\
         .scalar() or 0
   
-    asset_at_risk = db.query(func.count(Asset.id))\
-        .filter(
-            Asset.org_id == org_id,
-            Asset.warranty_expiry.isnot(None),  
-            Asset.warranty_expiry < today       
-        )\
-        .scalar() or 0
+    asset_at_risk = db.query(
+        func.sum(
+            case(
+                (and_(
+                    Asset.warranty_expiry.isnot(None),
+                    Asset.warranty_expiry < today
+                ), 1),
+                else_=0 
+            )
+        )
+    ).filter(Asset.org_id == org_id).scalar() or 0
  
     return {
         "open": open_tickets,                 

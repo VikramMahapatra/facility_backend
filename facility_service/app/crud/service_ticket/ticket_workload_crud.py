@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import joinedload
 
+from shared.core.schemas import Lookup
 from shared.models.users import Users
 from ...enum.ticket_service_enum import TicketStatus
 from ...models.service_ticket.tickets import Ticket
@@ -130,9 +131,9 @@ def get_team_workload_management(
             assigned_user = auth_db.query(Users).filter(
                 Users.id == ticket.assigned_to
             ).first()
-                    
-                    # ✅ FIXED: Also include tickets where assigned_user is None (invalid user ID)
-        if (not assigned_user) or (assigned_user and assigned_user.account_type.lower() in ["organization", "admin"]):
+            
+            # ✅ CORRECTED: Only include tickets assigned to organization/admin users
+            if assigned_user and assigned_user.account_type.lower() in ["organization", "admin"]:
                 # Get default contact from SLA
                 default_contact = None
                 default_contact_name = None
@@ -156,7 +157,6 @@ def get_team_workload_management(
                     default_contact=default_contact,
                     default_contact_name=default_contact_name
                 ))
-
         return TeamWorkloadManagementResponse(
             technicians_workload=technicians_workload,
             assigned_tickets=assigned_tickets,
@@ -224,3 +224,43 @@ def get_available_technicians_for_site(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error fetching available technicians: {str(e)}")
+
+
+def workload_assigned_to_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None) -> List[Lookup]:
+    if not site_id or not site_id.strip() or site_id.strip().lower() == "all":
+        return []
+    
+    staff_sites = (
+        db.query(StaffSite.user_id, StaffSite.staff_role)
+        .filter(
+            StaffSite.site_id == site_id,
+            StaffSite.is_deleted == False
+        )
+        .all()
+    )
+
+    staff_user_ids = [s.user_id for s in staff_sites if s.user_id]
+    staff_users = []
+    if staff_user_ids:
+        users = (
+            auth_db.query(Users.id, Users.full_name)
+            .filter(
+                Users.id.in_(staff_user_ids),
+                Users.is_deleted == False,
+                Users.status == "active"
+            )
+            .all()
+        )
+
+        user_map = {u.id: u.full_name for u in users}
+        role_map = {s.user_id: s.staff_role for s in staff_sites}
+        staff_users = [
+            Lookup(
+                id=user_id,
+                name=f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
+            )
+            for user_id in staff_user_ids
+            if user_id in user_map
+        ]
+
+    return staff_users

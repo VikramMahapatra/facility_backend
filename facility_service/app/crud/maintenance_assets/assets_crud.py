@@ -46,7 +46,7 @@ def get_assets_query(db: Session, org_id: UUID, params: AssetsRequest):
     filters = build_asset_filters(org_id, params)
 
     # ✅ FIXED: Always join with AssetCategory to get category name
-    query = db.query(Asset).join(
+    query = db.query(Asset).outerjoin(  
         AssetCategory, Asset.category_id == AssetCategory.id)
 
     # ✅ FIXED: Add category filter if provided
@@ -131,19 +131,13 @@ def get_assets(db: Session, org_id: UUID, params: AssetsRequest) -> AssetsRespon
 
         # ✅ FIXED: Simplified location query
         location = None
-        if asset.space_id and asset.site_id:
+        if asset.site_id:
             try:
-                location_data = (
-                    db.query(Space.name, Site.name)
-                    .join(Site, Site.id == Space.site_id)
-                    .filter(
-                        Space.id == asset.space_id,
-                        Site.id == asset.site_id
-                    )
-                    .first()
-                )
-                if location_data:
-                    location = f"{location_data[0]} - {location_data[1]}"
+                site = db.query(Site).filter(Site.id == asset.site_id).first()
+                if site:
+                    location = f"{site.name}"
+                else:
+                    location = "Site not found"
             except Exception as e:
                 print(f"Error fetching location for asset {asset.id}: {e}")
                 location = "Location not available"
@@ -201,7 +195,8 @@ def create_asset(db: Session, asset: AssetCreate):
             )
 
     # Check for duplicate tag (case-insensitive)
-    existing_tag = db.query(Asset).filter(
+    if asset.tag:
+        existing_tag = db.query(Asset).filter(
         Asset.org_id == asset.org_id,
         Asset.site_id == asset.site_id,
         Asset.is_deleted == False,
@@ -291,7 +286,17 @@ def update_asset(db: Session, asset_update: AssetUpdate):
 
     try:
         db.commit()
-        return get_asset_by_id(db, asset_update.id)
+        db.refresh(db_asset)
+        location = None
+        if db_asset.site_id:
+            site = db.query(Site).filter(Site.id == db_asset.site_id).first()
+            if site:
+                location = f"{site.name}"
+        
+        return {
+            **db_asset.__dict__,
+            "location": location
+        }
     except IntegrityError as e:
         db.rollback()
         if "uix_org_site_tag" in str(e):
@@ -323,7 +328,6 @@ def delete_asset(db: Session, asset_id: str, org_id: str) -> bool:
 
     # Perform soft delete
     db_asset.is_deleted = True
-    db_asset.deleted_at = func.now()
     db.commit()
 
     return True
@@ -369,6 +373,7 @@ def assets_category_lookup(db: Session, org_id: UUID) -> List[Dict]:
             AssetCategory.id.label("id"),
             AssetCategory.name.label("name")
         )
+        .join(Asset, Asset.category_id == AssetCategory.id)
         .filter(AssetCategory.org_id == org_id, AssetCategory.is_deleted == False)
         .distinct()
         .order_by(AssetCategory.name.asc())

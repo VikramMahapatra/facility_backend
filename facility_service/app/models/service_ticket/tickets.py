@@ -1,5 +1,5 @@
 
-from sqlalchemy import Enum, LargeBinary, Index
+from sqlalchemy import Date, Enum, LargeBinary, Index
 from typing import Optional
 from pydantic import computed_field
 from sqlalchemy.dialects.postgresql import UUID
@@ -10,7 +10,7 @@ import uuid
 from ...enum.ticket_service_enum import TicketStatus
 from shared.core.database import Base
 from shared.core.database import Base  # adjust the import to your Base
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from sqlalchemy import Sequence
 from sqlalchemy import event
 
@@ -48,7 +48,9 @@ class Ticket(Base):
     created_by = Column(UUID(as_uuid=True))
     assigned_to = Column(UUID(as_uuid=True))
     request_type = Column(String(20), default="unit")
-    preferred_time = Column(String(255), nullable=True)
+    preferred_time = Column(String(255),nullable=False,default=func.time(func.now()))
+        # Add this:
+    preferred_date = Column(Date, nullable=False, default=date.today)
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True),
@@ -159,10 +161,32 @@ class Ticket(Base):
         if self.status in (TicketStatus.CLOSED, TicketStatus.ESCALATED):
             return False
 
-        # check if escalation window exceeded
-        elapsed = (datetime.now(timezone.utc) -
-                   self.created_at).total_seconds() / 60
+        # preferred_time  ---------changed
+        if not self.preferred_time:
+            return False   
+        
+        time_range = self.preferred_time.strip().lower()
+        end_part = time_range.split("-")[-1].strip()
+
+        try:
+            if ":" in end_part and ("am" not in end_part and "pm" not in end_part):
+                end_time = datetime.strptime(end_part, "%H:%M").time()
+            elif "am" in end_part or "pm" in end_part:
+                end_time = datetime.strptime(end_part, "%I%p").time()
+            else:
+                return False
+        except:
+            return False
+        # Combine preferred date + end time → actual expected escalation datetime
+        preferred_datetime = datetime.combine(
+            self.preferred_date,
+            end_time
+        ).replace(tzinfo=timezone.utc)
+
+        # Calculate elapsed minutes from preferred_datetime   preferred_date + end_time + SLA time
+        elapsed = (datetime.now(timezone.utc) - preferred_datetime).total_seconds() / 60
         return elapsed >= sla.escalation_time_mins
+
 
     @property
     def can_reopen(self) -> bool:

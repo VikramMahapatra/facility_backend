@@ -26,7 +26,8 @@ def get_complaints(db: Session, space_id: UUID):
         results.append(
             ComplaintOut.model_validate({
                 **complaint.__dict__,
-                "comments": comments_count or 0
+                "comments": comments_count or 0 
+                 
             })
         )
 
@@ -60,7 +61,8 @@ def raise_complaint(db: Session, complaint_data: ComplaintCreate, current_user: 
         request_type=complaint_data.request_type,
         description=complaint_data.description,
         my_preferred_time=complaint_data.my_preferred_time,
-        channel="phone"
+        channel="phone",
+        priority=complaint_data.priority   #new filed added 
     )
 
     db.add(complaint)

@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from operator import or_
 from typing import Dict, List
 from requests import request
@@ -34,7 +34,7 @@ from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketVendorRequest, TicketWorkflowOut
+from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketVendorRequest, TicketWorkFlowOut
 
 
 def build_ticket_filters(
@@ -203,6 +203,8 @@ def get_tickets(db: Session,auth_db: Session, params: TicketFilterRequest, curre
                 # They're already in t.__dict__ so we need to remove them
         data.pop("assigned_to", None)
         data.pop("vendor_id", None)
+        data.pop("preferred_time", None)   # <-- remove to avoid duplicate
+        data.pop("preferred_date", None)   # <-- remove if also passing explicitly
 
         assigned_to_str = str(t.assigned_to) if t.assigned_to else None
         vendor_id_str = str(t.vendor_id) if t.vendor_id else None
@@ -219,7 +221,9 @@ def get_tickets(db: Session,auth_db: Session, params: TicketFilterRequest, curre
                 assigned_to=t.assigned_to,
                 vendor_id=t.vendor_id,
                 assigned_to_name=assigned_to_name,
-                vendor_name=vendor_name
+                vendor_name=vendor_name,
+                preferred_time=t.preferred_time or datetime.utcnow().strftime("%H:%M"),  # ✅ required
+                preferred_date=t.preferred_date or date.today()    
 
             )
         )
@@ -322,6 +326,8 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
             "can_reopen": service_req.can_reopen,
             "is_overdue": service_req.is_overdue,
             "attachments": attachments_out,
+            "preferred_time": service_req.preferred_time or datetime.utcnow().strftime("%H:%M"),  # ✅ required
+            "preferred_date": service_req.preferred_date or date.today(),      
         }
     )
 
@@ -394,6 +400,7 @@ async def create_ticket(
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
         preferred_time=data.preferred_time,
+        preferred_date=data.preferred_date or date.today(),   # ✅ ADD THIS HERE
         request_type=data.request_type,
         priority=data.priority if hasattr(
             data, "priority") else PriorityType.low,
@@ -530,9 +537,7 @@ def escalate_ticket(
 ):
 
     # Fetch ticket
-    ticket = db.execute(
-        select(Ticket).where(Ticket.id == data.ticket_id)
-    ).scalar_one_or_none()
+    ticket =db.query(Ticket).filter(Ticket.id==data.ticket_id).first()
 
     if not ticket:
         return error_response(
@@ -540,16 +545,17 @@ def escalate_ticket(
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
-
+    
     if (
-        not ticket.can_escalate
-        or (str(ticket.created_by) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION))
-    ):
-        return error_response(
-            message=f"Not authorize to perform this action",
-            status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
-            http_status=400
-        )
+            not ticket.can_escalate
+            or (str(ticket.created_by) != str(data.action_by) and (user.account_type != UserAccountType.ORGANIZATION))
+        ):
+        
+            return error_response(
+                message=f"Not authorize to perform this action",
+                status_code=str(AppStatusCode.UNAUTHORIZED_ACTION),
+                http_status=400
+            )
 
     # Fetch SLA Policy using category_id
     if not ticket.category or not ticket.category.sla_policy or not ticket.category.sla_policy.escalation_contact:
@@ -685,8 +691,7 @@ async def resolve_ticket(
         user: UserToken,
         file: UploadFile = None
 ):
-    ticket = db.execute(select(Ticket).where(
-        Ticket.id == data.ticket_id)).scalar_one_or_none()
+    ticket =db.query(Ticket).filter(Ticket.id==data.ticket_id).first()
 
     if not ticket:
         return error_response(
@@ -827,8 +832,7 @@ def reopen_ticket(
         data: TicketActionRequest,
         user: UserToken
 ):
-    ticket = db.execute(select(Ticket).where(
-        Ticket.id == data.ticket_id)).scalar_one_or_none()
+    ticket =db.query(Ticket).filter(Ticket.id==data.ticket_id).first()
     if not ticket:
         raise Exception("Ticket not found")
 
@@ -953,8 +957,7 @@ def on_hold_ticket(
     data: TicketActionRequest,
     user: UserToken
 ):
-    ticket = db.execute(select(Ticket).where(
-        Ticket.id == data.ticket_id)).scalar_one_or_none()
+    ticket =db.query(Ticket).filter(Ticket.id==data.ticket_id).first()
     if not ticket:
         raise Exception("Ticket not found")
 
@@ -1073,15 +1076,12 @@ def on_hold_ticket(
 
 
 def return_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Session, data: TicketActionRequest):
-    ticket = db.execute(select(Ticket).where(
-        Ticket.id == data.ticket_id)).scalar_one_or_none()
+    ticket =db.query(Ticket).filter(Ticket.id==data.ticket_id).first()
     if not ticket:
         raise Exception("Ticket not found")
 
     # Fetch SLA Policy for auto-assignment
-    sla = db.execute(
-        select(SlaPolicy).where(SlaPolicy.id == Ticket.category_id)
-    ).scalar_one_or_none()
+    sla = db.query(SlaPolicy).filter(SlaPolicy.id==Ticket.category_id).first()
 
     assigned_to = sla.default_contact if sla else None
 
@@ -1397,9 +1397,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     # Step 1: Fetch service request with joins for related data
     service_req = (
         db.query(Ticket)
-        .filter(Ticket.id == ticket_id)
-        .first()
-    )
+        .filter(Ticket.id == ticket_id).first())
 
     if not service_req:
         raise HTTPException(
@@ -1416,7 +1414,7 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             .filter(Users.id == service_req.assigned_to)
             .first()
         )
-        assigned_to_name = assigned_user.full_name if assigned_user else None
+    assigned_to_name = assigned_user.full_name if assigned_user else None
 
     # Step 4: Fetch vendor name from Vendor table (assuming you have a Vendor model)
     if service_req.vendor_id:
@@ -1487,8 +1485,8 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
     workflows_out = []
     for w in workflows:
         workflows_out.append(
-            TicketWorkflowOut(
-                workflow_id=w.id,
+            TicketWorkFlowOut(
+                id=w.id,
                 ticket_id=w.ticket_id,
                 action_by=w.action_by,
                 old_status=getattr(w, "old_status", None),
@@ -1583,10 +1581,7 @@ def update_ticket_status(
     current_user: UserToken
 ):
     # Fetch ticket
-    ticket = db.execute(
-        select(Ticket).where(Ticket.id == data.ticket_id)
-    ).scalar_one_or_none()
-
+    ticket = db.query(Ticket).filter(Ticket.id==data.ticket_id).first()
     if not ticket:
         return error_response(
             message="Invalid Ticket",
@@ -1612,7 +1607,7 @@ def update_ticket_status(
     action_by_user = auth_db.query(Users).filter(
         Users.id == current_user.user_id).first()
     action_by_name = action_by_user.full_name if action_by_user else "Unknown User"
-
+    
     # Workflow Log
     workflow_log = TicketWorkflow(
         ticket_id=ticket.id,
@@ -1686,17 +1681,19 @@ def update_ticket_status(
             "category": ticket.category.category_name if ticket.category else None
         }
     )
-
+        
     # ✅ CHANGED: Return both ticket and log using model_validate
     response_data = {
         "ticket": updated_ticket,
-        "log": TicketWorkflowOut.model_validate(
+        "log": TicketWorkFlowOut.model_validate(
             {
                 **workflow_log.__dict__,
                 "workflow_id": workflow_log.id,
                 "action_by_name": action_by_name
             }
-        )
+            
+        ),
+        "possible_next_statuses":get_possible_next_statuses(db,data.ticket_id),  
     }
 
    # ✅ SIMPLEST: Return dictionary with success=true
@@ -1737,31 +1734,42 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
             http_status=400
         )
     
-    # ✅ ADD THIS - Check if user has account_type = "staff"
-    if assigned_to_user.account_type.lower() != "staff":
+   # ✅ MODIFIED: Allow both admin and staff users
+    valid_account_types = ["organization", "staff"]
+    if assigned_to_user.account_type.lower() not in valid_account_types:
         return error_response(
-            message="User must have account type STAFF",
+            message="User must have account type ADMIN or STAFF",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
 
-      # ✅ THEN CHECK if user is assigned as STAFF to this ticket's site
-    staff_check = (
-        session.query(StaffSite)
-        .filter(
-            StaffSite.user_id == data.assigned_to,
-            StaffSite.site_id == ticket.site_id,
-            StaffSite.is_deleted == False
+    # Check if user is authorized for this site based on account type
+    if assigned_to_user.account_type.lower() == "staff":
+        # ✅ For STAFF users, check if they're assigned to this site
+        staff_check = (
+            session.query(StaffSite)
+            .filter(
+                StaffSite.user_id == data.assigned_to,
+                StaffSite.site_id == ticket.site_id,
+                StaffSite.is_deleted == False
+            )
+            .first()
         )
-        .first()
-    )
 
-    if not staff_check:
-        return error_response(
-            message="User is not assigned as STAFF to this site",
-            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
-            http_status=400
-        )
+        if not staff_check:
+            return error_response(
+                message="User is not assigned as STAFF to this site",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                http_status=400
+            )
+    else:
+        # ✅ For ADMIN users, check if they belong to the same organization
+        if assigned_to_user.org_id != current_user.org_id:
+            return error_response(
+                message="Admin user must belong to the same organization",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                http_status=400
+            )
     
     action_by = current_user.user_id
     # Get action_by user details
@@ -1773,7 +1781,7 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
 
     # Update ticket assigned_to (EXACTLY like create_ticket)
     ticket.assigned_to = data.assigned_to
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = datetime.utcnow() 
 
     # Assignment Log (EXACTLY like create_ticket pattern)
     assignment_log = TicketAssignment(
@@ -1820,17 +1828,19 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
     workflow_log = TicketWorkflow(
         ticket_id=ticket.id,
         action_by=action_by,
-        old_status=None,
-        new_status=None,
+        old_status=ticket.status.value if ticket.status else None,  
+        new_status=ticket.status.value if ticket.status else None,
         # Like "Ticket Created by {created_by_user.full_name}"
         action_taken=f"Ticket assigned to {assigned_to_user.full_name} by {action_by_user.full_name if action_by_user else 'Unknown User'}"
     )
 
+    
     objects_to_add = [workflow_log, assignment_log] + notifications
 
     session.add_all(objects_to_add)
     session.commit()
     session.refresh(ticket)
+    session.refresh(workflow_log)  # ✅ ADD THIS - Refresh workflow log to get ID
 
     # Email
     emails = (
@@ -1843,7 +1853,7 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
     context = {
         "assigned_to": assigned_to_user.full_name,  # The person who got assigned
         "ticket_no": ticket.ticket_no,
-        "assigned_by": action_by_user.full_name if action_by_user else "System"
+        "assigned_by": action_by_user.full_name if action_by_user else "Unknown User"
     }
 
     send_ticket_update_assigned_to_email(
@@ -1853,18 +1863,31 @@ def update_ticket_assigned_to(background_tasks: BackgroundTasks, session: Sessio
     updated_ticket = TicketOut.model_validate(
         {
             **ticket.__dict__,
-            "category": ticket.category.category_name if ticket.category else None
+            "category": ticket.category.category_name if ticket.category else None,
+            "assigned_to_name": assigned_to_user.full_name if assigned_to_user else None
         }
     )
 
-    # ✅ CHANGED: Return dictionary with success=true
+    response_data = {
+        "ticket": updated_ticket,
+        "log": TicketWorkFlowOut.model_validate(
+            {
+                **workflow_log.__dict__,
+                "workflow_id": workflow_log.id,
+                "action_by_name": action_by_user.full_name if action_by_user else "Unknown User"
+            }
+        ),
+        
+    }
+
     return {
         "success": True,
-        "data": updated_ticket,
-        "status": "Success", 
+        "data": response_data,  # Now contains both ticket and log
+        "status": "Success",
         "status_code": AppStatusCode.DATA_RETRIEVED_SUCCESSFULLY,
         "message": f"Ticket assigned to {assigned_to_user.full_name} successfully"
     }
+
 
 
 
@@ -2365,8 +2388,8 @@ def update_ticket_vendor(background_tasks: BackgroundTasks, session: Session, au
     workflow_log = TicketWorkflow(
         ticket_id=ticket.id,
         action_by=action_by,
-        old_status=None,
-        new_status=None,
+        old_status=ticket.status.value if ticket.status else None, 
+        new_status=ticket.status.value if ticket.status else None, 
         # Different action taken message
         action_taken=f"Vendor {vendor.name} assigned by {action_by_user.full_name if action_by_user else 'Unknown User'}"
     )
@@ -2376,6 +2399,7 @@ def update_ticket_vendor(background_tasks: BackgroundTasks, session: Session, au
     session.add_all(objects_to_add)
     session.commit()
     session.refresh(ticket)
+    session.refresh(workflow_log)
 
     # Email - EXACTLY same pattern
     emails = (
@@ -2388,28 +2412,43 @@ def update_ticket_vendor(background_tasks: BackgroundTasks, session: Session, au
     context = {
         "vendor_name": vendor.name,
         "ticket_no": ticket.ticket_no,
-        "assigned_by": action_by_user.full_name if action_by_user else "System"
+        "assigned_by": action_by_user.full_name if action_by_user else "System User"
     }
 
     send_ticket_update_vendor_email(
         background_tasks, session, context, email_list)
 
-    # Fetch vendor name for response
-    vendor_name = vendor.name
+   
+   
 
     # Response - EXACTLY same pattern
     updated_ticket = TicketOut.model_validate(
         {
             **ticket.__dict__,
             "category": ticket.category.category_name if ticket.category else None,
-            "vendor_name": vendor_name  # Different field name
+            "vendor_name": vendor.name  # Different field name
         }
     )
+
+    # ✅ FIXED: Return both ticket and log using model_validate (matching assignment)
+    response_data = {
+        "ticket": updated_ticket,
+        "log": TicketWorkFlowOut.model_validate(
+            {
+                **workflow_log.__dict__,
+                "workflow_id": workflow_log.id,
+                "action_by_name": action_by_user.full_name if action_by_user else "System User"
+            }
+        )
+    }
+      
+    
+    
 
     # ✅ EXACTLY same return format
     return {
         "success": True,
-        "data": updated_ticket,
+        "data":  response_data, 
         "status": "Success", 
         "status_code": AppStatusCode.DATA_RETRIEVED_SUCCESSFULLY,
         "message": f"Vendor {vendor.name} assigned to ticket successfully"
@@ -2427,3 +2466,33 @@ def send_ticket_update_vendor_email(background_tasks, db, data, recipients):
         subject=f"Vendor Assigned to Ticket - {data['ticket_no']}",  # Different subject
         context=data,
     )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   

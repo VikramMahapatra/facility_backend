@@ -30,10 +30,11 @@ router = APIRouter(
 def create_ticket_work_order_endpoint(
     work_order:TicketWorkOrderCreate,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     """Create a new work order from a ticket"""
-    return crud.create_ticket_work_order(db, work_order, current_user.org_id)
+    return crud.create_ticket_work_order(db,auth_db, work_order, current_user.org_id)
 
 
 
@@ -46,6 +47,7 @@ def create_ticket_work_order_endpoint(
 def get_ticket_work_orders_endpoint(
     params: TicketWorkOrderRequest = Depends(),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     """
@@ -54,6 +56,7 @@ def get_ticket_work_orders_endpoint(
     """
     return crud.get_ticket_work_orders(
         db=db,
+        auth_db=auth_db,
         org_id=current_user.org_id,
         params=params
     )
@@ -105,6 +108,7 @@ def get_ticket_work_order_by_id_endpoint(
 def update_ticket_work_order_endpoint(
     work_order_update: TicketWorkOrderUpdate,  # Remove Path parameter
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     """
@@ -112,6 +116,7 @@ def update_ticket_work_order_endpoint(
     """
     return crud.update_ticket_work_order(
         db=db, 
+        auth_db=auth_db,
         work_order_update=work_order_update,
         org_id=current_user.org_id
     )
@@ -180,3 +185,13 @@ def contact_lookup_endpoint(
     Get contacts for work order assignment
     """
     return crud.contact_lookup(auth_db)
+
+
+@router.get("/tickets/{ticket_id}/assignments")
+def read_ticket_assignments(
+    ticket_id: UUID,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_names_for_ticket_id(db=db,auth_db=auth_db, ticket_id=ticket_id)

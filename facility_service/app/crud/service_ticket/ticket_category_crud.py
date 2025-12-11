@@ -17,7 +17,7 @@ from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.sla_policy import SlaPolicy
 from sqlalchemy.orm import joinedload
 from ...enum.ticket_service_enum import AutoAssignRoleEnum, StatusEnum
-from ...schemas.service_ticket.ticket_category_schemas import TicketCategoryListResponse, TicketCategoryRequest
+from ...schemas.service_ticket.ticket_category_schemas import EmployeeOut, TicketCategoryListResponse, TicketCategoryRequest
 from ...models.service_ticket.tickets_category import TicketCategory
 from ...schemas.service_ticket.ticket_category_schemas import (
     TicketCategoryCreate,
@@ -116,10 +116,17 @@ def create_ticket_category(db: Session, category: TicketCategoryCreate) -> Ticke
         TicketCategory.site_id == category.site_id,
         TicketCategory.is_deleted == False
     ).first()
-
+        
     if existing_category:
         return error_response(
             message=f"Ticket category '{category.category_name}' already exists for this site"
+        )
+        
+    if category.sla_id is None or category.sla_id == "":
+        return error_response(
+            message="SLA policy cannot be  empty",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
         )
 
     db_category = TicketCategory(**category.model_dump())
@@ -141,6 +148,14 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate):
         )
 
     update_data = category.model_dump(exclude_unset=True, exclude={'id'})
+    if 'sla_id' in update_data:
+        sla_value = update_data['sla_id']
+        if sla_value is None or sla_value == "":
+            return error_response(
+                message="SLA policy cannot be updated to empty or null",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=400
+            )
     # Check for duplicate category name
     new_name = update_data.get('category_name')
     if new_name and new_name != db_category.category_name:
@@ -157,6 +172,19 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate):
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
+            
+    #if ticketcategory has ticket then can not update site
+    if 'site_id' in update_data and update_data['site_id'] != db_category.site_id:
+        # Check if category has any assigned tickets
+        has_tickets = db.query(Ticket).filter(
+            Ticket.category_id == category.id
+        ).first()
+
+        if has_tickets:
+            return error_response(
+                message="Cannot update site for category with assigned tickets"
+            )
+    
     for key, value in update_data.items():
         setattr(db_category, key, value)
 
@@ -304,8 +332,19 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
     # Create a mapping of user_id to staff_role
     role_map = {staff.user_id: staff.staff_role for staff in staff_sites}
 
+    org_users = (
+        auth_db.query(Users.id, Users.full_name)
+        .filter(
+            Users.account_type == "organization",
+            Users.org_id == org_id,
+            Users.status == "active",
+            Users.is_deleted == False
+        )
+        .all()
+    )
+
     # Return with formatted name including role
-    return [
+    staff_users= [
         {
             "user_id": user_id,
             "full_name": f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
@@ -313,6 +352,15 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         for user_id in user_ids
         if user_id in user_map  # Only include users found in auth db
     ]
+        # Convert org users to EmployeeOut
+    org_users_lookup = [
+        EmployeeOut(
+            user_id=u.id,
+            full_name=u.full_name
+        )
+        for u in org_users
+    ]
+    return staff_users + org_users_lookup
 
 def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """

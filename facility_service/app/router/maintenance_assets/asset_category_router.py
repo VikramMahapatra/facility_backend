@@ -1,11 +1,11 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.core.auth import validate_current_token
 from shared.core.database import get_facility_db as get_db
 from shared.helpers.json_response_helper import success_response
 from shared.core.schemas import Lookup, UserToken
-from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryOut, AssetCategoryCreate, AssetCategoryUpdate
+from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryListResponse, AssetCategoryOut, AssetCategoryCreate, AssetCategoryUpdate
 from ...crud.maintenance_assets import asset_category_crud as crud
 
 router = APIRouter(
@@ -14,10 +14,9 @@ router = APIRouter(
     dependencies=[Depends(validate_current_token)]
 )
 
-
-@router.get("/", response_model=List[AssetCategoryOut])
-def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_asset_categories(db, skip=skip, limit=limit)
+@router.get("/", response_model=AssetCategoryListResponse)
+def read_categories(search: Optional[str] = None,skip: int = 0, limit: int = 100, db: Session = Depends(get_db),current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_asset_categories(db,org_id=current_user.org_id,  skip=skip, limit=limit,search=search)
 
 #  MOVE THE LOOKUP ENDPOINT ABOVE THE PARAMETERIZED ROUTES
 
@@ -25,6 +24,14 @@ def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
 @router.get("/lookup", response_model=list[Lookup])
 def get_asset_category_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
     return crud.get_asset_category_lookup(db, current_user.org_id)
+
+@router.get("/asset-parent-category-lookup", response_model=List[Lookup])
+def get_asset_parent_category_lookup(
+    category_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.asset_parent_category_lookup(db, current_user.org_id, category_id)
 
 # Keep parameterized routes AFTER static routes
 
@@ -43,11 +50,8 @@ def create_category(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    # Set org_id from current user if not provided
-    if not category.org_id:
-        category.org_id = current_user.org_id
 
-    return crud.create_asset_category(db, category)
+    return crud.create_asset_category(db, category,org_id=current_user.org_id)
 
 
 @router.put("/{category_id}", response_model=None)
@@ -68,3 +72,5 @@ def delete_category(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.delete_asset_category(db, category_id, current_user.org_id)
+
+

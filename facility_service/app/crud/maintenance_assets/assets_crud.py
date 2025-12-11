@@ -373,6 +373,7 @@ def assets_category_lookup(db: Session, org_id: UUID) -> List[Dict]:
             AssetCategory.id.label("id"),
             AssetCategory.name.label("name")
         )
+        .join(Asset, Asset.category_id == AssetCategory.id)
         .filter(AssetCategory.org_id == org_id, AssetCategory.is_deleted == False)
         .distinct()
         .order_by(AssetCategory.name.asc())

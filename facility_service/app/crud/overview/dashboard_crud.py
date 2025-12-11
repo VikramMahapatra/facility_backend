@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
 from sqlalchemy.orm import Session
-from sqlalchemy import Integer, extract, func, case , literal_column, or_
+from sqlalchemy import Integer, and_, extract, func, case , literal_column, or_
 from datetime import date, datetime, timedelta
 
 from ...models.service_ticket.tickets import Ticket
@@ -270,8 +270,11 @@ def get_maintenance_status(db: Session, org_id: UUID):
         .scalar() or 0
   
     asset_at_risk = db.query(func.count(Asset.id))\
-        .filter(Asset.org_id == org_id,
-                Asset.warranty_expiry >=today)\
+        .filter(
+            Asset.org_id == org_id,
+            Asset.warranty_expiry.isnot(None),  
+            Asset.warranty_expiry < today       
+        )\
         .scalar() or 0
  
     return {

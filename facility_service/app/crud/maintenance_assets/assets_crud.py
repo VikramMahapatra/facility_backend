@@ -286,7 +286,17 @@ def update_asset(db: Session, asset_update: AssetUpdate):
     try:
         db.commit()
         db.refresh(db_asset)
-        return db_asset
+        location = None
+        if db_asset.site_id:
+            site = db.query(Site).filter(Site.id == db_asset.site_id).first()
+            if site:
+                location = f"{site.name}"
+        
+        # Return enhanced response with location
+        return {
+            **db_asset.__dict__,
+            "location": location
+        }
     except IntegrityError as e:
         db.rollback()
         if "uix_org_site_tag" in str(e):

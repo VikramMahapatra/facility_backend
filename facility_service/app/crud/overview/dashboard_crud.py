@@ -81,8 +81,9 @@ def get_overview_data(db: Session, org_id: UUID) -> Dict[str, Any]:
 
     # ------------------- Work Orders -------------------
     total_work_orders = (
-        db.query(func.count(WorkOrder.id))
-        .filter(WorkOrder.status == "open")
+        db.query(func.count(TicketWorkOrder.id))
+        .filter(TicketWorkOrder.ticket_id==Ticket.id,
+                Ticket.status=="open")
         .scalar()
         or 0
     )
@@ -117,12 +118,12 @@ def get_overview_data(db: Session, org_id: UUID) -> Dict[str, Any]:
     # Format values as strings for consistent frontend display
     stats_list = [
         {
-            "title": "Total Properties",
+            "title": "Total Sites",
             "value": str(int(total_properties)),
             "icon": "Building2",
             "trend": "up",
             "change": "+0%",
-            "description": "Active properties",
+            "description": "Active Sites",
         },
         {
             "title": "Occupancy Rate",
@@ -555,13 +556,38 @@ def space_occupancy(db: Session, org_id: UUID):
 
 
 
-def work_orders_priority():
-    return [ 
-    { "priority": "Critical", "count": 3 },
-    { "priority": "High",     "count": 8 },
-    { "priority": "Medium",   "count": 12 },
-    { "priority": "Low",      "count": 5 }
-    ]
+def work_orders_priority(db: Session, org_id: UUID) -> List[Dict]:
+    # Base query
+    query = db.query(
+        Ticket.priority,
+        func.count(Ticket.id).label('count')
+    ).filter(
+        Ticket.status=="open", 
+        TicketWorkOrder.id.is_not(None)
+    )
+
+    query = query.join(
+        TicketWorkOrder, 
+        TicketWorkOrder.ticket_id == Ticket.id
+    )
+    
+    if org_id:
+        query = query.filter(Ticket.org_id == org_id)
+    
+    results = query.group_by(Ticket.priority).all()
+    
+    priority_order = ["high", "medium", "low"]
+
+    priority_counts = {row.priority: row.count for row in results}
+ 
+    response = []
+    for priority in priority_order:
+        response.append({
+            "priority": priority,
+            "count": priority_counts.get(priority, 0)
+        })
+    
+    return response
 
 def get_energy_consumption_trend(db: Session, org_id: UUID):
     # Get the current date and calculate the last 4 months

@@ -102,3 +102,11 @@ class EnergyStatusResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        
+        
+class PriorityItem(BaseModel):
+    priority: str
+    count: int
+    
+    class Config:
+        from_attributes = True

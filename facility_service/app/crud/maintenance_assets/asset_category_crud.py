@@ -13,9 +13,30 @@ from sqlalchemy import func, or_, and_
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
-def get_asset_categories(db: Session, org_id: str, skip: int = 0, limit: int = 100,search:Optional[str]=None):
-    category_query = (
-        db.query(
+def get_asset_categories(db: Session, org_id: str, skip: int = 0, limit: int = 100, search: Optional[str] = None):
+    # Base query
+    category_query = db.query(AssetCategory).filter(
+        AssetCategory.is_deleted == False,
+        AssetCategory.org_id == org_id
+    )
+    
+
+    if search:
+        search_term = f"%{search}%"
+        category_query = category_query.filter(
+            or_(
+                AssetCategory.code.ilike(search_term),
+                AssetCategory.name.ilike(search_term)
+            )
+        )
+    
+
+    total = category_query.count()
+    
+    
+    categories = (
+        category_query
+        .with_entities(
             AssetCategory.id,
             AssetCategory.name,
             AssetCategory.code,
@@ -24,21 +45,12 @@ def get_asset_categories(db: Session, org_id: str, skip: int = 0, limit: int = 1
             AssetCategory.created_at,
             AssetCategory.updated_at,
         )
-        .filter(AssetCategory.is_deleted == False,
-                AssetCategory.org_id == org_id )
+        .order_by(AssetCategory.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
     )
-
-    total = db.query(func.count()).select_from(category_query.subquery()).scalar()
-
-    if search:
-        search_term = f"%{search}%"
-        category_query  =  category_query .filter( or_(AssetCategory.code.ilike(search_term),AssetCategory.name.ilike(search_term)))
-
-    category_query = category_query.order_by(
-        AssetCategory.updated_at.desc()
-    ).offset(skip).limit(limit)
-
-    categories = category_query.all()
+    
     results = [
         AssetCategoryOut.model_validate(c._asdict())
         for c in categories

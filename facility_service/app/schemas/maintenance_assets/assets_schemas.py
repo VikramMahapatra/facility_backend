@@ -64,19 +64,19 @@ class AssetOut(BaseModel):
     id: UUID
     org_id: UUID
     site_id: UUID
-    space_id: Optional[UUID]
-    location: Optional[str]
-    category_id: Optional[UUID]
-    category_name: str
+    space_id: Optional[UUID] = None
+    location: Optional[str] = None
+    category_id: Optional[UUID] = None
+    category_name: Optional[str] = None
     tag: str
     name: str
-    serial_no: Optional[str]
-    model: Optional[str]
-    manufacturer: Optional[str]
-    purchase_date: Optional[date]
-    warranty_expiry: Optional[date]
-    cost: Optional[float]
-    attributes: Optional[Dict]
+    serial_no: Optional[str] = None
+    model: Optional[str] = None
+    manufacturer: Optional[str] = None
+    purchase_date: Optional[date] = None
+    warranty_expiry: Optional[date] = None
+    cost: Optional[float] = None
+    attributes: Optional[Dict] = None
     status: Optional[str] = "active"
 
     model_config = {"from_attributes": True}

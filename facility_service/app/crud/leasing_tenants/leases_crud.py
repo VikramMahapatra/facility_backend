@@ -223,18 +223,18 @@ def update(db: Session, payload: LeaseUpdate):
     if 'partner_id' in data or 'tenant_id' in data:
         # If space is not changing OR we're not changing space_id
         target_space_id = data.get('space_id', obj.space_id)
-        
+
         if target_space_id != obj.space_id:
             existing_active_tenant_in_new_space = db.query(Tenant).filter(
-                Tenant.space_id ==target_space_id,
+                Tenant.space_id == target_space_id,
                 Tenant.is_deleted == False,
                 Tenant.status == "active"
             ).first()
 
             if existing_active_tenant_in_new_space:
                 return error_response(
-                message="This space is already occupied by active tenant."
-            )
+                    message="This space is already occupied by active tenant."
+                )
             existing_active_partner_in_new_space = db.query(CommercialPartner).filter(
                 CommercialPartner.space_id == target_space_id,
                 CommercialPartner.is_deleted == False,
@@ -243,12 +243,12 @@ def update(db: Session, payload: LeaseUpdate):
 
             if existing_active_partner_in_new_space:
                 return error_response(
-                message=f"This space is already occupied by an active tenant."
-            )
+                    message=f"This space is already occupied by an active tenant."
+                )
 
     # ✅ STRICT VALIDATION: Check if space already has ANY lease (active OR inactive)
     target_space_id = data.get('space_id', obj.space_id)
-    
+
     existing_any_lease = db.query(Lease).filter(
         Lease.space_id == target_space_id,
         Lease.is_deleted == False,
@@ -267,8 +267,8 @@ def update(db: Session, payload: LeaseUpdate):
         existing_active_lease = db.query(Lease).filter(
             Lease.space_id == data['space_id'],
             Lease.is_deleted == False,
-            Lease.status == "active",  
-            Lease.id != payload.id  
+            Lease.status == "active",
+            Lease.id != payload.id
         ).first()
 
         if existing_active_lease:
@@ -316,6 +316,8 @@ def update(db: Session, payload: LeaseUpdate):
 # ✅ Delete lease (with safety checks)
 # ----------------------------------------------------
 # In lease_crud.py - FIX THE DELETE FUNCTION
+
+
 def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
     obj = get_by_id(db, lease_id)
     if not obj:
@@ -359,14 +361,6 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
 def lease_lookup(org_id: UUID, db: Session):
     leases = (
         db.query(Lease)
-        .options(
-            joinedload(Lease.tenant).load_only(Tenant.id, Tenant.name),
-            joinedload(Lease.partner).load_only(
-                CommercialPartner.id, CommercialPartner.legal_name
-            ),
-            joinedload(Lease.space).load_only(Space.id, Space.name),
-            joinedload(Lease.site).load_only(Site.id, Site.name),
-        )
         .filter(Lease.org_id == org_id, Lease.is_deleted == False)
         .distinct(Lease.id)
         .all()
@@ -470,7 +464,7 @@ def get_lease_by_id(db: Session, lease_id: str):
     space_code = None
     site_name = None
     space_name = None
-    
+
     if lease.space_id:
         space_name = (
             db.query(Space.name)

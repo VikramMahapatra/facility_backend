@@ -26,10 +26,11 @@ class LeasingOverviewResponse(BaseModel):
 
 
 class MaintenanceStatusResponse(BaseModel):
-    open_tickets: int
-    closed_tickets: int
+    open: int
+    closed: int
     upcoming_pm: int
     service_requests: int
+    asset_at_risk : int
 
     class Config:
         from_attributes = True

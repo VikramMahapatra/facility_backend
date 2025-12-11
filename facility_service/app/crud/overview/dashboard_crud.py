@@ -258,19 +258,30 @@ def get_maintenance_status(db: Session, org_id: UUID):
                 func.lower(Ticket.status) == 'closed')\
         .scalar() or 0
 
-    # Upcoming PM - Set to 0
-    upcoming_pm = 0
+    # Upcoming PM - 
+    upcoming_pm = db.query(func.count(PMTemplate.id))\
+        .filter(PMTemplate.org_id==org_id,
+                func.lower(PMTemplate.status) =="active")\
+        .scalar()or 0
 
     service_requests = db.query(func.count(Ticket.id))\
-        .filter(Ticket.org_id == org_id)\
+        .filter(Ticket.org_id == org_id,
+                func.lower(Ticket.status)==  'open')\
         .scalar() or 0
-
+  
+    asset_at_risk = db.query(func.count(Asset.id))\
+        .filter(Asset.org_id == org_id,
+                Asset.warranty_expiry >=today)\
+        .scalar() or 0
+ 
     return {
-        "open_tickets": open_tickets,
-        "closed_tickets": closed_tickets,
-        "upcoming_pm": upcoming_pm,
-        "service_requests": service_requests  
+        "open": open_tickets,                 
+        "closed": closed_tickets,             
+        "upcoming_pm": upcoming_pm,           
+        "service_requests": service_requests, 
+        "asset_at_risk": asset_at_risk   
     }
+    
 #-----------------access and parking -------------------
 def get_access_and_parking(db: Session, org_id: UUID):
     today = date.today()

@@ -279,7 +279,8 @@ def get_maintenance_status(db: Session, org_id: UUID):
                 else_=0 
             )
         )
-    ).filter(Asset.org_id == org_id).scalar() or 0
+    ).filter(Asset.org_id == org_id,
+            func.lower(Asset.status) == "active",).scalar() or 0
  
     return {
         "open": open_tickets,                 

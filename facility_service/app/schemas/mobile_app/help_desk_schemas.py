@@ -14,7 +14,8 @@ class ComplaintOut(EmptyStringModel):
     category: str
     status: str
     description: Optional[str] = None
-    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime("%H:%M"))                    # ✅ REQUIRED
+    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime(
+        "%H:%M"))                    # ✅ REQUIRED
     preferred_date: date = Field(default_factory=date.today)
     created_at: datetime
     can_escalate: Optional[bool] = False
@@ -31,7 +32,8 @@ class ComplaintCreate(EmptyStringModel):
     category_id: UUID
     request_type: str
     description: str
-    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime("%H:%M"))                    # REQUIRED
+    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime(
+        "%H:%M"))                    # REQUIRED
     preferred_date: date = Field(default_factory=date.today)
     priority: Optional[str] = None
 
@@ -42,7 +44,8 @@ class ComplaintCreate(EmptyStringModel):
         category_id: UUID = Form(...),
         request_type: str = Form(...),
         description: str = Form(...),
-        preferred_time: str = Form(default_factory=lambda: datetime.utcnow().strftime("%H:%M")),      # REQUIRED in form
+        preferred_time: str = Form(default_factory=lambda: datetime.utcnow().strftime(
+            "%H:%M")),      # REQUIRED in form
         preferred_date: date = Form(default_factory=date.today),
         priority: Optional[str] = Form(None)
 
@@ -99,7 +102,8 @@ class ComplaintDetailsResponse(EmptyStringModel):
     can_reopen: Optional[bool] = False
     comments: List[CommentOut] = []
     logs: List[TicketWorkFlowOut] = []
-    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime("%H:%M"))                # ✅ REQUIRED
+    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime(
+        "%H:%M"))                # ✅ REQUIRED
     preferred_date: date = Field(default_factory=date.today)
     assigned_to: Optional[UUID] = None
     assigned_to_name: Optional[str] = None

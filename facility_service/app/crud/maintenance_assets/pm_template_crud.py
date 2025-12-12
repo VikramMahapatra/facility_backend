@@ -4,7 +4,7 @@ from uuid import UUID
 from ...enum.maintenance_assets_enum import PmtemplateFrequency, PmtemplateStatus
 from shared.core.schemas import Lookup
 from sqlalchemy import func, literal, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session ,joinedload
 from typing import List, Dict
 from ...models.maintenance_assets.pm_template import PMTemplate
 from ...models.maintenance_assets.asset_category import AssetCategory
@@ -230,7 +230,18 @@ def update_pm_template(db: Session, template: PMTemplateUpdate) -> Optional[PMTe
         setattr(db_template, k, v)
     db.commit()
     db.refresh(db_template)
-    return db_template
+    db_template = (
+        db.query(PMTemplate)
+        .options(joinedload(PMTemplate.category))
+        .filter(PMTemplate.id == template.id)
+        .first()
+    )
+    response_data = {
+        **db_template.__dict__,
+        "asset_category": db_template.category.name if db_template.category else None
+    }
+    
+    return response_data
 
 
 # ----------------- Soft Delete PM Template -----------------

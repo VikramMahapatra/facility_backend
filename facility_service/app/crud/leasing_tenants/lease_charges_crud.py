@@ -9,17 +9,19 @@ from sqlalchemy import desc
 
 from shared.helpers.json_response_helper import error_response
 
+from ...models.leasing_tenants.lease_charge_code import LeaseChargeCode
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.tenants import Tenant
-from ...enum.leasing_tenants_enum import LeaseChargeCode
+
 from shared.core.schemas import Lookup
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.leasing_tenants.leases import Lease
 from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeOut, LeaseChargeUpdate, LeaseChargeRequest
 from uuid import UUID
 from decimal import Decimal
+
 
 def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
     filters = [
@@ -34,13 +36,13 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
 
     if params.month and params.month != "all":
         selected_month = int(params.month)
-        
+
         # ✅ BEST: Simple 3-case approach that handles all scenarios
         filters.append(
             or_(
                 # Case 1: Period starts in the selected month
                 extract('month', LeaseCharge.period_start) == selected_month,
-                # Case 2: Period ends in the selected month  
+                # Case 2: Period ends in the selected month
                 extract('month', LeaseCharge.period_end) == selected_month,
                 # Case 3: Period spans across the selected month
                 and_(
@@ -105,25 +107,14 @@ def get_lease_charges_overview(db: Session, org_id: UUID):
 
 def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
     filters = build_lease_charge_filters(org_id, params)
-    
-    # Add outer joins for search functionality
+
     base_query = (
-        db.query(
-            LeaseCharge,
-            Lease
-        )
+        db.query(LeaseCharge)
         .join(Lease, LeaseCharge.lease_id == Lease.id)
-        .outerjoin(CommercialPartner, Lease.partner_id == CommercialPartner.id)  # For partner name search
-        .outerjoin(Tenant, Lease.tenant_id == Tenant.id)  # For tenant name search
-        .outerjoin(Space, Lease.space_id == Space.id)  # For space name search
-        .outerjoin(Site, Lease.site_id == Site.id)  # For site name search
-        .options(
-            joinedload(Lease.tenant).load_only(Tenant.id, Tenant.name),
-            joinedload(Lease.partner).load_only(
-                CommercialPartner.id, CommercialPartner.legal_name),
-            joinedload(Lease.space).load_only(Space.id, Space.name),
-            joinedload(Lease.site).load_only(Site.id, Site.name),
-        )
+        .outerjoin(CommercialPartner, Lease.partner_id == CommercialPartner.id)
+        .outerjoin(Tenant, Lease.tenant_id == Tenant.id)
+        .outerjoin(Space, Lease.space_id == Space.id)
+        .outerjoin(Site, Lease.site_id == Site.id)
         .filter(*filters)
     )
 
@@ -138,25 +129,22 @@ def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
     )
 
     items = []
-    for lc, lease in results:
-        tax_pct = lc.tax_pct if lc.tax_pct is not None else Decimal("0")
-        tax_amount = (lc.amount * tax_pct) / Decimal("100")
-        period_days = None
+    for lc in results:
+        lease = lc.lease  # FIXED
 
+        tax_pct = lc.tax_pct or Decimal("0")
+        tax_amount = (lc.amount * tax_pct) / Decimal("100")
+
+        period_days = None
         if lc.period_start and lc.period_end:
             period_days = (lc.period_end - lc.period_start).days
 
-        display_name = None
-        if lease.partner is not None:
+        if lease.partner:
             display_name = lease.partner.legal_name
-        elif lease.tenant is not None:
+        elif lease.tenant:
             display_name = lease.tenant.name
         else:
-            display_name = "Unknown"  # fallback
-
-        # append space and site names if available
-        space_name = lease.space.name if lease.space else None
-        site_name = lease.site.name if lease.site else None
+            display_name = "Unknown"
 
         items.append(LeaseChargeOut.model_validate({
             **lc.__dict__,
@@ -168,11 +156,12 @@ def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
             "site_id": lease.site_id,
             "partner_id": lease.partner_id,
             "tenant_name": display_name,
-            "site_name": site_name,
-            "space_name": space_name
+            "site_name": lease.site.name if lease.site else None,
+            "space_name": lease.space.name if lease.space else None
         }))
 
     return {"items": items, "total": total}
+
 
 def get_lease_charge_by_id(db: Session, charge_id: UUID):
     return db.query(LeaseCharge).filter(
@@ -188,13 +177,13 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
             return error_response(
                 message="Tax percentage must be between 0 and 100"
             )
-    
+
     # ✅ Date validation - End date should not be before start date
     if payload.period_end < payload.period_start:
         return error_response(
             message="End date cannot be before start date"
         )
-    
+
     # ✅ SIMPLE VALIDATION: Same charge code cannot have overlapping periods
     existing_charge = db.query(LeaseCharge).join(Lease).filter(
         LeaseCharge.lease_id == payload.lease_id,
@@ -205,12 +194,12 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
         LeaseCharge.period_start <= payload.period_end,
         LeaseCharge.period_end >= payload.period_start
     ).first()
-    
+
     if existing_charge:
         return error_response(
             message=f"Charge code '{payload.charge_code}' already exists for this lease with overlapping period"
         )
-    
+
     obj = LeaseCharge(**payload.model_dump())
     db.add(obj)
     db.commit()
@@ -228,24 +217,24 @@ def update_lease_charge(
             return error_response(
                 message="Tax percentage must be between 0 and 100"
             )
-    
+
     obj = get_lease_charge_by_id(db, payload.id)
     if not obj:
         return None
-    
+
     # ✅ Date validation - End date should not be before start date
     period_start = payload.period_start if payload.period_start is not None else obj.period_start
     period_end = payload.period_end if payload.period_end is not None else obj.period_end
-    
+
     if period_end < period_start:
         return error_response(
             message="End date cannot be before start date"
         )
-    
+
     # ✅ SIMPLE VALIDATION: Same charge code cannot have overlapping periods
     charge_code = payload.charge_code if payload.charge_code is not None else obj.charge_code
     lease_id = payload.lease_id if payload.lease_id is not None else obj.lease_id
-    
+
     existing_charge = db.query(LeaseCharge).join(Lease).filter(
         LeaseCharge.id != payload.id,  # Exclude current record
         LeaseCharge.lease_id == lease_id,
@@ -256,22 +245,23 @@ def update_lease_charge(
         LeaseCharge.period_start <= period_end,
         LeaseCharge.period_end >= period_start
     ).first()
-    
+
     if existing_charge:
         return error_response(
             message=f"Charge code '{charge_code}' already exists for this lease with overlapping period"
         )
-    
+
     # Update the object with new values
     for k, v in payload.dict(exclude_unset=True).items():
         setattr(obj, k, v)
-    
+
     # Update the timestamp
     obj.updated_at = datetime.utcnow()
-    
+
     db.commit()
     db.refresh(obj)
     return obj
+
 
 def delete_lease_charge(db: Session, charge_id: UUID, org_id: UUID) -> Dict:
     """Soft delete lease charge - can be directly deleted as it's at the bottom of hierarchy"""
@@ -323,28 +313,15 @@ def lease_charge_month_lookup(
     # return query.all()
 
 
-def lease_charge_code_lookup(
-    db: Session,
-    org_id: UUID
-):
-    return [
-        Lookup(id=code.value, name=code.name.capitalize())
-        for code in LeaseChargeCode
-    ]
-
-    # If you want to use database-driven lookup with soft delete filters:
-    # query = (
-    #     db.query(
-    #         LeaseCharge.charge_code.label('id'),
-    #         LeaseCharge.charge_code.label('name')
-    #     )
-    #     .distinct()
-    #     .join(Lease, LeaseCharge.lease_id == Lease.id)
-    #     .filter(
-    #         Lease.org_id == org_id,
-    #         LeaseCharge.is_deleted == False,  # Add soft delete filter
-    #         Lease.is_deleted == False         # Add soft delete filter for leases
-    #     )
-    #     .order_by("id")
-    # )
-    # return query.all()
+def lease_charge_code_lookup(db: Session, org_id: UUID):
+    query = (
+        db.query(
+            LeaseChargeCode.code.label('id'),
+            LeaseChargeCode.code.label('name'))
+        .distinct()
+        .filter(
+            LeaseChargeCode.org_id == org_id,
+            LeaseChargeCode.is_deleted == False)
+        .order_by("id")
+    )
+    return query.all()

@@ -6,7 +6,7 @@ from uuid import UUID
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from ...schemas.overview.dasboard_schema import (
-    EnergyConsumptionTrendResponse, EnergyStatusResponse, MonthlyRevenueTrendResponse, OccupancyByFloorResponse, OverviewResponse, LeasingOverviewResponse, MaintenanceStatusResponse, AccessAndParkingResponse, FinancialSummaryResponse, SpaceOccupancyResponse)
+    EnergyConsumptionTrendResponse, EnergyStatusResponse, MonthlyRevenueTrendResponse, OccupancyByFloorResponse, OverviewResponse, LeasingOverviewResponse, MaintenanceStatusResponse, AccessAndParkingResponse, FinancialSummaryResponse, PriorityItem, SpaceOccupancyResponse)
 from shared.core.schemas import UserToken
 
 
@@ -76,9 +76,13 @@ def get_space_occupancy(
     return dashboard_crud.space_occupancy(db, current_user.org_id)
 
 
-@router.get("/work-orders-priority")
-def work_orders_priority():
-    return dashboard_crud.work_orders_priority()
+@router.get("/work-orders-priority", response_model=List[PriorityItem])
+def work_orders_priority(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return dashboard_crud.work_orders_priority(db, current_user.org_id)
+
 
 
 @router.get("/energy-consumption-trend", response_model=List[EnergyConsumptionTrendResponse])

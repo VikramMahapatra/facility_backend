@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional
+from typing import Dict, List, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -7,16 +7,57 @@ from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 from ...models.maintenance_assets.asset_category import AssetCategory
 from ...models.maintenance_assets.assets import Asset
-from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryCreate, AssetCategoryUpdate
+from ...schemas.maintenance_assets.asset_category_schemas import AssetCategoryCreate, AssetCategoryOut, AssetCategoryUpdate
 from uuid import UUID
 from sqlalchemy import func, or_, and_
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
+def get_asset_categories(db: Session, org_id: str, skip: int = 0, limit: int = 100, search: Optional[str] = None):
+    # Base query
+    category_query = db.query(AssetCategory).filter(
+        AssetCategory.is_deleted == False,
+        AssetCategory.org_id == org_id
+    )
+    
 
-def get_asset_categories(db: Session, skip: int = 0, limit: int = 100) -> List[AssetCategory]:
-    # Updated filter to exclude deleted categories
-    return db.query(AssetCategory).filter(AssetCategory.is_deleted == False).offset(skip).limit(limit).all()
+    if search:
+        search_term = f"%{search}%"
+        category_query = category_query.filter(
+            or_(
+                AssetCategory.code.ilike(search_term),
+                AssetCategory.name.ilike(search_term)
+            )
+        )
+    
+
+    total = category_query.count()
+    
+    
+    categories = (
+        category_query
+        .with_entities(
+            AssetCategory.id,
+            AssetCategory.name,
+            AssetCategory.code,
+            AssetCategory.parent_id,
+            AssetCategory.org_id,
+            AssetCategory.created_at,
+            AssetCategory.updated_at,
+        )
+        .order_by(AssetCategory.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    
+    results = [
+        AssetCategoryOut.model_validate(c._asdict())
+        for c in categories
+    ]
+    
+    return {"assetcategories": results, "total": total}
+
 
 
 def get_asset_category_by_id(db: Session, category_id: str) -> Optional[AssetCategory]:
@@ -24,10 +65,10 @@ def get_asset_category_by_id(db: Session, category_id: str) -> Optional[AssetCat
     return db.query(AssetCategory).filter(AssetCategory.id == category_id, AssetCategory.is_deleted == False).first()
 
 
-def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCategory:
+def create_asset_category(db: Session, category: AssetCategoryCreate ,org_id:UUID) -> AssetCategory:
     # Check for duplicate name (case-insensitive) within the same organization
     existing_category = db.query(AssetCategory).filter(
-        AssetCategory.org_id == category.org_id,
+        AssetCategory.org_id == org_id,
         AssetCategory.is_deleted == False,
         func.lower(AssetCategory.name) == func.lower(
             category.name)  # Case-insensitive
@@ -35,36 +76,33 @@ def create_asset_category(db: Session, category: AssetCategoryCreate) -> AssetCa
 
     if existing_category:
         return error_response(
-            message=f"Category with name '{category.name}' already exists in this organization",
-            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-            http_status=400
+            message=f"Category with name '{category.name}' already exists in this organization"
         )
 
-    # Check for duplicate code (case-insensitive) if provided
     if category.code:
         existing_code = db.query(AssetCategory).filter(
-            AssetCategory.org_id == category.org_id,
+            AssetCategory.org_id == org_id,
             AssetCategory.is_deleted == False,
             func.lower(AssetCategory.code) == func.lower(
                 category.code)  # Case-insensitive
         ).first()
 
-        if existing_code:
-            return error_response(
-                message=f"Category with code '{category.code}' already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
-            )
+    if existing_code:
+        return error_response(
+            message=f"Category with code '{category.code}' already exists in this organization"
+        )
 
     # Create the category
-    db_category = AssetCategory(id=str(uuid.uuid4()), **category.model_dump())
+    category_data = category.model_dump()
+    category_data["org_id"] = org_id 
+    db_category = AssetCategory(id=str(uuid.uuid4()), **category_data)
     db.add(db_category)
     db.commit()
     db.refresh(db_category)
     return db_category
 
 
-def update_asset_category(db: Session, category_id: str, category: AssetCategoryUpdate) -> Optional[AssetCategory]:
+def update_asset_category(db: Session, category_id: str, category: AssetCategoryUpdate) -> Optional['AssetCategory']:
     db_category = get_asset_category_by_id(db, category_id)
     if not db_category:
         return error_response(
@@ -75,46 +113,41 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
 
     # Extract update data
     update_data = category.model_dump(exclude_unset=True)
+    org_id = db_category.org_id
 
-    # Only validate if name or code are being updated
-    if any(field in update_data for field in ['name', 'code']):
-        # Build duplicate check query (exclude current category)
-        duplicate_filters = [
-            AssetCategory.org_id == db_category.org_id,
+    if 'name' in update_data:
+        new_name = update_data['name']
+        name_exists = db.query(AssetCategory).filter(
+            AssetCategory.org_id == org_id,
             AssetCategory.id != category_id,
-            AssetCategory.is_deleted == False
-        ]
+            AssetCategory.is_deleted == False,
+            AssetCategory.name.ilike(new_name) 
+        ).first()
 
-        duplicate_conditions = []
-        if 'name' in update_data:
-            duplicate_conditions.append(func.lower(
-                AssetCategory.name) == func.lower(update_data['name']))
-        if 'code' in update_data and update_data['code']:
-            duplicate_conditions.append(func.lower(
-                AssetCategory.code) == func.lower(update_data['code']))
+        if name_exists:
+            return error_response(
+                message=f"Category with name '{new_name}' already exists in this organization",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
 
-        if duplicate_conditions:
-            duplicate_filters.append(or_(*duplicate_conditions))
+    if 'code' in update_data and update_data['code']:
+        new_code = update_data['code']
+        code_exists = db.query(AssetCategory).filter(
+            AssetCategory.org_id == org_id,
+            AssetCategory.id != category_id,
+            AssetCategory.is_deleted == False,
+            AssetCategory.code.ilike(new_code)
+        ).first()
 
-            # Check for existing categories with same values
-            existing_category = db.query(AssetCategory).filter(
-                *duplicate_filters).first()
+        if code_exists:
+            return error_response(
+                message=f"Category with code '{new_code}' already exists",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
 
-            if existing_category:
-                if 'name' in update_data and func.lower(existing_category.name) == func.lower(update_data['name']):
-                    return error_response(
-                        message=f"Category with name '{update_data['name']}' already exists in this organization",
-                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                        http_status=400
-                    )
-                if 'code' in update_data and update_data['code'] and func.lower(existing_category.code) == func.lower(update_data['code']):
-                    return error_response(
-                        message=f"Category with code '{update_data['code']}' already exists",
-                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                        http_status=400
-                    )
 
-    # Update the category
     for field, value in update_data.items():
         setattr(db_category, field, value)
 
@@ -124,14 +157,8 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
         return db_category
     except IntegrityError as e:
         db.rollback()
-        if "asset_categories_code_key" in str(e):
-            return error_response(
-                message=f"Category with code '{update_data.get('code', db_category.code)}' already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
-            )
         return error_response(
-            message="Duplicate category found during update",
+            message="Duplicate category found during update due to a database constraint violation",
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )
@@ -170,3 +197,34 @@ def get_asset_category_lookup(db: Session, org_id: str):
         # Updated filter
         AssetCategory.org_id == org_id, AssetCategory.is_deleted == False).order_by(AssetCategory.name.asc()).all()
     return categories
+
+
+
+def asset_parent_category_lookup(db: Session, org_id: str, category_id: Optional[str] = None) -> List[Dict]:
+    query = (
+        db.query(
+            AssetCategory.id.label("id"),
+            AssetCategory.name.label("name")
+        )
+        .filter(
+            AssetCategory.org_id == org_id,
+            AssetCategory.is_deleted == False
+        )
+    )
+    if category_id:
+        query = query.filter(AssetCategory.id != category_id)
+        child_categories = db.query(AssetCategory.id).filter(
+            AssetCategory.parent_id == category_id,
+            AssetCategory.org_id == org_id,
+            AssetCategory.is_deleted == False
+        ).all()
+        
+        child_ids = [str(child[0]) for child in child_categories]
+        if child_ids:
+            query = query.filter(~AssetCategory.id.in_(child_ids))
+    
+    query = query.distinct().order_by(AssetCategory.name.asc())
+    
+    rows = query.all()
+    
+    return [{"id": str(r.id), "name": r.name} for r in rows]

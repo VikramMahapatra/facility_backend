@@ -1,6 +1,9 @@
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from uuid import UUID
+
+from shared.core.schemas import Lookup
 
 from ...crud.service_ticket import ticket_workload_crud as crud
 from ...schemas.service_ticket.ticket_workload_management_schemas import (
@@ -55,3 +58,12 @@ def get_available_technicians(
         site_id=site_id,
         org_id=current_user.org_id
     )
+    
+@router.get("/workload-assigned-to-lookup", response_model=List[Lookup])
+def workload_assigned_to_lookup_endpoint(
+    site_id: Optional[str] = Query(None, description="Filter by site ID. Returns empty if no site_id provided."),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),  
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.workload_assigned_to_lookup(db, auth_db, site_id)

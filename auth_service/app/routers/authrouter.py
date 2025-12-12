@@ -3,15 +3,15 @@ from requests import Session
 from shared.core import auth
 from shared.core.database import get_auth_db as get_db, get_facility_db
 from shared.core.schemas import UserToken
-from ..schemas import authchemas
+from ..schemas import authschema
 from ..services import authservices
 
 router = APIRouter(prefix="/api/auth", tags=["Facility Auth"])
 
 
-@router.post("/google", response_model=authchemas.AuthenticationResponse)
+@router.post("/google", response_model=authschema.AuthenticationResponse)
 def google_login(
-        req: authchemas.GoogleAuthRequest,
+        req: authschema.GoogleAuthRequest,
         request: Request,
         db: Session = Depends(get_db),
         facility_db: Session = Depends(get_facility_db)):
@@ -20,23 +20,23 @@ def google_login(
 
 @router.post("/mobile/send_otp")
 def send_otp(
-        request: authchemas.MobileRequest,
+        request: authschema.MobileRequest,
         background_tasks: BackgroundTasks,
         db: Session = Depends(get_db),
         facility_db: Session = Depends(get_facility_db)):
     return authservices.send_otp(background_tasks, db, facility_db, request)
 
 
-@router.post("/mobile/verify_otp", response_model=authchemas.AuthenticationResponse)
+@router.post("/mobile/verify_otp", response_model=authschema.AuthenticationResponse)
 def verify_otp(
-        request: authchemas.OTPVerify,
+        request: authschema.OTPVerify,
         api_request: Request,
         db: Session = Depends(get_db),
         facility_db: Session = Depends(get_facility_db)):
     return authservices.verify_otp(api_request, db, facility_db, request)
 
 
-@router.post("/refresh", response_model=authchemas.TokenSuccessResponse)
+@router.post("/refresh", response_model=authschema.TokenSuccessResponse)
 def refresh_token(
         refresh_token: str,
         db: Session = Depends(get_db)):

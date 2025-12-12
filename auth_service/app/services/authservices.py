@@ -17,12 +17,10 @@ from shared.core.database import get_auth_db as get_db
 from shared.core import auth
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.models.users import Users
-from ..schemas import authchemas
+from ..schemas import authschema
 from ..services import userservices
 
 twilio_client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-
-ALLOWED_ROLES = {"manager", "admin", "superadmin", "user"}
 
 security = HTTPBearer()
 
@@ -33,7 +31,7 @@ def google_login(
         request: Request,
         db: Session,
         facility_db: Session,
-        req: authchemas.GoogleAuthRequest):
+        req: authschema.GoogleAuthRequest):
     try:
         if not req.access_token:
             return error_response(
@@ -70,7 +68,7 @@ def google_login(
             Users.email == email and Users.is_deleted == False).first()
 
         if not user:
-            return authchemas.AuthenticationResponse(
+            return authschema.AuthenticationResponse(
                 needs_registration=True,
                 email=email,
                 name=id_info.get("name"),
@@ -93,7 +91,7 @@ def generate_otp(length=6):
     return str(random.randint(10**(length-1), (10**length)-1))
 
 
-def send_otp(background_tasks: BackgroundTasks, db: Session, facility_db: Session, request: authchemas.MobileRequest):
+def send_otp(background_tasks: BackgroundTasks, db: Session, facility_db: Session, request: authschema.MobileRequest):
     try:
         message = None
         print("MOBILE VALUE:", repr(request.mobile))
@@ -136,7 +134,7 @@ def verify_otp(
         api_request: Request,
         db: Session,
         facility_db: Session,
-        request: authchemas.OTPVerify):
+        request: authschema.OTPVerify):
     user = None
     if request.mobile and request.mobile.strip():
         try:
@@ -187,7 +185,7 @@ def verify_otp(
         )
 
     if not user:
-        return authchemas.AuthenticationResponse(
+        return authschema.AuthenticationResponse(
             needs_registration=True,
             mobile=request.mobile,
         )

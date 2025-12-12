@@ -39,12 +39,17 @@ def get_pm_templates_overview(db: Session, org_id: UUID, params: PMTemplateReque
     ).count()
 
     # Due this week with filters (exclude deleted)
-    due_this_week = db.query(PMTemplate).filter(
+    all_templates = db.query(PMTemplate).filter(
         *filters,
-        PMTemplate.next_due >= start_of_week,
-        PMTemplate.next_due <= end_of_week,
         PMTemplate.is_deleted == False
-    ).count()
+    ).all()
+    
+    # Count those with next_due_calculated in current week
+    due_this_week = 0
+    for template in all_templates:
+        next_due = template.next_due
+        if next_due and start_of_week <= next_due <= end_of_week:
+            due_this_week += 1
 
     # Completed count with filters (exclude deleted)
     completed_count = db.query(PMTemplate).filter(
@@ -195,7 +200,9 @@ def get_pm_templates(db: Session, org_id: UUID, params: PMTemplateRequest) -> PM
         )
         results.append(
             PMTemplateOut.model_validate(
-                {**t.__dict__, "asset_category": category_name}
+                {**t.__dict__,
+                 "next_due": t.next_due ,
+                "asset_category": category_name}
             )
         )
     return {"templates": results, "total": total}
@@ -211,16 +218,12 @@ def get_pm_template_by_id(db: Session, template_id: str) -> Optional[PMTemplate]
 
 # ----------------- Create -----------------
 def create_pm_template(db: Session, template: PMTemplateCreate):
-    start_date = template.start_date
     db_template = PMTemplate(
         **template.model_dump(
             exclude_unset=True, 
-            exclude={"asset_category", "next_due", "start_date"}
+            exclude={"asset_category", "next_due"}
         )
     )
-    if start_date:
-        db_template.set_temp_start_date(start_date)
-        db_template.save_calculated_next_due_to_db()
     db.add(db_template)
     db.commit()
     db.refresh(db_template)
@@ -245,6 +248,7 @@ def update_pm_template(db: Session, template: PMTemplateUpdate) -> Optional[PMTe
     )
     response_data = {
         **db_template.__dict__,
+        "next_due": db_template.next_due,
         "asset_category": db_template.category.name if db_template.category else None
     }
     

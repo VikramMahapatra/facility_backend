@@ -16,12 +16,12 @@ router = APIRouter(
 )
 
 
-@router.get("/getall", response_model=List[OrgOut])
+@router.get("/all", response_model=List[OrgOut])
 def read_orgs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud_orgs.get_orgs(db, skip=skip, limit=limit)
 
 
-@router.get("/", response_model=OrgOut)
+@router.get("/get_org", response_model=OrgOut)
 def read_org(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
     return crud_orgs.get_org_by_id(db, current_user.org_id)
 

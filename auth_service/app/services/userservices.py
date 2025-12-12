@@ -8,7 +8,7 @@ from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 
 from shared.models.user_login_session import LoginPlatform, UserLoginSession
-from ..schemas.authchemas import AuthenticationResponse
+from ..schemas.authschema import AuthenticationResponse
 from ..models.sites_safe import SiteSafe
 from ..models.commercial_partner_safe import CommercialPartnerSafe
 from ..models.tenants_safe import TenantSafe

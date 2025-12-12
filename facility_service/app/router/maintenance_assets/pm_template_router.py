@@ -42,7 +42,7 @@ def overview(
 # ---------------- Update template ----------------
 
 
-@router.put("/", response_model=None)
+@router.put("/", response_model=PMTemplateOut)
 def update_pm_template(
     template: PMTemplateUpdate,
     db: Session = Depends(get_db),

@@ -29,7 +29,7 @@ class PMTemplate(Base):
                         server_default=func.now(), onupdate=func.now())
 
     # New Columns
-    next_due = Column(Date, nullable=True)  # stores next PM due date
+    start_date = Column(Date, nullable=True)  # stores next PM due date
     # active/inactive/etc.
     status = Column(String(32), nullable=False, default='active')
 
@@ -42,34 +42,20 @@ class PMTemplate(Base):
     category = relationship("AssetCategory", back_populates="pm_templates")
 
 #THIS IS FOR DUE_DATE CALCULATION
-    _temp_start_date = None
-  
-    def set_temp_start_date(self, start_date_value: date):
-        self._temp_start_date = start_date_value
-    
     @property
-    def next_due_calculated(self):
-        if not self._temp_start_date or not self.frequency:
+    def next_due(self):
+        if not self.start_date or not self.frequency:
             return None
         
         frequency_lower = self.frequency.lower()
         
         if frequency_lower == 'weekly':
-            return self._temp_start_date + timedelta(days=7)
-            
+            return self.start_date + timedelta(days=7)
         elif frequency_lower == 'monthly':
-            return self._temp_start_date + relativedelta(months=1)
-            
+            return self.start_date + relativedelta(months=1)
         elif frequency_lower == 'quarterly':
-            return self._temp_start_date + relativedelta(months=3)
-            
+            return self.start_date + relativedelta(months=3)
         elif frequency_lower == 'annually':
-            return self._temp_start_date + relativedelta(years=1)
-            
+            return self.start_date + relativedelta(years=1)
         else:
             return None
-    
-    def save_calculated_next_due_to_db(self):
-        calculated = self.next_due_calculated
-        if calculated:
-            self.next_due = calculated

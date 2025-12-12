@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/space-groups",
                    tags=["space_groups"], dependencies=[Depends(validate_current_token)])
 
 
-@router.get("/", response_model=SpaceGroupResponse)
+@router.get("/all", response_model=SpaceGroupResponse)
 def get_space_groups(
         params: SpaceGroupRequest = Depends(),
         db: Session = Depends(get_db),

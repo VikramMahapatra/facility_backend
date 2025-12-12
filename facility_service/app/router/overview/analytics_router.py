@@ -27,7 +27,7 @@ def get_site_month_lookup(
     return analytics_crud.site_open_month_lookup(db, current_user.org_id)
 
 
-@router.get("/", summary="Get site/property name lookup")
+@router.get("/site-lookup", summary="Get site/property name lookup")
 def get_site_lookup(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)

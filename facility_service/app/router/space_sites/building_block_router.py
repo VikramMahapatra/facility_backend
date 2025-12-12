@@ -20,7 +20,7 @@ router = APIRouter(
 )
 
 
-@router.get("/", response_model=BuildingListResponse)
+@router.get("/all", response_model=BuildingListResponse)
 def get_all_buildings(
     params: BuildingRequest = Depends(),
     db: Session = Depends(get_db),

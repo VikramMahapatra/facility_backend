@@ -1,5 +1,7 @@
 # app/models/maintenance_assets/pm_template.py
 
+from datetime import date, timedelta 
+from dateutil.relativedelta import relativedelta
 import uuid
 from sqlalchemy import Boolean, Column, DateTime, String, ForeignKey, JSON, Numeric, Date, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -38,3 +40,36 @@ class PMTemplate(Base):
     # Relationships
     organization = relationship("Org", back_populates="pm_templates")
     category = relationship("AssetCategory", back_populates="pm_templates")
+
+#THIS IS FOR DUE_DATE CALCULATION
+    _temp_start_date = None
+  
+    def set_temp_start_date(self, start_date_value: date):
+        self._temp_start_date = start_date_value
+    
+    @property
+    def next_due_calculated(self):
+        if not self._temp_start_date or not self.frequency:
+            return None
+        
+        frequency_lower = self.frequency.lower()
+        
+        if frequency_lower == 'weekly':
+            return self._temp_start_date + timedelta(days=7)
+            
+        elif frequency_lower == 'monthly':
+            return self._temp_start_date + relativedelta(months=1)
+            
+        elif frequency_lower == 'quarterly':
+            return self._temp_start_date + relativedelta(months=3)
+            
+        elif frequency_lower == 'annually':
+            return self._temp_start_date + relativedelta(years=1)
+            
+        else:
+            return None
+    
+    def save_calculated_next_due_to_db(self):
+        calculated = self.next_due_calculated
+        if calculated:
+            self.next_due = calculated

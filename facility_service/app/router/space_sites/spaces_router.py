@@ -17,7 +17,7 @@ router = APIRouter(
 # -----------------------------------------------------------------
 
 
-@router.get("/", response_model=SpaceListResponse)
+@router.get("/all", response_model=SpaceListResponse)
 def get_spaces(
         params: SpaceRequest = Depends(),
         db: Session = Depends(get_db),

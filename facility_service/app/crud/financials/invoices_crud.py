@@ -1,13 +1,13 @@
 from uuid import UUID
-from typing import List, Optional
-from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, or_, case, literal, Numeric
+from sqlalchemy import func, cast, or_, case, Numeric
 
-from ...models.crm.contacts import Contact
-from ...models.leasing_tenants.commercial_partners import CommercialPartner
-from ...models.leasing_tenants.tenants import Tenant 
+from shared.core.schemas import Lookup
+
+from ...models.leasing_tenants.lease_charges import LeaseCharge
+from ...models.service_ticket.tickets_work_order import TicketWorkOrder
+from ...models.service_ticket.tickets import Ticket  
 from ...models.financials.invoices import Invoice, PaymentAR
 from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentOut
 
@@ -22,8 +22,8 @@ def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
         Invoice.is_deleted == False  # ✅ ADD THIS: Exclude soft-deleted invoices
     ]
      
-    if params.kind and params.kind.lower() != "all":
-        filters.append(Invoice.customer_kind == params.kind)
+    if params.module_type and params.module_type.lower() != "all":
+        filters.append(Invoice.module_type == params.module_type)
 
     if params.status and params.status.lower() != "all":
         filters.append(Invoice.status == params.status)
@@ -82,23 +82,34 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
     results = []
     for invoice in invoices:
-        customer_name = None
+        entity_name = None
         
-        # ✅ SAME LOGIC AS SERVICE REQUESTS - Get customer name from Tenant/CommercialPartner
-        if invoice.customer_kind and invoice.customer_id:
-            if invoice.customer_kind == "resident":
-                tenant = db.query(Tenant).filter(Tenant.id == invoice.customer_id).first()
-                customer_name = tenant.name if tenant else None
-            elif invoice.customer_kind == "merchant":
-                partner = db.query(CommercialPartner).filter(CommercialPartner.id == invoice.customer_id).first()
-                customer_name = partner.legal_name if partner else None
-        
+        # ✅ SIMPLE LOGIC: Get customer name from TicketWorkOrder or LeaseCharge
+        if invoice.module_type and invoice.entity_id:
+            if invoice.module_type == "work order":
+                ticket_work_order = db.query(TicketWorkOrder).filter(
+                    TicketWorkOrder.id == invoice.entity_id,
+                    TicketWorkOrder.is_deleted == False
+                ).first()
+                # Use work order number
+                if ticket_work_order:
+                    entity_name = ticket_work_order.wo_no
+                
+            elif invoice.module_type == "lease charge":
+                lease_charge = db.query(LeaseCharge).filter(
+                    LeaseCharge.id == invoice.entity_id,
+                    LeaseCharge.is_deleted == False
+                ).first()
+                # Use charge code
+                if lease_charge:
+                    entity_name = lease_charge.charge_code
+                          
         # ✅ FIX: Convert date objects to strings for Pydantic model
         results.append(InvoiceOut.model_validate({
             **invoice.__dict__,
             "date": invoice.date.isoformat() if invoice.date else None,
             "due_date": invoice.due_date.isoformat() if invoice.due_date else None, 
-            "customer_name": customer_name  # Populated from same logic as service requests
+            "entity_name": entity_name  # Populated from same logic as service requests
         }))
         
     return {"invoices": results, "total": total}
@@ -129,23 +140,34 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
     
     results = []
     for payment, invoice in payments:
-        customer_name = None
+        entity_name = None
         
-        # ✅ SAME LOGIC AS SERVICE REQUESTS - Get customer name from Tenant/CommercialPartner
-        if invoice.customer_kind and invoice.customer_id:
-            if invoice.customer_kind == "resident":
-                tenant = db.query(Tenant).filter(Tenant.id == invoice.customer_id).first()
-                customer_name = tenant.name if tenant else None
-            elif invoice.customer_kind == "merchant":
-                partner = db.query(CommercialPartner).filter(CommercialPartner.id == invoice.customer_id).first()
-                customer_name = partner.legal_name if partner else None
+         # ✅ SIMPLE LOGIC: Get customer name from TicketWorkOrder or LeaseCharge
+        if invoice.module_type and invoice.entity_id:
+            if invoice.module_type == "work order":
+                ticket_work_order = db.query(TicketWorkOrder).filter(
+                    TicketWorkOrder.id == invoice.entity_id,
+                    TicketWorkOrder.is_deleted == False
+                ).first()
+                # Use work order number
+                if ticket_work_order:
+                    entity_name = ticket_work_order.wo_no
+                
+            elif invoice.module_type == "lease charge":
+                lease_charge = db.query(LeaseCharge).filter(
+                    LeaseCharge.id == invoice.entity_id,
+                    LeaseCharge.is_deleted == False
+                ).first()
+                # Use charge code
+                if lease_charge:
+                    entity_name = lease_charge.charge_code
         
         # ✅ FIX: Convert date objects to strings for Pydantic model
         results.append(PaymentOut.model_validate({
             **payment.__dict__,
             "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
             "invoice_no": invoice.invoice_no,
-            "customer_name": customer_name  # Populated from same logic as service requests
+            "entity_name": entity_name  # Populated from same logic as service requests
         }))
         
     return {"payments": results, "total": total}
@@ -162,25 +184,38 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
     Creates an invoice using SAME LOGIC AS SERVICE REQUESTS
     """
     
-    if not request.customer_kind:
-        raise HTTPException(status_code=400, detail="customer_kind is required")
-    if not request.customer_id:
-        raise HTTPException(status_code=400, detail="customer_id is required")
+    if not request.module_type:
+        raise HTTPException(status_code=400, detail="module_type is required")
+    if not request.entity_id:
+        raise HTTPException(status_code=400, detail="entity_id is required")
     
-    # ✅ SAME LOGIC AS SERVICE REQUESTS - Fetch customer name from Tenant/CommercialPartner
-    if request.customer_kind == "resident":
-        tenant = db.query(Tenant).filter(Tenant.id == request.customer_id).first()
-        if not tenant:
-            raise HTTPException(status_code=404, detail="Tenant not found")
-        customer_name = tenant.name
-    elif request.customer_kind == "merchant":
-        partner = db.query(CommercialPartner).filter(CommercialPartner.id == request.customer_id).first()
-        if not partner:
-            raise HTTPException(status_code=404, detail="Commercial partner not found")
-        customer_name = partner.legal_name
+    # ✅ SIMPLE LOGIC: Validate entity exists and get customer name
+    entity_name = None
+    
+    if request.module_type == "work order":
+        ticket_work_order = db.query(TicketWorkOrder).filter(
+            TicketWorkOrder.id == request.entity_id,
+            TicketWorkOrder.is_deleted == False
+        ).first()
+        if not ticket_work_order:
+            raise HTTPException(status_code=404, detail="Work order not found")
+        # Use work order number
+        entity_name = ticket_work_order.wo_no
+        
+    elif request.module_type == "lease charge":
+        lease_charge = db.query(LeaseCharge).filter(
+            LeaseCharge.id == request.entity_id,
+            LeaseCharge.is_deleted == False
+        ).first()
+        if not lease_charge:
+            raise HTTPException(status_code=404, detail="Lease charge not found")
+        
+        # Use charge code
+        entity_name = lease_charge.charge_code
+        
     else:
-        raise HTTPException(status_code=400, detail="Invalid customer kind")
-
+        raise HTTPException(status_code=400, detail="Invalid module_type. Must be 'work_order' or 'lease_charge'")
+    
     # Create invoice
     invoice_data = request.model_dump(exclude={"org_id"})
     invoice_data.update({
@@ -197,7 +232,7 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         **db_invoice.__dict__,
         "date": db_invoice.date.isoformat() if db_invoice.date else None,
         "due_date": db_invoice.due_date.isoformat() if db_invoice.due_date else None,
-        "customer_name": customer_name
+        "entity_name": entity_name
     }
     invoice_out = InvoiceOut.model_validate(invoice_dict)
     return invoice_out
@@ -216,17 +251,25 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     db.commit()
     db.refresh(db_invoice)
 
-    # ✅ SAME LOGIC AS SERVICE REQUESTS - Fetch customer name from Tenant/CommercialPartner
-    customer_name = None
-    if db_invoice.customer_kind and db_invoice.customer_id:
-        if db_invoice.customer_kind == "resident":
-            tenant = db.query(Tenant).filter(Tenant.id == db_invoice.customer_id).first()
-            if tenant:
-                customer_name = tenant.name
-        elif db_invoice.customer_kind == "merchant":
-            partner = db.query(CommercialPartner).filter(CommercialPartner.id == db_invoice.customer_id).first()
-            if partner:
-                customer_name = partner.legal_name
+    # ✅ SIMPLE LOGIC: Fetch customer name from TicketWorkOrder or LeaseCharge
+    entity_name = None
+    if db_invoice.module_type and db_invoice.entity_id:
+        if db_invoice.module_type == "work order":
+            ticket_work_order = db.query(TicketWorkOrder).filter(
+                TicketWorkOrder.id == db_invoice.entity_id,
+                TicketWorkOrder.is_deleted == False
+            ).first()
+            if ticket_work_order:
+                entity_name = ticket_work_order.wo_no
+                
+        elif db_invoice.module_type == "lease charge":
+            lease_charge = db.query(LeaseCharge).filter(
+                LeaseCharge.id == db_invoice.entity_id,
+                LeaseCharge.is_deleted == False
+            ).first()
+            if lease_charge:
+                entity_name = lease_charge.charge_code
+
 
     # ✅ FIX: Convert date objects to strings for Pydantic model
     invoice_dict = {
@@ -234,8 +277,8 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
         "date": db_invoice.date.isoformat() if db_invoice.date else None,
         "due_date": db_invoice.due_date.isoformat() if db_invoice.due_date else None,
     }
-    if customer_name:
-        invoice_dict["customer_name"] = customer_name
+    if entity_name:
+        invoice_dict["entity_name"] = entity_name
     
     invoice_out = InvoiceOut.model_validate(invoice_dict)
     return invoice_out
@@ -260,3 +303,46 @@ def delete_invoice_soft(db: Session, invoice_id: str, org_id: UUID) -> bool:
     db_invoice.is_deleted = True
     db.commit()
     return True
+
+def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, module_type: str):
+    """
+    Get lookup list of entities for invoice creation
+    """
+    entities = []
+    
+    if module_type == "work order":
+        # Alternative: Filter through ticket's site_id directly
+        from ...models.service_ticket.tickets import Ticket  # Import if needed
+        
+        work_orders = db.query(TicketWorkOrder).filter(
+            TicketWorkOrder.is_deleted == False,
+            TicketWorkOrder.ticket_id.in_(
+                db.query(Ticket.id).filter(
+                    Ticket.site_id == site_id,
+                    func.lower(Ticket.status)== "open"
+                )
+            )
+        ).all()
+        
+        for wo in work_orders:
+            entities.append(Lookup(
+                id=str(wo.id),
+                name=wo.wo_no
+            ))
+            
+    elif module_type == "lease charge":
+        # Get LeaseCharges for the site AND org
+        lease_charges = db.query(LeaseCharge).filter(
+            LeaseCharge.is_deleted == False,
+            LeaseCharge.lease.has(site_id=site_id),
+            LeaseCharge.lease.has(org_id=org_id)
+        ).all()
+        
+        for lc in lease_charges:
+            if lc.charge_code:
+                entities.append(Lookup(
+                    id=str(lc.id),
+                    name=lc.charge_code
+                ))
+    
+    return entities

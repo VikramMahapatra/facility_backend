@@ -42,6 +42,16 @@ def get_payments(
         current_user: UserToken = Depends(validate_current_token)):
     return crud.get_payments(db, current_user.org_id, params)
 
+
+@router.get("/entity-lookup", response_model=List[Lookup]) 
+def get_invoice_lookup(
+    site_id: UUID = Query(...),
+    module_type: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_invoice_entities_lookup(db, current_user.org_id, site_id, module_type)
+
 # ✅ FIXED: Match CRUD parameters
 
 
@@ -81,3 +91,5 @@ def delete_invoice_soft(
     if not success:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return {"message": "Invoice deleted successfully"}
+
+

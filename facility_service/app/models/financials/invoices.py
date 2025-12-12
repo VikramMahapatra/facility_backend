@@ -19,9 +19,9 @@ class Invoice(Base):
                           ForeignKey("orgs.id"), nullable=False)
     site_id: UUID = Column(
         UUID(as_uuid=True), ForeignKey("sites.id"), nullable=False)
-    customer_kind: str = Column(
+    module_type: str = Column(
         String(16), nullable=False)  # resident|partner|guest
-    customer_id: UUID = Column(UUID(as_uuid=True), nullable=False)
+    entity_id: UUID = Column(UUID(as_uuid=True), nullable=False)
     invoice_no: str = Column(String(64), nullable=False)
     date: Date = Column(Date, nullable=False)
     due_date: Date = Column(Date)

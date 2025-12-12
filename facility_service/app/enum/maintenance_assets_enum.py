@@ -21,7 +21,7 @@ class PmtemplateFrequency(str, Enum):
     weekly = "weekly"
     monthly = "monthly"
     quaterly = "quaterly"
-    annualy = "annualy"
+    annually = "annually"
 
 
 class PmtemplateStatus(str, Enum):

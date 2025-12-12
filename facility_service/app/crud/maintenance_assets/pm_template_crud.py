@@ -210,10 +210,17 @@ def get_pm_template_by_id(db: Session, template_id: str) -> Optional[PMTemplate]
 
 
 # ----------------- Create -----------------
-def create_pm_template(db: Session, template: PMTemplateCreate) -> PMTemplate:
-    # This excludes any fields that weren't explicitly set in the request
+def create_pm_template(db: Session, template: PMTemplateCreate):
+    start_date = template.start_date
     db_template = PMTemplate(
-        **template.model_dump(exclude_unset=True, exclude="asset_category"))
+        **template.model_dump(
+            exclude_unset=True, 
+            exclude={"asset_category", "next_due", "start_date"}
+        )
+    )
+    if start_date:
+        db_template.set_temp_start_date(start_date)
+        db_template.save_calculated_next_due_to_db()
     db.add(db_template)
     db.commit()
     db.refresh(db_template)

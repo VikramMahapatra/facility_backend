@@ -34,6 +34,7 @@ class PMTemplateCreate(BaseModel):
     threshold: Optional[float] = None
     sla: Optional[Any] = None
     status: Optional[str] = "active"
+    start_date:Optional[date]=None
 
     model_config = {"from_attributes": True}
 

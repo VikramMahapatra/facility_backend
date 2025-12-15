@@ -10,15 +10,15 @@ from shared.core.schemas import CommonQueryParams
 class InvoiceBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
-    module_type: Optional[str] = None
-    entity_id: Optional[UUID] = None
-    invoice_no: str
+    billable_item_type: Optional[str] = None
+    billable_item_id: Optional[UUID] = None
     date: Optional[str]
     due_date: Optional[str]
     status: str
     currency: str
     totals: Optional[Any] = None
     meta: Optional[Any] = None
+    is_paid: Optional[bool] = None
 
     class Config:
         from_attributes = True
@@ -38,9 +38,9 @@ class InvoiceOut(InvoiceBase):
     id: UUID
     org_id: Optional[UUID] = None
     site_id: UUID
-    module_type:  Optional[str] = None
-    entity_id:  Optional[UUID] = None
-    entity_name: Optional[str] = None
+    billable_item_type:  Optional[str] = None
+    billable_item_id:  Optional[UUID] = None
+    billable_item_name: Optional[str] = None
     invoice_no: str
     date: Optional[str]
     due_date: Optional[str]
@@ -48,6 +48,7 @@ class InvoiceOut(InvoiceBase):
     currency: str
     totals: Optional[Any] = None
     meta: Optional[Any] = None
+    is_paid: Optional[bool] = None
 
     class Config:
         from_attributes = True
@@ -56,7 +57,7 @@ class InvoiceOut(InvoiceBase):
 
 class InvoicesRequest(CommonQueryParams):
     status: Optional[str] = None
-    module_type: Optional[str] = None
+    billable_item_type: Optional[str] = None
 
 
 class InvoicesResponse(BaseModel):
@@ -64,6 +65,7 @@ class InvoicesResponse(BaseModel):
     total: int
 
     model_config = {"from_attributes": True}
+
 
 
 class InvoicesOverview(BaseModel):
@@ -80,7 +82,7 @@ class PaymentOut(BaseModel):
     org_id: Optional[UUID] = None
     invoice_id: UUID
     invoice_no: str
-    entity_name: Optional[str] = None
+    billable_item_name: Optional[str] = None
     method: str
     ref_no: str
     amount: Decimal

@@ -27,6 +27,20 @@ def get_invoices(
     return crud.get_invoices(db, current_user.org_id, params)
 
 
+@router.get("/all-work-order-invoices", response_model=InvoicesResponse)
+def get_work_order(
+        params: InvoicesRequest = Depends(),
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_work_order_invoices(db, current_user.org_id, params)
+
+@router.get("/all-lease-charge-invoices", response_model=InvoicesResponse)
+def get_work_order(
+        params: InvoicesRequest = Depends(),
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_lease_charge_invoices(db, current_user.org_id, params)
+
 @router.get("/overview", response_model=InvoicesOverview)
 def get_invoices_overview(
         params: InvoicesRequest = Depends(),
@@ -46,11 +60,11 @@ def get_payments(
 @router.get("/entity-lookup", response_model=List[Lookup]) 
 def get_invoice_lookup(
     site_id: UUID = Query(...),
-    module_type: str = Query(...),
+    billable_item_type: str = Query(...),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_invoice_entities_lookup(db, current_user.org_id, site_id, module_type)
+    return crud.get_invoice_entities_lookup(db, current_user.org_id, site_id, billable_item_type)
 
 # ✅ FIXED: Match CRUD parameters
 

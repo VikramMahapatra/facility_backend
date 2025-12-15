@@ -5,10 +5,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from shared.core.database import Base
-
+from sqlalchemy import Sequence
+from sqlalchemy import event
 # -------------------
 # Invoices
 # -------------------
+invoice_seq = Sequence('invoice_number_seq', start=101, increment=1)
 
 
 class Invoice(Base):
@@ -19,10 +21,11 @@ class Invoice(Base):
                           ForeignKey("orgs.id"), nullable=False)
     site_id: UUID = Column(
         UUID(as_uuid=True), ForeignKey("sites.id"), nullable=False)
-    module_type: str = Column(
-        String(16), nullable=False)  # resident|partner|guest
-    entity_id: UUID = Column(UUID(as_uuid=True), nullable=False)
-    invoice_no: str = Column(String(64), nullable=False)
+    billable_item_type: str = Column(String(16), nullable=False) 
+    billable_item_id: UUID = Column(UUID(as_uuid=True), nullable=False)
+    is_paid = Column(Boolean, default=False, nullable=False)
+    
+    invoice_no: str = Column(String(64), nullable=False, unique=True)
     date: Date = Column(Date, nullable=False)
     due_date: Date = Column(Date)
     # draft|issued|paid|partial|void
@@ -89,3 +92,11 @@ class PaymentAR(Base):
 
     # Relationship
     invoice = relationship("Invoice", back_populates="payments")
+    
+    
+@event.listens_for(Invoice, "before_insert")
+def generate_invoice_no(mapper, connection, target):
+  
+    next_val = connection.execute(invoice_seq)
+    
+    target.invoice_no = f"INV{next_val}"

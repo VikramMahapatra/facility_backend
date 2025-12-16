@@ -51,7 +51,7 @@ class Invoice(Base):
         "InvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
     payments = relationship(
         "PaymentAR", back_populates="invoice", cascade="all, delete-orphan")
-
+    site = relationship("Site", backref="invoices")
 
 # -------------------
 # Invoice Lines

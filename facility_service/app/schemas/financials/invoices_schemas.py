@@ -49,6 +49,7 @@ class InvoiceOut(InvoiceBase):
     totals: Optional[Any] = None
     meta: Optional[Any] = None
     is_paid: Optional[bool] = None
+    site_name:  Optional[str] = None
 
     class Config:
         from_attributes = True

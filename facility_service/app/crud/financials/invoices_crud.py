@@ -230,7 +230,7 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         
         ticket = db.query(Ticket).filter(
             Ticket.id == ticket_work_order.ticket_id,
-            Ticket.is_deleted == False
+            Ticket.status == "open"
         ).first()
 
         if ticket and ticket.ticket_no:
@@ -342,7 +342,7 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     invoice_out = InvoiceOut.model_validate(invoice_dict)
     return invoice_out
 
-# ----------------- Soft Delete Invoice -----------------
+
 # ----------------- Soft Delete Invoice -----------------
 def delete_invoice_soft(db: Session, invoice_id: str, org_id: UUID) -> bool:
     db_invoice = db.query(Invoice).filter(
@@ -352,11 +352,18 @@ def delete_invoice_soft(db: Session, invoice_id: str, org_id: UUID) -> bool:
     ).first()
     
     if not db_invoice:
-        return False
+        return {
+            "success": False,
+            "message": "Invoice not found or already deleted"
+        }
     
     db_invoice.is_deleted = True
     db.commit()
-    return True
+    db.refresh(db_invoice)
+    return {
+        "success": True,
+        "message": "Invoice soft deleted successfully"
+    }
 
 def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, billable_item_type: str):
     entities = []

@@ -200,7 +200,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             message="This space is already occupied by active tenant."
         )
 
-    lease_data = payload.model_dump(exclude={"reference"})
+    lease_data = payload.model_dump(exclude={"reference","space_name"})
 
     obj = Lease(**lease_data)
     db.add(obj)

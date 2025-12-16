@@ -11,13 +11,13 @@ class PMTemplateBase(BaseModel):
     name: str
     asset_category: Optional[str] = None
     frequency: Optional[str] = None
-    next_due: Optional[date] = None
     checklist: Optional[Any] = None
     meter_metric: Optional[str] = None
     threshold: Optional[float] = None
     sla: Optional[Any] = None
     status: Optional[str] = "active"
     pm_no: Optional[str] = None
+    start_date: Optional[date] = None 
 
     model_config = {"from_attributes": True}
 
@@ -28,7 +28,6 @@ class PMTemplateCreate(BaseModel):
     name: str
     asset_category: Optional[str] = None
     frequency: Optional[str] = None
-    next_due: Optional[date] = None
     checklist: Optional[Any] = None
     meter_metric: Optional[str] = None
     threshold: Optional[float] = None
@@ -47,9 +46,11 @@ class PMTemplateUpdate(PMTemplateBase):
 class PMTemplateOut(PMTemplateBase):
     id: UUID
     pm_no: str
+    next_due: Optional[date] = None 
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
+    
+    model_config = {"from_attributes": True} 
 
 class PMTemplateRequest(CommonQueryParams):
     category_id: Optional[str] = None

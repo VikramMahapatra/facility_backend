@@ -49,6 +49,7 @@ class InvoiceOut(InvoiceBase):
     totals: Optional[Any] = None
     meta: Optional[Any] = None
     is_paid: Optional[bool] = None
+    site_name:  Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -98,3 +99,17 @@ class PaymentResponse(BaseModel):
     total: int
 
     model_config = {"from_attributes": True}
+    
+    
+class InvoiceTotalsRequest(BaseModel):
+    billable_item_type: str
+    billable_item_id: UUID
+
+class InvoiceTotalsResponse(BaseModel):
+    subtotal: Optional[Decimal] = None
+    tax: Optional[Decimal] = None
+    grand_total: Optional[Decimal] = None
+
+    
+    class Config:
+        from_attributes = True

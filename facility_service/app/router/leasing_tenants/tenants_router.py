@@ -3,7 +3,7 @@ from typing import Dict, List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from shared.core.database import get_facility_db as get_db
+from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.helpers.json_response_helper import success_response
 from shared.core.schemas import Lookup, UserToken
@@ -53,20 +53,23 @@ def tenants_overview(
 def create_tenant_endpoint(
     tenant: TenantCreate,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     # Assign org_id from current user if needed
     # tenant.org_id = current_user.org_id  # Uncomment if your Tenant model has org_id
-    return crud.create_tenant(db, tenant)
+    return crud.create_tenant(db,auth_db, tenant)
 
 
 # ----------------- Update Tenant -----------------
 @router.put("/", response_model=TenantOut)
 def update_tenant(
     update_data: TenantUpdate,  # Get full payload (includes id)
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db)
+
 ):
-    return crud.update_tenant(db, update_data.id, update_data)
+    return crud.update_tenant(db,auth_db, update_data.id, update_data)
 
 
 # ---------------- Delete Tenant ----------------
@@ -74,8 +77,9 @@ def update_tenant(
 def delete_tenant_route(
     tenant_id: UUID,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
-): return crud.delete_tenant(db, tenant_id)
+): return crud.delete_tenant(db,auth_db, tenant_id)
 
 # ----------------  Type Lookup ----------------
 

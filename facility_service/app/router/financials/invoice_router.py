@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from shared.helpers.json_response_helper import success_response
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentOut, PaymentResponse
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import Lookup, UserToken
@@ -104,3 +104,13 @@ def delete_invoice_soft(
     return crud.delete_invoice_soft(db, invoice_id, current_user.org_id)
 
 
+@router.get("/invoice-totals", response_model=InvoiceTotalsResponse)
+def get_invoice_totals(
+    params: InvoiceTotalsRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.calculate_invoice_totals(
+        db=db,
+        params=params
+    )

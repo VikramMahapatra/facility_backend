@@ -17,6 +17,7 @@ class Vendor(Base):
     categories = Column(JSONB)
     rating = Column(Numeric(3, 2))
     status = Column(String(16), default="active")
+    user_id = Column(UUID(as_uuid=True))
     # ✅ Add soft delete column
     is_deleted = Column(Boolean, default=False, nullable=False)
     # ✅ NEW TIMESTAMP COLUMNS

@@ -1,3 +1,5 @@
+from decimal import Decimal
+from typing import Any, Dict
 from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -10,7 +12,7 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket  
 from ...models.financials.invoices import Invoice, PaymentAR
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentOut
+from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentOut
 
 
 # ----------------------------------------------------------------------
@@ -521,3 +523,56 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
         invoices=results,
         total=total
     )
+    
+    
+
+
+def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[str, Any]:
+        item_type = params.billable_item_type.lower().strip()
+        billable_item_id = params.billable_item_id
+
+        if item_type == "work order":
+            # Get work order
+            work_order = db.query(TicketWorkOrder).filter(
+                TicketWorkOrder.id == billable_item_id,
+                TicketWorkOrder.is_deleted == False
+            ).first()
+            
+            if not work_order:
+                raise HTTPException(status_code=404, detail="Work order not found")
+            
+            # Calculate totals
+            labour = work_order.labour_cost or Decimal('0')
+            material = work_order.material_cost or Decimal('0')
+            other = work_order.other_expenses or Decimal('0')
+            
+            subtotal = labour + material + other
+            tax = Decimal('0.00')
+            grand_total = subtotal + tax
+            
+        elif item_type == "lease charge":
+            # Get lease charge
+            lease_charge = db.query(LeaseCharge).filter(
+                LeaseCharge.id == billable_item_id,
+                LeaseCharge.is_deleted == False
+            ).first()
+            
+            if not lease_charge:
+                raise HTTPException(status_code=404, detail="Lease charge not found")
+            
+            # Calculate totals
+            subtotal = lease_charge.amount
+            tax = (lease_charge.amount * (lease_charge.tax_pct or Decimal('0'))) / Decimal('100')
+            grand_total = subtotal + tax
+                
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid billable_item_type. Must be 'work order' or 'lease charge'"
+            )
+        
+        return InvoiceTotalsResponse(
+            subtotal=round(subtotal, 2),      
+            tax=round(tax, 2),          
+            grand_total=round(grand_total, 2)   
+        )

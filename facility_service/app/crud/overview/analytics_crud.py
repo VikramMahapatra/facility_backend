@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from facility_service.app.models.service_ticket.tickets import Ticket
+from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
+
 from ...models.hospitality.booking_rooms import BookingRoom
 from ...models.parking_access.access_events import AccessEvent
 
@@ -150,23 +153,29 @@ def get_advance_analytics(db: Session, org_id: UUID, params: AnalyticsRequest):
                       100) if total_spaces > 0 else 0
 
     # Maintenance Efficiency with filters - JOIN with Site table
-    total_completed_orders = db.query(func.count(WorkOrder.id))\
-        .select_from(WorkOrder)\
-        .join(Site, WorkOrder.site_id == Site.id)\
-        .filter(*filters, WorkOrder.status == 'completed',
-                WorkOrder.created_at.between(start_date, end_date)).scalar()
+    # Using Ticket dates instead of WorkOrder dates
+    total_completed_orders = db.query(func.count(TicketWorkOrder.id))\
+        .select_from(TicketWorkOrder)\
+        .join(Ticket, TicketWorkOrder.ticket_id == Ticket.id)\
+        .join(Site, Ticket.site_id == Site.id)\
+        .filter(*filters, 
+                TicketWorkOrder.status == 'pending',
+                Ticket.created_at.between(start_date, end_date),  # Ticket date!
+                TicketWorkOrder.is_deleted == False).scalar()
 
     if total_completed_orders == 0:
         maintenance_efficiency = 0
     else:
-        on_time_orders = db.query(func.count(WorkOrder.id))\
-            .select_from(WorkOrder)\
-            .join(Site, WorkOrder.site_id == Site.id)\
-            .filter(*filters, WorkOrder.status == 'completed',
-                    WorkOrder.created_at.between(start_date, end_date),
-                    WorkOrder.updated_at <= WorkOrder.created_at + timedelta(days=30)).scalar()
-        maintenance_efficiency = (
-            on_time_orders / total_completed_orders) * 100
+        on_time_orders = db.query(func.count(TicketWorkOrder.id))\
+            .select_from(TicketWorkOrder)\
+            .join(Ticket, TicketWorkOrder.ticket_id == Ticket.id)\
+            .join(Site, Ticket.site_id == Site.id)\
+            .filter(*filters, 
+                    TicketWorkOrder.status == 'pending',
+                    Ticket.created_at.between(start_date, end_date),  # Ticket date!
+                    TicketWorkOrder.is_deleted == False,
+                    TicketWorkOrder.updated_at <= Ticket.created_at + timedelta(days=30)).scalar()
+        maintenance_efficiency = (on_time_orders / total_completed_orders) * 100
     # Energy Cost with filters
     avg_consumption = db.query(func.coalesce(func.avg(MeterReading.delta * Meter.multiplier), 0))\
         .select_from(MeterReading).join(Meter).join(Site)\

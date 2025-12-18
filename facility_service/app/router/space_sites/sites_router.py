@@ -2,8 +2,9 @@ from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
-from shared.helpers.json_response_helper import success_response
+from shared.helpers.json_response_helper import error_response, success_response
 from shared.core.schemas import Lookup, UserToken
+from shared.utils.app_status_code import AppStatusCode
 from ...schemas.space_sites.sites_schemas import SiteListResponse, SiteOut, SiteCreate, SiteRequest, SiteUpdate
 from ...crud.space_sites import site_crud as crud
 
@@ -28,8 +29,14 @@ def site_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends
 def read_site(site_id: str, db: Session = Depends(get_db)):
     db_site = crud.get_site(db, site_id)
     if not db_site:
-        raise HTTPException(status_code=404, detail="Site not found")
+        return  error_response(
+            message="Site not found",
+            status_code="OPERATION_ERROR",
+            http_status=404
+             )
+        
     return db_site
+
 
 
 @router.post("/", response_model=None)
@@ -38,6 +45,12 @@ def create_site(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
+    if current_user.account_type.lower() != "organization":
+        return  error_response(
+            message="Access forbidden: Admins only",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=403
+             )
     site.org_id = current_user.org_id
     return crud.create_site(db, site)
 
@@ -48,6 +61,12 @@ def update_site(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
+    if current_user.account_type.lower() != "organization":
+        return  error_response(
+            message="Access forbidden: Admins only",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=403
+             )
     return crud.update_site(db, site)
 
 

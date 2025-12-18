@@ -2,7 +2,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
-from shared.helpers.json_response_helper import success_response
+from shared.helpers.json_response_helper import error_response, success_response
+from shared.utils.app_status_code import AppStatusCode
 from ...schemas.space_sites.spaces_schemas import SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate
 from ...crud.space_sites import spaces_crud as crud
 from shared.core.auth import validate_current_token  # for dependicies
@@ -22,6 +23,7 @@ def get_spaces(
         params: SpaceRequest = Depends(),
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
+    
     return crud.get_spaces(db, current_user.org_id, params)
 
 
@@ -39,6 +41,12 @@ def create_space(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
+    if current_user.account_type.lower() != "organization":
+        return  error_response(
+            message="Access forbidden: Admins only",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=403
+             )
     space.org_id = current_user.org_id
     return crud.create_space(db, space)
 
@@ -49,6 +57,12 @@ def update_space(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
+    if current_user.account_type.lower() != "organization":
+        return  error_response(
+            message="Access forbidden: Admins only",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=403
+             )
     return crud.update_space(db, space)
 
 

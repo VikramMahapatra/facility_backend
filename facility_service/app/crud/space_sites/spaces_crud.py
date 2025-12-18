@@ -7,8 +7,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
+from shared.core.schemas import UserToken
+from shared.helpers.property_helper import get_allowed_spaces
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
+from shared.utils.enums import UserAccountType
 
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.space_sites.buildings import Building
@@ -74,8 +77,21 @@ def get_spaces_overview(db: Session, org_id: UUID, params: SpaceRequest):
     }
 
 
-def get_spaces(db: Session, org_id: UUID, params: SpaceRequest) -> SpaceListResponse:
-    base_query = get_space_query(db, org_id, params)
+def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListResponse:
+    allowed_space_ids = None
+
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_spaces = get_allowed_spaces(db, user)
+        allowed_space_ids = [s["space_id"] for s in allowed_spaces]
+
+        if not allowed_space_ids:
+            return {"spaces": [], "total": 0}
+    base_query = get_space_query(db, user.org_id, params)
+    
+        # APPLY TENANT FILTER HERE
+    if allowed_space_ids is not None:
+        base_query = base_query.filter(Space.id.in_(allowed_space_ids))
+        
     query = (
         base_query
         .join(Building, Space.building_block_id == Building.id, isouter=True)

@@ -7,8 +7,11 @@ from datetime import datetime
 from uuid import UUID
 from fastapi import HTTPException
 
+from shared.core.schemas import UserToken
+from shared.helpers.property_helper import get_allowed_buildings
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
+from shared.utils.enums import UserAccountType
 from ...schemas.space_sites.building_schemas import BuildingCreate, BuildingOut, BuildingRequest, BuildingUpdate
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
@@ -16,7 +19,16 @@ from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.buildings import Building
 
 
-def get_buildings(db: Session, org_id: UUID, params: BuildingRequest):
+def get_buildings(db: Session, user:UserToken, params: BuildingRequest):
+    allowed_building_ids = None
+
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_buildings = get_allowed_buildings(db, user)
+        allowed_building_ids = [b["building_id"] for b in allowed_buildings]
+
+        if not allowed_building_ids:
+            return {"buildings": [], "total": 0}
+
     now = datetime.utcnow()
 
     # Subquery to calculate total_spaces and occupied per site
@@ -61,11 +73,18 @@ def get_buildings(db: Session, org_id: UUID, params: BuildingRequest):
         # Changed this
         .outerjoin(space_subq, Building.id == space_subq.c.building_id)
         .filter(
-            Site.org_id == org_id,
             Building.is_deleted == False,  # Add this filter
             Site.is_deleted == False      # Add this filter
         )
     )
+    if allowed_building_ids is not None:
+        building_query = building_query.filter(
+                Building.id.in_(allowed_building_ids)
+        )
+    else:
+        building_query = building_query.filter(
+                Site.org_id == user.org_id
+        )
 
     if params.site_id and params.site_id.lower() != "all":
         building_query = building_query.filter(

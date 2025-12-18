@@ -64,7 +64,7 @@ def get_allowed_sites(db: Session, user: UserToken):
             for s in sites
         ]
 
-    return {"sites": results}
+    return results
 
 
 def get_allowed_spaces(db: Session, user: UserToken):
@@ -130,7 +130,7 @@ def get_allowed_spaces(db: Session, user: UserToken):
             for s in spaces
         ]
 
-    return {"spaces": results}
+    return results
 
 
 def get_allowed_buildings(db: Session, user: UserToken):
@@ -187,4 +187,4 @@ def get_allowed_buildings(db: Session, user: UserToken):
             for b in buildings
         ]
 
-    return {"buildings": results}
+    return results

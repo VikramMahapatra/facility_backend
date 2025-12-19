@@ -34,7 +34,7 @@ def tenants_all(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_all_tenants(db, current_user.org_id, params)
+    return crud.get_all_tenants(db, current_user, params)
 
 # Overview
 

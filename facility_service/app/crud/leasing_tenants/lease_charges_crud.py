@@ -8,6 +8,8 @@ from sqlalchemy import String, and_, func, extract, or_, cast, Date
 from sqlalchemy import desc
 
 from shared.helpers.json_response_helper import error_response
+from shared.helpers.property_helper import get_allowed_spaces
+from shared.utils.enums import UserAccountType
 
 from ...models.leasing_tenants.lease_charge_code import LeaseChargeCode
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
@@ -15,7 +17,7 @@ from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.tenants import Tenant
 
-from shared.core.schemas import Lookup
+from shared.core.schemas import Lookup, UserToken
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.leasing_tenants.leases import Lease
 from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeOut, LeaseChargeUpdate, LeaseChargeRequest
@@ -105,8 +107,8 @@ def get_lease_charges_overview(db: Session, org_id: UUID):
     }
 
 
-def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
-    filters = build_lease_charge_filters(org_id, params)
+def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
+    filters = build_lease_charge_filters(user.org_id, params)
 
     base_query = (
         db.query(LeaseCharge)
@@ -116,7 +118,16 @@ def get_lease_charges(db: Session, org_id: UUID, params: LeaseChargeRequest):
         .outerjoin(Space, Lease.space_id == Space.id)
         .outerjoin(Site, Lease.site_id == Site.id)
         .filter(*filters)
+        
     )
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_spaces = get_allowed_spaces(db, user)
+        allowed_space_ids = [s["space_id"] for s in allowed_spaces]
+
+        if allowed_space_ids:
+            base_query = base_query.filter(Lease.space_id.in_(allowed_space_ids))
+        else:
+            return {"items": [], "total": 0}
 
     total = base_query.with_entities(func.count(LeaseCharge.id)).scalar()
 

@@ -7,10 +7,12 @@ from sqlalchemy import and_, desc, func, literal, or_, select
 from uuid import UUID
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
+from shared.helpers.property_helper import get_allowed_spaces
 from shared.models.users import Users
 
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
+from shared.utils.enums import UserAccountType
 
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.space_sites.spaces import Space
@@ -18,7 +20,7 @@ from ...models.space_sites.buildings import Building
 
 from ...schemas.leases_schemas import LeaseOut
 from ...enum.leasing_tenants_enum import TenantStatus, TenantType
-from shared.core.schemas import Lookup
+from shared.core.schemas import Lookup, UserToken
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
 from ...models.leasing_tenants.leases import Lease
@@ -92,12 +94,21 @@ def get_tenants_overview(db: Session, org_id) -> dict:
     }
 
 
-def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListResponse:
+def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> TenantListResponse:
+    allowed_space_ids = None
+
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_spaces = get_allowed_spaces(db, user)
+        allowed_space_ids = [s["space_id"] for s in allowed_spaces]
+
+        if not allowed_space_ids:
+            return {"tenants": [], "total": 0}
+
     # ------------------ Residential Query ------------------
     tenant_query = (
         db.query(
             Tenant.id.label("id"),
-            literal(str(org_id)).label("org_id"),
+            literal(str(user.org_id)).label("org_id"),
             Tenant.site_id.label("site_id"),
             Tenant.name.label("name"),
             Tenant.email.label("email"),
@@ -122,10 +133,14 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
         # ✅ ADD THIS JOIN
         .outerjoin(Building, Building.id == Space.building_block_id)
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             Tenant.is_deleted == False,
             Site.is_deleted == False
         )
+    )
+    if allowed_space_ids is not None:
+        tenant_query = tenant_query.filter(
+        Tenant.space_id.in_(allowed_space_ids)
     )
 
     if params.status and params.status.lower() != "all":
@@ -147,7 +162,7 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
     partner_query = (
         db.query(
             CommercialPartner.id.label("id"),
-            literal(str(org_id)).label("org_id"),
+            literal(str(user.org_id)).label("org_id"),
             CommercialPartner.site_id.label("site_id"),
             CommercialPartner.legal_name.label("name"),
             (CommercialPartner.contact["email"].astext).label("email"),
@@ -173,10 +188,14 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
         .outerjoin(Building, Building.id == Space.building_block_id)
 
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             CommercialPartner.is_deleted == False,
             Site.is_deleted == False
         )
+    )
+    if allowed_space_ids is not None:
+        partner_query = partner_query.filter(
+        CommercialPartner.space_id.in_(allowed_space_ids)
     )
 
     if params.status and params.status.lower() != "all":
@@ -236,7 +255,7 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
             record["contact_info"] = contact
 
         record["tenant_leases"] = get_tenant_leases(
-            db, org_id, record.get("id"), record.get("tenant_type"))
+            db, user.org_id, record.get("id"), record.get("tenant_type"))
         results.append(TenantOut.model_validate(record))
 
     return {"tenants": results, "total": total}

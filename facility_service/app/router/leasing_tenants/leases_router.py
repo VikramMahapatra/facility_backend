@@ -23,7 +23,7 @@ def get_leases(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_list(db, current_user.org_id, params)
+    return crud.get_list(db, current_user, params)
 
 
 @router.get("/overview", response_model=LeaseOverview)

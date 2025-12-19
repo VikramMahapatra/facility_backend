@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_auth_db, get_facility_db as get_db
-from shared.core.auth import validate_current_token
+from shared.core.auth import allow_admin, validate_current_token
 from shared.helpers.json_response_helper import success_response
 from shared.core.schemas import Lookup, UserToken
 
@@ -54,7 +54,9 @@ def create_tenant_endpoint(
     tenant: TenantCreate,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+     _ : UserToken = Depends(allow_admin)
+
 ):
     # Assign org_id from current user if needed
     # tenant.org_id = current_user.org_id  # Uncomment if your Tenant model has org_id
@@ -66,8 +68,9 @@ def create_tenant_endpoint(
 def update_tenant(
     update_data: TenantUpdate,  # Get full payload (includes id)
     db: Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db)
-
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
 ):
     return crud.update_tenant(db,auth_db, update_data.id, update_data)
 

@@ -2,10 +2,11 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
-from shared.helpers.json_response_helper import success_response
+from shared.helpers.json_response_helper import error_response, success_response
+from shared.utils.app_status_code import AppStatusCode
 from ...schemas.space_sites.spaces_schemas import SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate
 from ...crud.space_sites import spaces_crud as crud
-from shared.core.auth import validate_current_token  # for dependicies
+from shared.core.auth import allow_admin,  validate_current_token  # for dependicies
 from shared.core.schemas import Lookup, UserToken
 from uuid import UUID
 router = APIRouter(
@@ -37,18 +38,21 @@ def get_space_overview(
 def create_space(
     space: SpaceCreate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
 ):
     space.org_id = current_user.org_id
-    return crud.create_space(db, space)
+    return crud.create_space(db, space, current_user)
 
 
 @router.put("/", response_model=None)
 def update_space(
     space: SpaceUpdate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+     _ : UserToken = Depends(allow_admin)
 ):
+    
     return crud.update_space(db, space)
 
 

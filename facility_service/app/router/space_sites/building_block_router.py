@@ -3,13 +3,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 # Use relative imports
 from shared.core.database import get_facility_db as get_db
-from shared.core.auth import validate_current_token
-from shared.helpers.json_response_helper import success_response
+from shared.core.auth import allow_admin, validate_current_token
+from shared.helpers.json_response_helper import error_response, success_response
 from shared.core.schemas import Lookup, UserToken  # dependancies
 # for get all list of sites
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List, Optional
+
+from shared.utils.app_status_code import AppStatusCode
 from ...crud.space_sites import building_block_crud as crud
 from ...schemas.space_sites.building_schemas import BuildingCreate, BuildingListResponse, BuildingOut, BuildingRequest, BuildingUpdate
 from uuid import UUID
@@ -38,8 +40,10 @@ def building_lookup(site_id: Optional[str] = Query(None), db: Session = Depends(
 def create_building(
     building: BuildingCreate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
 ):
+    
     building.org_id = current_user.org_id
     return crud.create_building(db, building)
 
@@ -48,8 +52,11 @@ def create_building(
 def update_building(
     building: BuildingUpdate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
+    
 ):
+   
     return crud.update_building(db, building)
 
 

@@ -22,7 +22,7 @@ def read_sites(params: SiteRequest = Depends(), db: Session = Depends(get_db),
 
 @router.get("/lookup", response_model=List[Lookup])
 def site_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_site_lookup(db, current_user.org_id)
+    return crud.get_site_lookup(db, current_user)
 
 
 @router.get("/{site_id}", response_model=SiteOut)

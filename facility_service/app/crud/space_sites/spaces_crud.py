@@ -287,7 +287,15 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
     return db_space
 
 
-def get_space_lookup(db: Session, site_id: str, building_id: str, org_id: str):
+def get_space_lookup(db: Session, site_id: str, building_id: str, user: UserToken):
+    allowed_space_ids = None
+
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_spaces = get_allowed_spaces(db, user)
+        allowed_space_ids = [s["space_id"] for s in allowed_spaces]
+
+        if not allowed_space_ids:
+            return {"spaces": [], "total": 0}
     space_query = (
         db.query(
             Space.id,
@@ -299,8 +307,10 @@ def get_space_lookup(db: Session, site_id: str, building_id: str, org_id: str):
         .order_by(Space.name.asc())
     )
 
-    if org_id:
-        space_query = space_query.filter(Space.org_id == org_id)
+    if allowed_space_ids is not None:
+        space_query = space_query.filter(Space.id.in_(allowed_space_ids))
+    else:
+        space_query = space_query.filter(Space.org_id == user.org_id)
 
     if site_id and site_id.lower() != "all":
         space_query = space_query.filter(Space.site_id == site_id)

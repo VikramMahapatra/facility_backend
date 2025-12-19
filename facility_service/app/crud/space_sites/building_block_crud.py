@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import HTTPException
 
 from shared.core.schemas import UserToken
-from shared.helpers.property_helper import get_allowed_buildings
+from shared.helpers.property_helper import get_allowed_buildings, get_allowed_sites
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 from shared.utils.enums import UserAccountType
@@ -202,7 +202,16 @@ def update_building(db: Session, building: BuildingUpdate):
         )
 
 
-def get_building_lookup(db: Session, site_id: str, org_id: str):
+def get_building_lookup(db: Session, site_id: str, user: UserToken):
+    allowed_building_ids = None
+
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_buildings = get_allowed_buildings(db, user)
+        allowed_building_ids = [b["building_id"] for b in allowed_buildings]
+
+        if not allowed_building_ids:
+            return {"buildings": [], "total": 0}
+        
     building_query = (
         db.query(Building.id, Building.name)
         .join(Site, Site.id == Building.site_id)
@@ -212,8 +221,14 @@ def get_building_lookup(db: Session, site_id: str, org_id: str):
         ).order_by(Building.name.asc())
     )
 
-    if org_id:
-        building_query = building_query.filter(Site.org_id == org_id)
+    if allowed_building_ids is not None:
+        building_query = building_query.filter(
+                Building.id.in_(allowed_building_ids)
+        )
+    else:
+        building_query = building_query.filter(
+                Site.org_id == user.org_id
+        )
 
     if site_id and site_id.lower() != "all":
         building_query = building_query.filter(Site.id == site_id)

@@ -8,7 +8,7 @@ from shared.utils.app_status_code import AppStatusCode
 from ...schemas.space_sites.sites_schemas import SiteListResponse, SiteOut, SiteCreate, SiteRequest, SiteUpdate
 from ...crud.space_sites import site_crud as crud
 
-from shared.core.auth import validate_current_token
+from shared.core.auth import allow_admin, validate_current_token
 
 router = APIRouter(prefix="/api/sites",
                    tags=["sites"], dependencies=[Depends(validate_current_token)])
@@ -43,30 +43,22 @@ def read_site(site_id: str, db: Session = Depends(get_db)):
 def create_site(
     site: SiteCreate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
 ):
-    if current_user.account_type.lower() != "organization":
-        return  error_response(
-            message="Access forbidden: Admins only",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=403
-             )
+    
     site.org_id = current_user.org_id
-    return crud.create_site(db, site)
+    return crud.create_site(db,current_user, site)
 
 
 @router.put("/", response_model=None)
 def update_site(
     site: SiteUpdate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
 ):
-    if current_user.account_type.lower() != "organization":
-        return  error_response(
-            message="Access forbidden: Admins only",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=403
-             )
+    
     return crud.update_site(db, site)
 
 

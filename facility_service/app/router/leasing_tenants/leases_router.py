@@ -5,7 +5,7 @@ from ...schemas.leases_schemas import (
     LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse,
 )
 from ...crud.leasing_tenants import leases_crud as crud
-from shared.core.auth import validate_current_token
+from shared.core.auth import allow_admin, validate_current_token
 from shared.core.schemas import Lookup, UserToken
 from typing import List, Optional
 from uuid import UUID
@@ -39,28 +39,23 @@ def get_lease_overview(
 def create_lease(
     payload: LeaseCreate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
+    
 ):
     payload.org_id = current_user.org_id
-    try:
-        return crud.create(db, payload)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return crud.create(db, payload)
+    
 
 
 @router.put("/", response_model=None)
 def update_lease(
     payload: LeaseUpdate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
 ):
-    try:
-        obj = crud.update(db, payload)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    if not obj:
-        raise HTTPException(status_code=404, detail="Lease not found")
-    return obj
+    return crud.update(db, payload)
 
 
 @router.delete("/{lease_id}", response_model=None)
@@ -68,7 +63,8 @@ def delete_lease(
     lease_id: str,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-): return crud.delete(db, lease_id, current_user.org_id)
+): 
+    return crud.delete(db, lease_id, current_user.org_id)
 
 
 @router.get("/lease-lookup", response_model=List[Lookup])

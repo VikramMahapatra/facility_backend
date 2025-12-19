@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 # Use relative imports
 from shared.core.database import get_facility_db as get_db
-from shared.core.auth import validate_current_token
+from shared.core.auth import allow_admin, validate_current_token
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.core.schemas import Lookup, UserToken  # dependancies
 # for get all list of sites
@@ -40,14 +40,10 @@ def building_lookup(site_id: Optional[str] = Query(None), db: Session = Depends(
 def create_building(
     building: BuildingCreate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
 ):
-    if current_user.account_type.lower() != "organization":
-        return  error_response(
-            message="Access forbidden: Admins only",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=403
-             )
+    
     building.org_id = current_user.org_id
     return crud.create_building(db, building)
 
@@ -56,14 +52,11 @@ def create_building(
 def update_building(
     building: BuildingUpdate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
+    
 ):
-    if current_user.account_type.lower() != "organization":
-       return  error_response(
-            message="Access forbidden: Admins only",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=403
-             )
+   
     return crud.update_building(db, building)
 
 

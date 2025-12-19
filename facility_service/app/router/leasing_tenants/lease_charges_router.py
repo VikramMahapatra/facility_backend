@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeListResponse, LeaseChargeRequest, LeaseChargeUpdate, LeaseChargesOverview
 from ...crud.leasing_tenants import lease_charges_crud as crud
 from shared.core.database import get_facility_db as get_db
-from shared.core.auth import validate_current_token  # for dependicies
+from shared.core.auth import allow_admin, validate_current_token  # for dependicies
 from shared.core.schemas import Lookup, UserToken
 from uuid import UUID
 
@@ -36,12 +36,20 @@ def get_lease_charges_overview(
 def create_lease_charge(
         data: LeaseChargeCreate,
         db: Session = Depends(get_db),
-        current_user: UserToken = Depends(validate_current_token)):
+        current_user: UserToken = Depends(validate_current_token),
+        _ : UserToken = Depends(allow_admin)
+):        
     return crud.create_lease_charge(db, data)
 
 
 @router.put("/", response_model=None)
-def update_lease_charge(data: LeaseChargeUpdate, db: Session = Depends(get_db)):
+def update_lease_charge(
+    data: LeaseChargeUpdate, 
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
+                        
+):                        
     return crud.update_lease_charge(db, data)
 
 

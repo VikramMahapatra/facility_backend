@@ -33,7 +33,7 @@ def get_all_buildings(
 
 @router.get("/lookup", response_model=List[Lookup])
 def building_lookup(site_id: Optional[str] = Query(None), db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_building_lookup(db, site_id, current_user.org_id)
+    return crud.get_building_lookup(db, site_id, current_user)
 
 
 @router.post("/", response_model=None)

@@ -149,11 +149,24 @@ def get_sites(db: Session,  user: UserToken, params: SiteRequest):
     return {"sites": final, "total": total}
 
 
-def get_site_lookup(db: Session, org_id: str, params: Optional[SiteRequest] = None):
+def get_site_lookup(db: Session, user: UserToken, params: Optional[SiteRequest] = None):
+    allowed_site_ids = None
+
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_sites = get_allowed_sites(db, user)
+        allowed_site_ids = [s["site_id"] for s in allowed_sites]
+
+        # Tenant has no access
+        if not allowed_site_ids:
+            return {"sites": [], "total": 0}
+        
     site_query = db.query(Site.id, Site.name).filter(Site.is_deleted == False)
 
-    if org_id:
-        site_query = site_query.filter(Site.org_id == org_id)
+    
+    if allowed_site_ids is not None:
+        site_query = site_query.filter(Site.id.in_(allowed_site_ids))
+    else:
+        site_query = site_query.filter(Site.org_id == user.org_id)
 
     if params and params.search:
         search_term = f"%{params.search}%"

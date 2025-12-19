@@ -66,7 +66,7 @@ def space_lookup(site_id: Optional[str] = Query(None),
                  building_id: Optional[str] = Query(None),
                  db: Session = Depends(get_db),
                  current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_space_lookup(db, site_id, building_id, current_user.org_id)
+    return crud.get_space_lookup(db, site_id, building_id, current_user)
 
 
 @router.get("/space-building-lookup", response_model=List[Lookup])

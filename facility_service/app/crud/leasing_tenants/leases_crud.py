@@ -56,14 +56,31 @@ def build_filters(org_id: UUID, params: LeaseRequest):
 # ----------------------------------------------------
 # ✅ Overview statistics
 # ----------------------------------------------------
-def get_overview(db: Session, org_id: UUID, params: LeaseRequest):
+def get_overview(db: Session, user: UserToken, params: LeaseRequest):
+    allowed_space_ids = None
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_spaces = get_allowed_spaces(db, user)
+        allowed_space_ids = [s["space_id"] for s in allowed_spaces]
+
+        if not allowed_space_ids:
+            return {
+                "activeLeases": 0,
+                "monthlyRentValue": 0.0,
+                "expiringSoon": 0,
+                "avgLeaseTermMonths": 0.0,
+            }
+            
     base = (
         db.query(Lease)
         .join(Site, Site.id == Lease.site_id)
         .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
         .outerjoin(CommercialPartner, CommercialPartner.id == Lease.partner_id)
-        .filter(*build_filters(org_id, params))
+        .filter(*build_filters(user.org_id, params))
     )
+    if allowed_space_ids is not None:
+        base = base.filter(
+            Lease.space_id.in_(allowed_space_ids)
+        )
 
     active = base.filter(Lease.status == "active").count()
 

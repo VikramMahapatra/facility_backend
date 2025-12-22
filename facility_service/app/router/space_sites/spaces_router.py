@@ -23,7 +23,7 @@ def get_spaces(
         params: SpaceRequest = Depends(),
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_spaces(db, current_user, params)
+    return crud.get_spaces(db=db, user=current_user, params=params)
 
 
 @router.get("/overview", response_model=SpaceOverview)
@@ -31,7 +31,7 @@ def get_space_overview(
         params: SpaceRequest = Depends(),
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_spaces_overview(db, current_user.org_id, params)
+    return crud.get_spaces_overview(db=db, user=current_user, params=params)
 
 
 @router.post("/", response_model=None)
@@ -66,7 +66,7 @@ def space_lookup(site_id: Optional[str] = Query(None),
                  building_id: Optional[str] = Query(None),
                  db: Session = Depends(get_db),
                  current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_space_lookup(db, site_id, building_id, current_user)
+    return crud.get_space_lookup(db=db, site_id=site_id, building_id=building_id, user=current_user)
 
 
 @router.get("/space-building-lookup", response_model=List[Lookup])

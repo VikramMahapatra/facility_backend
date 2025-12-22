@@ -52,9 +52,21 @@ def get_space_query(db: Session, org_id: UUID, params: SpaceRequest):
     return db.query(Space).filter(*filters)
 
 
-def get_spaces_overview(db: Session, org_id: UUID, params: SpaceRequest):
-    filters = build_space_filters(org_id, params)
+def get_spaces_overview(db: Session, user: UserToken, params: SpaceRequest):
+    filters = build_space_filters(user.org_id, params)
 
+    allowed_space_ids = None
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_spaces = get_allowed_spaces(db, user)
+        allowed_space_ids = [s["space_id"] for s in allowed_spaces]
+
+        if not allowed_space_ids:
+            return {
+                "totalSpaces": 0,
+                "availableSpaces": 0,
+                "occupiedSpaces": 0,
+                "outOfServices": 0
+            }
     counts = (
         db.query(
             func.count(Space.id).label("total_spaces"),
@@ -66,8 +78,11 @@ def get_spaces_overview(db: Session, org_id: UUID, params: SpaceRequest):
                        ).label("out_of_service"),
         )
         .filter(*filters)
-        .one()
     )
+    if allowed_space_ids is not None:
+        counts = counts.filter(Space.id.in_(allowed_space_ids))
+
+    counts = counts.one()
 
     return {
         "totalSpaces": counts.total_spaces,

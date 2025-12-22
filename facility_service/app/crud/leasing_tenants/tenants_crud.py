@@ -37,54 +37,95 @@ from fastapi import HTTPException, status
 # ------------------------------------------------------------
 
 
-def get_tenants_overview(db: Session, org_id) -> dict:
+def get_tenants_overview(db: Session, user: UserToken) -> dict:
+    allowed_space_ids = None
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_spaces = get_allowed_spaces(db, user)
+        allowed_space_ids = [s["space_id"] for s in allowed_spaces]
+
+        if not allowed_space_ids:
+            return {
+                "totalTenants": 0,
+                "activeTenants": 0,
+                "commercialTenants": 0,
+                "individualTenants": 0
+            }
+
     # Total tenants - only non-deleted
-    total_individual = (
+    individual_query = (
         db.query(func.count(func.distinct(Tenant.id)))
         .join(Site, Tenant.site_id == Site.id)
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             Tenant.is_deleted == False,
             Site.is_deleted == False
         )
-        .scalar() or 0
+    )
+    if allowed_space_ids is not None:
+        individual_query = individual_query.filter(
+        Tenant.space_id.in_(allowed_space_ids)
     )
 
-    total_partners = (
+    total_individual = individual_query.scalar() or 0
+
+    partner_query = (
         db.query(func.count(func.distinct(CommercialPartner.id)))
         .join(Site, CommercialPartner.site_id == Site.id)
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             CommercialPartner.is_deleted == False,
             Site.is_deleted == False
         )
-        .scalar() or 0
+    )
+    if allowed_space_ids is not None:
+        partner_query = partner_query.filter(
+        CommercialPartner.space_id.in_(allowed_space_ids)
     )
 
+    total_partners = partner_query.scalar() or 0
+    
     total_tenants = total_individual + total_partners
 
     # Active tenants - only non-deleted
-    active_tenants = (
+    individual_tenants = (
         db.query(func.count(func.distinct(Tenant.id)))
         .join(Site, Tenant.site_id == Site.id)
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             Tenant.is_deleted == False,
             Site.is_deleted == False,
             Tenant.status == "active"
         )
-        .scalar() or 0
-    ) + (
+    ) 
+    
+    if allowed_space_ids is not None:
+        individual_tenants = individual_tenants.filter(
+            Tenant.space_id.in_(allowed_space_ids)
+        )
+
+    active_individual = individual_tenants.scalar() or 0
+
+
+    active_partners = (
         db.query(func.count(func.distinct(CommercialPartner.id)))
         .join(Site, CommercialPartner.site_id == Site.id)
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             CommercialPartner.is_deleted == False,
             Site.is_deleted == False,
             CommercialPartner.status == "active"
         )
-        .scalar() or 0
+       
     )
+    if allowed_space_ids is not None:
+        active_partners = active_partners.filter(
+            CommercialPartner.space_id.in_(allowed_space_ids)
+        )
+
+    active_partners = active_partners.scalar() or 0
+    
+    
+    active_tenants = active_individual + active_partners
 
     return {
         "totalTenants": total_tenants,

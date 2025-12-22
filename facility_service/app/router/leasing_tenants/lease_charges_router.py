@@ -22,14 +22,14 @@ def get_lease_charges(
         params: LeaseChargeRequest = Depends(),
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_lease_charges(db, current_user, params)
+    return crud.get_lease_charges(db=db, user=current_user, params=params)
 
 
 @router.get("/overview", response_model=LeaseChargesOverview)
 def get_lease_charges_overview(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_lease_charges_overview(db, current_user.org_id)
+    return crud.get_lease_charges_overview(db=db, user=current_user)
 
 
 @router.post("/", response_model=None)

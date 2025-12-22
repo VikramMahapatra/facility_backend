@@ -17,12 +17,12 @@ router = APIRouter(prefix="/api/sites",
 @router.get("/all", response_model=SiteListResponse)
 def read_sites(params: SiteRequest = Depends(), db: Session = Depends(get_db),
                current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_sites(db, current_user, params)
+    return crud.get_sites(db=db, user=current_user, params=params)
 
 
 @router.get("/lookup", response_model=List[Lookup])
 def site_lookup(db: Session = Depends(get_db), current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_site_lookup(db, current_user)
+    return crud.get_site_lookup(db=db, user=current_user)
 
 
 @router.get("/{site_id}", response_model=SiteOut)

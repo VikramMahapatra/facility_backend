@@ -23,7 +23,7 @@ def get_leases(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_list(db, current_user, params)
+    return crud.get_list(db=db, user=current_user, params=params)
 
 
 @router.get("/overview", response_model=LeaseOverview)
@@ -32,8 +32,7 @@ def get_lease_overview(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_overview(db, current_user.org_id, params)
-
+    return crud.get_overview(db=db, user=current_user, params=params)
 
 @router.post("/", response_model=None)
 def create_lease(

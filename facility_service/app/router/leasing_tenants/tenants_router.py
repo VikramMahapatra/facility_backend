@@ -34,7 +34,7 @@ def tenants_all(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_all_tenants(db, current_user, params)
+    return crud.get_all_tenants(db=db, user=current_user, params=params)
 
 # Overview
 
@@ -44,7 +44,7 @@ def tenants_overview(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_tenants_overview(db, current_user.org_id)
+    return crud.get_tenants_overview(db=db, user=current_user)
 
 # ----------------- Create Tenant -----------------
 

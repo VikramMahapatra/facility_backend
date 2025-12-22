@@ -67,17 +67,34 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
     return filters
 
 
-def get_lease_charges_overview(db: Session, org_id: UUID):
+def get_lease_charges_overview(db: Session, user: UserToken):
     today = date.today()
+    allowed_spaces_ids = None
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_spaces = get_allowed_spaces(db, user)
+        allowed_spaces_ids = [s["space_id"] for s in allowed_spaces]
+        
+        if not allowed_spaces_ids:
+            return {
+                "total_charges": 0.0,
+                "tax_amount": 0.0,
+                "this_month": 0,
+                "avg_charge": 0.0,
+            }
+    
     base = (
         db.query(LeaseCharge)
         .join(Lease, LeaseCharge.lease_id == Lease.id)
         .filter(
-            Lease.org_id == org_id,
+            Lease.org_id == user.org_id,
             LeaseCharge.is_deleted == False,  # Add soft delete filter
             Lease.is_deleted == False  # Add soft delete filter for lease
         )
     )
+    if allowed_spaces_ids is not None:
+        base = base.filter(
+            Lease.space_id.in_(allowed_spaces_ids)
+        )
 
     total_val = float(base.with_entities(func.coalesce(
         func.sum(LeaseCharge.amount), 0)).scalar() or 0.0)

@@ -42,7 +42,7 @@ def create_space(
     _ : UserToken = Depends(allow_admin)
 ):
     space.org_id = current_user.org_id
-    return crud.create_space(db, space, current_user)
+    return crud.create_space(db, space)
 
 
 @router.put("/", response_model=None)

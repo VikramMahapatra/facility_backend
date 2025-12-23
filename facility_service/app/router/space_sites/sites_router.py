@@ -48,7 +48,7 @@ def create_site(
 ):
     
     site.org_id = current_user.org_id
-    return crud.create_site(db,current_user, site)
+    return crud.create_site(db, site)
 
 
 @router.put("/", response_model=None)

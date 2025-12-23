@@ -71,9 +71,9 @@ class InvoicesResponse(BaseModel):
 
 class InvoicesOverview(BaseModel):
     totalInvoices: int
-    totalAmount: int
-    paidAmount: int
-    outstandingAmount: int
+    totalAmount: float
+    paidAmount: float
+    outstandingAmount: float
 
     model_config = {"from_attributes": True}
 

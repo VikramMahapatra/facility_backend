@@ -18,6 +18,7 @@ router = APIRouter(
 @router.get("/system-settings", response_model=SystemSettingsOut)
 def get_system_settings(
     db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
 ):
     data = crud.get_system_settings(db)
     if not data:
@@ -30,6 +31,7 @@ def update_system_settings(
     setting_id: UUID,
     update_data: SystemSettingsUpdate,
     db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
 ):
     updated = crud.update_system_settings(db, setting_id, update_data)  
     if not updated:

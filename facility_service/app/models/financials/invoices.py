@@ -95,8 +95,10 @@ class PaymentAR(Base):
     
     
 
-    
 @event.listens_for(Invoice, "before_insert")
 def generate_invoice_no(mapper, connection, target):
+    if target.invoice_no:
+        return
+
     next_val = connection.scalar(invoice_seq.next_value())
     target.invoice_no = f"INV{next_val}"

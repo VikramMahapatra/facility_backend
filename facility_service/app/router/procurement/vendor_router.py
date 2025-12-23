@@ -7,7 +7,7 @@ from shared.core.database import get_auth_db,get_facility_db as get_db
 from shared.core.schemas import Lookup, UserToken
 from ...schemas.procurement.vendors_schemas import VendorListResponse, VendorOut, VendorCreate, VendorOverviewResponse, VendorRequest, VendorUpdate
 from ...crud.procurement import vendors_crud as crud
-from shared.core.auth import validate_current_token
+from shared.core.auth import allow_admin, validate_current_token
 
 router = APIRouter(prefix="/api/vendors",
                    tags=["vendors"], dependencies=[Depends(validate_current_token)])
@@ -43,6 +43,7 @@ def update_vendor(
     vendor: VendorUpdate,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
+     _ : UserToken = Depends(allow_admin)
 ):
     return crud.update_vendor(db,auth_db, vendor)
 
@@ -53,7 +54,8 @@ def create_vendor(
     vendor: VendorCreate,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+    _ : UserToken = Depends(allow_admin)
 ):
     return crud.create_vendor(db, auth_db,vendor, org_id=current_user.org_id)
 

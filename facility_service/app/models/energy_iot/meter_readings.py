@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Boolean, Column, String, Numeric, ForeignKey, UniqueConstraint, DateTime
+from sqlalchemy import Boolean, Column, String, Numeric, ForeignKey, UniqueConstraint, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from shared.core.database import Base
@@ -19,6 +19,18 @@ class MeterReading(Base):
     is_deleted = Column(Boolean, default=False,
                         nullable=False)  # ADD THIS LINE
 
+    created_at = Column(
+    DateTime(timezone=True),
+    server_default=func.now(),
+    nullable=False
+    )
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False
+    )
     __table_args__ = (
         UniqueConstraint("meter_id", "ts", name="uq_meter_readings_meter_ts"),
     )

@@ -240,10 +240,27 @@ def update(db: Session, payload: MeterUpdate) -> Optional[Meter]:
         setattr(obj, k, v)
 
     db.commit()
-    db.refresh(obj)
 
-    # Use your Pydantic model for serialization
-    return MeterOut.model_validate(obj)
+    obj = (
+        db.query(Meter)
+        .options(
+            joinedload(Meter.site).load_only(Site.name),
+            joinedload(Meter.space).load_only(Space.name),
+            joinedload(Meter.asset).load_only(Asset.name),
+        )
+        .filter(Meter.id == payload.id)
+        .first()
+    )
+
+    return MeterOut.model_validate(
+        {
+            **obj.__dict__,
+            "site_name": obj.site.name if obj.site else None,
+            "space_name": obj.space.name if obj.space else None,
+            "asset_name": obj.asset.name if obj.asset else None,
+        }
+    )
+
 
 
 def delete(db: Session, meter_id: UUID) -> Optional[Meter]:

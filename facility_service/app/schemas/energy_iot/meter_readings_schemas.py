@@ -27,7 +27,8 @@ class MeterReadingOut(MeterReadingBase):
     meter_code: Optional[str] = None
     meter_kind: Optional[str] = None
     unit: Optional[str] = None
-
+    created_at: datetime
+    updated_at: datetime
     class Config:
         from_attributes = True
 

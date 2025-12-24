@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from shared.helpers.json_response_helper import success_response
 
 from ...schemas.energy_iot.meters_schemas import MeterRequest
-from ...schemas.energy_iot.meter_readings_schemas import BulkMeterReadingRequest, MeterReadingCreate, MeterReadingListResponse, MeterReadingOverview, MeterReadingUpdate
+from ...schemas.energy_iot.meter_readings_schemas import BulkMeterReadingRequest, MeterReadingCreate, MeterReadingListResponse, MeterReadingOut, MeterReadingOverview, MeterReadingUpdate
 from ...crud.energy_iot import meter_readings_crud as crud
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token  # for dependicies
@@ -44,7 +44,7 @@ def create_meter_reading(
     return crud.create(db, data)
 
 
-@router.put("/", response_model=None)
+@router.put("/", response_model=MeterReadingOut)
 def update_meter_reading(data: MeterReadingUpdate, db: Session = Depends(get_db)):
     return crud.update(db, data)
 

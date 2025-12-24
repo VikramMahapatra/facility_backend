@@ -187,8 +187,22 @@ def update(db: Session, payload: MeterReadingUpdate) -> Optional[MeterReading]:
         setattr(obj, k, v)
 
     db.commit()
-    db.refresh(obj)
-    return obj
+
+    obj = (
+        db.query(MeterReading)
+        .join(Meter)
+        .filter(MeterReading.id == payload.id)
+        .first()
+    )
+
+    return MeterReadingOut.model_validate(
+        {
+            **obj.__dict__,
+            "meter_code": obj.meter.code if obj.meter else None,
+            "meter_kind": obj.meter.kind if obj.meter else None,
+            "unit": obj.meter.unit if obj.meter else None,
+        }
+    )
 
 
 def delete(db: Session, meter_reading_id: UUID) -> Optional[MeterReading]:

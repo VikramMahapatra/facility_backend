@@ -74,7 +74,7 @@ def overview_consumption_reports(db: Session, org_id: UUID):
 
 
 def weekly_consumption_trends(db: Session, org_id: UUID):
-    now = datetime.datetime.utcnow()
+    now = datetime.utcnow()
 
     # Define week ranges
     weeks = [
@@ -123,7 +123,7 @@ def weekly_consumption_trends(db: Session, org_id: UUID):
 
 
 def monthly_cost_analysis(db: Session, org_id: UUID):
-    end_date =datetime.datetime.utcnow()
+    end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=180)  # last 6 months
 
     rows = (
@@ -156,15 +156,6 @@ def monthly_cost_analysis(db: Session, org_id: UUID):
     return monthly_data
 
 
-
-
-
-import calendar
-from datetime import datetime, timedelta
-from typing import Optional
-from uuid import UUID
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 # -----------------------------
 # BUILD FILTER FUNCTION

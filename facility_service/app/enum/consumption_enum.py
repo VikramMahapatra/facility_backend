@@ -1,15 +1,25 @@
 from enum import Enum
 
 class ConsumptionMonth(str, Enum):
-    January_2024 = "1"
-    Decemeber_2023 = "2" 
-    November_2023 = "3"
+    January = "1"
+    February = "2"
+    March = "3"
+    April = "4"
+    May = "5"
+    June = "6"
+    July = "7"
+    August = "8"
+    September = "9"
+    October = "10"
+    November = "11"
+    December = "12"
     
 class ConsumptionType(str, Enum):
 
     Electricity = "Electricity"
     Water = "Water"
     Gas = "Gas"
-    Footfall = "Footfall"
+    Buth = "Buth"
+    People_Counter = "People Counter"
 
     

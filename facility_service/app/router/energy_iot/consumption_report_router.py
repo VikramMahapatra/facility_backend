@@ -4,6 +4,7 @@ from uuid import UUID
 from typing import List, Optional
 
 
+from ...schemas.energy_iot.consumption_report_schema import ConsumptionReportParams
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token, UserToken
 from shared.core.schemas import Lookup
@@ -44,10 +45,11 @@ def get_monthly_cost_analysis(
 
 @router.get("/all", response_model=List)
 def get_consumption_reports(
+    params:ConsumptionReportParams = Depends(),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.consumption_reports(db, current_user.org_id)
+    return crud.consumption_reports(db, current_user.org_id ,params)
 
 
 

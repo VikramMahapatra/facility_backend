@@ -17,18 +17,38 @@ router = APIRouter(
 
 
 @router.get("/overview")
-def get_overview_consumption_reports():
-    return crud.overview_consumption_reports()
+def get_overview_consumption_reports(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+    
+):
+    return crud.overview_consumption_reports(db, current_user.org_id)
+
 
 
 @router.get("/weekly-trends")
-def get_weekly_consumption_trends():
-    return crud.weekly_consumption_trends()
+def get_weekly_consumption_trends(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.weekly_consumption_trends(db, current_user.org_id)
 
 
 @router.get("/monthly-cost-analysis")
-def get_monthly_cost_analysis():
-    return crud. monthly_cost_analysis()
+def get_monthly_cost_analysis(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.monthly_cost_analysis(db, current_user.org_id)
+
+
+@router.get("/all", response_model=List)
+def get_consumption_reports(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.consumption_reports(db, current_user.org_id)
+
 
 
 @router.get("/month-lookup", response_model=List[Lookup])

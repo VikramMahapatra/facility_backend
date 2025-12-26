@@ -174,7 +174,7 @@ def build_consumption_filters(
 
     # Utility type filter
     if utility_type:
-        value = utility_type.value if hasattr(utility_type, "value") else utility_type
+        value = utility_type.value.lower().replace(" ", "_")
         filters.append(Meter.kind == value)
 
         # Month filter (current year)

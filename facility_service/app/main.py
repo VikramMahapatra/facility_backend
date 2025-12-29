@@ -10,7 +10,7 @@ from .router.service_ticket import tickets_router, ticket_category_router, ticke
 from .router.energy_iot import meter_readings_router, meters_router, consumption_report_router
 from .router.overview import analytics_router, dashboard_router
 from .router.hospitality import bookings_router, rate_plans_router, housekeeping_tasks_router
-from .router.parking_access import parking_zones_router, access_events_router, visitors_router
+from .router.parking_access import parking_zones_router, access_events_router, visitors_router,parking_pass_router
 from .router.maintenance_assets import (
     asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, pm_template_router, service_request_router, work_order_router)
 from .router.crm import contact_router
@@ -138,6 +138,7 @@ app.include_router(sla_policy_router.router)
 app.include_router(ticket_work_order_router.router)
 app.include_router(lease_charge_code_router.router)
 app.include_router(system_settings_router.router)
+app.include_router(parking_pass_router.router)
 
 @app.get("/api/health")
 def health():

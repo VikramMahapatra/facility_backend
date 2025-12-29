@@ -159,6 +159,10 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
             literal(None).label("type"),
             Tenant.status.label("status"),
             Tenant.address.label("address"),
+            
+            Tenant.family_info.label("family_info"),
+            Tenant.vehicle_info.label("vehicle_info"),
+            
             literal(None).label("contact"),
             Tenant.space_id.label("space_id"),
             Space.building_block_id.label("building_block_id"),
@@ -213,6 +217,8 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
             CommercialPartner.type.label("type"),
             CommercialPartner.status.label("status"),
             literal(None).label("address"),
+            literal(None).label("family_info"),
+            literal(None).label("vehicle_info"),
             CommercialPartner.contact.label("contact"),
             CommercialPartner.space_id.label("space_id"),
             Space.building_block_id.label("building_block_id"),
@@ -318,6 +324,9 @@ def get_tenant_detail(db: Session, tenant_id: str, tenant_type: str) -> TenantOu
                 literal(None).label("type"),
                 Tenant.status.label("status"),
                 Tenant.address.label("address"),
+                Tenant.family_info.label("family_info"),
+                Tenant.vehicle_info.label("vehicle_info"),
+
                 literal(None).label("contact"),
                 Tenant.space_id.label("space_id"),
                 Space.building_block_id.label("building_block_id"),
@@ -394,6 +403,8 @@ def get_tenant_detail(db: Session, tenant_id: str, tenant_type: str) -> TenantOu
             "phone": record["phone"],
             "address": record.get("address"),
         }
+        record["family_info"] = record.get("family_info")
+        record["vehicle_info"] = record.get("vehicle_info")
     else:
         contact = record.get("contact") or {}
         if contact.get("address") is None:
@@ -401,6 +412,7 @@ def get_tenant_detail(db: Session, tenant_id: str, tenant_type: str) -> TenantOu
                 "line1": "", "line2": "", "city": "", "state": "", "pincode": ""}
 
         record["contact_info"] = contact
+
         record["tenant_leases"] = get_tenant_leases(
             db, record.get("org_id"), record.get("id"), record.get("tenant_type"))
 
@@ -554,6 +566,8 @@ def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
             "email": tenant.email,
             "phone": tenant.phone,
             "address": (tenant.contact_info or {}).get("address"),
+            "family_info": tenant.family_info,        # ✅ ADD
+            "vehicle_info": tenant.vehicle_info, 
             "status": "active",  # Default to active when creating
             "user_id": new_user_id,  # ✅ ADD THIS LINE
             "created_at": now,
@@ -670,7 +684,7 @@ def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
             "space_id": tenant.space_id,
             "type": tenant.type or "merchant",
             "legal_name": legal_name,
-            "contact":  contact_info,  # ✅ Use the auto-filled contact info
+            "contact":  contact_info,  # ✅ Use the auto-filled contact info  
             "status": "active",  # Default to active when creating
             "user_id": new_user_id,  # ✅ ADD THIS LINE - Store user_id directly
             "created_at": now,
@@ -780,6 +794,8 @@ def update_tenant(db: Session, auth_db:Session,tenant_id: UUID, update_data: Ten
                     if update_dict.get("contact_info")
                     else db_tenant.address
                 ),
+                "family_info": update_dict.get("family_info", db_tenant.family_info),   # ✅
+                "vehicle_info": update_dict.get("vehicle_info", db_tenant.vehicle_info), # ✅
                 "updated_at": datetime.utcnow(),
             }
         )

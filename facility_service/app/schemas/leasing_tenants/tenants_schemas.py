@@ -16,6 +16,8 @@ class TenantBase(BaseModel):
     tenant_type: str
     status: str
     contact_info: Optional[Any] = None
+    family_info: Optional[Any] = None
+    vehicle_info: Optional[Any] = None
     type: Optional[str] = None
     legal_name: Optional[str] = None
 
@@ -49,6 +51,8 @@ class TenantOut(BaseModel):
     type: Optional[str] = "merchant"
     status: str
     contact_info: Optional[Any] = None
+    family_info: Optional[Any] = None
+    vehicle_info: Optional[Any] = None
     tenant_leases: Optional[List[LeaseOut]] = None
     legal_name: Optional[str] = None
     # ADD THESE FIELDS FOR DISPLAY

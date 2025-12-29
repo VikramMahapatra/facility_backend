@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, distinct, func, or_, cast, Date
 from uuid import UUID
 
+from shared.helpers.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
+
 from ...schemas.energy_iot.meters_schemas import BulkUploadError, MeterRequest
 
 from ...models.energy_iot.meter_readings import MeterReading
@@ -67,7 +70,15 @@ def get_meter_readings_overview(db: Session, org_id: UUID):
 
 def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = False) -> MeterReadingListResponse:
     """Return all readings, optionally filtered by meter."""
-    q = db.query(MeterReading).join(Meter).filter(MeterReading.is_deleted == False, Meter.is_deleted == False)
+    q = (
+        db.query(MeterReading)
+        .join(Meter)
+        .filter(
+            MeterReading.is_deleted == False,
+            Meter.is_deleted == False,
+            Meter.org_id == org_id       
+        )
+    )
 
     if params.search:
         search_term = f"%{params.search}%"
@@ -83,7 +94,7 @@ def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = 
         total = q.with_entities(func.count(MeterReading.id)).scalar()
 
     # Apply ordering, offset, and limit
-    q = q.order_by(MeterReading.ts.desc())
+    q = q.order_by(MeterReading.updated_at.desc())
     
     if not is_export:
         q = q.offset(params.skip).limit(params.limit)
@@ -109,26 +120,89 @@ def get_list(db: Session, org_id: UUID, params: MeterRequest, is_export: bool = 
 
     return {"readings": readings, "total": total}  # Use the total count we calculated earlier
 
-def create(db: Session, payload: MeterReadingCreate) -> MeterReading:
-    obj = MeterReading(**payload.model_dump())
-    db.add(obj)
+def create(db: Session, payload: MeterReadingCreate):
+    # Check duplicate meter + timestamp
+    existing = (
+        db.query(MeterReading)
+        .filter(
+            MeterReading.meter_id == payload.meter_id,
+            MeterReading.ts == payload.ts,
+            MeterReading.is_deleted == False
+        )
+        .first()
+    )
+
+    if existing:
+        return error_response(
+            message="Meter reading already exists for this meter and timestamp",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
+
+    # Create meter reading
+    db_reading = MeterReading(**payload.model_dump())
+    db.add(db_reading)
     db.commit()
-    db.refresh(obj)
-    return obj
+    db.refresh(db_reading)
+
+    return db_reading
 
 
 def update(db: Session, payload: MeterReadingUpdate) -> Optional[MeterReading]:
-    obj = db.query(MeterReading).filter(MeterReading.id == payload.id, MeterReading.is_deleted == False).first()
-    if not obj:
-        return None
+    obj = (
+        db.query(MeterReading)
+        .filter(MeterReading.id == payload.id, MeterReading.is_deleted == False)
+        .first()
+    )
 
-    data = payload.model_dump(exclude_unset=True)
+    if not obj:
+        return error_response(
+            message="Meter reading not found",
+            status_code=str(AppStatusCode.NOT_FOUND),
+            http_status=404
+        )
+
+    # Check duplicate (meter_id + ts) excluding current record
+    duplicate = (
+        db.query(MeterReading)
+        .filter(
+            MeterReading.meter_id == payload.meter_id,
+            MeterReading.ts == payload.ts,
+            MeterReading.id != payload.id,
+            MeterReading.is_deleted == False
+        )
+        .first()
+    )
+
+    if duplicate:
+        return error_response(
+            message="Meter reading already exists for this meter and timestamp",
+            status_code=str(AppStatusCode.DUPLICATE_UPDATE_ERROR),
+            http_status=400
+        )
+
+    # Update fields
+    data = payload.model_dump(exclude_unset=True,  exclude={"created_at"})
     for k, v in data.items():
         setattr(obj, k, v)
 
     db.commit()
-    db.refresh(obj)
-    return obj
+
+    obj = (
+        db.query(MeterReading)
+        .join(Meter)
+        .filter(MeterReading.id == payload.id)
+        .first()
+    )
+
+    return MeterReadingOut.model_validate(
+        {
+            **obj.__dict__,
+            "meter_code": obj.meter.code if obj.meter else None,
+            "meter_kind": obj.meter.kind if obj.meter else None,
+            "unit": obj.meter.unit if obj.meter else None,
+        }
+    )
 
 
 def delete(db: Session, meter_reading_id: UUID) -> Optional[MeterReading]:

@@ -1,6 +1,6 @@
 import uuid
 from datetime import date
-from sqlalchemy import Column, String, Integer, Date, ForeignKey, text
+from sqlalchemy import Boolean, Column, String, Integer, Date, ForeignKey, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from shared.core.database import Base
@@ -16,12 +16,13 @@ class ParkingPass(Base):
 
     vehicle_no = Column(String(20))
     resident_id = Column(UUID(as_uuid=True))
-    partner_id = Column(UUID(as_uuid=True))
+    partner_id = Column(UUID(as_uuid=True),nullable=True)
 
     valid_from = Column(Date)
     valid_to = Column(Date)
 
     status = Column(String(16), server_default=text("'active'"))
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     # optional link to zone
     zone_id = Column(UUID(as_uuid=True), ForeignKey("parking_zones.id"))

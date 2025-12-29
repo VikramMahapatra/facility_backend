@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
 
+from facility_service.app.models.space_sites.buildings import Building
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.utils.enums import UserAccountType
 
@@ -143,6 +144,8 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
         .join(Site, Site.id == Lease.site_id)
         .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
         .outerjoin(CommercialPartner, CommercialPartner.id == Lease.partner_id)
+        .outerjoin(Space, Space.id == Lease.space_id)  # Add Space join
+        .outerjoin(Building, Building.id == Space.building_block_id)  # Add Building join through Space
         .filter(*build_filters(user.org_id, params))
         .order_by(Lease.updated_at.desc())  # ✅ ADD THIS LINE - NEWEST FIRST
     )
@@ -165,24 +168,38 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
         space_code = None
         site_name = None
         space_name = None
+        building_name = None  # Add this
+        building_block_id = None  # Add this
+        # Get space and building details
         if row.space_id:
-            space_code = (
-                db.query(Space.code)
-                .filter(Space.id == row.space_id, Space.is_deleted == False)
-                .scalar()
-            )
+            # Get space details including building_block_id in single query
+            space_details = db.query(
+                Space.code,
+                Space.name,
+                Space.building_block_id
+            ).filter(
+                Space.id == row.space_id,
+                Space.is_deleted == False
+            ).first()
+            
+            if space_details:
+                space_code = space_details.code
+                space_name = space_details.name
+                building_block_id = space_details.building_block_id
+                
+                # Get building name if building_block_id exists
+                if building_block_id:
+                    building_name = db.query(Building.name).filter(
+                        Building.id == building_block_id,
+                        Building.is_deleted == False
+                    ).scalar()
+        
         if row.site_id:
-            site_name = (
-                db.query(Site.name)
-                .filter(Site.id == row.site_id, Site.is_deleted == False)
-                .scalar()
-            )
-        if row.space_id:
-            space_name = (
-                db.query(Space.name)
-                .filter(Space.id == row.space_id, Space.is_deleted == False)
-                .scalar()
-            )
+            site_name = db.query(Site.name).filter(
+                Site.id == row.site_id,
+                Site.is_deleted == False
+            ).scalar()
+        
         leases.append(
             LeaseOut.model_validate(
                 {
@@ -191,6 +208,8 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                     "site_name": site_name,
                     "tenant_name": tenant_name,
                     "space_name": space_name,
+                    "building_name": building_name,  # Add this
+                    "building_block_id": building_block_id,  # Add this
                 }
             )
         )
@@ -495,25 +514,37 @@ def get_lease_by_id(db: Session, lease_id: str):
     space_code = None
     site_name = None
     space_name = None
+    building_name = None  # Add this
+    building_block_id = None  # Add this
 
+   # Get space and building details
     if lease.space_id:
-        space_name = (
-            db.query(Space.name)
-            .filter(Space.id == lease.space_id, Space.is_deleted == False)
-            .scalar()
-        )
-    if lease.space_id:
-        space_code = (
-            db.query(Space.code)
-            .filter(Space.id == lease.space_id, Space.is_deleted == False)
-            .scalar()
-        )
+        space_details = db.query(
+            Space.code,
+            Space.name,
+            Space.building_block_id
+        ).filter(
+            Space.id == lease.space_id,
+            Space.is_deleted == False
+        ).first()
+        
+        if space_details:
+            space_code = space_details.code
+            space_name = space_details.name
+            building_block_id = space_details.building_block_id
+            
+            # Get building name if building_block_id exists
+            if building_block_id:
+                building_name = db.query(Building.name).filter(
+                    Building.id == building_block_id,
+                    Building.is_deleted == False
+                ).scalar()
+    
     if lease.site_id:
-        site_name = (
-            db.query(Site.name)
-            .filter(Site.id == lease.site_id, Site.is_deleted == False)
-            .scalar()
-        )
+        site_name = db.query(Site.name).filter(
+            Site.id == lease.site_id,
+            Site.is_deleted == False
+        ).scalar()
 
     return LeaseOut.model_validate(
         {
@@ -522,5 +553,7 @@ def get_lease_by_id(db: Session, lease_id: str):
             "site_name": site_name,
             "tenant_name": tenant_name,
             "space_name": space_name,
+            "building_name": building_name,  # Add this
+            "building_block_id": building_block_id,  # Add this
         }
     )

@@ -26,6 +26,7 @@ from ...schemas.parking_access.parking_pass_schemas import (
 
 
 # ---------------- FILTER BUILDER ----------------
+# ---------------- FILTER BUILDER ----------------
 def build_pass_filters(org_id: UUID, params: ParkingPassRequest):
     filters = [
         ParkingPass.org_id == org_id,
@@ -45,81 +46,87 @@ def build_pass_filters(org_id: UUID, params: ParkingPassRequest):
         filters.append(func.lower(ParkingPass.status) == func.lower(params.status))
 
     if params.search:
-        filters.append( or_(ParkingPass.vehicle_no.ilike(f"%{params.search}%"),
-                       ParkingPass.pass_no.ilike(f"%{params.search}%")))
+        filters.append(or_(
+            ParkingPass.vehicle_no.ilike(f"%{params.search}%"),
+            ParkingPass.pass_no.ilike(f"%{params.search}%"),
+            ParkingPass.pass_holder_name.ilike(f"%{params.search}%")  # Added this
+        ))
 
     return filters
 
-
 # ---------------- LIST ----------------
 def get_parking_passes(db: Session, org_id: UUID, params: ParkingPassRequest):
+    """
+    Get all parking passes with partner information
+    """
     filters = build_pass_filters(org_id, params)
-
-    # Create a subquery to get all residential tenant IDs for family_info
-    residential_passes = db.query(ParkingPass).filter(
-        *filters,
-        ParkingPass.tenant_type == 'residential'
-    ).subquery()
-
-    # Get family_info in a separate query
-    residential_ids = [p.partner_id for p in db.query(residential_passes.c.partner_id).distinct().all() if p.partner_id]
     
-    tenants_family_info = {}
-    if residential_ids:
-        tenants = db.query(Tenant.id, Tenant.family_info).filter(
-            Tenant.id.in_(residential_ids),
+    # Get all partner IDs from parking passes
+    partner_ids_query = db.query(ParkingPass.partner_id).filter(
+        *filters,
+        ParkingPass.partner_id.isnot(None)
+    ).distinct()
+    
+    partner_ids = [p.partner_id for p in partner_ids_query.all() if p.partner_id]
+    
+    # Pre-fetch all partner information (tenants and commercial partners)
+    partners_info = {}
+    if partner_ids:
+        # Get tenants information
+        tenants = db.query(
+            Tenant.id, 
+            Tenant.name, 
+            Tenant.vehicle_info, 
+            Tenant.family_info
+        ).filter(
+            Tenant.id.in_(partner_ids),
             Tenant.is_deleted == False
         ).all()
         
-        for tenant_id, family_info in tenants:
-            if family_info:
-                if isinstance(family_info, str):
-                    try:
-                        import json
-                        tenants_family_info[str(tenant_id)] = json.loads(family_info)
-                    except:
-                        tenants_family_info[str(tenant_id)] = []
-                else:
-                    tenants_family_info[str(tenant_id)] = family_info
-            else:
-                tenants_family_info[str(tenant_id)] = []
+        # Get commercial partners information
+        commercial_partners = db.query(
+            CommercialPartner.id,
+            CommercialPartner.legal_name,
+            CommercialPartner.vehicle_info
+        ).filter(
+            CommercialPartner.id.in_(partner_ids),
+            CommercialPartner.is_deleted == False
+        ).all()
+        
+        # Store tenant information
+        for tenant in tenants:
+            partners_info[str(tenant.id)] = {
+                'name': tenant.name,
+                'vehicle_info': tenant.vehicle_info,
+                'family_info': tenant.family_info
+            }
+        
+        # Store commercial partner information
+        for cp in commercial_partners:
+            partners_info[str(cp.id)] = {
+                'name': cp.legal_name or cp.name,
+                'vehicle_info': cp.vehicle_info,
+                'family_info': None  # Commercial partners don't have family_info
+            }
 
-    # Main query with joins
+    # Main query for parking passes with site/space/zone info
     base_query = (
         db.query(
             ParkingPass,
             Site.name.label('site_name'),
             Space.name.label('space_name'),
-            ParkingZone.name.label('zone_name'),
-        case(
-            (ParkingPass.tenant_type == 'residential', Tenant.name),
-            (ParkingPass.tenant_type == 'commercial', CommercialPartner.legal_name),
-            else_=None
-        ).label('partner_name')
-
+            ParkingZone.name.label('zone_name')
         )
         .outerjoin(Site, ParkingPass.site_id == Site.id)
         .outerjoin(Space, ParkingPass.space_id == Space.id)
         .outerjoin(ParkingZone, ParkingPass.zone_id == ParkingZone.id)
-        .outerjoin(Tenant, 
-            and_(
-                ParkingPass.tenant_type == 'residential',
-                ParkingPass.partner_id == Tenant.id,
-                Tenant.is_deleted == False
-            )
-        )
-        .outerjoin(CommercialPartner, 
-            and_(
-                ParkingPass.tenant_type == 'commercial',
-                ParkingPass.partner_id == CommercialPartner.id,
-                CommercialPartner.is_deleted == False
-            )
-        )
         .filter(*filters)
     )
 
+    # Get total count for pagination
     total = base_query.with_entities(func.count(ParkingPass.id)).scalar()
 
+    # Apply pagination and ordering
     results = (
         base_query
         .order_by(ParkingPass.valid_to.desc())
@@ -128,22 +135,72 @@ def get_parking_passes(db: Session, org_id: UUID, params: ParkingPassRequest):
         .all()
     )
 
-    # Convert results
+    # Process and convert results
     passes_out = []
-    for pass_obj, site_name, space_name, zone_name, partner_name in results:
+    for pass_obj, site_name, space_name, zone_name in results:
+        # Get partner info if exists
+        partner_info = partners_info.get(str(pass_obj.partner_id)) if pass_obj.partner_id else None
+        
+        # Parse vehicle_info from partner
+        vehicle_info_list = []
+        if partner_info and partner_info.get('vehicle_info'):
+            try:
+                # Handle both string JSON and already parsed data
+                if isinstance(partner_info['vehicle_info'], str):
+                    vehicles_data = json.loads(partner_info['vehicle_info'])
+                else:
+                    vehicles_data = partner_info['vehicle_info']
+                
+                # Extract vehicle information
+                if isinstance(vehicles_data, list):
+                    for vehicle in vehicles_data:
+                        if isinstance(vehicle, dict) and vehicle.get('number'):
+                            vehicle_info_list.append(VehicleInfo(
+                                type=vehicle.get('type', ''),
+                                number=vehicle.get('number', '')
+                            ))
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                vehicle_info_list = []  # If parsing fails, return empty list
+        
+        # Parse family_info from partner (only for tenants)
+        family_info_list = []
+        if partner_info and partner_info.get('family_info'):
+            try:
+                # Handle both string JSON and already parsed data
+                if isinstance(partner_info['family_info'], str):
+                    family_data = json.loads(partner_info['family_info'])
+                else:
+                    family_data = partner_info['family_info']
+                
+                # Extract family information
+                if isinstance(family_data, list):
+                    for member in family_data:
+                        if isinstance(member, dict) and member.get('member'):
+                            family_info_list.append(FamilyInfo(
+                                member=member.get('member', ''),
+                                relation=member.get('relation', '')
+                            ))
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                family_info_list = []  # If parsing fails, return empty list
+        
+        # Create dictionary for ParkingPassOut
         pass_dict = {
-            **{k: v for k, v in pass_obj.__dict__.items() if not k.startswith("_")},
+            **{k: v for k, v in pass_obj.__dict__.items() if not k.startswith('_')},
             "site_name": site_name,
             "space_name": space_name,
             "zone_name": zone_name,
-            "partner_name": partner_name,
-            "family_info": tenants_family_info.get(str(pass_obj.partner_id)) if pass_obj.tenant_type == 'residential' else None
+            "partner_name": partner_info.get('name') if partner_info else None,
+            "vehicle_info": vehicle_info_list if vehicle_info_list else None,
+            "family_info": family_info_list if family_info_list else None
         }
         
+        # Convert to Pydantic model
         passes_out.append(ParkingPassOut.model_validate(pass_dict))
 
-    return {"passes": passes_out, "total": total}
-
+    return {
+        "passes": passes_out,
+        "total": total
+    }
 
 # ---------------- GET BY ID ----------------
 def get_parking_pass_by_id(db: Session, pass_id: UUID):
@@ -152,122 +209,162 @@ def get_parking_pass_by_id(db: Session, pass_id: UUID):
         .filter(ParkingPass.id == pass_id, ParkingPass.is_deleted == False)
         .first()
     )
-
+# ---------------- CREATE ----------------
 
 # ---------------- CREATE ----------------
 def create_parking_pass(db: Session, data: ParkingPassCreate):
     payload = data.model_dump()
-    tenant_type = payload.get("tenant_type")
-
+    
     try:
-        # ---------------------------- RESIDENTIAL ----------------------------
-        if tenant_type == "residential":
-            tenant_id = payload.get("partner_id")
-            if not tenant_id:
-                return error_response(message="partner_id is required for residential parking pass")
+        # Get partner_id from payload
+        partner_id = payload.get("partner_id")
+        if not partner_id:
+            return error_response(message="partner_id is required")
+        
+        vehicle_no = payload.get("vehicle_no")
+        if not vehicle_no:
+            return error_response(message="vehicle_no is required")
+        
+        # ✅ SINGLE EFFICIENT CHECK: Find ANY active/blocked pass for this vehicle
+        existing_pass = db.query(ParkingPass).filter(
+            ParkingPass.vehicle_no == vehicle_no,
+            ParkingPass.is_deleted == False,
+            ParkingPass.status.in_(['active', 'blocked'])
+        ).first()
 
-            tenant = db.query(Tenant).filter(
-                Tenant.id == tenant_id,
-                Tenant.is_deleted == False
-            ).first()
-            if not tenant:
-                return error_response(message="Tenant not found")
-
-            tenant_vehicles = [v.get("number") for v in (tenant.vehicle_info or []) if v.get("number")]
-            if not tenant_vehicles:
-                return error_response(message="No valid vehicles found for tenant")
-
-            # 1. Check ALL duplicates FIRST (before adding anything to session)
-            duplicate_vehicles = []
-            for vehicle_no in tenant_vehicles:
-                exists = db.query(ParkingPass).filter(
-                    ParkingPass.vehicle_no == vehicle_no,
-                    ParkingPass.is_deleted == False,
-                    func.lower(ParkingPass.status) != 'expired'
-                ).first()
-                if exists:
-                    duplicate_vehicles.append(vehicle_no)
-            
-            if duplicate_vehicles:
+        if existing_pass:
+            # Case 1: Same partner trying to create duplicate
+            if existing_pass.partner_id == partner_id:
                 return error_response(
-                    message=f"Duplicate parking pass detected for vehicles"
+                    message=f"This partner already has an active/blocked parking pass for vehicle {vehicle_no}"
                 )
-
-            # 2. Create all passes (only if no duplicates)
-            passes_out = []
-            created_passes = []
-            
-            for vehicle_no in tenant_vehicles:
-                db_pass = ParkingPass(**{**payload, "vehicle_no": vehicle_no})
-                db.add(db_pass)
-                created_passes.append(db_pass)
-            
-            # 3. Commit once for all passes
-            db.commit()
-            
-            for db_pass in created_passes:
-                db.refresh(db_pass)
-                db_pass_dict = {k: v for k, v in db_pass.__dict__.items() if not k.startswith("_")}
+            # Case 2: Different partner trying to use same vehicle
+            else:
+                # Get other partner's name for better error message
+                other_partner = None
+                other_partner_id = existing_pass.partner_id
+                if other_partner_id:
+                    # Check Tenant first
+                    other_partner = db.query(Tenant).filter(
+                        Tenant.id == other_partner_id,
+                        Tenant.is_deleted == False
+                    ).first()
+                    
+                    if not other_partner:
+                        # Check CommercialPartner
+                        other_partner = db.query(CommercialPartner).filter(
+                            CommercialPartner.id == other_partner_id,
+                            CommercialPartner.is_deleted == False
+                        ).first()
                 
-                # Create Pydantic object
-                pass_out = ParkingPassOut.model_validate(db_pass_dict)
+                partner_name = "another partner"
+                if other_partner:
+                    if hasattr(other_partner, 'name'):
+                        partner_name = other_partner.name
+                    elif hasattr(other_partner, 'legal_name'):
+                        partner_name = other_partner.legal_name
                 
-                # Set family_info from tenant (parsing JSON if needed)
-                if tenant.family_info:
-                    if isinstance(tenant.family_info, str):
-                        try:
-                            pass_out.family_info = json.loads(tenant.family_info)
-                        except:
-                            pass_out.family_info = []
-                    else:
-                        pass_out.family_info = tenant.family_info
-                else:
-                    pass_out.family_info = []
-                
-                passes_out.append(pass_out)
-
-            return {
-                "passes": [p.model_dump() for p in passes_out],
-                "family_info": tenant.family_info or []
-            }
-
-        # ---------------------------- COMMERCIAL ----------------------------
-        elif tenant_type == "commercial":
-            vehicle_no = payload.get("vehicle_no")
-            if not vehicle_no:
-                return error_response(message="vehicle_no is mandatory for commercial parking pass")
-
-            partner_id = payload.get("partner_id")
-            # Check duplicate first
-            exists = db.query(ParkingPass).filter(
-                ParkingPass.vehicle_no == vehicle_no,
-                ParkingPass.is_deleted == False,
-                func.lower(ParkingPass.status) != 'expired'
+                return error_response(
+                    message=f"Vehicle {vehicle_no} is already assigned to {partner_name}. One vehicle can only have one active parking pass."
+                )
+        
+        # ---------------------------- GET PARTNER INFO ----------------------------
+        # Try to find partner in Tenant table
+        partner = db.query(Tenant).filter(
+            Tenant.id == partner_id,
+            Tenant.is_deleted == False
+        ).first()
+        
+        # If not found in Tenant, try CommercialPartner
+        if not partner:
+            partner = db.query(CommercialPartner).filter(
+                CommercialPartner.id == partner_id,
+                CommercialPartner.is_deleted == False
             ).first()
-            if exists:
-                return error_response(message=f"Duplicate parking pass detected for {vehicle_no}")
-
-            # Only create if no duplicate
-            db_pass = ParkingPass(**payload)
-            db.add(db_pass)
-            db.commit()
-            db.refresh(db_pass)
-
-            db_pass_dict = {k: v for k, v in db_pass.__dict__.items() if not k.startswith("_")}
-            pass_out = ParkingPassOut.model_validate(db_pass_dict)
-
-            return {"passes": [pass_out.model_dump()]}
-
-        # ---------------------------- INVALID TYPE ----------------------------
-        else:
-            return error_response(message="Invalid tenant_type. Allowed values: residential | commercial")
-
+        
+        if not partner:
+            return error_response(message="Partner not found")
+        
+        # Get partner name (check different possible name fields)
+        partner_name = None
+        if hasattr(partner, 'name'):
+            partner_name = partner.name
+        elif hasattr(partner, 'legal_name'):
+            partner_name = partner.legal_name
+        elif hasattr(partner, 'company_name'):
+            partner_name = partner.company_name
+        
+        # ---------------------------- SET PASS HOLDER NAME ----------------------------
+        # Logic: If pass_holder_name is empty/None, use partner name
+        pass_holder_name = payload.get("pass_holder_name")
+        if not pass_holder_name and partner_name:
+            payload["pass_holder_name"] = partner_name
+        
+        # ---------------------------- FETCH VEHICLE INFO ----------------------------
+        # Extract vehicle info from partner for response
+        vehicles = []
+        if hasattr(partner, 'vehicle_info') and partner.vehicle_info:
+            # Parse vehicle_info
+            vehicles_data = []
+            if isinstance(partner.vehicle_info, str):
+                try:
+                    vehicles_data = json.loads(partner.vehicle_info)
+                except:
+                    vehicles_data = []
+            else:
+                vehicles_data = partner.vehicle_info
+            
+            # Extract vehicle information
+            if isinstance(vehicles_data, list):
+                for vehicle in vehicles_data:
+                    if isinstance(vehicle, dict) and vehicle.get("number"):
+                        vehicles.append(VehicleInfo(
+                            type=vehicle.get("type", ""),
+                            number=vehicle.get("number", "")
+                        ))
+        
+        # ---------------------------- FETCH FAMILY INFO ----------------------------
+        # Extract family info (only if partner has this field)
+        family_info = []
+        if hasattr(partner, 'family_info') and partner.family_info:
+            family_data = []
+            if isinstance(partner.family_info, str):
+                try:
+                    family_data = json.loads(partner.family_info)
+                except:
+                    family_data = []
+            else:
+                family_data = partner.family_info
+            
+            if isinstance(family_data, list):
+                for member in family_data:
+                    if isinstance(member, dict) and member.get("member"):
+                        family_info.append(FamilyInfo(
+                            member=member.get("member", ""),
+                            relation=member.get("relation", "")
+                        ))
+        
+        # ---------------------------- CREATE PASS ----------------------------
+        db_pass = ParkingPass(**payload)
+        db.add(db_pass)
+        db.commit()
+        db.refresh(db_pass)
+        
+        # Prepare response - include vehicle_info and family_info in ParkingPassOut
+        db_pass_dict = {k: v for k, v in db_pass.__dict__.items() if not k.startswith("_")}
+        pass_out = ParkingPassOut.model_validate(db_pass_dict)
+        
+        # Add partner info directly to ParkingPassOut
+        pass_out.partner_name = partner_name
+        pass_out.vehicle_info = vehicles  # Add partner's vehicles to pass_out
+        pass_out.family_info = family_info if family_info else None  # Add family info if exists
+        
+        return {"pass": pass_out.model_dump()}
+        
     except Exception as e:
-        # Ensure rollback on any exception
         db.rollback()
         return error_response(message=str(e))
-
-
+    
 
 # ---------------- UPDATE ----------------
 def update_parking_pass(db: Session, data: ParkingPassUpdate):
@@ -383,145 +480,136 @@ def parking_pass_zone_filter(db: Session, org_id: str):
 
 
 # ---------------- GET PARTNER INFO ----------------
-def get_partner_vehicle_family_info(db: Session, org_id: UUID, partner_id: UUID, tenant_type: str = None):
+# ---------------- GET PARTNER INFO ----------------
+def get_partner_vehicle_family_info(db: Session, org_id: UUID, partner_id: UUID):
     """
     Fetch vehicle info and family info for a specific partner
     """
     try:
-        # If tenant_type is specified, search in that specific table
-        if tenant_type == "commercial":
-            # Check CommercialPartner table
+        # Try Tenant first
+        partner = db.query(Tenant).filter(
+            Tenant.id == partner_id,
+            Tenant.is_deleted == False
+        ).first()
+        
+        # If not found in Tenant, try CommercialPartner
+        if not partner:
             partner = db.query(CommercialPartner).filter(
                 CommercialPartner.id == partner_id,
                 CommercialPartner.is_deleted == False
             ).first()
-            
-            if not partner:
-                return error_response(message="Commercial partner not found")
-            
-            # Parse vehicle_info for commercial
-            vehicles = []
-            if partner.vehicle_info:
-                if isinstance(partner.vehicle_info, str):
-                    try:
-                        vehicles_data = json.loads(partner.vehicle_info)
-                    except:
-                        vehicles_data = []
-                else:
-                    vehicles_data = partner.vehicle_info
-                
-                if isinstance(vehicles_data, list):
-                    for vehicle in vehicles_data:
-                        if isinstance(vehicle, dict) and vehicle.get("number"):
-                            vehicles.append(VehicleInfo(
-                                type=vehicle.get("type"),
-                                number=vehicle.get("number")
-                            ))
-            
-            # Commercial partners don't have family_info
-            return {
-                "partner_id": partner.id,
-                "partner_name": partner.name,
-                "vehicles": vehicles,
-                "family_info": None,
-                "partner_type": "commercial"
-            }
-            
-        elif tenant_type == "residential" or tenant_type is None:
-            # Check Tenant table (default to residential if not specified)
-            partner = db.query(Tenant).filter(
-                Tenant.id == partner_id,
-                Tenant.is_deleted == False
-            ).first()
-            
-            if not partner:
-                # If tenant_type not specified, also check commercial
-                if tenant_type is None:
-                    commercial_partner = db.query(CommercialPartner).filter(
-                        CommercialPartner.id == partner_id,
-                        CommercialPartner.is_deleted == False
-                    ).first()
-                    
-                    if commercial_partner:
-                        # Parse vehicle_info for commercial
-                        vehicles = []
-                        if commercial_partner.vehicle_info:
-                            if isinstance(commercial_partner.vehicle_info, str):
-                                try:
-                                    vehicles_data = json.loads(commercial_partner.vehicle_info)
-                                except:
-                                    vehicles_data = []
-                            else:
-                                vehicles_data = commercial_partner.vehicle_info
-                            
-                            if isinstance(vehicles_data, list):
-                                for vehicle in vehicles_data:
-                                    if isinstance(vehicle, dict) and vehicle.get("number"):
-                                        vehicles.append(VehicleInfo(
-                                            type=vehicle.get("type"),
-                                            number=vehicle.get("number")
-                                        ))
-                        
-                        return {
-                            "partner_id": commercial_partner.id,
-                            "partner_name": commercial_partner.name,
-                            "vehicles": vehicles,
-                            "family_info": None,
-                            "partner_type": "commercial"
-                        }
-                
-                return error_response(message="Partner not found")
-            
-            # Parse vehicle_info for residential
-            vehicles = []
-            if partner.vehicle_info:
-                if isinstance(partner.vehicle_info, str):
-                    try:
-                        vehicles_data = json.loads(partner.vehicle_info)
-                    except:
-                        vehicles_data = []
-                else:
-                    vehicles_data = partner.vehicle_info
-                
-                if isinstance(vehicles_data, list):
-                    for vehicle in vehicles_data:
-                        if isinstance(vehicle, dict) and vehicle.get("number"):
-                            vehicles.append(VehicleInfo(
-                                type=vehicle.get("type"),
-                                number=vehicle.get("number")
-                            ))
-            
-            # Parse family_info for residential
-            family_info = []
-            if partner.family_info:
-                if isinstance(partner.family_info, str):
-                    try:
-                        family_data = json.loads(partner.family_info)
-                    except:
-                        family_data = []
-                else:
-                    family_data = partner.family_info
-                
-                if isinstance(family_data, list):
-                    for member in family_data:
-                        if isinstance(member, dict) and member.get("member"):
-                            family_info.append(FamilyInfo(
-                                member=member.get("member"),
-                                relation=member.get("relation", "")
-                            ))
-            
-            return {
-                "partner_id": partner.id,
-                "partner_name": partner.name,
-                "vehicles": vehicles,
-                "family_info": family_info,
-                "partner_type": "residential"
-            }
         
-        else:
-            return error_response(
-                message="Invalid tenant_type. Allowed values: residential or commercial"
-            )
+        if not partner:
+            return error_response(message="Partner not found")
+        
+        # Get partner name (check all possible name fields)
+        partner_name = None
+        if hasattr(partner, 'name'):
+            partner_name = partner.name
+        elif hasattr(partner, 'legal_name'):
+            partner_name = partner.legal_name
+        
+        # Parse vehicle_info
+        vehicle_info = []  # Changed variable name
+        if hasattr(partner, 'vehicle_info') and partner.vehicle_info:
+            vehicles_data = []
+            if isinstance(partner.vehicle_info, str):
+                try:
+                    vehicles_data = json.loads(partner.vehicle_info)
+                except:
+                    vehicles_data = []
+            else:
+                vehicles_data = partner.vehicle_info
+            
+            if isinstance(vehicles_data, list):
+                for vehicle in vehicles_data:
+                    if isinstance(vehicle, dict) and vehicle.get("number"):
+                        vehicle_info.append(VehicleInfo(  # Changed to vehicle_info
+                            type=vehicle.get("type", ""),
+                            number=vehicle.get("number", "")
+                        ))
+        
+        # Parse family_info (only if the model has this field)
+        family_info = []
+        if hasattr(partner, 'family_info') and partner.family_info:
+            family_data = []
+            if isinstance(partner.family_info, str):
+                try:
+                    family_data = json.loads(partner.family_info)
+                except:
+                    family_data = []
+            else:
+                family_data = partner.family_info
+            
+            if isinstance(family_data, list):
+                for member in family_data:
+                    if isinstance(member, dict) and member.get("member"):
+                        family_info.append(FamilyInfo(
+                            member=member.get("member", ""),
+                            relation=member.get("relation", "")
+                        ))
+        
+        return {
+            "partner_id": partner.id,
+            "partner_name": partner_name,
+            "vehicle_info": vehicle_info,  # Changed to vehicle_info
+            "family_info": family_info if family_info else None
+        }
+            
+    except Exception as e:
+        return error_response(message=str(e))
+    
+    
+    
+# ---------------- GET PARTNER VEHICLES ONLY ----------------
+def get_partner_vehicles(db: Session, org_id: UUID, partner_id: UUID):
+    """
+    Fetch ONLY vehicle information for a specific partner
+    Returns list of VehicleInfo objects
+    """
+    try:
+        # Try Tenant first
+        partner = db.query(Tenant).filter(
+            Tenant.id == partner_id,
+            Tenant.is_deleted == False
+        ).first()
+        
+        # If not found in Tenant, try CommercialPartner
+        if not partner:
+            partner = db.query(CommercialPartner).filter(
+                CommercialPartner.id == partner_id,
+                CommercialPartner.is_deleted == False
+            ).first()
+        
+        if not partner:
+            return error_response(message="Partner not found")
+        
+        # Parse vehicle_info ONLY
+        vehicles = []
+        if hasattr(partner, 'vehicle_info') and partner.vehicle_info:
+            vehicles_data = []
+            if isinstance(partner.vehicle_info, str):
+                try:
+                    vehicles_data = json.loads(partner.vehicle_info)
+                except:
+                    vehicles_data = []
+            else:
+                vehicles_data = partner.vehicle_info
+            
+            if isinstance(vehicles_data, list):
+                for vehicle in vehicles_data:
+                    if isinstance(vehicle, dict):
+                        # Handle both key formats
+                        vehicle_number = vehicle.get("number")
+                        vehicle_type = vehicle.get("type")
+                        
+                        if vehicle_number:
+                            vehicles.append(VehicleInfo(
+                                type=vehicle_type or "",
+                                number=vehicle_number or  ""
+                            ))
+        
+        return vehicles  # ✅ Return list directly
             
     except Exception as e:
         return error_response(message=str(e))

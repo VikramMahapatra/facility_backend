@@ -218,7 +218,7 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
             CommercialPartner.status.label("status"),
             literal(None).label("address"),
             literal(None).label("family_info"),
-            literal(None).label("vehicle_info"),
+            CommercialPartner.vehicle_info.label("vehicle_info"),
             CommercialPartner.contact.label("contact"),
             CommercialPartner.space_id.label("space_id"),
             Space.building_block_id.label("building_block_id"),
@@ -369,6 +369,7 @@ def get_tenant_detail(db: Session, tenant_id: str, tenant_type: str) -> TenantOu
                 Site.name.label("site_name"),
                 Building.name.label("building_name"),
                 Space.name.label("space_name"),
+                CommercialPartner.vehicle_info.label("vehicle_info"),
                 CommercialPartner.updated_at.label(
                     "sort_field"),  # ← newest first
             )
@@ -412,7 +413,7 @@ def get_tenant_detail(db: Session, tenant_id: str, tenant_type: str) -> TenantOu
                 "line1": "", "line2": "", "city": "", "state": "", "pincode": ""}
 
         record["contact_info"] = contact
-
+        record["vehicle_info"] = record.get("vehicle_info")
         record["tenant_leases"] = get_tenant_leases(
             db, record.get("org_id"), record.get("id"), record.get("tenant_type"))
 
@@ -687,6 +688,7 @@ def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
             "contact":  contact_info,  # ✅ Use the auto-filled contact info  
             "status": "active",  # Default to active when creating
             "user_id": new_user_id,  # ✅ ADD THIS LINE - Store user_id directly
+            "vehicle_info": tenant.vehicle_info if hasattr(tenant, 'vehicle_info') else None,
             "created_at": now,
             "updated_at": now,
         }
@@ -905,6 +907,8 @@ def update_tenant(db: Session, auth_db:Session,tenant_id: UUID, update_data: Ten
             db_partner.contact = update_dict.get(
                 "contact_info") or db_partner.contact
             db_partner.status = update_dict.get("status", db_partner.status)
+            if 'vehicle_info' in update_dict:
+                db_partner.vehicle_info = update_dict['vehicle_info']
             db_partner.updated_at = datetime.utcnow()
        
         auth_db.commit()  # ✅ ADD THIS LINE

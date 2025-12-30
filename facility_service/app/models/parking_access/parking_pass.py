@@ -17,8 +17,7 @@ class ParkingPass(Base):
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False)
     site_id = Column(UUID(as_uuid=True), ForeignKey(
         "sites.id"), nullable=False)
-
-    tenant_type = Column(String(20), nullable=False)   # values: 'residential' | 'commercial'
+    pass_holder_name = Column(String(100), nullable=True) 
     space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"), nullable=True)
     partner_id = Column(UUID(as_uuid=True), nullable=True) # optional link to partner  'residential' | 'commercial'
     vehicle_no = Column(String(20), nullable=False) #TAKE ON THE FROM PRATNER OR USER INPUT
@@ -32,10 +31,6 @@ class ParkingPass(Base):
 
     # optional link to zone
     zone_id = Column(UUID(as_uuid=True), ForeignKey("parking_zones.id"))
-
-
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("space_id", "pass_no", name="uq_space_pass_no"),

@@ -1134,12 +1134,20 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
             Tenant.id,
             Tenant.name,
         )
+        .join(Lease, Lease.tenant_id == Tenant.id)  # ✅ Join with Lease table
         .filter(
             Tenant.site_id == site_id,
             Tenant.space_id == space_id,
             Tenant.is_deleted == False,
-            Tenant.status == "active"
+            Tenant.status == "active",
+            # ADD LEASE CONDITIONS
+            Lease.is_deleted == False,
+            Lease.status == "active",  # Only active leases
+            Lease.space_id == space_id,  # Lease for same space
+            Lease.site_id == site_id  # Lease for same site
+
         )
+        .distinct() 
         .all()
     )
 
@@ -1149,11 +1157,17 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
             CommercialPartner.id,
             CommercialPartner.legal_name.label("name"),
         )
+        .join(Lease, Lease.partner_id == CommercialPartner.id)  # ✅ Join with Lease table
         .filter(
             CommercialPartner.site_id == site_id,
             CommercialPartner.space_id == space_id,
             CommercialPartner.is_deleted == False,
-            CommercialPartner.status == "active"
+            CommercialPartner.status == "active",
+            # ADD LEASE CONDITIONS
+            Lease.is_deleted == False,
+            Lease.status == "active",  # Only active leases
+            Lease.space_id == space_id,  # Lease for same space
+            Lease.site_id == site_id  # Lease for same site
         )
         .all()
     )

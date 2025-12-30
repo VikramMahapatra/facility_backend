@@ -291,15 +291,17 @@ def create_parking_pass(db: Session, data: ParkingPassCreate):
             partner_name = partner.name
         elif hasattr(partner, 'legal_name'):
             partner_name = partner.legal_name
-        elif hasattr(partner, 'company_name'):
-            partner_name = partner.company_name
-        
+            
+            
         # ---------------------------- SET PASS HOLDER NAME ----------------------------
-        # Logic: If pass_holder_name is empty/None, use partner name
+        # Logic: If pass_holder_name is empty/None, use partner name, else use provided
         pass_holder_name = payload.get("pass_holder_name")
-        if not pass_holder_name and partner_name:
-            payload["pass_holder_name"] = partner_name
-        
+        # Check for None, empty string, or whitespace only
+        if (pass_holder_name is None or str(pass_holder_name).strip() == "") and partner_name:
+            payload["pass_holder_name"] = partner_name  # Use partner name
+        else:
+            payload["pass_holder_name"] = pass_holder_name  # Keep user-provided value
+                
         # ---------------------------- FETCH VEHICLE INFO ----------------------------
         # Extract vehicle info from partner for response
         vehicles = []

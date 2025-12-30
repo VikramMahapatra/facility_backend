@@ -15,6 +15,7 @@ from shared.core.schemas import CommonQueryParams
 
 
 class TicketAttachmentOut(BaseModel):
+    id: str  # ADD THIS LINE - Attachment ID from database
     file_name: str
     content_type: str
     file_data_base64: Optional[str] = None

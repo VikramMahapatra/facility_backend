@@ -99,3 +99,5 @@ class Site(Base):
     # Back-reference to ticket categories
     ticket_categories = relationship("TicketCategory", back_populates="site")
     sla_policies = relationship("SlaPolicy", back_populates="site")
+    parking_passes = relationship("ParkingPass", back_populates="site")
+

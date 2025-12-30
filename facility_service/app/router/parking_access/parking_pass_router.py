@@ -1,14 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.params import Query
 from sqlalchemy.orm import Session
 from uuid import UUID
+from typing import List, Optional
 
 from ...crud.parking_access import parking_pass_crud as crud
 from ...schemas.parking_access.parking_pass_schemas import (
     ParkingPassCreate,
+    ParkingPassOut,
     ParkingPassOverview,
     ParkingPassUpdate,
     ParkingPassRequest,
-    ParkingPassResponse
+    ParkingPassResponse,
+    PartnerInfoResponse
 )
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token
@@ -31,7 +35,7 @@ def get_parking_passes(
     return crud.get_parking_passes(db, current_user.org_id, params)
 
 
-@router.post("/", response_model=None)
+@router.post("/", response_model=dict)
 def create_parking_pass(
     data: ParkingPassCreate,
     db: Session = Depends(get_db),
@@ -96,3 +100,17 @@ def parking_pass_zone_filter(
 ):
     return crud.parking_pass_zone_filter(db, current_user.org_id)
 
+
+@router.get("/partner/info/{partner_id}", response_model=PartnerInfoResponse)
+def get_partner_info(
+    partner_id: UUID,
+    tenant_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get vehicle and family information for a specific partner
+    """
+    result = crud.get_partner_vehicle_family_info(db, current_user.org_id, partner_id, tenant_type)
+    
+    return result

@@ -161,6 +161,17 @@ def validate_token(
             status_code=str(AppStatusCode.AUTHENTICATION_USER_INVALID),
             http_status=404
         )
-
     user_data.status = user.status
     return user_data
+
+
+
+
+def allow_admin(current_user: UserToken = Depends(validate_current_token)):
+    if current_user.account_type.lower() != "organization":
+        return error_response(
+            message="Access forbidden: Admins only",
+            http_status=403
+        )
+    
+    return current_user

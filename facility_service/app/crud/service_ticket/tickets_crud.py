@@ -23,6 +23,7 @@ from ...models.leasing_tenants.tenants import Tenant
 from ...models.service_ticket.tickets_category import TicketCategory
 from ...models.space_sites.spaces import Space
 from ...schemas.mobile_app.help_desk_schemas import ComplaintDetailsResponse, TicketWorkFlowOut
+from ...models.common.attachments import Attachment
 
 from ...models.service_ticket.sla_policy import SlaPolicy
 from ...models.service_ticket.tickets_commets import TicketComment
@@ -300,14 +301,21 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
 
     all_logs.sort(key=lambda x: x.created_at, reverse=True)
     print("service tickets ", service_req)
+        # GET ATTACHMENTS FROM ATTACHMENTS TABLE
     attachments_out = []
-    if service_req.file_data:
+    attachments = db.query(Attachment).filter(
+        Attachment.module_name == "tickets",
+        Attachment.entity_id == ticket_id,
+        Attachment.is_deleted == False
+    ).all()
+    
+    for attachment in attachments:
         attachments_out.append(
             {
-                "file_name": service_req.file_name,
-                "content_type": service_req.content_type,
-                # Convert binary to base64 so it can be sent safely in JSON
-                "file_data_base64": base64.b64encode(service_req.file_data).decode('utf-8')
+                "id": str(attachment.id),  # ADD ID
+                "file_name": attachment.file_name,
+                "content_type": attachment.file_type,
+                "file_data_base64": base64.b64encode(attachment.file_data).decode('utf-8') if attachment.file_data else None
             }
         )
 
@@ -338,7 +346,7 @@ async def create_ticket(
     auth_db: Session,
     data: TicketCreate,
     user: UserToken,
-    file: UploadFile = None
+    files: List[UploadFile] = None  # CHANGE: file → files
 ):
     account_type = user.account_type.lower()
     # Create Ticket (defaults to OPEN)
@@ -408,14 +416,26 @@ async def create_ticket(
         assigned_to=data.assigned_to if hasattr(data, "assigned_to") else None,
         vendor_id=data.vendor_id if hasattr(data, "vendor_id") else None
     )
-    if file and file.filename:
-        file_bytes = await file.read()
-        new_ticket.file_name = file.filename
-        new_ticket.content_type = file.content_type or "application/octet-stream"
-        new_ticket.file_data = file_bytes  # 👈 store binary data directly
+    
 
     session.add(new_ticket)
     session.flush()  # needed to get ticket_id
+    # SAVE MULTIPLE ATTACHMENTS
+    if files:
+        for file in files:
+            if file and file.filename:
+                file_bytes = await file.read()
+                
+                attachment = Attachment(
+                    module_name="tickets",
+                    entity_id=new_ticket.id,
+                    file_name=file.filename,
+                    file_type=file.content_type or "application/octet-stream",
+                    file_data=file_bytes,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                session.add(attachment)
 
     # Fetch SLA Policy for auto-assignment
     created_by_user = (
@@ -689,7 +709,7 @@ async def resolve_ticket(
         auth_db: Session,
         data: TicketActionRequest,
         user: UserToken,
-        file: UploadFile = None
+        files: List[UploadFile] = None  # CHANGE: file → files
 ):
     ticket =db.query(Ticket).filter(Ticket.id==data.ticket_id).first()
 
@@ -716,11 +736,22 @@ async def resolve_ticket(
     ticket.updated_at = datetime.utcnow()
 
     # File attachment logic (same as create_ticket)
-    if file and file.filename:
-        file_bytes = await file.read()
-        ticket.file_name = file.filename
-        ticket.content_type = file.content_type or "application/octet-stream"
-        ticket.file_data = file_bytes  # 👈 store binary data directly
+        # SAVE ATTACHMENTS TO ATTACHMENTS TABLE
+    if files:
+        for file in files:
+            if file and file.filename:
+                file_bytes = await file.read()
+                
+                attachment = Attachment(
+                    module_name="tickets",
+                    entity_id=ticket.id,
+                    file_name=file.filename,
+                    file_type=file.content_type or "application/octet-stream",
+                    file_data=file_bytes,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.add(attachment)
 
     created_by_user = (
         auth_db.query(Users)
@@ -1538,14 +1569,21 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "special_instructions": wo.special_instructions,
         })
 
+        # GET ATTACHMENTS FROM ATTACHMENTS TABLE
     attachments_out = []
-    if service_req.file_data:
+    attachments = db.query(Attachment).filter(
+        Attachment.module_name == "tickets",
+        Attachment.entity_id == ticket_id,
+        Attachment.is_deleted == False
+    ).all()
+    
+    for attachment in attachments:
         attachments_out.append(
             {
-                "file_name": service_req.file_name,
-                "content_type": service_req.content_type,
-                # Convert binary to base64 so it can be sent safely in JSON
-                "file_data_base64": base64.b64encode(service_req.file_data).decode('utf-8')
+                "id": str(attachment.id),  # ADD ID
+                "file_name": attachment.file_name,
+                "content_type": attachment.file_type,
+                "file_data_base64": base64.b64encode(attachment.file_data).decode('utf-8') if attachment.file_data else None
             }
         )
     # Step 5: Return as schema

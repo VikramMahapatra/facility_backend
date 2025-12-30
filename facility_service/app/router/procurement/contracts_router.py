@@ -8,7 +8,7 @@ from shared.helpers.json_response_helper import error_response, success_response
 from shared.core.schemas import Lookup, UserToken
 from ...schemas.procurement.contracts_schemas import ContractListResponse, ContractOut, ContractCreate, ContractOverviewResponse, ContractRequest, ContractUpdate
 from ...crud.procurement import contracts_crud as crud
-from shared.core.auth import validate_current_token
+from shared.core.auth import allow_admin, validate_current_token
 from uuid import UUID
 
 
@@ -43,7 +43,8 @@ def overview(
 def create_contract(
     contract: ContractCreate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+     _ : UserToken = Depends(allow_admin)
 ):
     # Assign org_id from current user
     contract.org_id = current_user.org_id
@@ -54,7 +55,8 @@ def create_contract(
 def update_contract_endpoint(
     contract: ContractUpdate,
     db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
+    current_user: UserToken = Depends(validate_current_token),
+     _ : UserToken = Depends(allow_admin)
 ):
     return crud.update_contract(db, contract)
 

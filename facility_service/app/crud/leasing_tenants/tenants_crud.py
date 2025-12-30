@@ -1,12 +1,18 @@
 # app/crud/leasing_tenants/tenants_crud.py
 from datetime import datetime
 from typing import Dict, Optional, List
+import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, func, literal, or_, select
 from uuid import UUID
+from auth_service.app.models.roles import Roles
+from auth_service.app.models.userroles import UserRoles
+from shared.helpers.property_helper import get_allowed_spaces
+from shared.models.users import Users
 
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
+from shared.utils.enums import UserAccountType
 
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.space_sites.spaces import Space
@@ -14,7 +20,7 @@ from ...models.space_sites.buildings import Building
 
 from ...schemas.leases_schemas import LeaseOut
 from ...enum.leasing_tenants_enum import TenantStatus, TenantType
-from shared.core.schemas import Lookup
+from shared.core.schemas import Lookup, UserToken
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
 from ...models.leasing_tenants.leases import Lease
@@ -31,54 +37,95 @@ from fastapi import HTTPException, status
 # ------------------------------------------------------------
 
 
-def get_tenants_overview(db: Session, org_id) -> dict:
+def get_tenants_overview(db: Session, user: UserToken) -> dict:
+    allowed_space_ids = None
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_spaces = get_allowed_spaces(db, user)
+        allowed_space_ids = [s["space_id"] for s in allowed_spaces]
+
+        if not allowed_space_ids:
+            return {
+                "totalTenants": 0,
+                "activeTenants": 0,
+                "commercialTenants": 0,
+                "individualTenants": 0
+            }
+
     # Total tenants - only non-deleted
-    total_individual = (
+    individual_query = (
         db.query(func.count(func.distinct(Tenant.id)))
         .join(Site, Tenant.site_id == Site.id)
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             Tenant.is_deleted == False,
             Site.is_deleted == False
         )
-        .scalar() or 0
+    )
+    if allowed_space_ids is not None:
+        individual_query = individual_query.filter(
+        Tenant.space_id.in_(allowed_space_ids)
     )
 
-    total_partners = (
+    total_individual = individual_query.scalar() or 0
+
+    partner_query = (
         db.query(func.count(func.distinct(CommercialPartner.id)))
         .join(Site, CommercialPartner.site_id == Site.id)
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             CommercialPartner.is_deleted == False,
             Site.is_deleted == False
         )
-        .scalar() or 0
+    )
+    if allowed_space_ids is not None:
+        partner_query = partner_query.filter(
+        CommercialPartner.space_id.in_(allowed_space_ids)
     )
 
+    total_partners = partner_query.scalar() or 0
+    
     total_tenants = total_individual + total_partners
 
     # Active tenants - only non-deleted
-    active_tenants = (
+    individual_tenants = (
         db.query(func.count(func.distinct(Tenant.id)))
         .join(Site, Tenant.site_id == Site.id)
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             Tenant.is_deleted == False,
             Site.is_deleted == False,
             Tenant.status == "active"
         )
-        .scalar() or 0
-    ) + (
+    ) 
+    
+    if allowed_space_ids is not None:
+        individual_tenants = individual_tenants.filter(
+            Tenant.space_id.in_(allowed_space_ids)
+        )
+
+    active_individual = individual_tenants.scalar() or 0
+
+
+    active_partners = (
         db.query(func.count(func.distinct(CommercialPartner.id)))
         .join(Site, CommercialPartner.site_id == Site.id)
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             CommercialPartner.is_deleted == False,
             Site.is_deleted == False,
             CommercialPartner.status == "active"
         )
-        .scalar() or 0
+       
     )
+    if allowed_space_ids is not None:
+        active_partners = active_partners.filter(
+            CommercialPartner.space_id.in_(allowed_space_ids)
+        )
+
+    active_partners = active_partners.scalar() or 0
+    
+    
+    active_tenants = active_individual + active_partners
 
     return {
         "totalTenants": total_tenants,
@@ -88,12 +135,21 @@ def get_tenants_overview(db: Session, org_id) -> dict:
     }
 
 
-def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListResponse:
+def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> TenantListResponse:
+    allowed_space_ids = None
+
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_spaces = get_allowed_spaces(db, user)
+        allowed_space_ids = [s["space_id"] for s in allowed_spaces]
+
+        if not allowed_space_ids:
+            return {"tenants": [], "total": 0}
+
     # ------------------ Residential Query ------------------
     tenant_query = (
         db.query(
             Tenant.id.label("id"),
-            literal(str(org_id)).label("org_id"),
+            literal(str(user.org_id)).label("org_id"),
             Tenant.site_id.label("site_id"),
             Tenant.name.label("name"),
             Tenant.email.label("email"),
@@ -103,6 +159,10 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
             literal(None).label("type"),
             Tenant.status.label("status"),
             Tenant.address.label("address"),
+            
+            Tenant.family_info.label("family_info"),
+            Tenant.vehicle_info.label("vehicle_info"),
+            
             literal(None).label("contact"),
             Tenant.space_id.label("space_id"),
             Space.building_block_id.label("building_block_id"),
@@ -118,10 +178,14 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
         # ✅ ADD THIS JOIN
         .outerjoin(Building, Building.id == Space.building_block_id)
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             Tenant.is_deleted == False,
             Site.is_deleted == False
         )
+    )
+    if allowed_space_ids is not None:
+        tenant_query = tenant_query.filter(
+        Tenant.space_id.in_(allowed_space_ids)
     )
 
     if params.status and params.status.lower() != "all":
@@ -143,7 +207,7 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
     partner_query = (
         db.query(
             CommercialPartner.id.label("id"),
-            literal(str(org_id)).label("org_id"),
+            literal(str(user.org_id)).label("org_id"),
             CommercialPartner.site_id.label("site_id"),
             CommercialPartner.legal_name.label("name"),
             (CommercialPartner.contact["email"].astext).label("email"),
@@ -153,6 +217,8 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
             CommercialPartner.type.label("type"),
             CommercialPartner.status.label("status"),
             literal(None).label("address"),
+            literal(None).label("family_info"),
+            literal(None).label("vehicle_info"),
             CommercialPartner.contact.label("contact"),
             CommercialPartner.space_id.label("space_id"),
             Space.building_block_id.label("building_block_id"),
@@ -169,10 +235,14 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
         .outerjoin(Building, Building.id == Space.building_block_id)
 
         .filter(
-            Site.org_id == org_id,
+            Site.org_id == user.org_id,
             CommercialPartner.is_deleted == False,
             Site.is_deleted == False
         )
+    )
+    if allowed_space_ids is not None:
+        partner_query = partner_query.filter(
+        CommercialPartner.space_id.in_(allowed_space_ids)
     )
 
     if params.status and params.status.lower() != "all":
@@ -232,7 +302,7 @@ def get_all_tenants(db: Session, org_id, params: TenantRequest) -> TenantListRes
             record["contact_info"] = contact
 
         record["tenant_leases"] = get_tenant_leases(
-            db, org_id, record.get("id"), record.get("tenant_type"))
+            db, user.org_id, record.get("id"), record.get("tenant_type"))
         results.append(TenantOut.model_validate(record))
 
     return {"tenants": results, "total": total}
@@ -254,6 +324,9 @@ def get_tenant_detail(db: Session, tenant_id: str, tenant_type: str) -> TenantOu
                 literal(None).label("type"),
                 Tenant.status.label("status"),
                 Tenant.address.label("address"),
+                Tenant.family_info.label("family_info"),
+                Tenant.vehicle_info.label("vehicle_info"),
+
                 literal(None).label("contact"),
                 Tenant.space_id.label("space_id"),
                 Space.building_block_id.label("building_block_id"),
@@ -330,6 +403,8 @@ def get_tenant_detail(db: Session, tenant_id: str, tenant_type: str) -> TenantOu
             "phone": record["phone"],
             "address": record.get("address"),
         }
+        record["family_info"] = record.get("family_info")
+        record["vehicle_info"] = record.get("vehicle_info")
     else:
         contact = record.get("contact") or {}
         if contact.get("address") is None:
@@ -337,6 +412,7 @@ def get_tenant_detail(db: Session, tenant_id: str, tenant_type: str) -> TenantOu
                 "line1": "", "line2": "", "city": "", "state": "", "pincode": ""}
 
         record["contact_info"] = contact
+
         record["tenant_leases"] = get_tenant_leases(
             db, record.get("org_id"), record.get("id"), record.get("tenant_type"))
 
@@ -410,9 +486,21 @@ def get_commercial_partner_by_id(db: Session, partner_id: str) -> Optional[Comme
     ).first()
 
 
-def create_tenant(db: Session, tenant: TenantCreate):
+def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
     now = datetime.utcnow()
     tenant_id = None
+
+    # ✅ ADD THIS AT START: Get site for org_id
+    site = db.query(Site).filter(
+        Site.id == tenant.site_id,
+        Site.is_deleted == False
+    ).first()
+    
+    if not site:
+        return error_response(message="Site not found")
+    
+    org_id = site.org_id  # ✅ Store org_id
+
     if tenant.tenant_type == "individual":
         # Check if space already has an ACTIVE tenant OR commercial partner
         # First check for active individual tenants in the target space
@@ -451,7 +539,25 @@ def create_tenant(db: Session, tenant: TenantCreate):
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
+        
+         # ✅ ADD: CREATE USER
+        new_user_id = str(uuid.uuid4())
+        new_user = Users(
+            id=new_user_id,
+            org_id=org_id,
+            full_name=tenant.name,
+            email=tenant.email,
+            phone=tenant.phone,
+            account_type="tenant",
+            status="inactive",
+            is_deleted=False,
+            created_at=now,
+            updated_at=now
+        )
+        auth_db.add(new_user)  # ✅ Use auth_db
+        auth_db.flush()  # ✅ Use auth_db
 
+          
         # Create Tenant
         tenant_data = {
             "site_id": tenant.site_id,
@@ -460,13 +566,17 @@ def create_tenant(db: Session, tenant: TenantCreate):
             "email": tenant.email,
             "phone": tenant.phone,
             "address": (tenant.contact_info or {}).get("address"),
+            "family_info": tenant.family_info,        # ✅ ADD
+            "vehicle_info": tenant.vehicle_info, 
             "status": "active",  # Default to active when creating
+            "user_id": new_user_id,  # ✅ ADD THIS LINE
             "created_at": now,
             "updated_at": now,
         }
         db_tenant = Tenant(**tenant_data)
         db.add(db_tenant)
         db.commit()
+        auth_db.commit()  # ✅ Commit auth_db too
         db.refresh(db_tenant)
 
         tenant_id = db_tenant.id
@@ -544,20 +654,46 @@ def create_tenant(db: Session, tenant: TenantCreate):
                     "state": "",
                     "pincode": ""
                 }
+
+
+        new_user_id = str(uuid.uuid4())
+
+        # Create user record
+        new_user = Users(
+            id=new_user_id,
+            org_id=org_id,  # org_id from site query at beginning
+            full_name=legal_name,
+            email=contact_info.get("email") or tenant.email,
+            phone=contact_info.get("phone") or tenant.phone,
+            account_type="tenant",
+            status="inactive",  # This is is_active=False
+            is_deleted=False,
+            created_at=now,
+            updated_at=now
+        )
+        auth_db.add(new_user)  # ✅ Use auth_db
+        auth_db.flush()  # ✅ Use auth_db  # Get the ID without committing  
+        # ✅ Add user_id to contact info
+              
+        if new_user_id:
+            contact_info["user_id"] = str(new_user_id)
+
         # Create CommercialPartner
         partner_data = {
             "site_id": tenant.site_id,
             "space_id": tenant.space_id,
             "type": tenant.type or "merchant",
             "legal_name": legal_name,
-            "contact":  contact_info,  # ✅ Use the auto-filled contact info
+            "contact":  contact_info,  # ✅ Use the auto-filled contact info  
             "status": "active",  # Default to active when creating
+            "user_id": new_user_id,  # ✅ ADD THIS LINE - Store user_id directly
             "created_at": now,
             "updated_at": now,
         }
         db_partner = CommercialPartner(**partner_data)
         db.add(db_partner)
         db.commit()
+        auth_db.commit()  # ✅ Commit auth_db too
         db.refresh(db_partner)
 
         tenant_id = db_partner.id
@@ -565,7 +701,7 @@ def create_tenant(db: Session, tenant: TenantCreate):
     return get_tenant_detail(db, tenant_id, tenant.tenant_type)
 
 
-def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
+def update_tenant(db: Session, auth_db:Session,tenant_id: UUID, update_data: TenantUpdate):
     update_dict = update_data.dict(exclude_unset=True)
     update_dict["updated_at"] = datetime.utcnow()
 
@@ -633,6 +769,17 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                     status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                     http_status=400
                 )
+        if db_tenant.user_id:
+            user = auth_db.query(Users).filter(
+                Users.id == db_tenant.user_id,
+                Users.is_deleted == False
+            ).first()
+        
+            if user:
+                user.full_name = update_dict.get("name", db_tenant.name)
+                user.email = update_dict.get("email", db_tenant.email)
+                user.phone = update_dict.get("phone", db_tenant.phone)
+                user.updated_at = datetime.utcnow()
 
         # Update Tenant table
         db.query(Tenant).filter(Tenant.id == tenant_id).update(
@@ -647,6 +794,8 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                     if update_dict.get("contact_info")
                     else db_tenant.address
                 ),
+                "family_info": update_dict.get("family_info", db_tenant.family_info),   # ✅
+                "vehicle_info": update_dict.get("vehicle_info", db_tenant.vehicle_info), # ✅
                 "updated_at": datetime.utcnow(),
             }
         )
@@ -660,7 +809,7 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
             ).update({
                 "building_block_id": new_building_id
             })
-
+        auth_db.commit()  # ✅ ADD THIS LINE
         db.commit()
         db.refresh(db_tenant)
 
@@ -733,6 +882,18 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                     status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                     http_status=400
                 )
+        if db_partner.user_id:
+            user = auth_db.query(Users).filter(
+                Users.id == db_partner.user_id,
+                Users.is_deleted == False
+            ).first()
+
+            if user:
+                contact_info = update_dict.get("contact_info") or db_partner.contact or {}
+                user.full_name = update_dict.get("legal_name", db_partner.legal_name)
+                user.email = contact_info.get("email", user.email)
+                user.phone = contact_info.get("phone", user.phone)
+                user.updated_at = datetime.utcnow()
 
         # Update commercial partner
         if db_partner:
@@ -745,35 +906,46 @@ def update_tenant(db: Session, tenant_id: UUID, update_data: TenantUpdate):
                 "contact_info") or db_partner.contact
             db_partner.status = update_dict.get("status", db_partner.status)
             db_partner.updated_at = datetime.utcnow()
-
+       
+        auth_db.commit()  # ✅ ADD THIS LINE
         db.commit()
 
     return get_tenant_detail(db, tenant_id, update_data.tenant_type)
 
 
 # ----------------- Delete Tenant -----------------
-def delete_tenant(db: Session, tenant_id: UUID) -> Dict:
+def delete_tenant(db: Session,auth_db: Session, tenant_id: UUID) -> Dict:
     """Delete tenant with automatic type detection - DELETES LEASES & CHARGES TOO"""
 
     # Try individual tenant first
     tenant = get_tenant_by_id(db, tenant_id)
     if tenant:
-        return delete_individual_tenant(db, tenant_id)
+        return delete_individual_tenant(db,auth_db, tenant_id)
 
     # Try commercial partner
     partner = get_commercial_partner_by_id(db, tenant_id)
     if partner:
-        return delete_commercial_partner(db, tenant_id)
+        return delete_commercial_partner(db,auth_db, tenant_id)
 
     return {"success": False, "message": "Tenant not found"}
 
 
-def delete_individual_tenant(db: Session, tenant_id: UUID) -> Dict:
+def delete_individual_tenant(db: Session,auth_db: Session, tenant_id: UUID) -> Dict:
     """Soft delete individual tenant + all leases + all lease charges"""
     try:
         tenant = get_tenant_by_id(db, tenant_id)
         if not tenant:
             return {"success": False, "message": "Tenant not found"}
+        
+        if tenant.user_id:
+            user = auth_db.query(Users).filter(
+                Users.id == tenant.user_id,
+                Users.is_deleted == False
+            ).first()
+            if user:
+                user.is_deleted = True
+                user.updated_at = datetime.utcnow()
+               
 
         # ✅ FIXED: Get leases properly
         leases = db.query(Lease).filter(
@@ -809,7 +981,7 @@ def delete_individual_tenant(db: Session, tenant_id: UUID) -> Dict:
             }, synchronize_session=False)
 
         db.commit()
-
+        auth_db.commit()  # ✅ Commit auth_db changes
         # ✅ CLEAR MESSAGE: Only show one message with active lease count
         if active_lease_count > 0:
             return {
@@ -821,15 +993,27 @@ def delete_individual_tenant(db: Session, tenant_id: UUID) -> Dict:
 
     except Exception as e:
         db.rollback()
+        auth_db.rollback()  # ✅ Rollback auth_db too
         return {"success": False, "message": f"Database error: {str(e)}"}
 
 
-def delete_commercial_partner(db: Session, partner_id: UUID) -> Dict:
+def delete_commercial_partner(db: Session,auth_db: Session, partner_id: UUID) -> Dict:
     """Soft delete commercial partner + all leases + all lease charges"""
     try:
         partner = get_commercial_partner_by_id(db, partner_id)
         if not partner:
             return {"success": False, "message": "Commercial partner not found"}
+        
+        if partner.user_id:
+            user = auth_db.query(Users).filter(
+                Users.id == partner.user_id,
+                Users.is_deleted == False
+            ).first()
+
+            if user:
+                user.is_deleted = True
+                user.updated_at = datetime.utcnow()
+                
 
         # ✅ FIXED: Get leases properly
         leases = db.query(Lease).filter(
@@ -864,6 +1048,7 @@ def delete_commercial_partner(db: Session, partner_id: UUID) -> Dict:
             }, synchronize_session=False)
 
         db.commit()
+        auth_db.commit()  # ✅ Commit auth_db changes
 
         # ✅ CLEAR MESSAGE: Only show one message with active lease count
         if active_lease_count > 0:
@@ -876,6 +1061,7 @@ def delete_commercial_partner(db: Session, partner_id: UUID) -> Dict:
 
     except Exception as e:
         db.rollback()
+        auth_db.rollback()  # ✅ Rollback auth_db too
         return {"success": False, "message": f"Database error: {str(e)}"}
 
 

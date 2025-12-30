@@ -45,6 +45,8 @@ class LeaseOut(LeaseBase):
     space_code: Optional[str] = None
     site_name: Optional[str] = None
     space_name: Optional[str] = None
+    building_name: Optional[str] = None  # This must be here
+    building_block_id: Optional[UUID] = None  # This must be here
     model_config = {"from_attributes": True}
 
 

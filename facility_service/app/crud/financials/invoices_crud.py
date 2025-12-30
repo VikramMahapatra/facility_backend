@@ -1,15 +1,19 @@
+from decimal import Decimal
+from typing import Any, Dict
 from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, or_, case, Numeric
 
+from ...models.parking_access.parking_pass import ParkingPass
+from ...models.space_sites.sites import Site
 from shared.core.schemas import Lookup
 
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket  
 from ...models.financials.invoices import Invoice, PaymentAR
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentOut
+from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentOut
 
 
 # ----------------------------------------------------------------------
@@ -82,6 +86,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
     results = []
     for invoice in invoices:
+        site_name = invoice.site.name if invoice.site else None  
         billable_item_name = None
         
         if invoice.billable_item_type and invoice.billable_item_id:
@@ -115,6 +120,24 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
                         billable_item_name = f"{lease_charge.charge_code} | {start_str}–{end_str}"
                     else:
                         billable_item_name = lease_charge.charge_code
+                        
+            elif invoice.billable_item_type == "parking pass":
+                parking_pass = db.query(ParkingPass).filter(
+                    ParkingPass.id == invoice.billable_item_id,
+                    ParkingPass.is_deleted == False
+                ).first()
+
+                if parking_pass:
+                    if parking_pass.start_date and parking_pass.end_date:
+                        start_str = parking_pass.start_date.strftime("%d %b")
+                        end_str = parking_pass.end_date.strftime("%d %b %Y")
+                        billable_item_name = (
+                            f"Parking Pass | {parking_pass.pass_no} | "
+                            f"{start_str}–{end_str}"
+                        )
+                    else:
+                        billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
+
                        
                           
         # ✅ FIX: Convert date objects to strings for Pydantic model
@@ -122,7 +145,8 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
             **invoice.__dict__,
             "date": invoice.date.isoformat() if invoice.date else None,
             "due_date": invoice.due_date.isoformat() if invoice.due_date else None, 
-            "billable_item_name": billable_item_name  
+            "billable_item_name": billable_item_name,
+            "site_name": site_name 
         })
         results.append(invoice_data)
         
@@ -145,6 +169,7 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
     base_query  = (
         db.query(PaymentAR, Invoice)
         .join(Invoice, PaymentAR.invoice_id == Invoice.id)
+        .join(Site, Site.id == Invoice.site_id, isouter=True)
         .filter(
             PaymentAR.org_id == org_id,
             Invoice.is_deleted == False  # ✅ ADD THIS
@@ -190,13 +215,33 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
                         billable_item_name = f"{lease_charge.charge_code} | {start_str}–{end_str}"
                     else:
                         billable_item_name = lease_charge.charge_code
+                        
+                        
+            elif invoice.billable_item_type == "parking pass":
+                parking_pass = db.query(ParkingPass).filter(
+                    ParkingPass.id == invoice.billable_item_id,
+                    ParkingPass.is_deleted == False
+                ).first()
+
+                if parking_pass:
+                    if parking_pass.start_date and parking_pass.end_date:
+                        start_str = parking_pass.start_date.strftime("%d %b")
+                        end_str = parking_pass.end_date.strftime("%d %b %Y")
+                        billable_item_name = (
+                            f"Parking Pass | {parking_pass.pass_no} | "
+                            f"{start_str}–{end_str}"
+                        )
+                    else:
+                        billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
+
         
         # ✅ FIX: Convert date objects to strings for Pydantic model
         results.append(PaymentOut.model_validate({
             **payment.__dict__,
             "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
             "invoice_no": invoice.invoice_no,
-            "billable_item_name": billable_item_name  
+            "billable_item_name": billable_item_name,
+            "site_name": invoice.site.name if invoice.site else None  
         }))
         
     return {"payments": results, "total": total}
@@ -225,7 +270,7 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         
         ticket = db.query(Ticket).filter(
             Ticket.id == ticket_work_order.ticket_id,
-            Ticket.is_deleted == False
+            Ticket.status == "open"
         ).first()
 
         if ticket and ticket.ticket_no:
@@ -249,9 +294,33 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
             billable_item_name = f"{lease_charge.charge_code} | {start_str}–{end_str}"
         else:
             billable_item_name = lease_charge.charge_code
-        
+    
+    elif request.billable_item_type == "parking pass":
+        parking_pass = db.query(ParkingPass).filter(
+            ParkingPass.id == request.billable_item_id,
+            ParkingPass.is_deleted == False
+        ).first()
+
+        if not parking_pass:
+            raise HTTPException(status_code=404, detail="Parking pass not found")
+
+        # Build billable item name
+        if parking_pass.start_date and parking_pass.end_date:
+            start_str = parking_pass.start_date.strftime("%d %b")
+            end_str = parking_pass.end_date.strftime("%d %b %Y")
+            billable_item_name = (
+                f"Parking Pass | {parking_pass.pass_no} | "
+                f"{start_str} - {end_str}"
+            )
+        else:
+            billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
+
+ 
     else:
-        raise HTTPException(status_code=400, detail="Invalid module_type. Must be 'work_order' or 'lease_charge'")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid module_type. Must be 'work order', 'lease charge', or 'parking pass'"
+        )
 
     invoice_data = request.model_dump(exclude={"org_id"})
     invoice_data.update({
@@ -262,13 +331,15 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
     db.add(db_invoice)
     db.commit()
     db.refresh(db_invoice)
+    site_name = db_invoice.site.name if db_invoice.site else None
 
    
     invoice_dict = {
         **db_invoice.__dict__,
         "date": db_invoice.date.isoformat() if db_invoice.date else None,
         "due_date": db_invoice.due_date.isoformat() if db_invoice.due_date else None,
-        "billable_item_name": billable_item_name
+        "billable_item_name": billable_item_name,
+        "site_name": site_name
     }
     invoice_out = InvoiceOut.model_validate(invoice_dict)
     return invoice_out
@@ -286,6 +357,7 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
 
     db.commit()
     db.refresh(db_invoice)
+    site_name = db_invoice.site.name if db_invoice.site else None
 
     billable_item_name = None
     if db_invoice.billable_item_type and db_invoice.billable_item_id:
@@ -318,6 +390,24 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
                     billable_item_name = f"{lease_charge.charge_code} | {start_str}–{end_str}"
                 else:
                     billable_item_name = lease_charge.charge_code
+                    
+        elif db_invoice.billable_item_type == "parking pass":
+            parking_pass = db.query(ParkingPass).filter(
+                ParkingPass.id == db_invoice.billable_item_id,
+                ParkingPass.is_deleted == False
+            ).first()
+
+            if parking_pass:
+                if parking_pass.start_date and parking_pass.end_date:
+                    start_str = parking_pass.start_date.strftime("%d %b")
+                    end_str = parking_pass.end_date.strftime("%d %b %Y")
+                    billable_item_name = (
+                        f"Parking Pass | {parking_pass.pass_no} | "
+                        f"{start_str}–{end_str}"
+                    )
+                else:
+                    billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
+
 
 
     # ✅ FIX: Convert date objects to strings for Pydantic model
@@ -325,6 +415,8 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
         **db_invoice.__dict__,
         "date": db_invoice.date.isoformat() if db_invoice.date else None,
         "due_date": db_invoice.due_date.isoformat() if db_invoice.due_date else None,
+        "site_name": site_name
+        
     }
     if billable_item_name:
         invoice_dict["billable_item_name"] = billable_item_name
@@ -332,7 +424,7 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     invoice_out = InvoiceOut.model_validate(invoice_dict)
     return invoice_out
 
-# ----------------- Soft Delete Invoice -----------------
+
 # ----------------- Soft Delete Invoice -----------------
 def delete_invoice_soft(db: Session, invoice_id: str, org_id: UUID) -> bool:
     db_invoice = db.query(Invoice).filter(
@@ -342,11 +434,18 @@ def delete_invoice_soft(db: Session, invoice_id: str, org_id: UUID) -> bool:
     ).first()
     
     if not db_invoice:
-        return False
+        return {
+            "success": False,
+            "message": "Invoice not found or already deleted"
+        }
     
     db_invoice.is_deleted = True
     db.commit()
-    return True
+    db.refresh(db_invoice)
+    return {
+        "success": True,
+        "message": "Invoice soft deleted successfully"
+    }
 
 def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, billable_item_type: str):
     entities = []
@@ -369,7 +468,7 @@ def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, billab
             ).first()
             
             if ticket and ticket.ticket_no:
-                formatted_name = f"{wo.wo_no} | Ticket #{ticket.ticket_no}"
+                formatted_name = f"{wo.wo_no} | Ticket {ticket.ticket_no}"
             else:
                 formatted_name = wo.wo_no
                 
@@ -399,6 +498,29 @@ def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, billab
                     id=str(lc.id),
                     name=formatted_name  
                 ))
+                
+    elif billable_item_type == "parking pass":
+        parking_passes = db.query(ParkingPass).filter(
+            ParkingPass.is_deleted == False,
+            ParkingPass.site_id == site_id,
+            ParkingPass.org_id == org_id
+        ).all()
+
+        for pp in parking_passes:
+            if pp.start_date and pp.end_date:
+                start_str = pp.start_date.strftime("%d %b")
+                end_str = pp.end_date.strftime("%d %b %Y")
+                formatted_name = (
+                    f"Parking Pass | {pp.pass_no} | {start_str}–{end_str}"
+                )
+            else:
+                formatted_name = f"Parking Pass | {pp.pass_no}"
+
+            entities.append(Lookup(
+                id=str(pp.id),
+                name=formatted_name
+            ))
+
     
     return entities
 
@@ -414,6 +536,7 @@ def get_work_order_invoices(db: Session, org_id: UUID, params: InvoicesRequest) 
     invoices = (
         base_query
         .order_by(Invoice.updated_at.desc())
+        .join(Site, Site.id == Invoice.site_id)
         .offset(params.skip)
         .limit(params.limit)
         .all()
@@ -422,6 +545,7 @@ def get_work_order_invoices(db: Session, org_id: UUID, params: InvoicesRequest) 
     results = []
     for invoice in invoices:
         billable_item_name = None
+        site_name = invoice.site.name if invoice.site else None 
         
         if invoice.billable_item_id:
             ticket_work_order = db.query(TicketWorkOrder).filter(
@@ -443,7 +567,8 @@ def get_work_order_invoices(db: Session, org_id: UUID, params: InvoicesRequest) 
             **invoice.__dict__,
             "date": invoice.date.isoformat() if invoice.date else None,
             "due_date": invoice.due_date.isoformat() if invoice.due_date else None, 
-            "billable_item_name": billable_item_name  
+            "billable_item_name": billable_item_name,
+            "site_name": site_name
         })
         results.append(invoice_data)
         
@@ -464,6 +589,7 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
     invoices = (
         base_query
         .order_by(Invoice.updated_at.desc())
+        .join(Site, Site.id == Invoice.site_id)
         .offset(params.skip)
         .limit(params.limit)
         .all()
@@ -472,6 +598,7 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
     results = []
     for invoice in invoices:
         billable_item_name = None
+        site_name = invoice.site.name if invoice.site else None
         
         if invoice.billable_item_id:
             lease_charge = db.query(LeaseCharge).filter(
@@ -490,7 +617,8 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
             **invoice.__dict__,
             "date": invoice.date.isoformat() if invoice.date else None,
             "due_date": invoice.due_date.isoformat() if invoice.due_date else None, 
-            "billable_item_name": billable_item_name  
+            "billable_item_name": billable_item_name ,
+            "site_name": site_name 
         })
         results.append(invoice_data)
         
@@ -498,3 +626,56 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
         invoices=results,
         total=total
     )
+    
+    
+
+
+def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[str, Any]:
+        item_type = params.billable_item_type.lower().strip()
+        billable_item_id = params.billable_item_id
+
+        if item_type == "work order":
+            # Get work order
+            work_order = db.query(TicketWorkOrder).filter(
+                TicketWorkOrder.id == billable_item_id,
+                TicketWorkOrder.is_deleted == False
+            ).first()
+            
+            if not work_order:
+                raise HTTPException(status_code=404, detail="Work order not found")
+            
+            # Calculate totals
+            labour = work_order.labour_cost or Decimal('0')
+            material = work_order.material_cost or Decimal('0')
+            other = work_order.other_expenses or Decimal('0')
+            
+            subtotal = labour + material + other
+            tax = Decimal('0.00')
+            grand_total = subtotal + tax
+            
+        elif item_type == "lease charge":
+            # Get lease charge
+            lease_charge = db.query(LeaseCharge).filter(
+                LeaseCharge.id == billable_item_id,
+                LeaseCharge.is_deleted == False
+            ).first()
+            
+            if not lease_charge:
+                raise HTTPException(status_code=404, detail="Lease charge not found")
+            
+            # Calculate totals
+            subtotal = lease_charge.amount
+            tax = (lease_charge.amount * (lease_charge.tax_pct or Decimal('0'))) / Decimal('100')
+            grand_total = subtotal + tax
+                
+        else:
+            raise HTTPException(
+                status_code=400,
+               detail="Invalid billable_item_type. Must be 'work order', 'lease charge', or 'parking pass'"
+            )
+        
+        return InvoiceTotalsResponse(
+            subtotal=round(subtotal, 2),      
+            tax=round(tax, 2),          
+            grand_total=round(grand_total, 2)   
+        )

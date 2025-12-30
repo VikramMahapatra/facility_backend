@@ -25,7 +25,7 @@ class Invoice(Base):
     billable_item_id: UUID = Column(UUID(as_uuid=True), nullable=False)
     is_paid = Column(Boolean, default=False, nullable=False)
     
-    invoice_no: str = Column(String(64), nullable=False, unique=True)
+    invoice_no: str = Column(String(64), nullable=False)
     date: Date = Column(Date, nullable=False)
     due_date: Date = Column(Date)
     # draft|issued|paid|partial|void
@@ -51,7 +51,7 @@ class Invoice(Base):
         "InvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
     payments = relationship(
         "PaymentAR", back_populates="invoice", cascade="all, delete-orphan")
-
+    site = relationship("Site", backref="invoices")
 
 # -------------------
 # Invoice Lines
@@ -94,9 +94,11 @@ class PaymentAR(Base):
     invoice = relationship("Invoice", back_populates="payments")
     
     
+
 @event.listens_for(Invoice, "before_insert")
 def generate_invoice_no(mapper, connection, target):
-  
-    next_val = connection.execute(invoice_seq)
-    
+    if target.invoice_no:
+        return
+
+    next_val = connection.scalar(invoice_seq.next_value())
     target.invoice_no = f"INV{next_val}"

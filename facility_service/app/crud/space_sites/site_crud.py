@@ -8,8 +8,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 from typing import Dict, Optional
 
+from shared.core.schemas import UserToken
+from shared.helpers.property_helper import get_allowed_sites
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
+from shared.utils.enums import UserAccountType
 
 from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
@@ -19,9 +22,17 @@ from ...schemas.space_sites.sites_schemas import SiteCreate, SiteOut, SiteReques
 import uuid
 
 
-def get_sites(db: Session, org_id: str, params: SiteRequest):
+def get_sites(db: Session,  user: UserToken, params: SiteRequest):
     now = datetime.utcnow()
+    allowed_site_ids = None
 
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_sites = get_allowed_sites(db, user)
+        allowed_site_ids = [s["site_id"] for s in allowed_sites]
+
+        # Tenant has no access
+        if not allowed_site_ids:
+            return {"sites": [], "total": 0}
     # --------------------------
     # SUBQUERY: total buildings
     # --------------------------
@@ -89,9 +100,14 @@ def get_sites(db: Session, org_id: str, params: SiteRequest):
         .outerjoin(spaces_sq, spaces_sq.c.site_id == Site.id)
         .outerjoin(buildings_sq, buildings_sq.c.site_id == Site.id)
         .outerjoin(occupied_sq, occupied_sq.c.site_id == Site.id)
-        .filter(Site.org_id == org_id, Site.is_deleted == False)
+        .filter( Site.is_deleted == False)
     )
 
+    if allowed_site_ids is not None:
+        site_query = site_query.filter(Site.id.in_(allowed_site_ids))
+    else:
+        site_query = site_query.filter(Site.org_id == user.org_id)
+        
     # ------------- Filters --------------
     if params.kind and params.kind.lower() != "all":
         site_query = site_query.filter(
@@ -133,11 +149,24 @@ def get_sites(db: Session, org_id: str, params: SiteRequest):
     return {"sites": final, "total": total}
 
 
-def get_site_lookup(db: Session, org_id: str, params: Optional[SiteRequest] = None):
+def get_site_lookup(db: Session, user: UserToken, params: Optional[SiteRequest] = None):
+    allowed_site_ids = None
+
+    if user.account_type.lower() == UserAccountType.TENANT:
+        allowed_sites = get_allowed_sites(db, user)
+        allowed_site_ids = [s["site_id"] for s in allowed_sites]
+
+        # Tenant has no access
+        if not allowed_site_ids:
+            return {"sites": [], "total": 0}
+        
     site_query = db.query(Site.id, Site.name).filter(Site.is_deleted == False)
 
-    if org_id:
-        site_query = site_query.filter(Site.org_id == org_id)
+    
+    if allowed_site_ids is not None:
+        site_query = site_query.filter(Site.id.in_(allowed_site_ids))
+    else:
+        site_query = site_query.filter(Site.org_id == user.org_id)
 
     if params and params.search:
         search_term = f"%{params.search}%"

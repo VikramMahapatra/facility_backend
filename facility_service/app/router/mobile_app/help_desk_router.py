@@ -39,7 +39,7 @@ async def raise_complaint(
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
-    file: UploadFile = File(None),
+    files: List[UploadFile] = File(None),  # ✅ Accept multiple files
 ):
     return await tickets_crud.create_ticket(
         background_tasks,
@@ -47,7 +47,7 @@ async def raise_complaint(
         auth_db,
         complaint_data,
         current_user,
-        file
+        files  # ✅ Pass files list
     )
 
 
@@ -84,10 +84,10 @@ async def resolved_ticket(
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
-    file: UploadFile = File(None)
+    files: List[UploadFile] = File(None),  # MULTIPLE files
 ):
     request.action_by = current_user.user_id
-    return await tickets_crud.resolve_ticket(background_tasks, db, auth_db, request, current_user, file)
+    return await tickets_crud.resolve_ticket(background_tasks, db, auth_db, request, current_user, files)
 
 
 @router.post("/ticket-reopened", response_model=None)

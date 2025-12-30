@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 async def create_ticket_route(
     background_tasks: BackgroundTasks,
     request: TicketCreate = Depends(TicketCreate.as_form),
-    file: UploadFile = File(None),
+    files: List[UploadFile] = File(None),  # CHANGE: file → files (List)
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
@@ -32,7 +32,7 @@ async def create_ticket_route(
         session=db,
         auth_db=auth_db,
         data=request,
-        file=file,
+        files=files,  # CHANGE: file → files
         user=current_user
     )
 

@@ -101,7 +101,7 @@ def parking_pass_zone_filter(
     return crud.parking_pass_zone_filter(db, current_user.org_id)
 
 
-@router.get("/partner/{partner_id}/info", response_model=PartnerInfoResponse)
+@router.get("/partner/info/{partner_id}", response_model=PartnerInfoResponse)
 def get_partner_info(
     partner_id: UUID,
     tenant_type: Optional[str] = None,

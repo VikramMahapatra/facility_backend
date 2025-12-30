@@ -365,7 +365,8 @@ def create_parking_pass(db: Session, data: ParkingPassCreate):
         pass_out.vehicle_info = vehicles  # Add partner's vehicles to pass_out
         pass_out.family_info = family_info if family_info else None  # Add family info if exists
         
-        return {"pass": pass_out.model_dump()}
+        parking_pass=pass_out.model_dump()
+        return parking_pass
         
     except Exception as e:
         db.rollback()
@@ -566,7 +567,8 @@ def update_parking_pass(db: Session, data: ParkingPassUpdate):
             pass_out.vehicle_info = vehicles if vehicles else None
             pass_out.family_info = family_info if family_info else None
         
-        return {"pass": pass_out.model_dump()}
+        parking_pass=pass_out.model_dump()
+        return parking_pass
         
     except Exception as e:
         db.rollback()

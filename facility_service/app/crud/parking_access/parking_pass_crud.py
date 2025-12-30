@@ -233,6 +233,30 @@ def create_parking_pass(db: Session, data: ParkingPassCreate):
         ).first()
 
         if existing_pass:
+            # Get the existing partner's name for error message
+            other_partner_name = None
+            other_partner_id = existing_pass.partner_id
+            if other_partner_id:
+                # Check Tenant first
+                other_partner = db.query(Tenant).filter(
+                    Tenant.id == other_partner_id,
+                    Tenant.is_deleted == False
+                ).first()
+                
+                if not other_partner:
+                    # Check CommercialPartner
+                    other_partner = db.query(CommercialPartner).filter(
+                        CommercialPartner.id == other_partner_id,
+                        CommercialPartner.is_deleted == False
+                    ).first()
+                
+                if other_partner:
+                    # Get the correct name field
+                    if hasattr(other_partner, 'name') and other_partner.name:
+                        other_partner_name = other_partner.name
+                    elif hasattr(other_partner, 'legal_name') and other_partner.legal_name:
+                        other_partner_name = other_partner.legal_name
+            
             # Case 1: Same partner trying to create duplicate
             if existing_pass.partner_id == partner_id:
                 return error_response(
@@ -240,34 +264,14 @@ def create_parking_pass(db: Session, data: ParkingPassCreate):
                 )
             # Case 2: Different partner trying to use same vehicle
             else:
-                # Get other partner's name for better error message
-                other_partner = None
-                other_partner_id = existing_pass.partner_id
-                if other_partner_id:
-                    # Check Tenant first
-                    other_partner = db.query(Tenant).filter(
-                        Tenant.id == other_partner_id,
-                        Tenant.is_deleted == False
-                    ).first()
-                    
-                    if not other_partner:
-                        # Check CommercialPartner
-                        other_partner = db.query(CommercialPartner).filter(
-                            CommercialPartner.id == other_partner_id,
-                            CommercialPartner.is_deleted == False
-                        ).first()
-                
-                partner_name = "another partner"
-                if other_partner:
-                    if hasattr(other_partner, 'name'):
-                        partner_name = other_partner.name
-                    elif hasattr(other_partner, 'legal_name'):
-                        partner_name = other_partner.legal_name
-                
-                return error_response(
-                    message=f"Vehicle {vehicle_no} is already assigned to {partner_name}. One vehicle can only have one active parking pass."
-                )
-        
+                if other_partner_name:
+                    return error_response(
+                        message=f"Vehicle {vehicle_no} is already assigned to {other_partner_name}. One vehicle can only have one active parking pass."
+                    )
+                else:
+                    return error_response(
+                        message=f"Vehicle {vehicle_no} is already assigned to another partner. One vehicle can only have one active parking pass."
+                    )
         # ---------------------------- GET PARTNER INFO ----------------------------
         # Try to find partner in Tenant table
         partner = db.query(Tenant).filter(
@@ -369,19 +373,204 @@ def create_parking_pass(db: Session, data: ParkingPassCreate):
     
 
 # ---------------- UPDATE ----------------
+# ---------------- UPDATE ----------------
 def update_parking_pass(db: Session, data: ParkingPassUpdate):
-    db_pass = get_parking_pass_by_id(db, data.id)
-    if not db_pass:
-        return None
+    try:
+        # Get the existing pass
+        db_pass = get_parking_pass_by_id(db, data.id)
+        if not db_pass:
+            return error_response(message="Parking pass not found")
 
-    for k, v in data.model_dump(exclude_unset=True).items():
-        setattr(db_pass, k, v)
+        update_data = data.model_dump(exclude_unset=True)
+        
+        # Check if vehicle_no is being updated
+        vehicle_no = update_data.get("vehicle_no", db_pass.vehicle_no)
+        partner_id = update_data.get("partner_id", db_pass.partner_id)
+        
+        # If vehicle_no is being updated, perform the same check as create
+        if 'vehicle_no' in update_data or 'partner_id' in update_data:
+            # ✅ SINGLE EFFICIENT CHECK: Find ANY active/blocked pass for this vehicle (excluding current pass)
+            existing_pass = db.query(ParkingPass).filter(
+                ParkingPass.vehicle_no == vehicle_no,
+                ParkingPass.id != data.id,  # Exclude current pass
+                ParkingPass.is_deleted == False,
+                ParkingPass.status.in_(['active', 'blocked'])
+            ).first()
 
-    db.commit()
-    db.refresh(db_pass)
-    return db_pass
-
-
+            if existing_pass:
+                # Get the existing partner's name for error message
+                other_partner_name = None
+                other_partner_id = existing_pass.partner_id
+                if other_partner_id:
+                    # Check Tenant first
+                    other_partner = db.query(Tenant).filter(
+                        Tenant.id == other_partner_id,
+                        Tenant.is_deleted == False
+                    ).first()
+                    
+                    if not other_partner:
+                        # Check CommercialPartner
+                        other_partner = db.query(CommercialPartner).filter(
+                            CommercialPartner.id == other_partner_id,
+                            CommercialPartner.is_deleted == False
+                        ).first()
+                    
+                    if other_partner:
+                        # Get the correct name field
+                        if hasattr(other_partner, 'name') and other_partner.name:
+                            other_partner_name = other_partner.name
+                        elif hasattr(other_partner, 'legal_name') and other_partner.legal_name:
+                            other_partner_name = other_partner.legal_name
+                
+                # Case 1: Same partner trying to update to duplicate vehicle
+                if existing_pass.partner_id == partner_id:
+                    return error_response(
+                        message=f"This partner already has an active/blocked parking pass for vehicle {vehicle_no}"
+                    )
+                # Case 2: Different partner trying to use same vehicle
+                else:
+                    if other_partner_name:
+                        return error_response(
+                            message=f"Vehicle {vehicle_no} is already assigned to {other_partner_name}. One vehicle can only have one active parking pass."
+                        )
+                    else:
+                        return error_response(
+                            message=f"Vehicle {vehicle_no} is already assigned to another partner. One vehicle can only have one active parking pass."
+                        )
+        
+        # ---------------------------- GET PARTNER INFO IF PARTNER CHANGED ----------------------------
+        partner_info_needed = False
+        if 'partner_id' in update_data or 'pass_holder_name' in update_data:
+            partner_info_needed = True
+            
+        partner = None
+        partner_name = None
+        vehicles = []
+        family_info = []
+        
+        if partner_info_needed:
+            # Get the partner_id from update or existing pass
+            current_partner_id = update_data.get("partner_id", db_pass.partner_id)
+            
+            if current_partner_id:
+                # Try to find partner in Tenant table
+                partner = db.query(Tenant).filter(
+                    Tenant.id == current_partner_id,
+                    Tenant.is_deleted == False
+                ).first()
+                
+                # If not found in Tenant, try CommercialPartner
+                if not partner:
+                    partner = db.query(CommercialPartner).filter(
+                        CommercialPartner.id == current_partner_id,
+                        CommercialPartner.is_deleted == False
+                    ).first()
+                
+                if not partner:
+                    return error_response(message="Partner not found")
+                
+                # Get partner name
+                if hasattr(partner, 'name') and partner.name:
+                    partner_name = partner.name
+                elif hasattr(partner, 'legal_name') and partner.legal_name:
+                    partner_name = partner.legal_name
+                
+                # ---------------------------- UPDATE PASS HOLDER NAME ----------------------------
+                # Logic: If pass_holder_name is empty/None in update, use partner name
+                pass_holder_name = update_data.get("pass_holder_name")
+                if pass_holder_name is not None and str(pass_holder_name).strip() == "":
+                    # If empty string provided, use partner name
+                    if partner_name:
+                        update_data["pass_holder_name"] = partner_name
+                elif pass_holder_name is None and 'pass_holder_name' not in update_data:
+                    # If pass_holder_name not in update and existing is empty, use partner name
+                    if (db_pass.pass_holder_name is None or str(db_pass.pass_holder_name).strip() == "") and partner_name:
+                        update_data["pass_holder_name"] = partner_name
+                
+                # ---------------------------- FETCH VEHICLE INFO ----------------------------
+                if hasattr(partner, 'vehicle_info') and partner.vehicle_info:
+                    vehicles_data = []
+                    if isinstance(partner.vehicle_info, str):
+                        try:
+                            vehicles_data = json.loads(partner.vehicle_info)
+                        except:
+                            vehicles_data = []
+                    else:
+                        vehicles_data = partner.vehicle_info
+                    
+                    # Extract vehicle information
+                    if isinstance(vehicles_data, list):
+                        for vehicle in vehicles_data:
+                            if isinstance(vehicle, dict) and vehicle.get("number"):
+                                vehicles.append(VehicleInfo(
+                                    type=vehicle.get("type", ""),
+                                    number=vehicle.get("number", "")
+                                ))
+                
+                # ---------------------------- FETCH FAMILY INFO ----------------------------
+                if hasattr(partner, 'family_info') and partner.family_info:
+                    family_data = []
+                    if isinstance(partner.family_info, str):
+                        try:
+                            family_data = json.loads(partner.family_info)
+                        except:
+                            family_data = []
+                    else:
+                        family_data = partner.family_info
+                    
+                    if isinstance(family_data, list):
+                        for member in family_data:
+                            if isinstance(member, dict) and member.get("member"):
+                                family_info.append(FamilyInfo(
+                                    member=member.get("member", ""),
+                                    relation=member.get("relation", "")
+                                ))
+        
+        # Update the pass with new data
+        for k, v in update_data.items():
+            setattr(db_pass, k, v)
+        
+        db.commit()
+        db.refresh(db_pass)
+        
+        # ---------------------------- FETCH SITE, SPACE, ZONE NAMES ----------------------------
+        # Query the pass again with joins to get site/space/zone names
+        pass_with_details = (
+            db.query(
+                ParkingPass,
+                Site.name.label('site_name'),
+                Space.name.label('space_name'),
+                ParkingZone.name.label('zone_name')
+            )
+            .outerjoin(Site, ParkingPass.site_id == Site.id)
+            .outerjoin(Space, ParkingPass.space_id == Space.id)
+            .outerjoin(ParkingZone, ParkingPass.zone_id == ParkingZone.id)
+            .filter(ParkingPass.id == data.id)
+            .first()
+        )
+        
+        if pass_with_details:
+            db_pass, site_name, space_name, zone_name = pass_with_details
+            # Update the db_pass object with the names
+            db_pass.site_name = site_name
+            db_pass.space_name = space_name
+            db_pass.zone_name = zone_name
+        
+        # Prepare response similar to create
+        db_pass_dict = {k: v for k, v in db_pass.__dict__.items() if not k.startswith("_")}
+        pass_out = ParkingPassOut.model_validate(db_pass_dict)
+        
+        # Add partner info if available
+        if partner_info_needed and partner:
+            pass_out.partner_name = partner_name
+            pass_out.vehicle_info = vehicles if vehicles else None
+            pass_out.family_info = family_info if family_info else None
+        
+        return {"pass": pass_out.model_dump()}
+        
+    except Exception as e:
+        db.rollback()
+        return error_response(message=str(e))
 # ---------------- SOFT DELETE ----------------
 def delete_parking_pass(db: Session, pass_id: UUID):
     db_pass = get_parking_pass_by_id(db, pass_id)

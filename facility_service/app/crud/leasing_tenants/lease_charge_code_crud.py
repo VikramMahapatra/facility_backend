@@ -85,5 +85,6 @@ def get_all_lease_codes(db: Session, org_id: UUID, search: Optional[str] = None)
     if search:
         search_term = f"%{search}%"
         query = query.filter(LeaseChargeCode.code.ilike(search_term))
-    
+        
+    query = query.order_by(LeaseChargeCode.updated_at.desc())
     return query.all()

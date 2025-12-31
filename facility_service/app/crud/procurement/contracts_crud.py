@@ -198,14 +198,33 @@ def get_contracts(db: Session, org_id: UUID, params: ContractRequest) -> Contrac
 
 def get_contract_by_id(db: Session, contract_id: str) -> Optional[Contract]:
     # Join with Vendor and Site tables to get the names
-    return (
+    contract = (
         db.query(Contract)
         .outerjoin(Vendor, Contract.vendor_id == Vendor.id)
         .outerjoin(Site, Contract.site_id == Site.id)
-        .filter(Contract.id == contract_id, Contract.is_deleted == False)
+        .add_columns(
+            Vendor.name.label("vendor_name"),
+            Site.name.label("site_name")
+        )
+        .filter(
+            Contract.id == contract_id,
+            Contract.is_deleted == False
+        )
         .first()
     )
-
+    
+    if not contract:
+        return None
+    
+    # Your existing logic to convert to ContractOut
+    # Just make sure to add vendor_name and site_name
+    contract_out = ContractOut(
+        **contract[0].__dict__,
+        vendor_name=contract.vendor_name,
+        site_name=contract.site_name
+    )
+    
+    return contract_out
 
 # -------- Create Contract --------
 def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
@@ -236,7 +255,6 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
     overlapping_contract = db.query(Contract).filter(
         Contract.vendor_id == contract.vendor_id,
         Contract.site_id == contract.site_id,
-        Contract.type == contract.type,  # Only check same contract type
         Contract.org_id == contract.org_id,
         Contract.is_deleted == False,
         # Check date overlaps
@@ -248,7 +266,7 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
 
     if overlapping_contract:
         return error_response(
-            message=f"Vendor already has a {contract.type} contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
+            message=f"Vendor already has  contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )
@@ -344,16 +362,14 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
     # ✅ VALIDATION 3: No overlapping contracts for same vendor+site+type
     vendor_id = update_data.get('vendor_id', db_contract.vendor_id)
     site_id = update_data.get('site_id', db_contract.site_id)
-    contract_type = update_data.get('type', db_contract.type)
     start_date = update_data.get('start_date', db_contract.start_date)
     end_date = update_data.get('end_date', db_contract.end_date)
 
     # Check overlaps only if relevant fields are being updated
-    if any(key in update_data for key in ['vendor_id', 'site_id', 'type', 'start_date', 'end_date']):
+    if any(key in update_data for key in ['vendor_id', 'site_id', 'start_date', 'end_date']):
         overlapping_contract = db.query(Contract).filter(
             Contract.vendor_id == vendor_id,
             Contract.site_id == site_id,
-            Contract.type == contract_type,  # Only check same contract type
             Contract.org_id == db_contract.org_id,
             Contract.id != contract.id,  # Exclude current contract
             Contract.is_deleted == False,
@@ -366,7 +382,7 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
 
         if overlapping_contract:
             return error_response(
-                message=f"Vendor already has a {contract_type} contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
+                message=f"Vendor already has  contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
                 status_code=str(AppStatusCode.OPERATION_ERROR),
                 http_status=400
             )

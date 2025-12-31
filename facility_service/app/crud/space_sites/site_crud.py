@@ -252,31 +252,29 @@ def create_site(db: Session, site: SiteCreate):
         Site.is_deleted == False,
         func.lower(Site.name) == func.lower(site.name)
     ).first()
-
-    # Check for duplicate code
-    existing_code = db.query(Site).filter(
-        Site.org_id == site.org_id,
-        Site.is_deleted == False,
-        func.lower(Site.code) == func.lower(site.code)
-    ).first()
-
-    # Evaluate the comparisons in Python
-    name_match = existing_name and existing_name.name.lower() == site.name.lower()
-    code_match = existing_code and existing_code.code.lower() == site.code.lower()
-
-    if name_match:
+   
+    if existing_name and existing_name.name.lower() == site.name.lower():
         return error_response(
             message=f"Site with name '{site.name}' already exists",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
 
-    if code_match:
-        return error_response(
-            message=f"Site with code '{site.code}' already exists",
-            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-            http_status=400
-        )
+      # ADD THIS ONE CONDITION - Only check duplicate code if code is provided
+    if site.code:  # <--- ADD THIS LINE
+        # Check for duplicate code
+        existing_code = db.query(Site).filter(
+            Site.org_id == site.org_id,
+            Site.is_deleted == False,
+            func.lower(Site.code) == func.lower(site.code)
+        ).first()
+
+        if existing_code and existing_code.code.lower() == site.code.lower():
+            return error_response(
+                message=f"Site with code '{site.code}' already exists",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
     # Print site data before creating
     print("create site data", site.model_dump())
 
@@ -320,7 +318,7 @@ def update_site(db: Session, site: SiteUpdate):
                 )
 
         # Check for duplicate code
-        if 'code' in update_data:
+        if 'code' in update_data and update_data['code']:
             existing_code = db.query(Site).filter(
                 Site.org_id == db_site.org_id,
                 Site.id != site.id,

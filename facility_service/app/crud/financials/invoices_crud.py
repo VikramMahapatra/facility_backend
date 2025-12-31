@@ -114,10 +114,10 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
                 ).first()
                 if lease_charge:
                     if lease_charge.period_start and lease_charge.period_end:
-                        start_str = lease_charge.period_start.strftime("%d")
+                        start_str = lease_charge.period_start.strftime("%d %b")
                         end_str = lease_charge.period_end.strftime("%d %b %Y")
                         month_year = lease_charge.period_start.strftime("%b %Y")
-                        billable_item_name = f"{lease_charge.charge_code} | {start_str}–{end_str}"
+                        billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
                     else:
                         billable_item_name = lease_charge.charge_code
                         
@@ -209,10 +209,10 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
                 ).first()
                 if lease_charge:
                     if lease_charge.period_start and lease_charge.period_end:
-                        start_str = lease_charge.period_start.strftime("%d")
+                        start_str = lease_charge.period_start.strftime("%d %b")
                         end_str = lease_charge.period_end.strftime("%d %b %Y")
                         month_year = lease_charge.period_start.strftime("%b %Y")
-                        billable_item_name = f"{lease_charge.charge_code} | {start_str}–{end_str}"
+                        billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
                     else:
                         billable_item_name = lease_charge.charge_code
                         
@@ -288,10 +288,10 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         
 
         if lease_charge.period_start and lease_charge.period_end:
-            start_str = lease_charge.period_start.strftime("%d")
+            start_str = lease_charge.period_start.strftime("%d %b")
             end_str = lease_charge.period_end.strftime("%d %b %Y")
             month_year = lease_charge.period_start.strftime("%b %Y")
-            billable_item_name = f"{lease_charge.charge_code} | {start_str}–{end_str}"
+            billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
         else:
             billable_item_name = lease_charge.charge_code
     
@@ -384,10 +384,10 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
             ).first()
             if lease_charge:
                 if lease_charge.period_start and lease_charge.period_end:
-                    start_str = lease_charge.period_start.strftime("%d")
+                    start_str = lease_charge.period_start.strftime("%d %b")
                     end_str = lease_charge.period_end.strftime("%d %b %Y")
                     month_year = lease_charge.period_start.strftime("%b %Y")
-                    billable_item_name = f"{lease_charge.charge_code} | {start_str}–{end_str}"
+                    billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
                 else:
                     billable_item_name = lease_charge.charge_code
                     
@@ -488,9 +488,9 @@ def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, billab
             if lc.charge_code:
 
                 if lc.period_start and lc.period_end:
-                    start_str = lc.period_start.strftime("%d")
+                    start_str = lc.period_start.strftime("%d %b")
                     end_str = lc.period_end.strftime("%d %b %Y")
-                    formatted_name = f"{lc.charge_code} | {start_str}–{end_str}"
+                    formatted_name = f"{lc.charge_code} | {start_str} - {end_str}"
                 else:
                     formatted_name = lc.charge_code
                     
@@ -607,9 +607,9 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
             ).first()
             if lease_charge:
                 if lease_charge.period_start and lease_charge.period_end:
-                    start_str = lease_charge.period_start.strftime("%d")
+                    start_str = lease_charge.period_start.strftime("%d %b")
                     end_str = lease_charge.period_end.strftime("%d %b %Y")
-                    billable_item_name = f"{lease_charge.charge_code} | {start_str}–{end_str}"
+                    billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
                 else:
                     billable_item_name = lease_charge.charge_code
                           

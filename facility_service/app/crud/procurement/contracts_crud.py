@@ -248,13 +248,13 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
             http_status=400
         )
 
-   
         
         
     # ✅ VALIDATION 3: No overlapping contracts for same vendor+site+contract type
     overlapping_contract = db.query(Contract).filter(
         Contract.vendor_id == contract.vendor_id,
         Contract.site_id == contract.site_id,
+        Contract.type==contract.type,
         Contract.org_id == contract.org_id,
         Contract.is_deleted == False,
         # Check date overlaps
@@ -266,7 +266,7 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
 
     if overlapping_contract:
         return error_response(
-            message=f"Vendor already has  contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
+            message=f"Vendor already has {overlapping_contract.type}   contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )
@@ -370,6 +370,7 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
         overlapping_contract = db.query(Contract).filter(
             Contract.vendor_id == vendor_id,
             Contract.site_id == site_id,
+            Contract.type==contract.type,
             Contract.org_id == db_contract.org_id,
             Contract.id != contract.id,  # Exclude current contract
             Contract.is_deleted == False,
@@ -382,7 +383,7 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
 
         if overlapping_contract:
             return error_response(
-                message=f"Vendor already has  contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
+                message=f"Vendor already has {overlapping_contract.type}  contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
                 status_code=str(AppStatusCode.OPERATION_ERROR),
                 http_status=400
             )

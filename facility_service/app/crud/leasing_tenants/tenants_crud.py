@@ -1135,27 +1135,45 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
     Get tenants filtered by both site_id and space_id
     Returns LIST of id and name
     """
+    tenant_active_lease = (
+        db.query(Lease.id)
+        .filter(
+            Lease.tenant_id == Tenant.id,
+            Lease.is_deleted == False,
+            Lease.status == "active",
+            Lease.site_id == site_id,
+            Lease.space_id == space_id,
+        )
+        .exists()
+    )
 
+    # Subquery: check if partner has any active lease
+    partner_active_lease = (
+        db.query(Lease.id)
+        .filter(
+            Lease.partner_id == CommercialPartner.id,
+            Lease.is_deleted == False,
+            Lease.status == "active",
+            Lease.site_id == site_id,
+            Lease.space_id == space_id,
+        )
+        .exists()
+    )
     # Individual tenants - filter by both site_id AND space_id
     individual_tenants = (
         db.query(
             Tenant.id,
             Tenant.name,
         )
-        .join(Lease, Lease.tenant_id == Tenant.id)  # ✅ Join with Lease table
         .filter(
             Tenant.site_id == site_id,
             Tenant.space_id == space_id,
             Tenant.is_deleted == False,
             Tenant.status == "active",
             # ADD LEASE CONDITIONS
-            Lease.is_deleted == False,
-            Lease.status == "active",  # Only active leases
-            Lease.space_id == space_id,  # Lease for same space
-            Lease.site_id == site_id  # Lease for same site
+            ~tenant_active_lease #  No active lease
 
         )
-        .distinct() 
         .all()
     )
 
@@ -1165,17 +1183,13 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
             CommercialPartner.id,
             CommercialPartner.legal_name.label("name"),
         )
-        .join(Lease, Lease.partner_id == CommercialPartner.id)  # ✅ Join with Lease table
         .filter(
             CommercialPartner.site_id == site_id,
             CommercialPartner.space_id == space_id,
             CommercialPartner.is_deleted == False,
             CommercialPartner.status == "active",
             # ADD LEASE CONDITIONS
-            Lease.is_deleted == False,
-            Lease.status == "active",  # Only active leases
-            Lease.space_id == space_id,  # Lease for same space
-            Lease.site_id == site_id  # Lease for same site
+            ~partner_active_lease # No active lease
         )
         .all()
     )

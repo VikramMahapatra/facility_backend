@@ -190,8 +190,16 @@ def update_space(db: Session, space: SpaceUpdate):
         if update_data.get(field) == "":
             update_data[field] = None
     # Check if trying to update site or building when tenants/leases exist
-    site_changed = "site_id" in update_data and update_data["site_id"] != db_space.site_id
-    building_changed = "building_block_id" in update_data and update_data["building_block_id"] != db_space.building_block_id
+    site_changed = (
+        "site_id" in update_data
+        and update_data["site_id"] != db_space.site_id
+    )
+
+    building_changed = (
+        "building_block_id" in update_data
+        and db_space.building_block_id is not None
+        and update_data["building_block_id"] != db_space.building_block_id
+    )
 
     if site_changed or building_changed:
         # Check if space has any active tenants
@@ -215,7 +223,7 @@ def update_space(db: Session, space: SpaceUpdate):
 
     if building_id:
         existing_space = db.query(Space).filter(
-            and_(  Space.building_block_id == space.building_block_id,
+            and_(  Space.building_block_id == building_id,
             Space.is_deleted == False,
             Space.id != space.id,  
             or_(
@@ -253,7 +261,7 @@ def update_space(db: Session, space: SpaceUpdate):
         db.refresh(db_space)
 
         
-        building_name = db_space.building.name if space.building_block_id else None # Joined building name ------changed
+        building_name = db_space.building.name if db_space.building_block_id else None# Joined building name ------changed
         data = {**db_space.__dict__, "building_block": building_name}
 
         return SpaceOut.model_validate(data)

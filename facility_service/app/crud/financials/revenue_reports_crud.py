@@ -381,8 +381,10 @@ def get_revenue_by_source(db: Session, org_id: UUID, params: RevenueReportsReque
     
     # Prepare result - include ALL charge codes
     result = []
-    for code in all_charge_codes:
-        value = totals.get(code, 0.0)
+    for code, value in totals.items():
+        if value <= 0:
+            continue  # skip zero-value charge codes
+
         percentage = (value / grand_total * 100) if grand_total > 0 else 0
         result.append({
             "name": code,

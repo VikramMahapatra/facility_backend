@@ -184,13 +184,24 @@ def update_space(db: Session, space: SpaceUpdate):
         )
 
     update_data = space.model_dump(
-        exclude_unset=False, exclude={"building_block"})
+        exclude_unset=True, exclude={"building_block"})
         # Convert empty UUID strings to None---------------------changed
     for field in ["building_block_id"]:
         if update_data.get(field) == "":
             update_data[field] = None
     # Check if trying to update site or building when tenants/leases exist
-    if ('site_id' in update_data or 'building_block_id' in update_data):
+    site_changed = (
+        "site_id" in update_data
+        and update_data["site_id"] != db_space.site_id
+    )
+
+    building_changed = (
+        "building_block_id" in update_data
+        and db_space.building_block_id is not None
+        and update_data["building_block_id"] != db_space.building_block_id
+    )
+
+    if site_changed or building_changed:
         # Check if space has any active tenants
         has_tenants = db.query(Tenant).filter(
             Tenant.space_id == space.id,
@@ -208,10 +219,11 @@ def update_space(db: Session, space: SpaceUpdate):
             return error_response(
                 message="Cannot update site or building for a space that has tenants or leases"
             )
-        
-    if space.building_block_id:
+    building_id = update_data.get("building_block_id", db_space.building_block_id)
+
+    if building_id:
         existing_space = db.query(Space).filter(
-            and_(  Space.building_block_id == space.building_block_id,
+            and_(  Space.building_block_id == building_id,
             Space.is_deleted == False,
             Space.id != space.id,  
             or_(
@@ -249,7 +261,7 @@ def update_space(db: Session, space: SpaceUpdate):
         db.refresh(db_space)
 
         
-        building_name = db_space.building.name if space.building_block_id else None # Joined building name ------changed
+        building_name = db_space.building.name if db_space.building_block_id else None# Joined building name ------changed
         data = {**db_space.__dict__, "building_block": building_name}
 
         return SpaceOut.model_validate(data)

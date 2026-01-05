@@ -188,6 +188,18 @@ def create_vendor(db: Session,auth_db: Session, vendor: VendorCreate, org_id: UU
         return error_response(
             message=f"Vendor '{vendor.name}' already exists in this organization"
         )
+    
+    # Check for duplicate GST number if provided
+    if vendor.gst_vat_id:
+        existing_gst = db.query(Vendor).filter(
+            Vendor.gst_vat_id.ilike(vendor.gst_vat_id.strip()),
+            Vendor.org_id == org_id,
+            Vendor.is_deleted == False
+        ).first()
+        if existing_gst:
+            return error_response(
+                message=f"GST number '{vendor.gst_vat_id}' already exists in this organization"
+            )
 
     # Check for duplicate phone if provided
     phone = vendor.contact.get("phone") if vendor.contact else None
@@ -271,6 +283,23 @@ def update_vendor(db: Session,auth_db: Session, vendor: VendorUpdate) -> Optiona
                 status_code="OPERATION_ERROR",
                 http_status=400
             )
+
+    # ---------------- Duplicate GST Number Check ----------------
+    new_gst = update_data.get("gst_vat_id")
+    if new_gst and new_gst.strip() != (db_vendor.gst_vat_id or "").strip():
+        existing_gst = db.query(Vendor).filter(
+            Vendor.gst_vat_id.ilike(new_gst.strip()),
+            Vendor.org_id == db_vendor.org_id,
+            Vendor.id != vendor.id,
+            Vendor.is_deleted == False
+        ).first()
+        if existing_gst:
+            return error_response(
+                message=f"GST number '{new_gst}' already exists",
+                status_code="OPERATION_ERROR",
+                http_status=400
+            )
+    
 
     # ---------------- Duplicate Phone Checks ----------------
     new_phone = update_data.get("contact", {}).get("phone") if update_data.get("contact") else None

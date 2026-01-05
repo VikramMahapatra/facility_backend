@@ -10,7 +10,7 @@ class ParkingPassBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
     vehicle_no: str
-    tenant_type: Optional[str] = None  # 'residential' | 'commercial'
+    pass_holder_name: Optional[str] = None
     space_id: Optional[UUID] = None
     partner_id: Optional[UUID] = None
     zone_id: Optional[UUID] = None
@@ -20,6 +20,9 @@ class ParkingPassBase(BaseModel):
 
     model_config = {"from_attributes": True}
 
+class VehicleInfo(BaseModel):
+    type: Optional[str] = None
+    number: str
 
 # ---------------- CREATE ----------------
 class ParkingPassCreate(ParkingPassBase):
@@ -51,9 +54,8 @@ class ParkingPassOut(ParkingPassBase):
     space_name: Optional[str] = None
     zone_name: Optional[str] = None
     partner_name: Optional[str] = None
+    vehicle_info: Optional[List[VehicleInfo]] = None
     family_info: Optional[List[FamilyInfo]] = None
-    created_at: datetime
-    updated_at: datetime
     is_deleted: bool
 
 
@@ -70,12 +72,9 @@ class ParkingPassOverview(BaseModel):
     model_config = {"from_attributes": True}
 
 #for feching family and vehicle info of partner
-class VehicleInfo(BaseModel):
-    type: Optional[str] = None
-    number: str
 
 class PartnerInfoResponse(BaseModel):
     partner_id: UUID
     partner_name: Optional[str] = None
-    vehicles: List[VehicleInfo] = []
+    vehicle_info: List[VehicleInfo] = None
     family_info: Optional[List[FamilyInfo]] = None

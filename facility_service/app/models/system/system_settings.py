@@ -26,6 +26,7 @@ class SystemSetting(Base):
     two_factor_auth_enabled = Column(Boolean, default=False)
     audit_logging_enabled = Column(Boolean, default=True)
     data_encryption_enabled = Column(Boolean, default=True)
+    can_sync_to_hrms = Column(Boolean, default=False)
 
     # ---------- Meta ----------
     created_at = Column(DateTime(timezone=True), server_default=func.now())

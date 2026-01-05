@@ -20,6 +20,7 @@ class CommercialPartner(Base):
     legal_name = Column(String(200), nullable=False)
     contact = Column(JSONB)
     status = Column(String(16), default="active")
+    vehicle_info = Column(JSONB, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

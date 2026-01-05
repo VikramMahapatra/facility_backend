@@ -12,7 +12,8 @@ from ...schemas.parking_access.parking_pass_schemas import (
     ParkingPassUpdate,
     ParkingPassRequest,
     ParkingPassResponse,
-    PartnerInfoResponse
+    PartnerInfoResponse,
+    VehicleInfo
 )
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token
@@ -104,13 +105,21 @@ def parking_pass_zone_filter(
 @router.get("/partner/info/{partner_id}", response_model=PartnerInfoResponse)
 def get_partner_info(
     partner_id: UUID,
-    tenant_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     """
     Get vehicle and family information for a specific partner
     """
-    result = crud.get_partner_vehicle_family_info(db, current_user.org_id, partner_id, tenant_type)
+    result = crud.get_partner_vehicle_family_info(db, current_user.org_id, partner_id)
     
+    return result
+
+@router.get("/partner/vehicle-info/{partner_id}", response_model=List[VehicleInfo])
+def get_partner_vehicles_only(
+    partner_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    result = crud.get_partner_vehicles(db, current_user.org_id, partner_id)
     return result

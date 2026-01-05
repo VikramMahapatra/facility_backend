@@ -52,6 +52,7 @@ from .models import (
     purchase_order_lines, purchase_orders
 )
 from .models.service_ticket import sla_policy, ticket_assignment, tickets_category, tickets_commets, tickets_feedback, tickets_reaction,tickets_work_order, tickets_workflow, tickets
+from .models.system.system_settings import SystemSetting
 
 app = FastAPI(title="Facility Service API")
 
@@ -73,6 +74,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 🔥 FIXED: Add the middleware correctly
+app.middleware("http")(SystemSetting.create_date_format_middleware())
 
 # 2️⃣ Custom JSON response wrapper middlewares
 app.add_middleware(JsonResponseMiddleware)

@@ -200,6 +200,7 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
                 Tenant.email.ilike(search_term),
                 Tenant.phone.ilike(search_term),
                 Tenant.flat_number.ilike(search_term),
+                Space.name.ilike(search_term),
             )
         )
 
@@ -251,7 +252,11 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
 
     if params.search:
         partner_query = partner_query.filter(
-            CommercialPartner.legal_name.ilike(f"%{params.search}%"))
+        or_(
+            CommercialPartner.legal_name.ilike(search_term),
+            Space.name.ilike(search_term),  # ✅ ADD THIS LINE
+            )
+        )
 
     # ------------------ Final Query ------------------
     if params.type and params.type.lower() == "individual":

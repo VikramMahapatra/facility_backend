@@ -27,6 +27,14 @@ def get_system_settings(db: Session):
             "audit_logging_enabled": setting.audit_logging_enabled,
             "data_encryption_enabled": setting.data_encryption_enabled,
         },
+        "integrations": {
+        "email_service_enabled": setting.email_service_enabled,
+        "weather_api_enabled": setting.weather_api_enabled,
+        "energy_monitoring_enabled": setting.energy_monitoring_enabled,
+        "sms_service_enabled": setting.sms_service_enabled,
+        "accounting_system_enabled": setting.accounting_system_enabled,
+        "can_sync_to_hrms": setting.can_sync_to_hrms,
+    },
     }
 
 
@@ -45,6 +53,11 @@ def update_system_settings(db: Session, setting_id: UUID, update_data: SystemSet
         for field, value in update_data.security.model_dump(exclude_unset=True).items():
             setattr(setting, field, value)
 
+    #-------- Integrations --------
+    if update_data.integrations:
+        for field, value in update_data.integrations.model_dump(exclude_unset=True).items():
+            setattr(setting, field, value)
+            
     db.commit()
     db.refresh(setting)
 
@@ -65,6 +78,14 @@ def update_system_settings(db: Session, setting_id: UUID, update_data: SystemSet
             "two_factor_auth_enabled": setting.two_factor_auth_enabled,
             "audit_logging_enabled": setting.audit_logging_enabled,
             "data_encryption_enabled": setting.data_encryption_enabled,
+        },
+        "integrations": {
+        "email_service_enabled": setting.email_service_enabled,
+        "weather_api_enabled": setting.weather_api_enabled,
+        "energy_monitoring_enabled": setting.energy_monitoring_enabled,
+        "sms_service_enabled": setting.sms_service_enabled,
+        "accounting_system_enabled": setting.accounting_system_enabled,
+        "can_sync_to_hrms": setting.can_sync_to_hrms,
         },
     }
 

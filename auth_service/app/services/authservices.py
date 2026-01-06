@@ -193,6 +193,22 @@ def verify_otp(
     return userservices.get_user_token(api_request, db, facility_db, user)
 
 
+def verify_user_credentials(
+        api_request: Request,
+        db: Session,
+        facility_db: Session,
+        request: authschema.UserAuthRequest):
+    user = db.query(Users).filter(
+        Users.username == request.username,
+        Users.is_deleted == False
+    ).first()
+
+    if not user or not user.verify_password(request.password):
+        return error_response(message="Invalid credentials")
+
+    return userservices.get_user_token(api_request, db, facility_db, user)
+
+
 def refresh_access_token(db: Session, refresh_token_str: str):
     token = (
         db.query(RefreshToken)

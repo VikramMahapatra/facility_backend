@@ -36,6 +36,15 @@ def verify_otp(
     return authservices.verify_otp(api_request, db, facility_db, request)
 
 
+@router.post("/login", response_model=authschema.AuthenticationResponse)
+def login(
+        request: authschema.UserAuthRequest,
+        api_request: Request,
+        db: Session = Depends(get_db),
+        facility_db: Session = Depends(get_facility_db)):
+    return authservices.verify_user_credentials(api_request, db, facility_db, request)
+
+
 @router.post("/refresh", response_model=authschema.TokenSuccessResponse)
 def refresh_token(
         refresh_token: str,

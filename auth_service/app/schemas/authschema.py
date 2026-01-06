@@ -24,6 +24,13 @@ class MobileRequest(EmptyStringModel):
             raise ValueError("Either mobile or email is required")
         return values
 
+# -------- Username & Password
+
+
+class UserAuthRequest(BaseModel):
+    username: str
+    password: str
+
 
 class OTPVerify(MobileRequest):
     otp: str

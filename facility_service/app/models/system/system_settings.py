@@ -48,7 +48,7 @@ class SystemSetting(Base):
 
  
  
- 
+'''
  
 
     @staticmethod
@@ -177,4 +177,4 @@ class SystemSetting(Base):
                     media_type="application/json"
                 )
         
-        return middleware
+        return middleware'''

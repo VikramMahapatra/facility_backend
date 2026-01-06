@@ -48,7 +48,7 @@ class SystemSetting(Base):
 
  
  
- 
+'''
  
 
     @staticmethod
@@ -138,28 +138,43 @@ class SystemSetting(Base):
                         data = replace_dates(data)
                     
                     # Return response with REPLACED dates
+
+                    #  ADD THIS RIGHT HERE - Remove old Content-Length
+                    headers = dict(response.headers)
+                    headers.pop("content-length", None)
+                    headers.pop("Content-Length", None)
+
+                    # Create the response body
+                    response_body = json.dumps(data, default=str).encode('utf-8')
+
+                    #  MODIFY THIS RETURN STATEMENT
                     return Response(
-                        content=json.dumps(data, default=str).encode('utf-8'),
+                        content=response_body,
                         status_code=response.status_code,
-                        headers=dict(response.headers),
+                        headers=headers,  # Now using cleaned headers
                         media_type="application/json"
                     )
                     
+                #  ALSO FIX THE DATABASE SESSION:
                 finally:
-                    # Close database session
                     try:
-                        next(db_gen)
-                    except StopIteration:
+                        db.close()  #  IMPORTANT: Close the session
+                    except Exception:
                         pass
                     
             except Exception as e:
                 print(f"Date middleware error: {e}")
                 # Return original response on error
+                # MUST clean headers here too!
+                headers = dict(response.headers)
+                headers.pop("content-length", None)
+                headers.pop("Content-Length", None)
+                
                 return Response(
                     content=body,
                     status_code=response.status_code,
-                    headers=dict(response.headers),
+                    headers=headers,  # FastAPI adds correct Content-Length
                     media_type="application/json"
                 )
         
-        return middleware
+        return middleware'''

@@ -77,7 +77,7 @@ app.add_middleware(
 )
 
 # 🔥 FIXED: Add the middleware correctly
-app.middleware("http")(SystemSetting.create_date_format_middleware())
+#app.middleware("http")(SystemSetting.create_date_format_middleware())
 
 # 2️⃣ Custom JSON response wrapper middlewares
 app.add_middleware(JsonResponseMiddleware)

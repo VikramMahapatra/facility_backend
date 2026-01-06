@@ -65,7 +65,7 @@ def google_login(
             )
 
         user = db.query(Users).filter(
-            Users.email == email and Users.is_deleted == False).first()
+            Users.email == email, Users.is_deleted == False).first()
 
         if not user:
             return authschema.AuthenticationResponse(

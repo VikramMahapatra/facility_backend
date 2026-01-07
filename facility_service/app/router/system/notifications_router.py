@@ -22,6 +22,14 @@ def get_all_notifications(
     return crud.get_all_notifications(db, current_user.user_id, params)
 
 
+@router.get("/count", response_model=int)
+def get_notification_count(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_notification_count(db, current_user.user_id)
+
+
 @router.put("/{notification_id}/read", response_model=None)
 def mark_notification_as_read(
     notification_id: str,

@@ -478,8 +478,8 @@ def send_password_update_email(background_tasks, db, email, username, password, 
         subject=f"Password Updated - {full_name}",
         context=context,
     )
-    
-    
+   
+   
 def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Session, user: UserUpdate):
     # Fetch existing user
     db_user = get_user_by_id(db, user.id)
@@ -511,37 +511,50 @@ def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Sess
         exclude={'roles', 'role_ids', 'site_id',
                  'space_id', 'site_ids', 'tenant_type' , 'staff_role','password'}
     )
-
-    # Check email duplicate (if email is being updated)
+        #  ADD THIS: PREVENT EMAIL AND PHONE UPDATES
+    # Check if email is being updated
     if 'email' in update_data and update_data['email'] != db_user.email:
-        existing_email_user = db.query(Users).filter(
-            Users.email == update_data['email'],
-            Users.is_deleted == False,
-            Users.id != user.id  # Exclude current user
-        ).first()
-        if existing_email_user:
-            return error_response(
-                message="User with this email already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+        # Option 1: Block email update completely
+        return error_response(
+                message="Email cannot be updated. Please contact administrator."
             )
-
-    # Check phone duplicate (if phone is being updated)
+        
+    # Check email duplicate (if email is being updated)
+#    if 'email' in update_data and update_data['email'] != db_user.email:
+#        existing_email_user = db.query(Users).filter(
+#            Users.email == update_data['email'],
+#            Users.is_deleted == False,
+#            Users.id != user.id  # Exclude current user
+#        ).first()
+#        if existing_email_user:
+#            return error_response(
+#                message="User with this email already exists",
+#                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+#            )
     if 'phone' in update_data and update_data['phone'] != db_user.phone:
-        existing_phone_user = db.query(Users).filter(
-            Users.phone == update_data['phone'],
-            Users.is_deleted == False,
-            Users.id != user.id  # Exclude current user
-        ).first()
-        if existing_phone_user:
             return error_response(
-                message="User with this phone number already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+                message="phone cannot be updated. Please contact administrator."
             )
+    # Check phone duplicate (if phone is being updated)
+#    if 'phone' in update_data and update_data['phone'] != db_user.phone:
+#        existing_phone_user = db.query(Users).filter(
+#            Users.phone == update_data['phone'],
+#            Users.is_deleted == False,
+#            Users.id != user.id  # Exclude current user
+#        ).first()
+#        if existing_phone_user:
+#            return error_response(
+#                message="User with this phone number already exists",
+#                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+#            )
 
     # -----------------------
     # UPDATE BASE USER FIELDS
     # -----------------------
     for key, value in update_data.items():
+        # ADD: Skip email and phone if you want to block updates
+        if key in ['email', 'phone'] and value != getattr(db_user, key):
+            continue  # Skip updating email/phone
         setattr(db_user, key, value)
         
         

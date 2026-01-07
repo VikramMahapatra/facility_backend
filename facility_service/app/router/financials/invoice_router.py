@@ -114,3 +114,11 @@ def get_invoice_totals(
         db=db,
         params=params
     )
+    
+    
+@router.get("/payement-method", response_model=List[Lookup])
+def invoice_payement_method_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.invoice_payement_method_lookup(db, current_user.org_id)

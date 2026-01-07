@@ -1,9 +1,12 @@
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Any, Dict 
 from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, or_, case, Numeric
+from sqlalchemy import Date, func, cast, or_, case, Numeric 
+
+from ...enum.revenue_enum import  InvoicePayementMethod
 
 from ...models.parking_access.parking_pass import ParkingPass
 from ...models.space_sites.sites import Site
@@ -137,16 +140,53 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
                         )
                     else:
                         billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
-
-                       
-                          
+        
+        # ✅ ADD THIS: Get payments for the invoice
+        payments = db.query(PaymentAR).filter(
+            PaymentAR.invoice_id == invoice.id
+        ).all()
+        
+        payments_list = []
+        for payment in payments:
+            payments_list.append({
+                "id": payment.id,
+                "org_id": payment.org_id,
+                "invoice_id": payment.invoice_id,
+                "invoice_no": invoice.invoice_no,
+                "billable_item_name": billable_item_name,
+                "method": payment.method,
+                "ref_no": payment.ref_no,
+                "amount": Decimal(str(payment.amount)),
+                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                "meta": payment.meta
+            })
+        
+        # ✅ CRITICAL: Calculate dynamic status
+        invoice_amount = 0.0
+        if invoice.totals and "grand" in invoice.totals:
+            invoice_amount = float(invoice.totals.get("grand", 0.0))
+        
+        # Calculate ACTUAL status based on payments
+        actual_status = calculate_invoice_status(
+            db=db,
+            invoice_id=invoice.id,
+            invoice_amount=invoice_amount,
+            due_date=invoice.due_date
+        )
+        
+        # Also calculate is_paid
+        is_paid = (actual_status == "paid")
+        
         # ✅ FIX: Convert date objects to strings for Pydantic model
         invoice_data = InvoiceOut.model_validate({
             **invoice.__dict__,
             "date": invoice.date.isoformat() if invoice.date else None,
             "due_date": invoice.due_date.isoformat() if invoice.due_date else None, 
             "billable_item_name": billable_item_name,
-            "site_name": site_name 
+            "site_name": site_name,
+            "status": actual_status,  # ✅ Use CALCULATED status, not stored status
+            "is_paid": is_paid,  # ✅ Use calculated is_paid
+            "payments": payments_list
         })
         results.append(invoice_data)
         
@@ -154,7 +194,8 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
         invoices=results,
         total=total
     )
-
+    
+    
 def get_payments(db: Session, org_id: str, params: InvoicesRequest):
     total = (
         db.query(func.count(PaymentAR.id))
@@ -246,12 +287,49 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
         
     return {"payments": results, "total": total}
 
-def get_invoice_by_id(db: Session, invoice_id: str):
-    return db.query(Invoice).filter(
-        Invoice.id == invoice_id,
-        Invoice.is_deleted == False
-    ).first()  
+def get_invoice_by_id(db: Session, invoice_id: UUID):
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    return invoice
 
+
+def calculate_invoice_status(db: Session, invoice_id: UUID, invoice_amount: float, due_date: Date = None):
+    """
+    Calculate invoice status based on payments and due date
+    
+    Logic:
+    1. If total payments == invoice amount → 'paid'
+    2. If total payments < invoice amount and due_date is past → 'overdue'
+    3. If total payments < invoice amount and due_date is not past → 'partial'
+    4. If no payments → 'issued'
+    """
+    # Get total payments for this invoice
+    total_payments_result = db.query(func.sum(PaymentAR.amount)).filter(
+        PaymentAR.invoice_id == invoice_id
+    ).scalar()
+    
+    total_payments = float(total_payments_result) if total_payments_result else 0.0
+    
+    # Check if there are any payments at all
+    has_payments = db.query(PaymentAR).filter(
+        PaymentAR.invoice_id == invoice_id
+    ).first() is not None
+    
+    # Apply logic
+    if not has_payments:
+        return "issued"
+    
+    # Use Decimal for precise comparison to avoid floating point issues
+    invoice_decimal = Decimal(str(invoice_amount))
+    payments_decimal = Decimal(str(total_payments))
+    
+    # Check if fully paid (allow small tolerance for floating point)
+    if payments_decimal >= invoice_decimal - Decimal('0.01'):  # Fully paid
+        return "paid"
+    elif due_date and due_date < date.today():  # Past due and not fully paid
+        return "overdue"
+    else:  # Has payments but not fully paid and not overdue
+        return "partial"
+    
 def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_user):
     if not request.billable_item_type:
         raise HTTPException(status_code=400, detail="module_type is required")
@@ -321,44 +399,231 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
             status_code=400,
             detail="Invalid module_type. Must be 'work order', 'lease charge', or 'parking pass'"
         )
-
-    invoice_data = request.model_dump(exclude={"org_id"})
+        
+        
+    payments_data = request.payments if request.payments else []
+    
+    invoice_data = request.model_dump(exclude={"org_id", "payments"})
     invoice_data.update({
         "org_id": org_id,
+        "status": "issued",
+        "is_paid": False,
     })
     
-    db_invoice = Invoice(**invoice_data)
-    db.add(db_invoice)
-    db.commit()
-    db.refresh(db_invoice)
-    site_name = db_invoice.site.name if db_invoice.site else None
-
-   
-    invoice_dict = {
-        **db_invoice.__dict__,
-        "date": db_invoice.date.isoformat() if db_invoice.date else None,
-        "due_date": db_invoice.due_date.isoformat() if db_invoice.due_date else None,
-        "billable_item_name": billable_item_name,
-        "site_name": site_name
-    }
-    invoice_out = InvoiceOut.model_validate(invoice_dict)
-    return invoice_out
+    try:
+        # Start transaction
+        db_invoice = Invoice(**invoice_data)
+        db.add(db_invoice)
+        db.flush()  # Get ID but don't commit yet
+        
+        payments_created = []
+        if payments_data:
+            for idx, payment in enumerate(payments_data):
+                ref_no = payment.ref_no or f"PAY-{db_invoice.invoice_no}-{idx+1}"
+                
+                payment_ar = PaymentAR(
+                    org_id=org_id,
+                    invoice_id=db_invoice.id,
+                    method=payment.method,
+                    ref_no=ref_no,
+                    amount=float(payment.amount),
+                    paid_at=payment.paid_at or datetime.now(),
+                    meta=payment.meta or {}
+                )
+                db.add(payment_ar)
+                payments_created.append(payment_ar)
+        
+        # Calculate invoice amount
+        invoice_amount = 0.0
+        if invoice_data.get('totals') and "grand" in invoice_data['totals']:
+            invoice_amount = float(invoice_data['totals'].get("grand", 0.0))
+        
+        # Calculate status (payments are in session but not yet committed)
+        # Since payments are in session, we can calculate manually
+        if payments_created:
+            total_payments = sum(float(p.amount) for p in payments_created)
+            
+            # Use Decimal for comparison
+            invoice_decimal = Decimal(str(invoice_amount))
+            payments_decimal = Decimal(str(total_payments))
+            
+            if payments_decimal >= invoice_decimal - Decimal('0.01'):
+                actual_status = "paid"
+            elif db_invoice.due_date and db_invoice.due_date < date.today():
+                actual_status = "overdue"
+            else:
+                actual_status = "partial"
+        else:
+            actual_status = "issued"
+        
+        # Update invoice with correct status
+        db_invoice.status = actual_status
+        db_invoice.is_paid = (actual_status == "paid")
+        
+        # Single commit for everything
+        db.commit()
+        
+        # Refresh objects
+        db.refresh(db_invoice)
+        for payment in payments_created:
+            db.refresh(payment)
+        
+        # Build response
+        site_name = db_invoice.site.name if db_invoice.site else None
+        payments_list = []
+        for payment in payments_created:
+            payments_list.append({
+                "id": payment.id,
+                "org_id": payment.org_id,
+                "invoice_id": payment.invoice_id,
+                "invoice_no": db_invoice.invoice_no,
+                "billable_item_name": billable_item_name,
+                "method": payment.method,
+                "ref_no": payment.ref_no,
+                "amount": Decimal(str(payment.amount)),
+                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                "meta": payment.meta
+            })
+        
+        invoice_dict = {
+            **db_invoice.__dict__,
+            "date": db_invoice.date.isoformat() if db_invoice.date else None,
+            "due_date": db_invoice.due_date.isoformat() if db_invoice.due_date else None,
+            "billable_item_name": billable_item_name,
+            "site_name": site_name,
+            "status": actual_status,
+            "is_paid": (actual_status == "paid"),
+            "payments": payments_list
+        }
+        invoice_out = InvoiceOut.model_validate(invoice_dict)
+        return invoice_out
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create invoice: {str(e)}")
 
 
 def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
-    db_invoice = get_invoice_by_id(db, invoice_update.id)
+    db_invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_update.id,
+        Invoice.org_id == current_user.org_id,
+        Invoice.is_deleted == False
+    ).first()
+    
     if not db_invoice:
         return None  
     
-
-    update_data = invoice_update.model_dump(exclude_unset=True, exclude={"id"})
+        # Validation: Check if we can update totals
+    has_existing_payments = db.query(PaymentAR).filter(
+        PaymentAR.invoice_id == db_invoice.id
+    ).first() is not None
+    
+    if has_existing_payments:
+        if 'totals' in invoice_update.model_dump(exclude_unset=True):
+            # Get current and new totals for comparison
+            current_total = 0.0
+            if db_invoice.totals and "grand" in db_invoice.totals:
+                current_total = float(db_invoice.totals.get("grand", 0.0))
+            
+            new_totals = invoice_update.totals
+            new_total = 0.0
+            if new_totals and "grand" in new_totals:
+                new_total = float(new_totals.get("grand", 0.0))
+            
+            # Allow increasing totals (customer owes more)
+            # But don't allow decreasing totals if payments exist
+            if new_total < current_total:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Cannot decrease invoice total after payments have been made"
+                )
+    
+    update_data = invoice_update.model_dump(exclude_unset=True, exclude={"id", "payments"})
+    if 'status' in update_data:
+        del update_data['status']
+        
     for k, v in update_data.items():
         setattr(db_invoice, k, v)
-
+    
+    # NEW CODE: Handle payments with update/create logic
+    payments_created = []  # Track newly created payments (without IDs)
+    payments_updated = []  # Track updated payments (with IDs)
+    
+    if invoice_update.payments:
+        for payment_data in invoice_update.payments:
+            if payment_data.id:
+                # Update existing payment
+                existing_payment = db.query(PaymentAR).filter(
+                    PaymentAR.id == payment_data.id,
+                    PaymentAR.invoice_id == db_invoice.id,
+                    PaymentAR.org_id == current_user.org_id  # Security check
+                ).first()
+                
+                if existing_payment:
+                    # Update fields if provided
+                    if payment_data.method:
+                        existing_payment.method = payment_data.method
+                    if payment_data.ref_no:
+                        existing_payment.ref_no = payment_data.ref_no
+                    if payment_data.amount:
+                        existing_payment.amount = float(payment_data.amount)
+                    if payment_data.paid_at:
+                        existing_payment.paid_at = payment_data.paid_at
+                    if payment_data.meta is not None:
+                        existing_payment.meta = payment_data.meta or {}
+                    
+                    payments_updated.append(existing_payment)
+                else:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Payment with ID {payment_data.id} not found"
+                    )
+            else:
+                # Create new payment
+                existing_payments_count = db.query(PaymentAR).filter(
+                    PaymentAR.invoice_id == db_invoice.id
+                ).count()
+                
+                ref_no = payment_data.ref_no or f"PAY-{db_invoice.invoice_no}-{existing_payments_count + 1}"
+                
+                payment_ar = PaymentAR(
+                    org_id=current_user.org_id,
+                    invoice_id=db_invoice.id,
+                    method=payment_data.method,
+                    ref_no=ref_no,
+                    amount=float(payment_data.amount),
+                    paid_at=payment_data.paid_at or datetime.now(),
+                    meta=payment_data.meta or {}
+                )
+                db.add(payment_ar)
+                payments_created.append(payment_ar)
+    
+    # Recalculate invoice amount from updated totals
+    invoice_amount = 0.0
+    if db_invoice.totals and "grand" in db_invoice.totals:
+        invoice_amount = float(db_invoice.totals.get("grand", 0.0))
+    
+    # Calculate new status (includes any new payments)
+    new_status = calculate_invoice_status(
+        db=db,
+        invoice_id=db_invoice.id,
+        invoice_amount=invoice_amount,
+        due_date=db_invoice.due_date
+    )
+    
+    db_invoice.status = new_status
+    db_invoice.is_paid = (new_status == "paid")
+ 
     db.commit()
     db.refresh(db_invoice)
+    
+    # Refresh newly created payments
+    for payment in payments_created:
+        db.refresh(payment)
+    
     site_name = db_invoice.site.name if db_invoice.site else None
-
+    
+    
     billable_item_name = None
     if db_invoice.billable_item_type and db_invoice.billable_item_id:
         if db_invoice.billable_item_type == "work order":
@@ -408,15 +673,34 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
                 else:
                     billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
 
+    # Get ALL payments (existing + newly created) for response
+    all_payments = db.query(PaymentAR).filter(
+        PaymentAR.invoice_id == db_invoice.id
+    ).all()
+    
+    payments_list = []
+    for payment in all_payments:
+        payments_list.append({
+            "id": payment.id,
+            "org_id": payment.org_id,
+            "invoice_id": payment.invoice_id,
+            "invoice_no": db_invoice.invoice_no,
+            "billable_item_name": billable_item_name,
+            "method": payment.method,
+            "ref_no": payment.ref_no,
+            "amount": Decimal(str(payment.amount)),
+            "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+            "meta": payment.meta
+        })
 
-
-    # ✅ FIX: Convert date objects to strings for Pydantic model
     invoice_dict = {
         **db_invoice.__dict__,
         "date": db_invoice.date.isoformat() if db_invoice.date else None,
         "due_date": db_invoice.due_date.isoformat() if db_invoice.due_date else None,
-        "site_name": site_name
-        
+        "site_name": site_name,
+        "status": new_status,  
+        "is_paid": (new_status == "paid"), 
+        "payments": payments_list
     }
     if billable_item_name:
         invoice_dict["billable_item_name"] = billable_item_name
@@ -590,12 +874,49 @@ def get_work_order_invoices(db: Session, org_id: UUID, params: InvoicesRequest) 
                 else:
                     billable_item_name = ticket_work_order.wo_no
                           
+        # ✅ ADD: Get payments and calculate status
+        payments = db.query(PaymentAR).filter(
+            PaymentAR.invoice_id == invoice.id
+        ).all()
+        
+        payments_list = []
+        for payment in payments:
+            payments_list.append({
+                "id": payment.id,
+                "org_id": payment.org_id,
+                "invoice_id": payment.invoice_id,
+                "invoice_no": invoice.invoice_no,
+                "billable_item_name": billable_item_name,
+                "method": payment.method,
+                "ref_no": payment.ref_no,
+                "amount": Decimal(str(payment.amount)),
+                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                "meta": payment.meta
+            })
+        
+        # Calculate dynamic status
+        invoice_amount = 0.0
+        if invoice.totals and "grand" in invoice.totals:
+            invoice_amount = float(invoice.totals.get("grand", 0.0))
+        
+        actual_status = calculate_invoice_status(
+            db=db,
+            invoice_id=invoice.id,
+            invoice_amount=invoice_amount,
+            due_date=invoice.due_date
+        )
+        
+        is_paid = (actual_status == "paid")
+                          
         invoice_data = InvoiceOut.model_validate({
             **invoice.__dict__,
             "date": invoice.date.isoformat() if invoice.date else None,
             "due_date": invoice.due_date.isoformat() if invoice.due_date else None, 
             "billable_item_name": billable_item_name,
-            "site_name": site_name
+            "site_name": site_name,
+            "status": actual_status,  # ✅ Use calculated status
+            "is_paid": is_paid,  # ✅ Use calculated is_paid
+            "payments": payments_list  # ✅ Add payments
         })
         results.append(invoice_data)
         
@@ -640,12 +961,49 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
                 else:
                     billable_item_name = lease_charge.charge_code
                           
+        # ✅ ADD: Get payments and calculate status
+        payments = db.query(PaymentAR).filter(
+            PaymentAR.invoice_id == invoice.id
+        ).all()
+        
+        payments_list = []
+        for payment in payments:
+            payments_list.append({
+                "id": payment.id,
+                "org_id": payment.org_id,
+                "invoice_id": payment.invoice_id,
+                "invoice_no": invoice.invoice_no,
+                "billable_item_name": billable_item_name,
+                "method": payment.method,
+                "ref_no": payment.ref_no,
+                "amount": Decimal(str(payment.amount)),
+                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                "meta": payment.meta
+            })
+        
+        # Calculate dynamic status
+        invoice_amount = 0.0
+        if invoice.totals and "grand" in invoice.totals:
+            invoice_amount = float(invoice.totals.get("grand", 0.0))
+        
+        actual_status = calculate_invoice_status(
+            db=db,
+            invoice_id=invoice.id,
+            invoice_amount=invoice_amount,
+            due_date=invoice.due_date
+        )
+        
+        is_paid = (actual_status == "paid")
+                          
         invoice_data = InvoiceOut.model_validate({
             **invoice.__dict__,
             "date": invoice.date.isoformat() if invoice.date else None,
             "due_date": invoice.due_date.isoformat() if invoice.due_date else None, 
-            "billable_item_name": billable_item_name ,
-            "site_name": site_name 
+            "billable_item_name": billable_item_name,
+            "site_name": site_name,
+            "status": actual_status,  # ✅ Use calculated status
+            "is_paid": is_paid,  # ✅ Use calculated is_paid
+            "payments": payments_list  # ✅ Add payments
         })
         results.append(invoice_data)
         
@@ -654,8 +1012,6 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
         total=total
     )
     
-    
-
 
 def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[str, Any]:
         item_type = params.billable_item_type.lower().strip()
@@ -706,3 +1062,10 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
             tax=round(tax, 2),          
             grand_total=round(grand_total, 2)   
         )
+        
+        
+def invoice_payement_method_lookup(db: Session, org_id: UUID):
+    return [
+        Lookup(id=method.value, name=method.name.capitalize())
+        for method in InvoicePayementMethod
+    ]

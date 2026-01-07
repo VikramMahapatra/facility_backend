@@ -33,6 +33,16 @@ def get_all_notifications(db: Session, user_id: str, params: CommonQueryParams):
     return {"notifications": result, "total": total}
 
 
+def get_notification_count(db: Session, user_id: str):
+    notification_count = db.query(func.count(Notification.id)).filter(
+        Notification.user_id == user_id,
+        Notification.read == False,
+        Notification.is_deleted == False
+    ).scalar()
+
+    return notification_count
+
+
 def mark_notification_as_read(db: Session, notification_id: str):
     notification = db.query(Notification).filter(
         Notification.id == notification_id,

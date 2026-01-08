@@ -22,12 +22,21 @@ class SystemSecuritySettings(BaseModel):
     audit_logging_enabled: bool
     data_encryption_enabled: bool
 
-
+class SystemIntegrationSettings(BaseModel):
+    email_service_enabled: bool
+    weather_api_enabled: bool
+    energy_monitoring_enabled: bool
+    sms_service_enabled: bool
+    accounting_system_enabled: bool
+    can_sync_to_hrms: bool
+    
+    
 class SystemSettingsOut(BaseModel):
     id: UUID
     general: SystemGeneralSettings
     security: SystemSecuritySettings
-    
+    integrations: SystemIntegrationSettings
+
     model_config = {"from_attributes": True}
 
 
@@ -49,8 +58,18 @@ class SystemSecuritySettingsUpdate(BaseModel):
     data_encryption_enabled: Optional[bool] = None
 
 
+class SystemIntegrationSettingsUpdate(BaseModel):
+    email_service_enabled: Optional[bool] = None
+    weather_api_enabled: Optional[bool] = None
+    energy_monitoring_enabled: Optional[bool] = None
+    sms_service_enabled: Optional[bool] = None
+    accounting_system_enabled: Optional[bool] = None
+    can_sync_to_hrms: Optional[bool] = None
+    
+    
 class SystemSettingsUpdate(BaseModel):
     general: Optional[SystemGeneralSettingsUpdate] = None
     security: Optional[SystemSecuritySettingsUpdate] = None
+    integrations: Optional[SystemIntegrationSettingsUpdate] = None
     
     model_config = {"from_attributes": True}

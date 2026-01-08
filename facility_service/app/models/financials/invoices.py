@@ -29,7 +29,7 @@ class Invoice(Base):
     date: Date = Column(Date, nullable=False)
     due_date: Date = Column(Date)
     # draft|issued|paid|partial|void
-    status: str = Column(String(16), default="draft")
+    status: str = Column(String(16), default="issued")
     currency: str = Column(String(8), default="INR")
     is_deleted = Column(Boolean, default=False, nullable=False)
     totals: dict = Column(JSONB)  # {sub:..., tax:..., grand:...}
@@ -89,6 +89,7 @@ class PaymentAR(Base):
         DateTime(timezone=True), server_default=func.now())
     # Column name in DB stays "metadata"
     meta: dict = Column("metadata", JSONB)
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     # Relationship
     invoice = relationship("Invoice", back_populates="payments")

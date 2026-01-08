@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+# , HRMS_DATABASE_URL
 from shared.core.config import AUTH_DATABASE_URL, FACILITY_DATABASE_URL
 
 # Separate bases
@@ -33,6 +34,20 @@ facility_engine = create_engine(
 FacilitySessionLocal = sessionmaker(
     autocommit=False, autoflush=False, bind=facility_engine)
 
+
+# HRMS PostgreSQL Engine (UPDATED)
+# hrms_engine = create_engine(
+#     HRMS_DATABASE_URL,
+#     pool_pre_ping=True,
+#     pool_recycle=300,
+#     pool_size=POOL_SIZE,
+#     max_overflow=MAX_OVERFLOW,
+#     pool_timeout=30
+# )
+# HrmsSessionLocal = sessionmaker(
+#     autocommit=False, autoflush=False, bind=hrms_engine)
+
+
 # Dependency
 
 
@@ -50,3 +65,13 @@ def get_facility_db():
         yield db
     finally:
         db.close()
+
+# hrms dependancy
+
+
+# def get_hrms_db():
+#     db = HrmsSessionLocal()
+#     try:
+#         yield db
+#     finally:
+#         db.close()

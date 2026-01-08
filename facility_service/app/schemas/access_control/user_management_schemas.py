@@ -18,6 +18,7 @@ class UserBase(EmptyStringModel):
     account_type: Optional[str] = "regular"
     status: Optional[str] = "active"
     role_ids: Optional[List[str]] = []
+    password :Optional[str]=None
 
 
 class UserCreate(UserBase):

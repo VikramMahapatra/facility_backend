@@ -1,4 +1,5 @@
 from datetime import datetime
+from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from typing import Dict, List, Optional
@@ -25,6 +26,7 @@ from ...enum.access_control_enum import UserRoleEnum, UserStatusEnum
 from ...schemas.access_control.user_management_schemas import (
     UserCreate, UserOut, UserRequest, UserUpdate
 )
+from shared.helpers.email_helper import EmailHelper
 
 
 def get_users(db: Session, facility_db: Session, org_id: str, params: UserRequest):
@@ -202,9 +204,29 @@ def get_user(db: Session, user_id: str, facility_db: Session):
         site_ids=site_ids,
         staff_role=staff_role
     )
-
-
-def create_user(db: Session, facility_db: Session, user: UserCreate):
+    
+    
+#email template function 
+def send_user_credentials_email(background_tasks, db, email, username, password, full_name):
+    """Send email with user credentials"""
+    email_helper = EmailHelper()
+    
+    context = {
+        "username": username,
+        "password": password,
+        "full_name": full_name
+    }
+    
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="user_credentials",
+        recipients=[email],
+        subject=f"Welcome {full_name} - Your Account Credentials",
+        context=context,
+    )
+    
+def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Session, user: UserCreate):
     try:
         # Check if email already exists
         if user.email:
@@ -226,14 +248,38 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
             if existing_phone_user:
                 raise ValueError("User with this phone number already exists")
 
-        user_data = user.model_dump(
-            exclude={'roles', 'role_ids', 'site_id', 'space_id', 'site_ids', 'tenant_type' ,'staff_role'})
+                # ✅ ADD VALIDATION FOR PASSWORD
+        if not user.password:
+            raise ValueError("Password is required for user creation")
 
+        user_data = user.model_dump(
+            exclude={'roles', 'role_ids', 'site_id', 'space_id', 'site_ids', 'tenant_type' ,'staff_role','password'})
+
+                # ✅ SET USERNAME FROM EMAIL (Requirement 1)
+        if user.email:
+            user_data['username'] = user.email
+            
         db_user = Users(**user_data)
+        
+          # ✅ SET PASSWORD USING YOUR EXISTING METHOD (Requirement 2 & 3)
+        db_user.set_password(user.password)
+        
         db.add(db_user)
         db.commit()
         db.flush(db_user)
 
+
+        # ✅ SEND EMAIL IF STATUS IS ACTIVE (following your pattern)
+        if user.status and user.status.lower() == "active" and user.email:
+            send_user_credentials_email(
+                background_tasks=background_tasks,
+                db=facility_db, 
+                email=user.email,
+                username=user.email,
+                password=user.password,  # Plain password for email only
+                full_name=user.full_name
+            )
+        
         # Add roles if provided
         if user.role_ids:
             for role_id in user.role_ids:
@@ -412,53 +458,122 @@ def create_user(db: Session, facility_db: Session, user: UserCreate):
             http_status=400
         )
 
-
-def update_user(db: Session, facility_db: Session, user: UserUpdate):
+def send_password_update_email(background_tasks, db, email, username, password, full_name):
+    """Send email when password is updated"""
+    from shared.helpers.email_helper import EmailHelper
+    
+    email_helper = EmailHelper()
+    
+    context = {
+        "username": username,
+        "password": password,
+        "full_name": full_name
+    }
+    
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="password_updated",  # You'll need to create this template
+        recipients=[email],
+        subject=f"Password Updated - {full_name}",
+        context=context,
+    )
+   
+   
+def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Session, user: UserUpdate):
     # Fetch existing user
     db_user = get_user_by_id(db, user.id)
     if not db_user:
         return None
 
+    
+        # Track if password is being updated
+    password_updated = False
+    new_password = None
+
+    # -----------------------
+    # ✅ ADDED: PASSWORD UPDATE HANDLING
+    # -----------------------
+    if user.password:
+        # Password is being updated
+        password_updated = True
+        new_password = user.password
+        # Set the new hashed password
+        db_user.set_password(user.password)
+        # Remove password from update_data to avoid trying to set it directly
+        if 'password' in user.__dict__:
+            delattr(user, 'password')
     # -----------------------
     # ✅ ADDED: VALIDATE EMAIL & PHONE DUPLICATES
     # -----------------------
     update_data = user.model_dump(
         exclude_unset=True,
         exclude={'roles', 'role_ids', 'site_id',
-                 'space_id', 'site_ids', 'tenant_type' , 'staff_role'}
+                 'space_id', 'site_ids', 'tenant_type' , 'staff_role','password'}
     )
-
-    # Check email duplicate (if email is being updated)
+        #  ADD THIS: PREVENT EMAIL AND PHONE UPDATES
+    # Check if email is being updated
     if 'email' in update_data and update_data['email'] != db_user.email:
-        existing_email_user = db.query(Users).filter(
-            Users.email == update_data['email'],
-            Users.is_deleted == False,
-            Users.id != user.id  # Exclude current user
-        ).first()
-        if existing_email_user:
-            return error_response(
-                message="User with this email already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+        # Option 1: Block email update completely
+        return error_response(
+                message="Email cannot be updated. Please contact administrator."
             )
-
-    # Check phone duplicate (if phone is being updated)
+        
+    # Check email duplicate (if email is being updated)
+#    if 'email' in update_data and update_data['email'] != db_user.email:
+#        existing_email_user = db.query(Users).filter(
+#            Users.email == update_data['email'],
+#            Users.is_deleted == False,
+#            Users.id != user.id  # Exclude current user
+#        ).first()
+#        if existing_email_user:
+#            return error_response(
+#                message="User with this email already exists",
+#                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+#            )
     if 'phone' in update_data and update_data['phone'] != db_user.phone:
-        existing_phone_user = db.query(Users).filter(
-            Users.phone == update_data['phone'],
-            Users.is_deleted == False,
-            Users.id != user.id  # Exclude current user
-        ).first()
-        if existing_phone_user:
             return error_response(
-                message="User with this phone number already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+                message="phone cannot be updated. Please contact administrator."
             )
+    # Check phone duplicate (if phone is being updated)
+#    if 'phone' in update_data and update_data['phone'] != db_user.phone:
+#        existing_phone_user = db.query(Users).filter(
+#            Users.phone == update_data['phone'],
+#            Users.is_deleted == False,
+#            Users.id != user.id  # Exclude current user
+#        ).first()
+#        if existing_phone_user:
+#            return error_response(
+#                message="User with this phone number already exists",
+#                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+#            )
 
     # -----------------------
     # UPDATE BASE USER FIELDS
     # -----------------------
     for key, value in update_data.items():
+        # ADD: Skip email and phone if you want to block updates
+        if key in ['email', 'phone'] and value != getattr(db_user, key):
+            continue  # Skip updating email/phone
         setattr(db_user, key, value)
+        
+        
+        # -----------------------
+    # ✅ ADDED: SEND PASSWORD UPDATE EMAIL
+    # -----------------------
+    if password_updated and new_password and db_user.email:
+        try:
+            send_password_update_email(
+                background_tasks=background_tasks,
+                db=facility_db,
+                email=db_user.email,
+                username=db_user.email,
+                password=new_password,  # Plain password for email
+                full_name=db_user.full_name
+            )
+        except Exception as email_error:
+            # Don't fail user update if email fails
+            print(f"Password update email failed: {email_error}")
 
     # -----------------------
     # UPDATE ROLES

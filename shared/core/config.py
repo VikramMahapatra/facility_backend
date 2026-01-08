@@ -31,8 +31,10 @@ class Settings(BaseSettings):
     DB_PORT: str = os.getenv("DB_PORT")
     AUTH_DB_NAME: str = os.getenv("AUTH_DB_NAME")
     FACILITY_DB_NAME: str = os.getenv("FACILITY_DB_NAME")
+    # Add HRMS database configuration
+    # HRMS_DB_NAME: str = os.getenv("HRMS_DB_NAME")
 
-    # Email Configuration FOR TICKETS CHANGES 
+    # Email Configuration FOR TICKETS CHANGES
     SMTP_HOST: str | None = os.getenv("SMTP_HOST")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", 587))
     SMTP_USERNAME: str | None = os.getenv("SMTP_USERNAME")
@@ -55,3 +57,8 @@ AUTH_DATABASE_URL = (
 FACILITY_DATABASE_URL = (
     f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASS}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.FACILITY_DB_NAME}?sslmode=require"
 )
+
+# Create HRMS database URL
+# HRMS_DATABASE_URL = (
+#     f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASS}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.HRMS_DB_NAME}?sslmode=require"
+# )

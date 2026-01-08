@@ -1,24 +1,28 @@
 # app/schemas/space_groups.py
-from datetime import date
+from datetime import date as date_type, datetime
 from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel
 from typing import List, Optional, Any
 from shared.core.schemas import CommonQueryParams
 
-
+class PaymentCreateWithInvoice(BaseModel):
+    method: str
+    ref_no: Optional[str] = None
+    amount: Decimal
+    paid_at: Optional[datetime] = None
+    meta: Optional[Any] = None
+   
 class InvoiceBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
     billable_item_type: Optional[str] = None
     billable_item_id: Optional[UUID] = None
-    date: Optional[str]
-    due_date: Optional[str]
-    status: str
+    date: date_type 
+    due_date: Optional[date_type] = None 
     currency: str
     totals: Optional[Any] = None
     meta: Optional[Any] = None
-    is_paid: Optional[bool] = None
 
     class Config:
         from_attributes = True
@@ -26,12 +30,41 @@ class InvoiceBase(BaseModel):
 
 
 class InvoiceCreate(InvoiceBase):
-    pass
+    payments: Optional[List[PaymentCreateWithInvoice]] = None
 
 
-class InvoiceUpdate(InvoiceBase):
+class PaymentUpdateItem(BaseModel):
+    id: Optional[UUID] = None  # None = new payment, UUID = update existing
+    method: str
+    ref_no: Optional[str] = None
+    amount: Decimal
+    paid_at: Optional[datetime] = None
+    meta: Optional[Any] = None
+
+class InvoiceUpdate(BaseModel):
     id: str
-    pass
+    date: Optional[date_type] = None
+    due_date: Optional[date_type] = None
+    currency: Optional[str] = None
+    totals: Optional[Any] = None
+    meta: Optional[Any] = None
+    payments: Optional[List[PaymentUpdateItem]] = None
+
+
+class PaymentOut(BaseModel):
+    id: UUID
+    org_id: Optional[UUID] = None
+    invoice_id: UUID
+    invoice_no: str
+    billable_item_name: Optional[str] = None
+    method: str
+    ref_no: str
+    amount: Decimal
+    paid_at: Optional[str]
+    meta: Optional[Any] = None
+
+    class Config:
+        from_attributes = True
 
 
 class InvoiceOut(InvoiceBase):
@@ -50,7 +83,8 @@ class InvoiceOut(InvoiceBase):
     meta: Optional[Any] = None
     is_paid: Optional[bool] = None
     site_name:  Optional[str] = None
-
+    payments: Optional[List[PaymentOut]] = None  # ADD THIS LINE
+    
     class Config:
         from_attributes = True
         arbitrary_types_allowed = True
@@ -77,21 +111,6 @@ class InvoicesOverview(BaseModel):
 
     model_config = {"from_attributes": True}
 
-
-class PaymentOut(BaseModel):
-    id: UUID
-    org_id: Optional[UUID] = None
-    invoice_id: UUID
-    invoice_no: str
-    billable_item_name: Optional[str] = None
-    method: str
-    ref_no: str
-    amount: Decimal
-    paid_at: Optional[str]
-    meta: Optional[Any] = None
-
-    class Config:
-        from_attributes = True
 
 
 class PaymentResponse(BaseModel):

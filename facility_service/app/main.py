@@ -2,15 +2,15 @@
 from .router.leasing_tenants import lease_charge_code_router
 from shared.models import email_template
 from .router.system import notifiaction_settings_router
-from .router.system import notifications_router ,system_settings_router
+from .router.system import notifications_router, system_settings_router
 from .router.procurement import contracts_router, vendor_router
 from .router.mobile_app import master_router, home_router, help_desk_router, user_profile_router
 from .router.common import export_router
-from .router.service_ticket import tickets_router, ticket_category_router, ticket_dashboard_router, ticket_workload_router, sla_policy_router,ticket_work_order_router
+from .router.service_ticket import tickets_router, ticket_category_router, ticket_dashboard_router, ticket_workload_router, sla_policy_router, ticket_work_order_router
 from .router.energy_iot import meter_readings_router, meters_router, consumption_report_router
 from .router.overview import analytics_router, dashboard_router
 from .router.hospitality import bookings_router, rate_plans_router, housekeeping_tasks_router
-from .router.parking_access import parking_zones_router, access_events_router, visitors_router,parking_pass_router
+from .router.parking_access import parking_zones_router, access_events_router, visitors_router, parking_pass_router
 from .router.maintenance_assets import (
     asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, pm_template_router, service_request_router, work_order_router)
 from .router.crm import contact_router
@@ -44,14 +44,15 @@ from .models.energy_iot import meters, meter_readings
 from .models.parking_access import parking_zones, parking_pass, access_events, visitors
 from .models.crm import contacts, companies
 from .models.financials import invoices
-from .models.leasing_tenants import commercial_partners, leases, lease_charges, tenants ,lease_charge_code
+from .models.leasing_tenants import commercial_partners, leases, lease_charges, tenants, lease_charge_code
 from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups
 from .models.system import notifications, notification_settings, system_settings
 from .models.common import comments, attachments, staff_sites
 from .models import (
     purchase_order_lines, purchase_orders
 )
-from .models.service_ticket import sla_policy, ticket_assignment, tickets_category, tickets_commets, tickets_feedback, tickets_reaction,tickets_work_order, tickets_workflow, tickets
+from .models.service_ticket import sla_policy, ticket_assignment, tickets_category, tickets_commets, tickets_feedback, tickets_reaction, tickets_work_order, tickets_workflow, tickets
+from .models.system.system_settings import SystemSetting
 
 app = FastAPI(title="Facility Service API")
 
@@ -61,6 +62,7 @@ Base.metadata.create_all(bind=facility_engine)
 # Allow requests from your React app
 origins = [
     "http://localhost:8080",
+    "http://localhost:8081",
     "http://127.0.0.1:8002"
     # Add other origins if deploying later
 ]
@@ -73,6 +75,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 🔥 FIXED: Add the middleware correctly
+#app.middleware("http")(SystemSetting.create_date_format_middleware())
 
 # 2️⃣ Custom JSON response wrapper middlewares
 app.add_middleware(JsonResponseMiddleware)
@@ -139,6 +144,7 @@ app.include_router(ticket_work_order_router.router)
 app.include_router(lease_charge_code_router.router)
 app.include_router(system_settings_router.router)
 app.include_router(parking_pass_router.router)
+
 
 @app.get("/api/health")
 def health():

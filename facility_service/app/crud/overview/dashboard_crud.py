@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Integer, and_, extract, func, case , literal_column, or_
 from datetime import date, datetime, timedelta
 
-from facility_service.app.models.leasing_tenants.lease_charge_code import LeaseChargeCode
+from ...models.leasing_tenants.lease_charge_code import LeaseChargeCode
 
 from ...models.financials.tax_codes import TaxCode
 

@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from facility_service.app.models.leasing_tenants.lease_charge_code import LeaseChargeCode
-from facility_service.app.models.service_ticket.tickets import Ticket
-from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
+from ...models.leasing_tenants.lease_charge_code import LeaseChargeCode
+from ...models.service_ticket.tickets import Ticket
+from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 
 from ...models.hospitality.booking_rooms import BookingRoom
 from ...models.parking_access.access_events import AccessEvent

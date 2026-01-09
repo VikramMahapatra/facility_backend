@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from facility_service.app.models.leasing_tenants.lease_charge_code import LeaseChargeCode
 from facility_service.app.models.service_ticket.tickets import Ticket
 from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
 
@@ -328,11 +329,12 @@ def get_revenue_analytics(db: Session, org_id: UUID, params: AnalyticsRequest):
 
         utilities_lease = db.query(func.coalesce(func.sum(LeaseCharge.amount), 0))\
             .select_from(LeaseCharge).join(Lease).join(Site)\
+            .join(LeaseChargeCode, LeaseChargeCode.id == LeaseCharge.charge_code_id)\
             .filter(
                 *filters,
                 LeaseCharge.period_start.between(month_start, month_end),
                 LeaseCharge.amount > 0,
-                LeaseCharge.charge_code.in_(
+                LeaseChargeCode.code.in_(
                     ['ELEC', 'WATER', 'GAS', 'UTILITY'])
         ).scalar() or 0
 
@@ -341,11 +343,12 @@ def get_revenue_analytics(db: Session, org_id: UUID, params: AnalyticsRequest):
         # 5. CAM REVENUE
         cam_revenue = db.query(func.coalesce(func.sum(LeaseCharge.amount), 0))\
             .select_from(LeaseCharge).join(Lease).join(Site)\
+            .join(LeaseChargeCode, LeaseChargeCode.id == LeaseCharge.charge_code_id)\
             .filter(
                 *filters,
                 LeaseCharge.period_start.between(month_start, month_end),
                 LeaseCharge.amount > 0,
-                LeaseCharge.charge_code == 'CAM'
+                LeaseChargeCode.code == 'CAM'
         ).scalar() or 0
 
         # Categorize revenue
@@ -600,12 +603,13 @@ def get_site_profitability(db: Session, org_id: UUID, params: AnalyticsRequest):
             .select_from(LeaseCharge)\
             .join(Lease, LeaseCharge.lease_id == Lease.id)\
             .join(Site, Lease.site_id == Site.id)\
+            .join(LeaseChargeCode, LeaseChargeCode.id == LeaseCharge.charge_code_id)\
             .filter(
                 *site_filters,
                 LeaseCharge.period_start.between(
                     current_month_start, current_month_end),
                 LeaseCharge.amount > 0,
-                LeaseCharge.charge_code == 'CAM'
+                LeaseChargeCode.code == 'CAM'
         ).scalar() or Decimal('0')
 
         # Contract/Vendor costs
@@ -1070,10 +1074,11 @@ def get_yoy_performance(db: Session, org_id: UUID, params: AnalyticsRequest):
     current_expenses = db.query(func.sum(LeaseCharge.amount))\
         .join(Lease, LeaseCharge.lease_id == Lease.id)\
         .join(Site, Lease.site_id == Site.id)\
+        .join(LeaseChargeCode, LeaseChargeCode.id == LeaseCharge.charge_code_id)\
         .filter(
             Site.org_id == org_id,
             extract('year', LeaseCharge.period_start) == current_year,
-            LeaseCharge.charge_code.in_(
+            LeaseChargeCode.code.in_(
                 ['CAM', 'ELEC', 'WATER', 'MAINTENANCE']),
             *filters
     )\
@@ -1082,10 +1087,11 @@ def get_yoy_performance(db: Session, org_id: UUID, params: AnalyticsRequest):
     previous_expenses = db.query(func.sum(LeaseCharge.amount))\
         .join(Lease, LeaseCharge.lease_id == Lease.id)\
         .join(Site, Lease.site_id == Site.id)\
+        .join(LeaseChargeCode, LeaseChargeCode.id == LeaseCharge.charge_code_id)\
         .filter(
             Site.org_id == org_id,
             extract('year', LeaseCharge.period_start) == previous_year,
-            LeaseCharge.charge_code.in_(
+            LeaseChargeCode.code.in_(
                 ['CAM', 'ELEC', 'WATER', 'MAINTENANCE']),
             *filters
     )\
@@ -1408,10 +1414,11 @@ def get_energy_consumption(db: Session, org_id: UUID, params: AnalyticsRequest):
         func.sum(LeaseCharge.amount).label('cost')
     ).join(Lease, LeaseCharge.lease_id == Lease.id)\
      .join(Site, Lease.site_id == Site.id)\
+     .join(LeaseChargeCode, LeaseChargeCode.id == LeaseCharge.charge_code_id)\
      .filter(
         Site.org_id == org_id,  # Filter by org_id through Site table
         extract('year', LeaseCharge.period_start) == current_year,
-        LeaseCharge.charge_code.in_(['ELEC', 'WATER', 'GAS']),
+        LeaseChargeCode.code.in_(['ELEC', 'WATER', 'GAS']),
         *filters
     ).group_by(
         extract('year', LeaseCharge.period_start),

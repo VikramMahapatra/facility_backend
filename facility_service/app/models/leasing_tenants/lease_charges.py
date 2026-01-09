@@ -28,3 +28,4 @@ class LeaseCharge(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
 
     lease = relationship("Lease", back_populates="charges")
+    

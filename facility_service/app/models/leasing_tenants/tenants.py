@@ -17,9 +17,6 @@ class Tenant(Base):
     kind = Column(String(32), nullable=False)
     # residential | commercial
 
-    tenant_type = Column(String(16), default="individual")
-    # individual | company
-
     commercial_type = Column(String(16), nullable=True)
     # merchant | brand | kiosk (only if commercial)
 

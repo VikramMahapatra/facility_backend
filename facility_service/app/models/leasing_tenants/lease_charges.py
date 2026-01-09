@@ -17,7 +17,8 @@ class LeaseCharge(Base):
     period_start = Column(Date)
     period_end = Column(Date)
     amount = Column(Numeric(14, 2), nullable=False)
-    tax_pct = Column(Numeric(5, 2), default=0)
+    tax_code_id = Column(UUID(as_uuid=True), ForeignKey(
+        "tax_codes.id", ondelete="CASCADE"))
     payer_type = Column(String(16), nullable=False)  # owner | occupant | split
     # FK to tenants.id (soft FK)
     payer_id = Column(UUID(as_uuid=True), nullable=False)
@@ -28,3 +29,4 @@ class LeaseCharge(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
 
     lease = relationship("Lease", back_populates="charges")
+    tax_code = relationship("TaxCode", back_populates="charge")

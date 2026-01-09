@@ -10,7 +10,7 @@ from shared.helpers.json_response_helper import error_response
 from shared.models.user_login_session import LoginPlatform, UserLoginSession
 from ..schemas.authschema import AuthenticationResponse
 from ..models.sites_safe import SiteSafe
-from ..models.commercial_partner_safe import CommercialPartnerSafe
+from ..models.space_tenants_safe import SpaceTenantSafe
 from ..models.tenants_safe import TenantSafe
 from shared.core import auth
 from ..models.orgs_safe import OrgSafe
@@ -75,34 +75,17 @@ def create_user(
         user_instance = Users(
             full_name=full_name,
             email=user.email,
-            username=user.email, 
+            username=user.email,
             phone=user.phone,
             picture_url=str(user.pictureUrl) if user.pictureUrl else None,
             account_type=user.accountType.lower(),
             status="pending_approval"
         )
-        
-        user_instance.set_password(user.password) 
-        
+
+        user_instance.set_password(user.password)
+
         db.add(user_instance)
         db.flush()
-
-        # ✅ Assign Role
-        # role_name = ("admin" if user.accountType.lower() ==
-        #              "organization" else user.accountType.lower())
-        # role_obj = (
-        #     db.query(Roles).filter(and_(func.lower(Roles.name) ==
-        #                                 func.lower(role_name), Roles.is_deleted == False)).first()
-        # )
-
-        # if not role_obj:
-        #     return error_response(
-        #         message=f"Role '{role_name}' not found",
-        #         status_code=str(AppStatusCode.INVALID_INPUT),
-        #         http_status=status.HTTP_400_BAD_REQUEST
-        #     )
-
-        # user_instance.roles.append(role_obj)
 
         # ✅ ACCOUNT TYPE: ORGANIZATION
         if user.accountType.lower() == "organization":
@@ -144,60 +127,43 @@ def create_user(
                     status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 )
 
-            if user.tenant_type == "individual":
+            existing_tenant = facility_db.query(TenantSafe).filter(
+                and_(TenantSafe.space_id == user.space_id, TenantSafe.is_deleted == False)).first()
 
-                existing_tenant = facility_db.query(TenantSafe).filter(
-                    and_(TenantSafe.space_id == user.space_id, TenantSafe.is_deleted == False)).first()
-
-                if existing_tenant:
-                    return error_response(
-                        message="Tenant already registered for selected space",
-                        status_code=str(
-                            AppStatusCode.USER_ALREADY_REGISTERED),
-                    )
-
-                tenant_obj = TenantSafe(
-                    site_id=user.site_id,
-                    space_id=user.space_id,
-                    name=full_name,
-                    email=user.email,
-                    phone=user.phone,
-                    status="inactive",
-                    user_id=user_instance.id
-                )
-                facility_db.add(tenant_obj)
-
-            elif user.tenant_type == "commercial":
-                existing_partner = facility_db.query(CommercialPartnerSafe).filter(
-                    and_(CommercialPartnerSafe.space_id == user.space_id, CommercialPartnerSafe.is_deleted == False)).first()
-
-                if existing_partner:
-                    return error_response(
-                        message="Tenant already registered for selected space",
-                        status_code=str(
-                            AppStatusCode.USER_ALREADY_REGISTERED),
-                    )
-
-                partner_obj = CommercialPartnerSafe(
-                    site_id=user.site_id,
-                    space_id=user.space_id,
-                    type="merchant",
-                    legal_name=full_name,
-                    contact={
-                        "name": full_name,
-                        "phone": user.phone,
-                        "email": user.email
-                    },
-                    status="inactive",
-                    user_id=user_instance.id
-                )
-                facility_db.add(partner_obj)
-            else:
+            if existing_tenant:
                 return error_response(
-                    message="Invalid tenant type",
-                    status_code=str(AppStatusCode.INVALID_INPUT),
-                    http_status=status.HTTP_400_BAD_REQUEST
+                    message="Tenant already registered for selected space",
+                    status_code=str(AppStatusCode.USER_ALREADY_REGISTERED),
                 )
+
+            tenant_obj = TenantSafe(
+                site_id=user.site_id,
+                space_id=user.space_id,
+                name=full_name,
+                email=user.email,
+                phone=user.phone,
+                status="inactive",
+                kind="residential" if user.tenant_type == "individual" else "commercial",
+                commercial_type="merchant" if user.tenant_type == "commercial" else None,
+                legal_name=full_name if user.tenant_type == "commercial" else None,
+                contact={
+                    "name": full_name,
+                    "phone": user.phone,
+                    "email": user.email
+                } if user.tenant_type == "commercial" else None,
+                user_id=user_instance.id
+            )
+            facility_db.add(tenant_obj)
+            facility_db.flush()  # ✅ ensure id generated
+
+            # ✅ Create space tenant link
+            space_tenant_link = SpaceTenantSafe(
+                site_id=user.site_id,
+                space_id=user.space_id,
+                tenant_id=tenant_obj.id,
+                role="occupant"
+            )
+            facility_db.add(space_tenant_link)
 
         # ✅ Commit All OR Rollback All
         db.commit()
@@ -243,25 +209,19 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         TenantSafe.is_deleted == False
     ).first()
 
-    partner = facility_db.query(CommercialPartnerSafe).filter(
-        CommercialPartnerSafe.user_id == user.id,
-        CommercialPartnerSafe.is_deleted == False
-    ).first()
+    tenant_type = tenant.kind if tenant else None
+    is_mobile = platform == "mobile"
 
-    tenant_type = None
-
-    if tenant:
-        tenant_type = "individual"
-    elif partner:
-        tenant_type = "commercial"
-
-    token = auth.create_access_token({
+    token_data = {
         "user_id": str(user.id),
         "session_id": str(session.id),
         "org_id": str(user.org_id),
         "account_type": user.account_type,
         "tenant_type": tenant_type,
-        "role_ids": roles or []})
+        "role_ids": roles or []
+    }
+
+    token = auth.create_access_token(token_data, is_mobile)
 
     refresh_token = None
 

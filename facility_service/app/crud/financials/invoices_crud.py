@@ -4,7 +4,10 @@ from typing import Any, Dict
 from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import Date, func, cast, or_, case, Numeric 
+from sqlalchemy import Date, func, cast, or_, case, Numeric
+
+from facility_service.app.models.leasing_tenants.leases import Lease
+from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType 
 
 from ...enum.revenue_enum import  InvoicePayementMethod
 
@@ -157,7 +160,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
                 "method": payment.method,
                 "ref_no": payment.ref_no,
                 "amount": Decimal(str(payment.amount)),
-                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                "paid_at": payment.paid_at.date().isoformat(), 
                 "meta": payment.meta
             })
         
@@ -185,8 +188,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
             "billable_item_name": billable_item_name,
             "site_name": site_name,
             "status": actual_status,  # ✅ Use CALCULATED status, not stored status
-            "is_paid": is_paid,  # ✅ Use calculated is_paid
-            "payments": payments_list
+            "payments": payments_list or []
         })
         results.append(invoice_data)
         
@@ -242,6 +244,16 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
                         billable_item_name = f"{ticket_work_order.wo_no} | Ticket {ticket.ticket_no}"
                     else:
                         billable_item_name = ticket_work_order.wo_no
+                        
+                                        # Get customer name from ticket
+                    if ticket.tenant:
+                        customer_name = f"{ticket.tenant.name}"
+                    elif ticket.vendor:
+                        customer_name = ticket.vendor.name
+                    elif ticket.space and ticket.space.tenant:
+                        # Fallback: get from space tenant
+                        space_tenant = ticket.space.tenant
+                        customer_name = f"{space_tenant.name} {space_tenant.name}"
                 
             elif invoice.billable_item_type == "lease charge":
                 lease_charge = db.query(LeaseCharge).filter(
@@ -256,6 +268,14 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
                         billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
                     else:
                         billable_item_name = lease_charge.charge_code
+                    
+                    # Get customer name from lease
+                    if lease_charge.lease:
+                        lease = lease_charge.lease
+                        if lease.tenant:
+                            customer_name = f"{lease.tenant.name}"
+                        elif lease.partner:
+                            customer_name = lease.partner.legal_name
                         
                         
             elif invoice.billable_item_type == "parking pass":
@@ -274,15 +294,23 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
                         )
                     else:
                         billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
-
-        
+                        
+                    # Get customer name
+                    if parking_pass.pass_holder_name:
+                        customer_name = parking_pass.pass_holder_name
+                    elif parking_pass.space and parking_pass.space.tenant:
+                        # Fallback to space tenant
+                        space_tenant = parking_pass.space.tenant
+                        customer_name = f"{space_tenant.name} {space_tenant.name}"
+                    
         # ✅ FIX: Convert date objects to strings for Pydantic model
         results.append(PaymentOut.model_validate({
             **payment.__dict__,
-            "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+           "paid_at": payment.paid_at.date().isoformat(), 
             "invoice_no": invoice.invoice_no,
             "billable_item_name": billable_item_name,
-            "site_name": invoice.site.name if invoice.site else None  
+            "site_name": invoice.site.name if invoice.site else None,
+            "customer_name": customer_name
         }))
         
     return {"payments": results, "total": total}
@@ -364,6 +392,8 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         if not lease_charge:
             raise HTTPException(status_code=404, detail="Lease charge not found")
         
+            # ADD THIS LINE: Get lease for notification
+        lease = db.query(Lease).filter(Lease.id == lease_charge.lease_id).first()
 
         if lease_charge.period_start and lease_charge.period_end:
             start_str = lease_charge.period_start.strftime("%d %b %Y")
@@ -460,6 +490,54 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         db_invoice.status = actual_status
         db_invoice.is_paid = (actual_status == "paid")
         
+                
+        # ADD THIS: Notification for invoice creation (lease charge only)
+        if request.billable_item_type == "lease charge" and lease:
+            # 1. Notification for invoice creation against admin
+            invoice_notification = Notification(
+                user_id=current_user.user_id,
+                type=NotificationType.alert,
+                title="Lease Invoice Created",
+                message=f"Invoice {db_invoice.invoice_no} created for {billable_item_name}. Amount: {invoice_amount}",
+                posted_date=datetime.utcnow(),
+                priority=PriorityType.medium,
+                read=False,
+                is_deleted=False,
+                is_email=False
+            )
+            db.add(invoice_notification)
+            
+            # 2. Notification for EACH payment (if any payments)
+            if payments_created:
+                for payment in payments_created:
+                    payment_notification = Notification(
+                        user_id=current_user.user_id,
+                        type=NotificationType.alert,
+                        title="Lease Payment Recorded",
+                        message=f"Payment of {payment.amount} recorded for invoice {db_invoice.invoice_no}",
+                        posted_date=datetime.utcnow(),
+                        priority=PriorityType.medium,
+                        read=False,
+                        is_deleted=False,
+                        is_email=False
+                    )
+                    db.add(payment_notification)
+            
+            # 3. Notification for FULL PAYMENT (if invoice is fully paid)
+            if actual_status == "paid":
+                full_payment_notification = Notification(
+                    user_id=current_user.user_id,
+                    type=NotificationType.alert,
+                    title="Lease Invoice Fully Paid",
+                    message=f"Invoice {db_invoice.invoice_no} has been fully paid. Total: {invoice_amount}",
+                    posted_date=datetime.utcnow(),
+                    priority=PriorityType.medium,
+                    read=False,
+                    is_deleted=False,
+                    is_email=False
+                )
+                db.add(full_payment_notification)
+
         # Single commit for everything
         db.commit()
         
@@ -481,7 +559,7 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
                 "method": payment.method,
                 "ref_no": payment.ref_no,
                 "amount": Decimal(str(payment.amount)),
-                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+               "paid_at": payment.paid_at.date().isoformat(),  
                 "meta": payment.meta
             })
         
@@ -597,6 +675,8 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
                 )
                 db.add(payment_ar)
                 payments_created.append(payment_ar)
+                
+                
     
     # Recalculate invoice amount from updated totals
     invoice_amount = 0.0
@@ -613,6 +693,41 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     
     db_invoice.status = new_status
     db_invoice.is_paid = (new_status == "paid")
+    
+    # ADD THIS: Notification logic for invoice update (lease charge only)
+    if db_invoice.billable_item_type == "lease charge":
+        # 1. Notification for EACH NEW payment added
+        if payments_created:
+            for payment in payments_created:
+                payment_notification = Notification(
+                    user_id=current_user.user_id,
+                    type=NotificationType.alert,
+                    title="Lease Payment Added",
+                    message=f"Payment of {payment.amount} added to invoice {db_invoice.invoice_no}",
+                    posted_date=datetime.utcnow(),
+                    priority=PriorityType.medium,
+                    read=False,
+                    is_deleted=False,
+                    is_email=False
+                )
+                db.add(payment_notification)
+        
+        # 2. Notification if invoice becomes FULLY PAID after update
+        if new_status == "paid":
+            # Check if it was not already paid before
+            if db_invoice.status != "paid":  # Only notify if status changed to paid
+                full_payment_notification = Notification(
+                    user_id=current_user.user_id,
+                    type=NotificationType.alert,
+                    title="Lease Invoice Fully Paid",
+                    message=f"Invoice {db_invoice.invoice_no} has been fully paid",
+                    posted_date=datetime.utcnow(),
+                    priority=PriorityType.medium,
+                    read=False,
+                    is_deleted=False,
+                    is_email=False
+                )
+                db.add(full_payment_notification)
  
     db.commit()
     db.refresh(db_invoice)
@@ -689,7 +804,7 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
             "method": payment.method,
             "ref_no": payment.ref_no,
             "amount": Decimal(str(payment.amount)),
-            "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+            "paid_at": payment.paid_at.date().isoformat(), 
             "meta": payment.meta
         })
 
@@ -890,7 +1005,7 @@ def get_work_order_invoices(db: Session, org_id: UUID, params: InvoicesRequest) 
                 "method": payment.method,
                 "ref_no": payment.ref_no,
                 "amount": Decimal(str(payment.amount)),
-                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
                 "meta": payment.meta
             })
         
@@ -977,7 +1092,7 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
                 "method": payment.method,
                 "ref_no": payment.ref_no,
                 "amount": Decimal(str(payment.amount)),
-                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
                 "meta": payment.meta
             })
         

@@ -10,7 +10,7 @@ class PaymentCreateWithInvoice(BaseModel):
     method: str
     ref_no: Optional[str] = None
     amount: Decimal
-    paid_at: Optional[datetime] = None
+    paid_at: Optional[date_type] = None
     meta: Optional[Any] = None
    
 class InvoiceBase(BaseModel):
@@ -38,7 +38,7 @@ class PaymentUpdateItem(BaseModel):
     method: str
     ref_no: Optional[str] = None
     amount: Decimal
-    paid_at: Optional[datetime] = None
+    paid_at: Optional[date_type] = None
     meta: Optional[Any] = None
 
 class InvoiceUpdate(BaseModel):
@@ -60,8 +60,9 @@ class PaymentOut(BaseModel):
     method: str
     ref_no: str
     amount: Decimal
-    paid_at: Optional[str]
+    paid_at: Optional[date_type]=None
     meta: Optional[Any] = None
+    customer_name: Optional[str] = None  # Add this field
 
     class Config:
         from_attributes = True

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
+from shared.helpers.password_generator import generate_secure_password
 from shared.models.users import Users
 
 
@@ -215,6 +216,9 @@ def create_vendor(db: Session,auth_db: Session, vendor: VendorCreate, org_id: UU
             )
     now = datetime.utcnow()
 
+        # GENERATE RANDOM PASSWORD
+    random_password = generate_secure_password()
+    
     # CREATE USER RECORD
     new_user_id = str(uuid.uuid4())
     
@@ -233,8 +237,13 @@ def create_vendor(db: Session,auth_db: Session, vendor: VendorCreate, org_id: UU
         status="inactive",
         is_deleted=False,
         created_at=now,
-        updated_at=now
+        updated_at=now,
+        username=contact_email or f"user_{new_user_id[:8]}",  #  Add username
+        password=""  #  Initialize with empty string
     )
+    #  SET PASSWORD (hashes it)
+    new_user.set_password(random_password)
+    
     auth_db.add(new_user)
     auth_db.flush()
     

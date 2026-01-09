@@ -7,6 +7,8 @@ from sqlalchemy import and_, desc, func, literal, or_, select
 from uuid import UUID
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
+from shared.helpers.email_helper import EmailHelper
+from shared.helpers.password_generator import generate_secure_password
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.models.users import Users
 
@@ -33,7 +35,7 @@ from ...schemas.leasing_tenants.tenants_schemas import (
     TenantRequest,
 )
 
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
 # ------------------------------------------------------------
 
 
@@ -492,9 +494,11 @@ def get_commercial_partner_by_id(db: Session, partner_id: str) -> Optional[Comme
     ).first()
 
 
-def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
+def create_tenant( db: Session, auth_db: Session, tenant: TenantCreate):
     now = datetime.utcnow()
     tenant_id = None
+    random_password = None  
+    tenant_name = None  # Store tenant name for response
 
     # ✅ ADD THIS AT START: Get site for org_id
     site = db.query(Site).filter(
@@ -546,6 +550,10 @@ def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
                 http_status=400
             )
         
+        # GENERATE RANDOM PASSWORD
+        random_password = generate_secure_password()
+        tenant_name = tenant.name
+        
          # ✅ ADD: CREATE USER
         new_user_id = str(uuid.uuid4())
         new_user = Users(
@@ -558,8 +566,12 @@ def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
             status="inactive",
             is_deleted=False,
             created_at=now,
-            updated_at=now
+            updated_at=now,
+            username=tenant.email or f"user_{new_user_id[:8]}",
+            password=""  
         )
+        new_user.set_password(random_password) 
+        
         auth_db.add(new_user)  # ✅ Use auth_db
         auth_db.flush()  # ✅ Use auth_db
 
@@ -627,6 +639,12 @@ def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
                 http_status=400
             )
 
+        # GENERATE RANDOM PASSWORD
+        random_password = generate_secure_password()
+        tenant_name = legal_name
+
+        
+        
         # ✅ AUTO-FILL CONTACT INFO IF EMPTY
         contact_info = tenant.contact_info or {}
         
@@ -663,7 +681,7 @@ def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
 
 
         new_user_id = str(uuid.uuid4())
-
+                
         # Create user record
         new_user = Users(
             id=new_user_id,
@@ -675,8 +693,12 @@ def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
             status="inactive",  # This is is_active=False
             is_deleted=False,
             created_at=now,
-            updated_at=now
+            updated_at=now,
+            username=contact_info.get("email") or f"user_{new_user_id[:8]}",
+            password=""
         )
+        new_user.set_password(random_password)
+        
         auth_db.add(new_user)  # ✅ Use auth_db
         auth_db.flush()  # ✅ Use auth_db  # Get the ID without committing  
         # ✅ Add user_id to contact info
@@ -704,7 +726,7 @@ def create_tenant(db: Session,auth_db:Session, tenant: TenantCreate):
         db.refresh(db_partner)
 
         tenant_id = db_partner.id
-
+ 
     return get_tenant_detail(db, tenant_id, tenant.tenant_type)
 
 

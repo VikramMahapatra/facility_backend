@@ -28,7 +28,8 @@ class SpaceTenant(Base):
     is_system = Column(Boolean, default=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
+    is_deleted = Column(Boolean, default=False) 
+    
     tenant = relationship("Tenant", back_populates="space_links")
     space = relationship("Space", back_populates="tenant_links")
     site = relationship("Site", back_populates="tenant_links")

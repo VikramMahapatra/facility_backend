@@ -13,21 +13,18 @@ class Lease(Base):
     org_id = Column(UUID(as_uuid=True), nullable=False)
     site_id = Column(UUID(as_uuid=True), ForeignKey(
         "sites.id"), nullable=False)
-    kind = Column(String(32), nullable=False)  # "commercial" | "residential"
-    partner_id = Column(UUID(as_uuid=True), ForeignKey(
-        "commercial_partners.id"), nullable=True)
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey(
-        "tenants.id"), nullable=True)
-
     space_id = Column(UUID(as_uuid=True), ForeignKey(
         "spaces.id"), nullable=True)
-
+    # owner | occupant | split
+    default_payer = Column(String(16), nullable=False)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey(
+        "tenants.id"), nullable=True)
     start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)
 
-    rent_amount = Column(Numeric(14, 2), nullable=False)
+    rent_amount = Column(Numeric(14, 2), nullable=True)
     deposit_amount = Column(Numeric(14, 2), nullable=True)
-    frequency = Column(String(16), default="monthly")
+    frequency = Column(String(16), default="monthly", nullable=True)
 
     escalation = Column(JSONB)
     revenue_share = Column(JSONB)
@@ -47,4 +44,3 @@ class Lease(Base):
         "LeaseCharge", back_populates="lease", cascade="all, delete")
     site = relationship("Site", back_populates="leases")
     space = relationship("Space", back_populates="leases")
-    partner = relationship("CommercialPartner", back_populates="leases",foreign_keys=[partner_id])

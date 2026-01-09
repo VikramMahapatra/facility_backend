@@ -69,15 +69,10 @@ class Site(Base):
                           cascade="all, delete-orphan")
     space_filters = relationship(
         "SpaceFilter", back_populates="site", cascade="all, delete-orphan")
-    tenants = relationship(
-        "Tenant",
+    tenant_links = relationship(
+        "SpaceTenant",
         back_populates="site",
         cascade="all, delete-orphan"
-    )
-    partners = relationship(
-        "CommercialPartner",
-        back_populates="site",
-        cascade="all, delete-orphan",
     )
     work_orders = relationship("WorkOrder", back_populates="site")
     leases = relationship("Lease", back_populates="site")
@@ -100,4 +95,3 @@ class Site(Base):
     ticket_categories = relationship("TicketCategory", back_populates="site")
     sla_policies = relationship("SlaPolicy", back_populates="site")
     parking_passes = relationship("ParkingPass", back_populates="site")
-

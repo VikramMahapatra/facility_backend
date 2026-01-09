@@ -22,7 +22,7 @@ class LeaseCharge(Base):
     # FK to tenants.id (soft FK)
     payer_id = Column(UUID(as_uuid=True), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
-
+    # ✅ NEW COLUMNS
     created_at = Column(DateTime(timezone=True),
                         server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now())

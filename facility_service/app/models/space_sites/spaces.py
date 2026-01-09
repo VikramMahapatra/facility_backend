@@ -42,8 +42,8 @@ class Space(Base):
                           cascade="all, delete-orphan")
     filters = relationship(
         "SpaceFilter", back_populates="space", cascade="all, delete-orphan")
-    tenants = relationship("Tenant", back_populates="space")
-    partners = relationship("CommercialPartner", back_populates="space")
+    tenant_links = relationship("SpaceTenant", back_populates="space")
+
     leases = relationship("Lease", back_populates="space")
     work_orders = relationship("WorkOrder", back_populates="space")
 
@@ -55,7 +55,6 @@ class Space(Base):
                           cascade="all, delete-orphan")
     tickets = relationship("Ticket", back_populates="space")
     parking_passes = relationship("ParkingPass", back_populates="space")
-
 
     __table_args__ = (
 

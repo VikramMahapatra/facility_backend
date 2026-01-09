@@ -9,7 +9,7 @@ from shared.core.database import Base
 
 class Tenant(Base):
     __tablename__ = "tenants"
-    extend_existing = True
+    __table_args__ = {'extend_existing': True}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=True)
@@ -44,4 +44,5 @@ class Tenant(Base):
 
     # relationships
     leases = relationship("Lease", back_populates="tenant")
+    tickets = relationship("Ticket", back_populates="tenant")
     space_links = relationship("SpaceTenant", back_populates="tenant")

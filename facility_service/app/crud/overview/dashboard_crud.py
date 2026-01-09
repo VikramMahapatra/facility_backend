@@ -3,6 +3,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import Integer, and_, extract, func, case , literal_column, or_
 from datetime import date, datetime, timedelta
 
+from ...models.leasing_tenants.lease_charge_code import LeaseChargeCode
+
+from ...models.financials.tax_codes import TaxCode
+
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 
@@ -208,10 +212,11 @@ def get_leasing_overview(db: Session, org_id: UUID):
     total_billed = (
         db.query(
             func.coalesce(
-                func.sum(LeaseCharge.amount + (LeaseCharge.amount * LeaseCharge.tax_pct / 100)), 0
+                func.sum(LeaseCharge.amount + (LeaseCharge.amount * TaxCode.rate / 100)), 0
             )
         )
         .join(Lease, Lease.id == LeaseCharge.lease_id)
+        .join(TaxCode, TaxCode.id == LeaseCharge.tax_code_id)
         .filter(
             Lease.org_id == org_id,
             Lease.status == "active"  # Optional: sum only active leases
@@ -362,11 +367,12 @@ def get_financial_summary(db: Session, org_id: UUID):
     monthly_income = (
         db.query(
             func.coalesce(
-                func.sum(LeaseCharge.amount + LeaseCharge.amount * LeaseCharge.tax_pct / 100),
+                func.sum(LeaseCharge.amount + LeaseCharge.amount * TaxCode.rate / 100),
                 0
             )
         )
         .join(Lease, Lease.id == LeaseCharge.lease_id)
+        .join(TaxCode, TaxCode.id == LeaseCharge.tax_code_id)
         .filter(
             Lease.org_id == org_id,
             or_(
@@ -384,10 +390,11 @@ def get_financial_summary(db: Session, org_id: UUID):
     overdue = (
         db.query(
             func.coalesce(
-                func.sum(LeaseCharge.amount + LeaseCharge.amount * LeaseCharge.tax_pct / 100), 0
+                func.sum(LeaseCharge.amount + LeaseCharge.amount * TaxCode.rate / 100), 0
             )
         )
         .join(Lease, Lease.id == LeaseCharge.lease_id)
+        .join(TaxCode, TaxCode.id == LeaseCharge.tax_code_id)
         .filter(
             Lease.org_id == org_id,
             LeaseCharge.period_end < today
@@ -426,9 +433,10 @@ def get_financial_summary(db: Session, org_id: UUID):
     outstanding_cam = (
         db.query(func.coalesce(func.sum(LeaseCharge.amount), 0))
         .join(Lease, Lease.id == LeaseCharge.lease_id)
+        .join(LeaseChargeCode, LeaseChargeCode.id == LeaseCharge.charge_code_id)
         .filter(
             Lease.org_id == org_id,
-            func.lower(LeaseCharge.charge_code).like("cam%"),
+            func.lower(LeaseChargeCode.code).like("cam%"),
             LeaseCharge.period_end < today,
         )
         .scalar()
@@ -469,16 +477,18 @@ def monthly_revenue_trend(db: Session, org_id: UUID):
         rental_revenue = float((
             db.query(
                 func.coalesce(
-                    func.sum(LeaseCharge.amount + LeaseCharge.amount * LeaseCharge.tax_pct / 100),
+                    func.sum(LeaseCharge.amount + LeaseCharge.amount * TaxCode.rate / 100),
                     0
                 )
             )
             .join(Lease, Lease.id == LeaseCharge.lease_id)
+            .join(TaxCode, TaxCode.id == LeaseCharge.tax_code_id)
+            .join(LeaseChargeCode, LeaseChargeCode.id == LeaseCharge.charge_code_id)
             .filter(
                 Lease.org_id == org_id,
                 LeaseCharge.period_start <= month_end,
                 LeaseCharge.period_end >= month_start,
-                ~func.lower(LeaseCharge.charge_code).like("cam%")
+                ~func.lower(LeaseChargeCode.code).like("cam%")
             )
             .scalar() or 0.0
         ))
@@ -487,16 +497,18 @@ def monthly_revenue_trend(db: Session, org_id: UUID):
         cam_revenue = float((
             db.query(
                 func.coalesce(
-                    func.sum(LeaseCharge.amount + LeaseCharge.amount * LeaseCharge.tax_pct / 100),
+                    func.sum(LeaseCharge.amount + LeaseCharge.amount * TaxCode.rate / 100),
                     0
                 )
             )
             .join(Lease, Lease.id == LeaseCharge.lease_id)
+            .join(TaxCode, TaxCode.id == LeaseCharge.tax_code_id)
+            .join(LeaseChargeCode, LeaseChargeCode.id == LeaseCharge.charge_code_id)
             .filter(
                 Lease.org_id == org_id,
                 LeaseCharge.period_start <= month_end,
                 LeaseCharge.period_end >= month_start,
-                func.lower(LeaseCharge.charge_code).like("cam%")
+                func.lower(LeaseChargeCode.code).like("cam%")
             )
             .scalar() or 0.0
         ))

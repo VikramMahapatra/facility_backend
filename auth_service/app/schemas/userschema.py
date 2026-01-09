@@ -42,6 +42,7 @@ class UserCreate(BaseModel):
     space_id: Optional[UUID] = None
     pictureUrl: Optional[HttpUrl] = None
     tenant_type: Optional[str] = None
+    password: str  # ✅ ADD THIS LINE
 
     class Config:
         from_attributes = True  # allows Pydantic to work with SQLAlchemy objects

@@ -39,7 +39,7 @@ def create_lease_charge(
         current_user: UserToken = Depends(validate_current_token),
         _ : UserToken = Depends(allow_admin)
 ):        
-    return crud.create_lease_charge(db, data)
+    return crud.create_lease_charge(db, data ,current_user.user_id)
 
 
 @router.put("/", response_model=None)

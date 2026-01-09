@@ -75,11 +75,15 @@ def create_user(
         user_instance = Users(
             full_name=full_name,
             email=user.email,
+            username=user.email, 
             phone=user.phone,
             picture_url=str(user.pictureUrl) if user.pictureUrl else None,
             account_type=user.accountType.lower(),
             status="pending_approval"
         )
+        
+        user_instance.set_password(user.password) 
+        
         db.add(user_instance)
         db.flush()
 

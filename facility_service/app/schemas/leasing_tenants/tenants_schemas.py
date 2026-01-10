@@ -7,19 +7,33 @@ from ...schemas.leases_schemas import LeaseOut
 from shared.core.schemas import CommonQueryParams
 
 
-class TenantBase(BaseModel):
+class SpaceTenantBase(BaseModel):
     site_id: UUID
+    building_block_id: Optional[UUID] = None
     space_id: UUID
+    tenant_id: Optional[UUID] = None
+    role: str  # e.g., owner, occupant, etc.
+
+
+class SpaceTenantOut(SpaceTenantBase):
+    site_name: str = None
+    space_name: str = None
+    building_block_name: str = None
+
+
+class TenantBase(BaseModel):
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
-    tenant_type: str
+    kind: str
     status: str
     contact_info: Optional[Any] = None
     family_info: Optional[Any] = None
     vehicle_info: Optional[Any] = None
     type: Optional[str] = None
     legal_name: Optional[str] = None
+    # List of space IDs associated with the tenant
+    spaces: Optional[List[SpaceTenantBase]] = None
 
 
 class TenantCreate(TenantBase):
@@ -41,13 +55,10 @@ class TenantRequest(BaseModel):
 class TenantOut(BaseModel):
     id: UUID
     org_id: Optional[UUID] = None
-    site_id: UUID
-    building_block_id: UUID
-    space_id: UUID
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
-    tenant_type: str
+    kind: str
     type: Optional[str] = "merchant"
     status: str
     contact_info: Optional[Any] = None
@@ -56,10 +67,7 @@ class TenantOut(BaseModel):
     tenant_leases: Optional[List[LeaseOut]] = None
     legal_name: Optional[str] = None
     # ADD THESE FIELDS FOR DISPLAY
-    site_name: Optional[str] = None
-    building_name: Optional[str] = None
-    space_name: Optional[str] = None
-    building_block_id: Optional[UUID] = None
+    spaces: Optional[List[SpaceTenantOut]] = None
 
     model_config = {"from_attributes": True}
 

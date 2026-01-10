@@ -114,52 +114,6 @@ def get_user(db: Session, user_id: str, facility_db: Session):
             space_id = tenant.space_id
             building_block_id = space.building_block_id  # Get building_block_id from Space
             tenant_type = "individual"
-        else:
-            # Check commercial tenant
-            commercial_tenant = None
-
-            # Try different JSON query approaches
-            try:
-                # Approach 1: Direct JSON containment
-                commercial_tenant = (facility_db.query(CommercialPartnerSafe)
-                                     .filter(
-                    CommercialPartnerSafe.contact.contains(
-                        {"user_id": str(user.id)}),
-                    CommercialPartnerSafe.is_deleted == False
-                )
-                    .first())
-            except:
-                try:
-                    # Approach 2: JSON key access
-                    commercial_tenant = (facility_db.query(CommercialPartnerSafe)
-                                         .filter(
-                        CommercialPartnerSafe.contact["user_id"].astext == str(
-                            user.id),
-                        CommercialPartnerSafe.is_deleted == False
-                    )
-                        .first())
-                except:
-                    commercial_tenant = None
-
-            if commercial_tenant:
-                # Get space details for commercial tenant (no Building join)
-                space = (facility_db.query(Space)
-                         .filter(
-                    Space.id == commercial_tenant.space_id,
-                    Space.is_deleted == False
-                )
-                    .first())
-
-                if space:
-                    site_id = space.site_id
-                    space_id = commercial_tenant.space_id
-                    building_block_id = space.building_block_id
-                    tenant_type = "commercial"
-                else:
-                    # Fallback: just use commercial tenant data
-                    site_id = commercial_tenant.site_id
-                    space_id = commercial_tenant.space_id
-                    tenant_type = "commercial"
 
     # FOR STAFF USERS - USE FACILITY_DB
     elif account_type == "staff":
@@ -644,21 +598,13 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             Tenant.is_deleted == False
         ).first()
 
-        # ✅ FIXED: Better commercial partner query
-        current_partner = facility_db.query(CommercialPartnerSafe).filter(
-            CommercialPartnerSafe.user_id == db_user.id,  # Use direct field
-            CommercialPartnerSafe.is_deleted == False
-        ).first()
-
         # Check if site/space is being updated
         site_changing = user.site_id is not None and (
-            (current_tenant and user.site_id != current_tenant.site_id) or
-            (current_partner and user.site_id != current_partner.site_id)
+            (current_tenant and user.site_id != current_tenant.site_id)
         )
 
         space_changing = user.space_id is not None and (
-            (current_tenant and user.space_id != current_tenant.space_id) or
-            (current_partner and user.space_id != current_partner.space_id)
+            (current_tenant and user.space_id != current_tenant.space_id)
         )
 
         if site_changing or space_changing:
@@ -671,95 +617,47 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                     func.lower(Lease.status) == func.lower('active')
                 ).first() is not None
 
-            if not has_active_leases and current_partner:
-                has_active_leases = facility_db.query(Lease).filter(
-                    Lease.partner_id == current_partner.id,
-                    Lease.is_deleted == False,
-                    func.lower(Lease.status) == func.lower('active')
-                ).first() is not None
-
             if has_active_leases:
                 return error_response(
                     message="Cannot update site or space for a tenant user that has active leases"
                 )
 
-        # ✅ FIXED: Individual Tenant Update
-        if user.tenant_type == "individual":
-            # Clean up any commercial partner record
-            facility_db.query(CommercialPartnerSafe).filter(
-                CommercialPartnerSafe.user_id == db_user.id
-            ).delete()
+        tenant = facility_db.query(Tenant).filter(
+            Tenant.user_id == db_user.id
+        ).first()
 
-            tenant = facility_db.query(Tenant).filter(
-                Tenant.user_id == db_user.id
-            ).first()
-
-            if tenant:
-                tenant.site_id = user.site_id
-                tenant.space_id = user.space_id  # ✅ This should save now
-                tenant.name = user.full_name
-                tenant.phone = user.phone
-                tenant.email = user.email
-                tenant.status = user.status
-            else:
-                tenant = Tenant(
-                    site_id=user.site_id,
-                    space_id=user.space_id,  # ✅ This should save now
-                    name=user.full_name,
-                    email=user.email,
-                    phone=user.phone,
-                    status=user.status,
-                    user_id=db_user.id
-                )
-                facility_db.add(tenant)
-
-        # ✅ FIXED: Commercial Tenant Update
-        elif user.tenant_type == "commercial":
-            # Clean up any individual tenant record
-            facility_db.query(Tenant).filter(
-                Tenant.user_id == db_user.id
-            ).delete()
-
-            partner = facility_db.query(CommercialPartnerSafe).filter(
-                CommercialPartnerSafe.user_id == db_user.id  # Use direct field
-            ).first()
-
-            if partner:
-                partner.site_id = user.site_id
-                partner.space_id = user.space_id  # CHANGED ADDED
-                partner.legal_name = user.full_name
-                partner.contact = {
-                    "name": user.full_name,
-                    "phone": user.phone,
-                    "email": user.email,
-                    # ✅ FIXED: Add user_id to contact
-                    "user_id": str(db_user.id)
-                }
-                partner.status = user.status
-            else:
-                partner = CommercialPartnerSafe(
-                    site_id=user.site_id,
-                    space_id=user.space_id,  # CHANGED ADDED
-                    type="merchant",
-                    legal_name=user.full_name,
-                    contact={
-                        "name": user.full_name,
-                        "phone": user.phone,
-                        "email": user.email,
-                        # ✅ FIXED: Add user_id to contact
-                        "user_id": str(db_user.id)
-                    },
-                    status=user.status,
-                    user_id=db_user.id
-                )
-                facility_db.add(partner)
-
+        if tenant:
+            tenant.site_id = user.site_id
+            tenant.space_id = user.space_id  # ✅ This should save now
+            tenant.name = user.full_name
+            tenant.phone = user.phone
+            tenant.email = user.email
+            tenant.status = user.status
+            tenant.kind = user.tenant_type
         else:
-            return error_response(
-                message="Invalid tenant type",
-                status_code=str(AppStatusCode.INVALID_INPUT)
+            tenant = Tenant(
+                site_id=user.site_id,
+                space_id=user.space_id,  # ✅ This should save now
+                name=user.full_name,
+                email=user.email,
+                phone=user.phone,
+                status=user.status,
+                user_id=db_user.id,
+                kind=user.tenant_type
             )
 
+        if user.tenant_type == "commercial":
+            tenant.legal_name = user.full_name
+            tenant.commercial_type = "merchant",
+            tenant.contact = {
+                "name": user.full_name,
+                "phone": user.phone,
+                "email": user.email,
+                # ✅ FIXED: Add user_id to contact
+                "user_id": str(db_user.id)
+            }
+
+        facility_db.add(tenant)
         facility_db.commit()
 
     # ======================================================
@@ -857,53 +755,6 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
                 tenant.is_deleted = True
                 tenant.updated_at = datetime.utcnow()
                 deleted_entities.append("tenant")
-
-                # Soft delete leases
-                if lease_ids:
-                    facility_db.query(Lease).filter(
-                        Lease.id.in_(lease_ids)
-                    ).update({
-                        "is_deleted": True,
-                        "updated_at": datetime.utcnow()
-                    }, synchronize_session=False)
-
-                # Soft delete lease charges
-                if lease_ids:
-                    facility_db.query(LeaseCharge).filter(
-                        LeaseCharge.lease_id.in_(lease_ids),
-                        LeaseCharge.is_deleted == False
-                    ).update({
-                        "is_deleted": True,
-                        "updated_at": datetime.utcnow()
-                    }, synchronize_session=False)
-
-            # Handle commercial partner
-            partner = facility_db.query(CommercialPartnerSafe).filter(
-                CommercialPartnerSafe.user_id == user_id,
-                CommercialPartnerSafe.is_deleted == False
-            ).first()
-
-            if partner:
-                # Get leases before deletion for counting
-                leases = facility_db.query(Lease).filter(
-                    Lease.partner_id == partner.id,
-                    Lease.is_deleted == False
-                ).all()
-
-                lease_ids = [lease.id for lease in leases]
-                lease_count = len(leases)
-
-                # Count lease charges
-                if lease_ids:
-                    charge_count = facility_db.query(LeaseCharge).filter(
-                        LeaseCharge.lease_id.in_(lease_ids),
-                        LeaseCharge.is_deleted == False
-                    ).count()
-
-                # Soft delete commercial partner
-                partner.is_deleted = True
-                partner.updated_at = datetime.utcnow()
-                deleted_entities.append("commercial partner")
 
                 # Soft delete leases
                 if lease_ids:

@@ -13,28 +13,20 @@ class Tenant(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=True)
-
-    kind = Column(String(32), nullable=False)
-    # residential | commercial
-
-    commercial_type = Column(String(16), nullable=True)
+    name = Column(String(200), nullable=False)
+    kind = Column(String(32), nullable=False)  # residential | commercial
     # merchant | brand | kiosk (only if commercial)
-
-    legal_name = Column(String(200), nullable=False)
-
+    commercial_type = Column(String(16), nullable=True)
+    legal_name = Column(String(200), nullable=True)
     contact = Column(JSONB)
     email = Column(String)
     phone = Column(String)
-
     address = Column(JSONB)
-
     vehicle_info = Column(JSONB)
     family_info = Column(JSONB)
     police_verification_info = Column(Boolean)
-
     status = Column(String(16), default="active", nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
-
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True),
                         server_default=func.now(), onupdate=func.now())

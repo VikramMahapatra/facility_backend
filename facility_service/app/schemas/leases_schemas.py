@@ -11,8 +11,7 @@ class LeaseBase(BaseModel):
     default_payer:Optional[str] = None
     org_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
-    space_id: Optional[UUID] = None
-    space_name: Optional[str] = None              # "commercial" | "residential"
+    space_id: Optional[UUID] = None           # "commercial" | "residential"
     tenant_id: Optional[UUID] = None           # REQUIRED for ALL leases
     reference: Optional[str] = None
     start_date: Optional[date] = None

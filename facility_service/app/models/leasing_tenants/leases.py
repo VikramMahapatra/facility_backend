@@ -6,7 +6,7 @@ from sqlalchemy.sql import func
 from shared.core.database import Base
 
 
-lease_seq = Sequence("lease_number_seq")
+lease_seq = Sequence("lease_number_seq")    #sequence is present in db lease_number_seq
 
 class Lease(Base):
     __tablename__ = "leases"

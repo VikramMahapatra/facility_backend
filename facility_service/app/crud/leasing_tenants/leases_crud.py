@@ -287,12 +287,12 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
     owner_occupancy = db.query(TenantSpace).filter(
         TenantSpace.space_id == payload.space_id,
         TenantSpace.role == "owner",
-        TenantSpace.is_active == True,
+        TenantSpace.status =="pending",
         TenantSpace.is_deleted == False
     ).first()
 
     if owner_occupancy:
-        owner_occupancy.is_active = False
+        owner_occupancy.status = "past"
         owner_occupancy.end_date = yesterday
 
     # -------------------------------------------------
@@ -304,7 +304,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         tenant_id=payload.tenant_id,
         role="occupant",
         start_date=payload.start_date,
-        is_active=True
+        status = "current"
     )
     db.add(tenant_occupancy)
 
@@ -383,7 +383,7 @@ def update(db: Session, payload: LeaseUpdate):
         existing_owner_occupancy = db.query(TenantSpace).filter(
             TenantSpace.space_id == data["space_id"],
             TenantSpace.role == "owner",
-            TenantSpace.is_active == True,
+            TenantSpace.status == "current",
             TenantSpace.is_deleted == False
         ).first()
 
@@ -535,7 +535,7 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
             Tenant.status == "active",
             Tenant.is_deleted == False,
             TenantSpace.is_deleted == False,
-            TenantSpace.is_active == False,      # not physically occupying
+            TenantSpace.status == "current",      # not physically occupying
             ~Tenant.id.in_(leased_tenants),      # no active lease
         )
         .distinct()

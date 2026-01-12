@@ -251,7 +251,7 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate, current_user_id
             user_id=current_user_id,
             type=NotificationType.alert,
             title="Lease Charge Created",
-            message=f"New charge '{charge.code}' added to lease. Amount: {payload.amount}",
+            message=f"New charge '{charge.code if charge else 'Unknown'}' added to lease. Amount: {payload.amount}",
             posted_date=datetime.utcnow(),
             priority=PriorityType.medium,
             read=False,
@@ -385,3 +385,19 @@ def lease_charge_code_lookup(db: Session, org_id: UUID):
         .order_by("id")
     )
     return query.all()
+
+
+def tax_code_lookup(db: Session, org_id: UUID):
+    query = (
+        db.query(
+            TaxCode.id.label('id'),
+            TaxCode.code.label('name')
+        )
+        .distinct()
+        .filter(
+            TaxCode.org_id == org_id,
+            TaxCode.is_deleted == False)
+        .order_by("id")
+    )
+    return query.all()
+

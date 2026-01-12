@@ -3,9 +3,8 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
-
-from facility_service.app.models.leasing_tenants.space_tenants import SpaceTenant
-from facility_service.app.models.space_sites.buildings import Building
+from ...models.leasing_tenants.tenant_spaces import TenantSpace
+from ...models.space_sites.buildings import Building
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.utils.enums import UserAccountType
 
@@ -285,27 +284,27 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
     # -------------------------------------------------
     # 4️⃣ Expire ACTIVE owner occupancy (if exists)
     # -------------------------------------------------
-    owner_occupancy = db.query(SpaceTenant).filter(
-        SpaceTenant.space_id == payload.space_id,
-        SpaceTenant.role == "owner",
-        SpaceTenant.is_active == True,
-        SpaceTenant.is_deleted == False
+    owner_occupancy = db.query(TenantSpace).filter(
+        TenantSpace.space_id == payload.space_id,
+        TenantSpace.role == "owner",
+        TenantSpace.status =="pending",
+        TenantSpace.is_deleted == False
     ).first()
 
     if owner_occupancy:
-        owner_occupancy.is_active = False
+        owner_occupancy.status = "past"
         owner_occupancy.end_date = yesterday
 
     # -------------------------------------------------
     # 5️⃣ Create TENANT occupancy
     # -------------------------------------------------
-    tenant_occupancy = SpaceTenant(
+    tenant_occupancy = TenantSpace(
         site_id=payload.site_id,
         space_id=payload.space_id,
         tenant_id=payload.tenant_id,
         role="occupant",
         start_date=payload.start_date,
-        is_active=True
+        status = "current"
     )
     db.add(tenant_occupancy)
 
@@ -381,11 +380,11 @@ def update(db: Session, payload: LeaseUpdate):
 
     # ✅ STRICT VALIDATION: Check if space already has ANY lease (active OR inactive)
     if "space_id" in data and data["space_id"] != obj.space_id:
-        existing_owner_occupancy = db.query(SpaceTenant).filter(
-            SpaceTenant.space_id == data["space_id"],
-            SpaceTenant.role == "owner",
-            SpaceTenant.is_active == True,
-            SpaceTenant.is_deleted == False
+        existing_owner_occupancy = db.query(TenantSpace).filter(
+            TenantSpace.space_id == data["space_id"],
+            TenantSpace.role == "owner",
+            TenantSpace.status == "current",
+            TenantSpace.is_deleted == False
         ).first()
 
         if existing_owner_occupancy:
@@ -527,16 +526,16 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
     # 2️⃣ Query: tenants of the given kind who are not currently occupying and have no active lease
     tenants = (
         db.query(Tenant.id, Tenant.name)
-        .join(SpaceTenant, SpaceTenant.tenant_id == Tenant.id)
-        .join(Space, SpaceTenant.space_id == Space.id)
+        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+        .join(Space, TenantSpace.space_id == Space.id)
         .join(Site, Space.site_id == Site.id)
         .filter(
             Site.org_id == org_id,
             Tenant.kind == kind.lower(),
             Tenant.status == "active",
             Tenant.is_deleted == False,
-            SpaceTenant.is_deleted == False,
-            SpaceTenant.is_active == False,      # not physically occupying
+            TenantSpace.is_deleted == False,
+            TenantSpace.status == "current",      # not physically occupying
             ~Tenant.id.in_(leased_tenants),      # no active lease
         )
         .distinct()

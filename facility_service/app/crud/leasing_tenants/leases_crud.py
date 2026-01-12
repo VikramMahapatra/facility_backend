@@ -155,7 +155,6 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
 
     leases = []
     for row in rows:
-        tenant_name = "Unknown"  
         if row.tenant:
             tenant_name = row.tenant.legal_name or row.tenant.name
 
@@ -475,8 +474,6 @@ def lease_lookup(org_id: UUID, db: Session):
     for lease in leases:
         if lease.tenant is not None:
             base_name = lease.tenant.legal_name or lease.tenant.name
-        else:
-            base_name = "Unknown"
 
         space_name = lease.space.name if lease.space else None
         site_name = lease.site.name if lease.site else None
@@ -558,8 +555,7 @@ def get_lease_by_id(db: Session, lease_id: str):
     tenant_name = None
     if lease.tenant is not None:
         tenant_name = lease.tenant.name or lease.tenant.legal_name
-    else:
-        tenant_name = "Unknown"
+
 
     space_code = None
     site_name = None

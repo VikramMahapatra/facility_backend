@@ -643,7 +643,10 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
 
     if "tenant_spaces" in update_dict:
         now = datetime.utcnow()
-        incoming_spaces = update_dict["tenant_spaces"] or []
+        incoming_spaces = [
+            TenantSpaceBase(**s)
+            for s in update_dict.get("tenant_spaces", [])
+        ]
 
         if not incoming_spaces:
             return error_response(
@@ -954,16 +957,19 @@ def validate_tenant_space_update(
         if ts.get("space_id")
     }
 
-    if existing_space_ids != incoming_space_ids:
+    removed_space_ids = existing_space_ids - incoming_space_ids
+
+    if removed_space_ids:
         has_active_leases = db.query(Lease).filter(
             Lease.tenant_id == tenant_id,
             Lease.is_deleted.is_(False),
             func.lower(Lease.status) == "active",
+            Lease.space_id.in_(removed_space_ids),
         ).first()
 
         if has_active_leases:
             return error_response(
-                message="Cannot change tenant spaces while active leases exist"
+                message="Cannot remove tenant spaces while active leases exist"
             )
 
     # 🔥 Delegate occupancy check

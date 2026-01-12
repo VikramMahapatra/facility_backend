@@ -495,6 +495,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         "name": tenant.name,
         "email": tenant.email,
         "phone": tenant.phone,
+        "kind": tenant.kind,
         "address": (tenant.contact_info or {}).get("address"),
         "family_info": tenant.family_info if tenant.kind == "residential" else None,
         "commercial_type": tenant.type or "merchant" if tenant.kind == "commercial" else None,

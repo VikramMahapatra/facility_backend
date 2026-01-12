@@ -10,11 +10,13 @@ from shared.core.schemas import CommonQueryParams
 
 class LeaseChargeBase(BaseModel):
     lease_id: UUID
-    charge_code: Optional[str] = None
     period_start: Optional[date] = None
     period_end: Optional[date] = None
     amount: Decimal
-    tax_pct: Optional[Decimal] = Decimal(0)
+    payer_type: str  # owner | occupant | split
+    tax_code_id: Optional[UUID] = None  # ✅ use tax id (NOT %)
+    charge_code_id: Optional[UUID] = None
+
 
 
 class LeaseChargeCreate(LeaseChargeBase):
@@ -44,16 +46,19 @@ class LeaseChargeOut(BaseModel):
     site_name: str
     space_name: str
     charge_code: Optional[str]
+    charge_code_id: Optional[UUID] = None
     period_start: Optional[date]
     period_end: Optional[date]
     amount: Decimal
-    tax_pct: Optional[Decimal] = None
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     rent_amount: Optional[Decimal] = None
     tax_amount: Optional[Decimal] = None
+    tax_code_id: Optional[UUID]
+    tax_rate: Optional[Decimal]
     period_days: Optional[int] = None
     created_at: Optional[datetime] = None
+    payer_type: str  # owner | occupant | split
 
     model_config = {
         "from_attributes": True

@@ -13,7 +13,7 @@ class LeaseCharge(Base):
     lease_id = Column(UUID(as_uuid=True), ForeignKey(
         "leases.id", ondelete="CASCADE"))
     charge_code_id = Column(UUID(as_uuid=True), ForeignKey(
-        "lease_charge_code.id", ondelete="CASCADE"))
+        "lease_charge_codes.id", ondelete="CASCADE"))
     period_start = Column(Date)
     period_end = Column(Date)
     amount = Column(Numeric(14, 2), nullable=False)
@@ -28,5 +28,7 @@ class LeaseCharge(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
 
     lease = relationship("Lease", back_populates="charges")
+    # ✅ ADD THIS LINE
+    charge_code = relationship("LeaseChargeCode", back_populates="charges")
 
     tax_code = relationship("TaxCode", back_populates="charge")

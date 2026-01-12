@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from typing import Dict, List, Optional
 
-from auth_service.app.models.commercial_partner_safe import CommercialPartnerSafe
+from auth_service.app.models.tenant_spaces_safe import TenantSpaceSafe
 from auth_service.app.models.roles import Roles
 from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
 from facility_service.app.models.leasing_tenants.lease_charges import LeaseCharge
@@ -114,52 +114,6 @@ def get_user(db: Session, user_id: str, facility_db: Session):
             space_id = tenant.space_id
             building_block_id = space.building_block_id  # Get building_block_id from Space
             tenant_type = "individual"
-        else:
-            # Check commercial tenant
-            commercial_tenant = None
-
-            # Try different JSON query approaches
-            try:
-                # Approach 1: Direct JSON containment
-                commercial_tenant = (facility_db.query(CommercialPartnerSafe)
-                                     .filter(
-                    CommercialPartnerSafe.contact.contains(
-                        {"user_id": str(user.id)}),
-                    CommercialPartnerSafe.is_deleted == False
-                )
-                    .first())
-            except:
-                try:
-                    # Approach 2: JSON key access
-                    commercial_tenant = (facility_db.query(CommercialPartnerSafe)
-                                         .filter(
-                        CommercialPartnerSafe.contact["user_id"].astext == str(
-                            user.id),
-                        CommercialPartnerSafe.is_deleted == False
-                    )
-                        .first())
-                except:
-                    commercial_tenant = None
-
-            if commercial_tenant:
-                # Get space details for commercial tenant (no Building join)
-                space = (facility_db.query(Space)
-                         .filter(
-                    Space.id == commercial_tenant.space_id,
-                    Space.is_deleted == False
-                )
-                    .first())
-
-                if space:
-                    site_id = space.site_id
-                    space_id = commercial_tenant.space_id
-                    building_block_id = space.building_block_id
-                    tenant_type = "commercial"
-                else:
-                    # Fallback: just use commercial tenant data
-                    site_id = commercial_tenant.site_id
-                    space_id = commercial_tenant.space_id
-                    tenant_type = "commercial"
 
     # FOR STAFF USERS - USE FACILITY_DB
     elif account_type == "staff":
@@ -204,19 +158,19 @@ def get_user(db: Session, user_id: str, facility_db: Session):
         site_ids=site_ids,
         staff_role=staff_role
     )
-    
-    
-#email template function 
+
+
+# email template function
 def send_user_credentials_email(background_tasks, db, email, username, password, full_name):
     """Send email with user credentials"""
     email_helper = EmailHelper()
-    
+
     context = {
         "username": username,
         "password": password,
         "full_name": full_name
     }
-    
+
     background_tasks.add_task(
         email_helper.send_email,
         db=db,
@@ -225,7 +179,8 @@ def send_user_credentials_email(background_tasks, db, email, username, password,
         subject=f"Welcome {full_name} - Your Account Credentials",
         context=context,
     )
-    
+
+
 def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Session, user: UserCreate):
     try:
         # Check if email already exists
@@ -253,33 +208,32 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             raise ValueError("Password is required for user creation")
 
         user_data = user.model_dump(
-            exclude={'roles', 'role_ids', 'site_id', 'space_id', 'site_ids', 'tenant_type' ,'staff_role','password'})
+            exclude={'roles', 'role_ids', 'site_id', 'space_id', 'site_ids', 'tenant_type', 'staff_role', 'password'})
 
-                # ✅ SET USERNAME FROM EMAIL (Requirement 1)
+        # ✅ SET USERNAME FROM EMAIL (Requirement 1)
         if user.email:
             user_data['username'] = user.email
-            
+
         db_user = Users(**user_data)
-        
-          # ✅ SET PASSWORD USING YOUR EXISTING METHOD (Requirement 2 & 3)
+
+        # ✅ SET PASSWORD USING YOUR EXISTING METHOD (Requirement 2 & 3)
         db_user.set_password(user.password)
-        
+
         db.add(db_user)
         db.commit()
         db.flush(db_user)
-
 
         # ✅ SEND EMAIL IF STATUS IS ACTIVE (following your pattern)
         if user.status and user.status.lower() == "active" and user.email:
             send_user_credentials_email(
                 background_tasks=background_tasks,
-                db=facility_db, 
+                db=facility_db,
                 email=user.email,
                 username=user.email,
                 password=user.password,  # Plain password for email only
                 full_name=user.full_name
             )
-        
+
         # Add roles if provided
         if user.role_ids:
             for role_id in user.role_ids:
@@ -315,7 +269,6 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                             staff_role=user.staff_role  # ADD THIS LINE - store staff_role
                         )
                         facility_db.add(staff_site)
-                facility_db.commit()
 
         elif account_type == "tenant":
             # ✅ ENHANCED VALIDATION: Check for None and empty strings
@@ -366,7 +319,7 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                     Space.id == user.space_id,
                     Space.is_deleted == False
                 ).first()
-                
+
                 if space_record and space_record.building_block_id:
                     # Check if any spaces in this building have active leases
                     has_building_active_leases = facility_db.query(Lease).join(Space).filter(
@@ -380,45 +333,37 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                         db.delete(db_user)
                         db.commit()
                         return error_response(
-                            message="Cannot create tenant user in a building that has active leases" 
+                            message="Cannot create tenant user in a building that has active leases"
                         )
 
-            if user.tenant_type == "individual":
-                tenant_obj = Tenant(
-                    site_id=user.site_id,
-                    space_id=user.space_id,
-                    name=user.full_name,
-                    email=user.email,
-                    phone=user.phone,
-                    status=user.status,
-                    user_id=db_user.id
-                )
-                facility_db.add(tenant_obj)
-            elif user.tenant_type == "commercial":
-                partner_obj = CommercialPartnerSafe(
-                    site_id=user.site_id,
-                    space_id=user.space_id,  # ✅ ADD THIS - store space_id
-                    type="merchant",
-                    legal_name=user.full_name,
-                    contact={
-                        "name": user.full_name,
-                        "phone": user.phone,
-                        "email": user.email,
-                        "user_id": str(db_user.id)
-                    },
-                    status=user.status,
-                    user_id=db_user.id  # ✅ ADD THIS - store user_id directly in the table
-                )
-                facility_db.add(partner_obj)
-            else:
-                # ✅ ROLLBACK user creation if invalid tenant type
-                db.delete(db_user)
-                db.commit()
-                return error_response(
-                    message="Invalid tenant type",
-                    status_code=str(AppStatusCode.INVALID_INPUT)
-                )
-            facility_db.commit()
+            tenant_obj = Tenant(
+                site_id=user.site_id,
+                space_id=user.space_id,
+                name=user.full_name,
+                email=user.email,
+                phone=user.phone,
+                status=user.status,
+                user_id=db_user.id,
+                kind=user.tenant_type,
+                commercial_type="merchant" if user.tenant_type == "commercial" else None,
+                legal_name=user.full_name if user.tenant_type == "commercial" else None,
+                contact={
+                    "name": user.full_name,
+                    "phone": user.phone,
+                    "email": user.email
+                } if user.tenant_type == "commercial" else None,
+            )
+            facility_db.add(tenant_obj)
+            facility_db.flush()  # ✅ ensure id generated
+
+            # ✅ Create space tenant link
+            space_tenant_link = TenantSpaceSafe(
+                site_id=user.site_id,
+                space_id=user.space_id,
+                tenant_id=tenant_obj.id,
+                role="occupant"
+            )
+            facility_db.add(space_tenant_link)
 
         elif account_type == "vendor":
             # Validate vendor-specific fields
@@ -444,8 +389,8 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                 status=user.status or "active"
             )
             facility_db.add(vendor_obj)
-            facility_db.commit()
 
+        facility_db.commit()
         return get_user(db, db_user.id, facility_db)
 
     except Exception as e:
@@ -458,18 +403,19 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             http_status=400
         )
 
+
 def send_password_update_email(background_tasks, db, email, username, password, full_name):
     """Send email when password is updated"""
     from shared.helpers.email_helper import EmailHelper
-    
+
     email_helper = EmailHelper()
-    
+
     context = {
         "username": username,
         "password": password,
         "full_name": full_name
     }
-    
+
     background_tasks.add_task(
         email_helper.send_email,
         db=db,
@@ -478,15 +424,14 @@ def send_password_update_email(background_tasks, db, email, username, password, 
         subject=f"Password Updated - {full_name}",
         context=context,
     )
-   
-   
-def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Session, user: UserUpdate):
+
+
+def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Session, user: UserUpdate):
     # Fetch existing user
     db_user = get_user_by_id(db, user.id)
     if not db_user:
         return None
 
-    
         # Track if password is being updated
     password_updated = False
     new_password = None
@@ -509,16 +454,16 @@ def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Sess
     update_data = user.model_dump(
         exclude_unset=True,
         exclude={'roles', 'role_ids', 'site_id',
-                 'space_id', 'site_ids', 'tenant_type' , 'staff_role','password'}
+                 'space_id', 'site_ids', 'tenant_type', 'staff_role', 'password'}
     )
-        #  ADD THIS: PREVENT EMAIL AND PHONE UPDATES
+    #  ADD THIS: PREVENT EMAIL AND PHONE UPDATES
     # Check if email is being updated
     if 'email' in update_data and update_data['email'] != db_user.email:
         # Option 1: Block email update completely
         return error_response(
-                message="Email cannot be updated. Please contact administrator."
-            )
-        
+            message="Email cannot be updated. Please contact administrator."
+        )
+
     # Check email duplicate (if email is being updated)
 #    if 'email' in update_data and update_data['email'] != db_user.email:
 #        existing_email_user = db.query(Users).filter(
@@ -532,9 +477,9 @@ def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Sess
 #                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
 #            )
     if 'phone' in update_data and update_data['phone'] != db_user.phone:
-            return error_response(
-                message="phone cannot be updated. Please contact administrator."
-            )
+        return error_response(
+            message="phone cannot be updated. Please contact administrator."
+        )
     # Check phone duplicate (if phone is being updated)
 #    if 'phone' in update_data and update_data['phone'] != db_user.phone:
 #        existing_phone_user = db.query(Users).filter(
@@ -556,8 +501,7 @@ def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Sess
         if key in ['email', 'phone'] and value != getattr(db_user, key):
             continue  # Skip updating email/phone
         setattr(db_user, key, value)
-        
-        
+
         # -----------------------
     # ✅ ADDED: SEND PASSWORD UPDATE EMAIL
     # -----------------------
@@ -626,7 +570,7 @@ def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Sess
     # ======================================================
     # =============== TENANT ACCOUNT UPDATE ================
     # ======================================================
-    elif db_user.account_type.lower() == "tenant":       #-----------CHANGED TO ELIF
+    elif db_user.account_type.lower() == "tenant":  # -----------CHANGED TO ELIF
         # ✅ FIXED: Better validation message
         if not user.site_id or user.site_id == "" or not user.space_id or user.space_id == "":
             return error_response(
@@ -653,37 +597,22 @@ def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Sess
             Tenant.user_id == db_user.id,
             Tenant.is_deleted == False
         ).first()
-        
-        # ✅ FIXED: Better commercial partner query
-        current_partner = facility_db.query(CommercialPartnerSafe).filter(
-            CommercialPartnerSafe.user_id == db_user.id,  # Use direct field
-            CommercialPartnerSafe.is_deleted == False
-        ).first()
 
         # Check if site/space is being updated
         site_changing = user.site_id is not None and (
-            (current_tenant and user.site_id != current_tenant.site_id) or 
-            (current_partner and user.site_id != current_partner.site_id)
+            (current_tenant and user.site_id != current_tenant.site_id)
         )
-        
+
         space_changing = user.space_id is not None and (
-            (current_tenant and user.space_id != current_tenant.space_id) or 
-            (current_partner and user.space_id != current_partner.space_id)
+            (current_tenant and user.space_id != current_tenant.space_id)
         )
-        
+
         if site_changing or space_changing:
             has_active_leases = False
-            
+
             if current_tenant:
                 has_active_leases = facility_db.query(Lease).filter(
                     Lease.tenant_id == current_tenant.id,
-                    Lease.is_deleted == False,
-                    func.lower(Lease.status) == func.lower('active')
-                ).first() is not None
-            
-            if not has_active_leases and current_partner:
-                has_active_leases = facility_db.query(Lease).filter(
-                    Lease.partner_id == current_partner.id,
                     Lease.is_deleted == False,
                     func.lower(Lease.status) == func.lower('active')
                 ).first() is not None
@@ -693,81 +622,42 @@ def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Sess
                     message="Cannot update site or space for a tenant user that has active leases"
                 )
 
-        # ✅ FIXED: Individual Tenant Update
-        if user.tenant_type == "individual":
-            # Clean up any commercial partner record
-            facility_db.query(CommercialPartnerSafe).filter(
-                CommercialPartnerSafe.user_id == db_user.id
-            ).delete()
-            
-            tenant = facility_db.query(Tenant).filter(
-                Tenant.user_id == db_user.id
-            ).first()
+        tenant = facility_db.query(Tenant).filter(
+            Tenant.user_id == db_user.id
+        ).first()
 
-            if tenant:
-                tenant.site_id = user.site_id
-                tenant.space_id = user.space_id  # ✅ This should save now
-                tenant.name = user.full_name
-                tenant.phone = user.phone
-                tenant.email = user.email
-                tenant.status = user.status
-            else:
-                tenant = Tenant(
-                    site_id=user.site_id,
-                    space_id=user.space_id,  # ✅ This should save now
-                    name=user.full_name,
-                    email=user.email,
-                    phone=user.phone,
-                    status=user.status,
-                    user_id=db_user.id
-                )
-                facility_db.add(tenant)
-
-        # ✅ FIXED: Commercial Tenant Update
-        elif user.tenant_type == "commercial":
-            # Clean up any individual tenant record
-            facility_db.query(Tenant).filter(
-                Tenant.user_id == db_user.id
-            ).delete()
-            
-            partner = facility_db.query(CommercialPartnerSafe).filter(
-                CommercialPartnerSafe.user_id == db_user.id  # Use direct field
-            ).first()
-
-            if partner:
-                partner.site_id = user.site_id
-                partner.space_id = user.space_id #CHANGED ADDED
-                partner.legal_name = user.full_name
-                partner.contact = {
-                    "name": user.full_name,
-                    "phone": user.phone,
-                    "email": user.email,
-                    "user_id": str(db_user.id)  # ✅ FIXED: Add user_id to contact
-                }
-                partner.status = user.status
-            else:
-                partner = CommercialPartnerSafe(
-                    site_id=user.site_id,
-                    space_id=user.space_id, #CHANGED ADDED
-                    type="merchant",
-                    legal_name=user.full_name,
-                    contact={
-                        "name": user.full_name,
-                        "phone": user.phone,
-                        "email": user.email,
-                        "user_id":str(db_user.id)  # ✅ FIXED: Add user_id to contact
-                    },
-                    status=user.status,
-                    user_id=db_user.id
-                )
-                facility_db.add(partner)
-
+        if tenant:
+            tenant.site_id = user.site_id
+            tenant.space_id = user.space_id  # ✅ This should save now
+            tenant.name = user.full_name
+            tenant.phone = user.phone
+            tenant.email = user.email
+            tenant.status = user.status
+            tenant.kind = user.tenant_type
         else:
-            return error_response(
-                message="Invalid tenant type",
-                status_code=str(AppStatusCode.INVALID_INPUT)
+            tenant = Tenant(
+                site_id=user.site_id,
+                space_id=user.space_id,  # ✅ This should save now
+                name=user.full_name,
+                email=user.email,
+                phone=user.phone,
+                status=user.status,
+                user_id=db_user.id,
+                kind=user.tenant_type
             )
 
+        if user.tenant_type == "commercial":
+            tenant.legal_name = user.full_name
+            tenant.commercial_type = "merchant",
+            tenant.contact = {
+                "name": user.full_name,
+                "phone": user.phone,
+                "email": user.email,
+                # ✅ FIXED: Add user_id to contact
+                "user_id": str(db_user.id)
+            }
+
+        facility_db.add(tenant)
         facility_db.commit()
 
     # ======================================================
@@ -815,7 +705,6 @@ def update_user(background_tasks: BackgroundTasks,db: Session, facility_db: Sess
     return get_user(db, db_user.id, facility_db)
 
 
-
 def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
     """Soft delete user and all related data (tenant/partner, leases, charges)"""
     try:
@@ -844,17 +733,17 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
                 Tenant.user_id == user_id,
                 Tenant.is_deleted == False
             ).first()
-            
+
             if tenant:
                 # Get leases before deletion for counting
                 leases = facility_db.query(Lease).filter(
                     Lease.tenant_id == tenant.id,
                     Lease.is_deleted == False
                 ).all()
-                
+
                 lease_ids = [lease.id for lease in leases]
                 lease_count = len(leases)
-                
+
                 # Count lease charges
                 if lease_ids:
                     charge_count = facility_db.query(LeaseCharge).filter(
@@ -886,60 +775,13 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
                         "updated_at": datetime.utcnow()
                     }, synchronize_session=False)
 
-            # Handle commercial partner
-            partner = facility_db.query(CommercialPartnerSafe).filter(
-                CommercialPartnerSafe.user_id == user_id,
-                CommercialPartnerSafe.is_deleted == False
-            ).first()
-            
-            if partner:
-                # Get leases before deletion for counting
-                leases = facility_db.query(Lease).filter(
-                    Lease.partner_id == partner.id,
-                    Lease.is_deleted == False
-                ).all()
-                
-                lease_ids = [lease.id for lease in leases]
-                lease_count = len(leases)
-                
-                # Count lease charges
-                if lease_ids:
-                    charge_count = facility_db.query(LeaseCharge).filter(
-                        LeaseCharge.lease_id.in_(lease_ids),
-                        LeaseCharge.is_deleted == False
-                    ).count()
-
-                # Soft delete commercial partner
-                partner.is_deleted = True
-                partner.updated_at = datetime.utcnow()
-                deleted_entities.append("commercial partner")
-
-                # Soft delete leases
-                if lease_ids:
-                    facility_db.query(Lease).filter(
-                        Lease.id.in_(lease_ids)
-                    ).update({
-                        "is_deleted": True,
-                        "updated_at": datetime.utcnow()
-                    }, synchronize_session=False)
-
-                # Soft delete lease charges
-                if lease_ids:
-                    facility_db.query(LeaseCharge).filter(
-                        LeaseCharge.lease_id.in_(lease_ids),
-                        LeaseCharge.is_deleted == False
-                    ).update({
-                        "is_deleted": True,
-                        "updated_at": datetime.utcnow()
-                    }, synchronize_session=False)
-
         elif user_account_type == "vendor":
             # Handle vendor deletion
             vendor = facility_db.query(Vendor).filter(
                 Vendor.contact['user_id'].astext == str(user_id),
                 Vendor.is_deleted == False
             ).first()
-            
+
             if vendor:
                 vendor.is_deleted = True
                 vendor.updated_at = datetime.utcnow()
@@ -950,7 +792,7 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
             staff_sites = facility_db.query(StaffSite).filter(
                 StaffSite.user_id == user_id
             ).all()
-            
+
             if staff_sites:
                 for staff_site in staff_sites:
                     facility_db.delete(staff_site)
@@ -960,7 +802,7 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
         user_roles = db.query(UserRoles).filter(
             UserRoles.user_id == user_id
         ).all()
-        
+
         if user_roles:
             for user_role in user_roles:
                 db.delete(user_role)
@@ -972,13 +814,14 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
 
         # ✅ 4. PREPARE SUCCESS MESSAGE
         message_parts = [f"User '{user_name}' deleted successfully"]
-        
+
         if deleted_entities:
-            message_parts.append(f"Deleted related: {', '.join(deleted_entities)}")
-        
+            message_parts.append(
+                f"Deleted related: {', '.join(deleted_entities)}")
+
         if lease_count > 0:
             message_parts.append(f"{lease_count} lease(s)")
-        
+
         if charge_count > 0:
             message_parts.append(f"{charge_count} charge(s)")
 
@@ -994,12 +837,13 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
         # ✅ ROLLBACK EVERYTHING IF ANY ERROR OCCURS
         db.rollback()
         facility_db.rollback()
-        
+
         return {
-            "success": False, 
+            "success": False,
             "message": f"Error deleting user and related data: {str(e)}"
         }
-    
+
+
 def user_status_lookup(db: Session, org_id: str, status: Optional[str] = None):
     return [
         Lookup(id=status.value, name=status.name.capitalize())

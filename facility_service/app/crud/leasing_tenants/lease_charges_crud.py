@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import String, and_, func, extract, or_, cast, Date
 from sqlalchemy import desc
 
+from ...models.system.notifications import Notification, NotificationType, PriorityType
 from shared.helpers.json_response_helper import error_response
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.utils.enums import UserAccountType
@@ -23,6 +24,7 @@ from ...models.leasing_tenants.leases import Lease
 from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeOut, LeaseChargeUpdate, LeaseChargeRequest
 from uuid import UUID
 from decimal import Decimal
+
 
 
 def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
@@ -198,7 +200,7 @@ def get_lease_charge_by_id(db: Session, charge_id: UUID):
     ).first()
 
 
-def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
+def create_lease_charge(db: Session, payload: LeaseChargeCreate , current_user_id: UUID) -> LeaseCharge:
     # ✅ Tax percentage validation
     if payload.tax_pct is not None:
         if payload.tax_pct < Decimal('0') or payload.tax_pct > Decimal('100'):
@@ -230,6 +232,26 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate) -> LeaseCharge:
 
     obj = LeaseCharge(**payload.model_dump())
     db.add(obj)
+    #  Get lease details for notification
+    lease = db.query(Lease).filter(
+        Lease.id == payload.lease_id,
+        Lease.is_deleted == False
+    ).first()
+    
+    if lease:
+        notification = Notification(
+            user_id=current_user_id,  
+            type=NotificationType.alert,
+            title="Lease Charge Created",
+            message=f"New charge '{payload.charge_code}' added to lease. Amount: {payload.amount}",
+            posted_date=datetime.utcnow(),
+            priority=PriorityType.medium,
+            read=False,
+            is_deleted=False,
+            is_email=False 
+        )
+        db.add(notification)
+    
     db.commit()
     db.refresh(obj)
     return obj

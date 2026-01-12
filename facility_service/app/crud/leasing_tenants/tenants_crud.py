@@ -419,14 +419,13 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
 
     # Check for duplicate name (case-insensitive) within the same site
     existing_tenant_by_name = db.query(Tenant).filter(
-        Tenant.site_id == tenant.site_id,
         Tenant.is_deleted == False,
         func.lower(Tenant.name) == func.lower(tenant.name)
     ).first()
 
     if existing_tenant_by_name:
         return error_response(
-            message=f"Tenant with name '{tenant.name}' already exists in this site",
+            message=f"Tenant with name '{tenant.name}' already exists",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )

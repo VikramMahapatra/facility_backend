@@ -230,12 +230,11 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
     
     tenant = db.query(Tenant).filter(
         Tenant.id == payload.tenant_id,
-        Tenant.is_deleted == False,
-        Tenant.status == "active"
+        Tenant.is_deleted == False
     ).first()
 
     if not tenant:
-        return error_response(message="Invalid or inactive tenant")
+        return error_response(message=" This Tenant Does not Exists")
 
     # Validate tenant kind
     if tenant.kind not in ("commercial", "residential"):
@@ -360,13 +359,13 @@ def update(db: Session, payload: LeaseUpdate):
 
     # Validate tenant
     tenant = db.query(Tenant).filter(
-        Tenant.id == tenant_id,
-        Tenant.is_deleted == False,
-        Tenant.status == "active"
+        Tenant.id == payload.tenant_id,
+        Tenant.is_deleted == False
     ).first()
 
     if not tenant:
-        return error_response(message="Invalid or inactive tenant")
+        return error_response(message=" This Tenant Does not Exists")
+
 
     if tenant.kind not in ("commercial", "residential"):
         return error_response(message="Invalid tenant kind")

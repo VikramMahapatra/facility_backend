@@ -533,7 +533,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
                 db.add(
                     Lease(
                         org_id=org_id,
-                        site_id=db_tenant.site_id,
+                        site_id=space.site_id,
                         space_id=space.space_id,
                         tenant_id=tenant_id,
                         default_payer="owner",
@@ -573,7 +573,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
     # Check for duplicate name (case-insensitive) if name is being updated
     if 'name' in update_dict and update_dict['name'] != db_tenant.name:
         existing_tenant_by_name = db.query(Tenant).filter(
-            Tenant.site_id == db_tenant.site_id,
             Tenant.id != tenant_id,
             Tenant.is_deleted == False,
             func.lower(Tenant.name) == func.lower(update_dict['name'])
@@ -581,7 +580,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
 
         if existing_tenant_by_name:
             return error_response(
-                message=f"Tenant with name '{update_dict['name']}' already exists in this site",
+                message=f"Tenant with name '{update_dict['name']}' already exists",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
@@ -703,7 +702,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                     db.add(
                         Lease(
                             org_id=org_id,
-                            site_id=db_tenant.site_id,
+                            site_id=space.site_id,
                             space_id=space_id,
                             tenant_id=tenant_id,
                             default_payer="owner",

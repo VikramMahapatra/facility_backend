@@ -258,7 +258,7 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate , current_user_i
             user_id=current_user_id,  
             type=NotificationType.alert,
             title="Lease Charge Created",
-            message=f"New charge '{charge.code}' added to lease. Amount: {payload.amount}",
+            message=f"New charge '{charge.code if charge else 'Unknown'}' added to lease. Amount: {payload.amount}",
             posted_date=datetime.utcnow(),
             priority=PriorityType.medium,
             read=False,

@@ -18,3 +18,4 @@ class LeaseChargeCode(Base):
                         server_default=func.now(), onupdate=func.now())
     
     org = relationship("Org", back_populates="lease_charge_codes")
+    charges = relationship("LeaseCharge", back_populates="charge_code")

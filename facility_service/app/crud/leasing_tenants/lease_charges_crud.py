@@ -20,10 +20,13 @@ from ...models.leasing_tenants.tenants import Tenant
 
 from shared.core.schemas import Lookup, UserToken
 from ...models.leasing_tenants.lease_charges import LeaseCharge
+
 from ...models.leasing_tenants.leases import Lease
 from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeOut, LeaseChargeUpdate, LeaseChargeRequest
 from uuid import UUID
 from decimal import Decimal
+from ...models.financials.tax_codes import TaxCode
+
 
 
 
@@ -35,8 +38,10 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
     ]
 
     if params.charge_code and params.charge_code != "all":
-        filters.append(func.lower(LeaseCharge.charge_code)
-                       == params.charge_code.lower())
+        filters.append(
+        func.lower(LeaseChargeCode.code) == params.charge_code.lower()
+    )
+
 
     if params.month and params.month != "all":
         selected_month = int(params.month)
@@ -59,8 +64,8 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
     if params.search:
         search_term = f"%{params.search}%"
         filters.append(or_(
-            LeaseCharge.charge_code.ilike(search_term),
-            CommercialPartner.legal_name.ilike(search_term),
+            LeaseChargeCode.code.ilike(search_term),
+            Tenant.legal_name.ilike(search_term),
             Tenant.name.ilike(search_term),
             Site.name.ilike(search_term),
             Space.name.ilike(search_term)
@@ -87,6 +92,8 @@ def get_lease_charges_overview(db: Session, user: UserToken):
     base = (
         db.query(LeaseCharge)
         .join(Lease, LeaseCharge.lease_id == Lease.id)
+        .outerjoin(TaxCode, LeaseCharge.tax_code_id == TaxCode.id)
+
         .filter(
             Lease.org_id == user.org_id,
             LeaseCharge.is_deleted == False,  # Add soft delete filter
@@ -102,9 +109,14 @@ def get_lease_charges_overview(db: Session, user: UserToken):
         func.sum(LeaseCharge.amount), 0)).scalar() or 0.0)
 
     tax_val = float(
-        base.with_entities(func.coalesce(func.sum(
-            LeaseCharge.amount * (LeaseCharge.tax_pct / 100.0)), 0)).scalar() or 0.0
+    base.with_entities(
+        func.coalesce(
+            func.sum(LeaseCharge.amount * (TaxCode.rate / 100.0)),
+            0
+        )
+    ).scalar() or 0.0
     )
+
 
     this_month_count = int(
         base.with_entities(func.count(LeaseCharge.id))
@@ -132,7 +144,8 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
     base_query = (
         db.query(LeaseCharge)
         .join(Lease, LeaseCharge.lease_id == Lease.id)
-        .outerjoin(CommercialPartner, Lease.partner_id == CommercialPartner.id)
+        .outerjoin(LeaseChargeCode, LeaseCharge.charge_code_id == LeaseChargeCode.id)
+        .outerjoin(TaxCode, LeaseCharge.tax_code_id == TaxCode.id)
         .outerjoin(Tenant, Lease.tenant_id == Tenant.id)
         .outerjoin(Space, Lease.space_id == Space.id)
         .outerjoin(Site, Lease.site_id == Site.id)
@@ -162,19 +175,19 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
     for lc in results:
         lease = lc.lease  # FIXED
 
-        tax_pct = lc.tax_pct or Decimal("0")
-        tax_amount = (lc.amount * tax_pct) / Decimal("100")
+        tax_rate = lc.tax_code.rate if lc.tax_code else Decimal("0")
+        tax_amount = (lc.amount * tax_rate) / Decimal("100")
+
 
         period_days = None
         if lc.period_start and lc.period_end:
             period_days = (lc.period_end - lc.period_start).days
 
-        if lease.partner:
-            display_name = lease.partner.legal_name
-        elif lease.tenant:
-            display_name = lease.tenant.name
+        if lease.tenant:
+         display_name = lease.tenant.legal_name or lease.tenant.name
         else:
-            display_name = "Unknown"
+         display_name = "Unknown"
+
 
         items.append(LeaseChargeOut.model_validate({
             **lc.__dict__,
@@ -184,10 +197,11 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
             "tax_amount": tax_amount,
             "period_days": period_days,
             "site_id": lease.site_id,
-            "partner_id": lease.partner_id,
             "tenant_name": display_name,
             "site_name": lease.site.name if lease.site else None,
-            "space_name": lease.space.name if lease.space else None
+            "space_name": lease.space.name if lease.space else None,
+            "charge_code": lc.charge_code.code if lc.charge_code else None,
+            "tax_rate": tax_rate,
         }))
 
     return {"items": items, "total": total}
@@ -201,13 +215,13 @@ def get_lease_charge_by_id(db: Session, charge_id: UUID):
 
 
 def create_lease_charge(db: Session, payload: LeaseChargeCreate , current_user_id: UUID) -> LeaseCharge:
-    # ✅ Tax percentage validation
-    if payload.tax_pct is not None:
+    """# ✅ Tax percentage validation
+    if payload.tax_code_id is not None:
         if payload.tax_pct < Decimal('0') or payload.tax_pct > Decimal('100'):
             return error_response(
                 message="Tax percentage must be between 0 and 100"
             )
-
+"""
     # ✅ Date validation - End date should not be before start date
     if payload.period_end < payload.period_start:
         return error_response(
@@ -217,7 +231,7 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate , current_user_i
     # ✅ SIMPLE VALIDATION: Same charge code cannot have overlapping periods
     existing_charge = db.query(LeaseCharge).join(Lease).filter(
         LeaseCharge.lease_id == payload.lease_id,
-        LeaseCharge.charge_code == payload.charge_code,
+        LeaseCharge.charge_code_id == payload.charge_code_id,
         LeaseCharge.is_deleted == False,
         Lease.is_deleted == False,
         # Check if periods overlap
@@ -239,11 +253,12 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate , current_user_i
     ).first()
     
     if lease:
+        charge = db.query(LeaseChargeCode).get(payload.charge_code_id)
         notification = Notification(
             user_id=current_user_id,  
             type=NotificationType.alert,
             title="Lease Charge Created",
-            message=f"New charge '{payload.charge_code}' added to lease. Amount: {payload.amount}",
+            message=f"New charge '{charge.code}' added to lease. Amount: {payload.amount}",
             posted_date=datetime.utcnow(),
             priority=PriorityType.medium,
             read=False,
@@ -261,12 +276,12 @@ def update_lease_charge(
     db: Session,
     payload: LeaseChargeUpdate
 ) -> Optional[LeaseCharge]:
-    # ✅ Tax percentage validation
+    """# ✅ Tax percentage validation
     if payload.tax_pct is not None:
         if payload.tax_pct < Decimal('0') or payload.tax_pct > Decimal('100'):
             return error_response(
                 message="Tax percentage must be between 0 and 100"
-            )
+            )"""
 
     obj = get_lease_charge_by_id(db, payload.id)
     if not obj:
@@ -282,13 +297,14 @@ def update_lease_charge(
         )
 
     # ✅ SIMPLE VALIDATION: Same charge code cannot have overlapping periods
-    charge_code = payload.charge_code if payload.charge_code is not None else obj.charge_code
+    charge_code_id = payload.charge_code_id or obj.charge_code_id
+
     lease_id = payload.lease_id if payload.lease_id is not None else obj.lease_id
 
     existing_charge = db.query(LeaseCharge).join(Lease).filter(
         LeaseCharge.id != payload.id,  # Exclude current record
         LeaseCharge.lease_id == lease_id,
-        LeaseCharge.charge_code == charge_code,
+        LeaseCharge.charge_code_id == charge_code_id,
         LeaseCharge.is_deleted == False,
         Lease.is_deleted == False,
         # Check if periods overlap
@@ -298,7 +314,7 @@ def update_lease_charge(
 
     if existing_charge:
         return error_response(
-            message=f"Charge code '{charge_code}' already exists for this lease with overlapping period"
+            message=f"Charge code '{charge_code_id}' already exists for this lease with overlapping period"
         )
 
     # Update the object with new values
@@ -366,8 +382,9 @@ def lease_charge_month_lookup(
 def lease_charge_code_lookup(db: Session, org_id: UUID):
     query = (
         db.query(
-            LeaseChargeCode.code.label('id'),
-            LeaseChargeCode.code.label('name'))
+            LeaseChargeCode.id.label('id'),
+            LeaseChargeCode.code.label('name')
+        )
         .distinct()
         .filter(
             LeaseChargeCode.org_id == org_id,

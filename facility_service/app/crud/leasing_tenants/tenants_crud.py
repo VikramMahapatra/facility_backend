@@ -503,7 +503,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         # ✅ Use the auto-filled contact info
         "contact":  contact_info if tenant.kind == "commercial" else None,
         "vehicle_info": tenant.vehicle_info,
-        "status": "active",  # Default to active when creating
+        "status": TenantStatus.inactive,
         "user_id": new_user_id,  # ✅ ADD THIS LINE
         "created_at": now,
         "updated_at": now,
@@ -513,6 +513,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
     db.flush()
 
     # ASSIGN SPACES
+    has_owner_space = False
     for space in tenant.tenant_spaces or []:
         current_space_status = "pending"
         if space.role == "owner":
@@ -530,6 +531,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         db.add(db_space_assignment)
 
         if space.role == "owner":
+            has_owner_space = True
             if not active_lease_exists(db, db_tenant.id, space.space_id):
                 db.add(
                     Lease(
@@ -546,13 +548,15 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
                     )
                 )
 
+    if has_owner_space:
+        db_tenant.status = TenantStatus.active
+    else:
+        db_tenant.status = TenantStatus.inactive
+
     db.commit()
     auth_db.commit()  # ✅ Commit auth_db too
     db.refresh(db_tenant)
-
-    tenant_id = db_tenant.id
-
-    return get_tenant_detail(db, org_id, tenant_id)
+    return get_tenant_detail(db, org_id, db_tenant.id)
 
 
 def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, update_data: TenantUpdate):

@@ -392,3 +392,19 @@ def lease_charge_code_lookup(db: Session, org_id: UUID):
         .order_by("id")
     )
     return query.all()
+
+
+def tax_code_lookup(db: Session, org_id: UUID):
+    query = (
+        db.query(
+            TaxCode.id.label('id'),
+            TaxCode.code.label('name')
+        )
+        .distinct()
+        .filter(
+            TaxCode.org_id == org_id,
+            TaxCode.is_deleted == False)
+        .order_by("id")
+    )
+    return query.all()
+

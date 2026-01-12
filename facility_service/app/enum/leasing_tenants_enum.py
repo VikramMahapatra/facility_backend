@@ -1,9 +1,10 @@
 from enum import Enum
 
 
-class LeaseKind(str, Enum):
-    commercial = "commercial"
-    residential = "residential"
+class LeaseDefaultPayer(str, Enum):
+    owner = "owner"
+    occupant = "occupant"
+    split = "split"
 
 
 class LeaseStatus(str, Enum):

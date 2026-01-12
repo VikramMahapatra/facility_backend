@@ -8,6 +8,7 @@ from shared.core.schemas import CommonQueryParams
 
 
 class LeaseBase(BaseModel):
+    default_payer:Optional[str] = None
     org_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
@@ -39,6 +40,7 @@ class LeaseUpdate(LeaseBase):
 class LeaseOut(LeaseBase):
     id: UUID
     tenant_name: str
+    default_payer:Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     space_name: Optional[str] = None

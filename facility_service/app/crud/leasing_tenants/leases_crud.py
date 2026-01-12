@@ -13,7 +13,7 @@ from ...models.leasing_tenants.tenants import Tenant
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
-from ...enum.leasing_tenants_enum import LeaseKind, LeaseStatus
+from ...enum.leasing_tenants_enum import LeaseDefaultPayer, LeaseKind, LeaseStatus
 from shared.core.schemas import Lookup, UserToken
 
 from ...models.leasing_tenants.leases import Lease
@@ -219,7 +219,6 @@ def get_by_id(db: Session, lease_id: str) -> Optional[Lease]:
 
 # Create new lease with space validation
 
-
 def create(db: Session, payload: LeaseCreate) -> Lease:
     # -------------------------------------------------
     # 0️⃣ Basic payload validation
@@ -241,12 +240,9 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
     if not tenant:
         raise ValueError("Invalid or inactive tenant")
 
-    # Validate tenant kind vs payload kind
-    if payload.kind == "commercial" and tenant.kind != "commercial":
-        raise ValueError("Tenant is not a commercial tenant")
-
-    if payload.kind == "residential" and tenant.kind != "residential":
-        raise ValueError("Tenant is not a residential tenant")
+    # Validate tenant kind
+    if tenant.kind not in ("commercial", "residential"):
+        raise ValueError("Invalid tenant kind")
 
     # -------------------------------------------------
     # 2️⃣ BLOCK if ACTIVE tenant lease already exists
@@ -283,13 +279,13 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
     owner_occupancy = db.query(TenantSpace).filter(
         TenantSpace.space_id == payload.space_id,
         TenantSpace.role == "owner",
-        TenantSpace.status =="pending",
+        TenantSpace.status =="current",
         TenantSpace.is_deleted == False
     ).first()
 
     if owner_occupancy:
         owner_occupancy.status = "past"
-        owner_occupancy.end_date = yesterday
+        #owner_occupancy.end_date = yesterday
 
     # -------------------------------------------------
     # 5️⃣ Create TENANT occupancy
@@ -299,9 +295,9 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         space_id=payload.space_id,
         tenant_id=payload.tenant_id,
         role="occupant",
-        start_date=payload.start_date,
-        status = "current"
+        status="current"
     )
+
     db.add(tenant_occupancy)
 
     # -------------------------------------------------
@@ -319,6 +315,19 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
     lease = Lease(**lease_data)
     db.add(lease)
 
+        # 7️⃣ UPDATE SPACE STATUS → OCCUPIED
+    # -------------------------------------------------
+    space = db.query(Space).filter(
+        Space.id == payload.space_id,
+        Space.is_deleted == False
+    ).first()
+
+    if not space:
+        raise ValueError("Invalid space")
+
+    space.status = "occupied"
+    
+    
     db.commit()
     db.refresh(lease)
     return lease
@@ -488,9 +497,9 @@ def lease_lookup(org_id: UUID, db: Session):
     return lookups
 
 
-def lease_kind_lookup(org_id: UUID, db: Session):
+def lease_default_payer_lookup(org_id: UUID, db: Session):
     return [
-        Lookup(id=kind.value, name=kind.name.capitalize()) for kind in LeaseKind
+        Lookup(id=default_payer.value, name=default_payer.name.capitalize()) for default_payer in LeaseDefaultPayer
     ]
 
 

@@ -11,11 +11,13 @@ phases:
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
 
-    
-      - echo "Patching Dockerfiles to use AWS Public ECR..."
-      - sed -i 's|FROM python:3.12-slim|FROM public.ecr.aws/docker/library/python:3.12-slim|g' auth_service/Dockerfile
-      - sed -i 's|FROM python:3.12-slim|FROM public.ecr.aws/docker/library/python:3.12-slim|g' facility_service/Dockerfile
-      # -------------------------------------
+      # --- PATCH FOR DOCKER HUB RATE LIMIT (429) ---
+      # Replaces 'python:3.12-slim' with the AWS Public Mirror version
+      - echo "Patching Dockerfiles to bypass Docker Hub..."
+      # USING LOWERCASE 'dockerfile' because your repo has 'auth_service/dockerfile'
+      - sed -i 's|FROM python:3.12-slim|FROM public.ecr.aws/docker/library/python:3.12-slim|g' auth_service/dockerfile
+      - sed -i 's|FROM python:3.12-slim|FROM public.ecr.aws/docker/library/python:3.12-slim|g' facility_service/dockerfile
+      # ---------------------------------------------
       
   build:
     commands:
@@ -23,14 +25,14 @@ phases:
       
       # AUTH SERVICE
       - echo Building Auth Service...
-      
-      - docker build -t $REPO_URL/facilitos-auth:latest -f auth_service/Dockerfile .
+      # USING LOWERCASE 'dockerfile'
+      - docker build -t $REPO_URL/facilitos-auth:latest -f auth_service/dockerfile .
       - docker tag $REPO_URL/facilitos-auth:latest $REPO_URL/facilitos-auth:$IMAGE_TAG
       
       # FACILITY SERVICE
       - echo Building Facility Service...
-      
-      - docker build -t $REPO_URL/facilitos-facility:latest -f facility_service/Dockerfile .
+      # USING LOWERCASE 'dockerfile'
+      - docker build -t $REPO_URL/facilitos-facility:latest -f facility_service/dockerfile .
       - docker tag $REPO_URL/facilitos-facility:latest $REPO_URL/facilitos-facility:$IMAGE_TAG
 
   post_build:
@@ -45,13 +47,13 @@ phases:
       - docker push $REPO_URL/facilitos-facility:latest
       - docker push $REPO_URL/facilitos-facility:$IMAGE_TAG
       
-      # INSTRUCTION FILES
+      # --- INSTRUCTION FILES FOR DEPLOY STAGE ---
       - printf '[{"name":"auth-container","imageUri":"%s"}]' $REPO_URL/facilitos-auth:$IMAGE_TAG > imagedefinitions_auth.json
       - printf '[{"name":"facility-container","imageUri":"%s"}]' $REPO_URL/facilitos-facility:$IMAGE_TAG > imagedefinitions_facility.json
       
       - echo Build completed successfully!
 
-# Pass these files to the next stage dp
+# Pass these files to the next stage (Deploy)
 artifacts:
   files:
     - imagedefinitions_auth.json

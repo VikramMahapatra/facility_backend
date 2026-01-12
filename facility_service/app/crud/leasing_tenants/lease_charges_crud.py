@@ -28,8 +28,6 @@ from decimal import Decimal
 from ...models.financials.tax_codes import TaxCode
 
 
-
-
 def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
     filters = [
         Lease.org_id == org_id,
@@ -39,9 +37,8 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
 
     if params.charge_code and params.charge_code != "all":
         filters.append(
-        func.lower(LeaseChargeCode.code) == params.charge_code.lower()
-    )
-
+            func.lower(LeaseChargeCode.code) == params.charge_code.lower()
+        )
 
     if params.month and params.month != "all":
         selected_month = int(params.month)
@@ -80,7 +77,7 @@ def get_lease_charges_overview(db: Session, user: UserToken):
     if user.account_type.lower() == UserAccountType.TENANT:
         allowed_spaces = get_allowed_spaces(db, user)
         allowed_spaces_ids = [s["space_id"] for s in allowed_spaces]
-        
+
         if not allowed_spaces_ids:
             return {
                 "total_charges": 0.0,
@@ -88,7 +85,7 @@ def get_lease_charges_overview(db: Session, user: UserToken):
                 "this_month": 0,
                 "avg_charge": 0.0,
             }
-    
+
     base = (
         db.query(LeaseCharge)
         .join(Lease, LeaseCharge.lease_id == Lease.id)
@@ -109,14 +106,13 @@ def get_lease_charges_overview(db: Session, user: UserToken):
         func.sum(LeaseCharge.amount), 0)).scalar() or 0.0)
 
     tax_val = float(
-    base.with_entities(
-        func.coalesce(
-            func.sum(LeaseCharge.amount * (TaxCode.rate / 100.0)),
-            0
-        )
-    ).scalar() or 0.0
+        base.with_entities(
+            func.coalesce(
+                func.sum(LeaseCharge.amount * (TaxCode.rate / 100.0)),
+                0
+            )
+        ).scalar() or 0.0
     )
-
 
     this_month_count = int(
         base.with_entities(func.count(LeaseCharge.id))
@@ -150,14 +146,15 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
         .outerjoin(Space, Lease.space_id == Space.id)
         .outerjoin(Site, Lease.site_id == Site.id)
         .filter(*filters)
-        
+
     )
     if user.account_type.lower() == UserAccountType.TENANT:
         allowed_spaces = get_allowed_spaces(db, user)
         allowed_space_ids = [s["space_id"] for s in allowed_spaces]
 
         if allowed_space_ids:
-            base_query = base_query.filter(Lease.space_id.in_(allowed_space_ids))
+            base_query = base_query.filter(
+                Lease.space_id.in_(allowed_space_ids))
         else:
             return {"items": [], "total": 0}
 
@@ -178,16 +175,12 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
         tax_rate = lc.tax_code.rate if lc.tax_code else Decimal("0")
         tax_amount = (lc.amount * tax_rate) / Decimal("100")
 
-
         period_days = None
         if lc.period_start and lc.period_end:
             period_days = (lc.period_end - lc.period_start).days
 
         if lease.tenant:
-         display_name = lease.tenant.legal_name or lease.tenant.name
-        else:
-         display_name = "Unknown"
-
+            display_name = lease.tenant.legal_name or lease.tenant.name
 
         items.append(LeaseChargeOut.model_validate({
             **lc.__dict__,
@@ -201,7 +194,7 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
             "site_name": lease.site.name if lease.site else None,
             "space_name": lease.space.name if lease.space else None,
             "charge_code": lc.charge_code.code if lc.charge_code else None,
-            "tax_rate": tax_rate,
+            "tax_pct": tax_rate,
         }))
 
     return {"items": items, "total": total}
@@ -214,7 +207,7 @@ def get_lease_charge_by_id(db: Session, charge_id: UUID):
     ).first()
 
 
-def create_lease_charge(db: Session, payload: LeaseChargeCreate , current_user_id: UUID) -> LeaseCharge:
+def create_lease_charge(db: Session, payload: LeaseChargeCreate, current_user_id: UUID) -> LeaseCharge:
     """# ✅ Tax percentage validation
     if payload.tax_code_id is not None:
         if payload.tax_pct < Decimal('0') or payload.tax_pct > Decimal('100'):
@@ -251,22 +244,22 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate , current_user_i
         Lease.id == payload.lease_id,
         Lease.is_deleted == False
     ).first()
-    
+
     if lease:
         charge = db.query(LeaseChargeCode).get(payload.charge_code_id)
         notification = Notification(
-            user_id=current_user_id,  
+            user_id=current_user_id,
             type=NotificationType.alert,
             title="Lease Charge Created",
-            message=f"New charge '{charge.code}' added to lease. Amount: {payload.amount}",
+            message=f"New charge '{charge.code if charge else 'Unknown'}' added to lease. Amount: {payload.amount}",
             posted_date=datetime.utcnow(),
             priority=PriorityType.medium,
             read=False,
             is_deleted=False,
-            is_email=False 
+            is_email=False
         )
         db.add(notification)
-    
+
     db.commit()
     db.refresh(obj)
     return obj
@@ -392,3 +385,19 @@ def lease_charge_code_lookup(db: Session, org_id: UUID):
         .order_by("id")
     )
     return query.all()
+
+
+def tax_code_lookup(db: Session, org_id: UUID):
+    query = (
+        db.query(
+            TaxCode.id.label('id'),
+            TaxCode.code.label('name')
+        )
+        .distinct()
+        .filter(
+            TaxCode.org_id == org_id,
+            TaxCode.is_deleted == False)
+        .order_by("id")
+    )
+    return query.all()
+

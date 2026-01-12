@@ -10,8 +10,7 @@ from shared.core.schemas import CommonQueryParams
 class LeaseBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
-    space_id: Optional[UUID] = None
-    space_name: Optional[str] = None              # "commercial" | "residential"
+    space_id: Optional[UUID] = None           # "commercial" | "residential"
     tenant_id: Optional[UUID] = None           # REQUIRED for ALL leases
     reference: Optional[str] = None
     start_date: Optional[date] = None
@@ -38,7 +37,9 @@ class LeaseUpdate(LeaseBase):
 
 class LeaseOut(LeaseBase):
     id: UUID
+    lease_number: str
     tenant_name: str
+    default_payer: Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     space_name: Optional[str] = None
@@ -46,7 +47,7 @@ class LeaseOut(LeaseBase):
     space_name: Optional[str] = None
     building_name: Optional[str] = None  # This must be here
     building_block_id: Optional[UUID] = None  # This must be here
-    
+
     model_config = {"from_attributes": True}
 
 

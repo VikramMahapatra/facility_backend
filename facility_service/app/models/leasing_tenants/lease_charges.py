@@ -17,6 +17,7 @@ class LeaseCharge(Base):
     period_start = Column(Date)
     period_end = Column(Date)
     amount = Column(Numeric(14, 2), nullable=False)
+    total_amount = Column(Numeric(14, 2), nullable=False)
     tax_code_id = Column(UUID(as_uuid=True), ForeignKey("tax_codes.id"))
     payer_type = Column(String(16), nullable=False)  # owner | occupant | split
     # FK to tenants.id (soft FK)

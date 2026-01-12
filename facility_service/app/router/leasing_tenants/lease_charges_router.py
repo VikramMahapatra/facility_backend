@@ -73,3 +73,9 @@ def get_charge_code_lookup(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.lease_charge_code_lookup(db, current_user.org_id)
+
+@router.get("/tax-code-lookup", response_model=List[Lookup])
+def get_tax_code_lookup(
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.tax_code_lookup(db, current_user.org_id)

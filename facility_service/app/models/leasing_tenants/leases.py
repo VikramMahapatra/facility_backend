@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Boolean, Column, Sequence, String, Date, Numeric, ForeignKey, DateTime, event
+from sqlalchemy import Boolean, Column, Sequence, String, Date, Numeric, ForeignKey, DateTime, event, select
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -54,5 +54,8 @@ class Lease(Base):
 @event.listens_for(Lease, "before_insert")
 def generate_lease_number(mapper, connection, target):
     if not target.lease_number:
-        next_number = connection.scalar(lease_seq)
-        target.lease_number = f"LSE-{next_number:04}"
+        next_number = connection.execute(
+            select(func.nextval("lease_number_seq"))
+        ).scalar_one()
+
+        target.lease_number = f"LSE-{next_number:04d}"

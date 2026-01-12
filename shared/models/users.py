@@ -11,8 +11,6 @@ import secrets
 from passlib.context import CryptContext
 from sqlalchemy import event, inspect
 from shared.core.database import FacilitySessionLocal
-# , HrmsSessionLocal, hrms_engine
-from facility_service.app.models.system.system_settings import SystemSetting
 
 bcrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 

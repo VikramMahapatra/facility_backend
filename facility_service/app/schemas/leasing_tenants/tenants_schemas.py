@@ -11,7 +11,6 @@ class TenantSpaceBase(BaseModel):
     site_id: UUID
     building_block_id: Optional[UUID] = None
     space_id: UUID
-    tenant_id: Optional[UUID] = None
     role: str  # e.g., owner, occupant, etc.
 
 

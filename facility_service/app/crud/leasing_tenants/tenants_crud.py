@@ -503,7 +503,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         # ✅ Use the auto-filled contact info
         "contact":  contact_info if tenant.kind == "commercial" else None,
         "vehicle_info": tenant.vehicle_info,
-        "status": "active",  # Default to active when creating
+        "status": TenantStatus.inactive,
         "user_id": new_user_id,  # ✅ ADD THIS LINE
         "created_at": now,
         "updated_at": now,
@@ -513,6 +513,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
     db.flush()
 
     # ASSIGN SPACES
+    has_owner_space = False
     for space in tenant.tenant_spaces or []:
         current_space_status = "pending"
         if space.role == "owner":
@@ -530,6 +531,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         db.add(db_space_assignment)
 
         if space.role == "owner":
+            has_owner_space = True
             if not active_lease_exists(db, db_tenant.id, space.space_id):
                 db.add(
                     Lease(
@@ -546,13 +548,15 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
                     )
                 )
 
+    if has_owner_space:
+        db_tenant.status = TenantStatus.active
+    else:
+        db_tenant.status = TenantStatus.inactive
+
     db.commit()
     auth_db.commit()  # ✅ Commit auth_db too
     db.refresh(db_tenant)
-
-    tenant_id = db_tenant.id
-
-    return get_tenant_detail(db, org_id, tenant_id)
+    return get_tenant_detail(db, org_id, db_tenant.id)
 
 
 def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, update_data: TenantUpdate):
@@ -639,7 +643,10 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
 
     if "tenant_spaces" in update_dict:
         now = datetime.utcnow()
-        incoming_spaces = update_dict["tenant_spaces"] or []
+        incoming_spaces = [
+            TenantSpaceBase(**s)
+            for s in update_dict.get("tenant_spaces", [])
+        ]
 
         if not incoming_spaces:
             return error_response(
@@ -950,16 +957,19 @@ def validate_tenant_space_update(
         if ts.get("space_id")
     }
 
-    if existing_space_ids != incoming_space_ids:
+    removed_space_ids = existing_space_ids - incoming_space_ids
+
+    if removed_space_ids:
         has_active_leases = db.query(Lease).filter(
             Lease.tenant_id == tenant_id,
             Lease.is_deleted.is_(False),
             func.lower(Lease.status) == "active",
+            Lease.space_id.in_(removed_space_ids),
         ).first()
 
         if has_active_leases:
             return error_response(
-                message="Cannot change tenant spaces while active leases exist"
+                message="Cannot remove tenant spaces while active leases exist"
             )
 
     # 🔥 Delegate occupancy check

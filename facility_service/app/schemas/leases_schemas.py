@@ -37,8 +37,9 @@ class LeaseUpdate(LeaseBase):
 
 class LeaseOut(LeaseBase):
     id: UUID
+    lease_number: str
     tenant_name: str
-    default_payer:Optional[str] = None
+    default_payer: Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     space_name: Optional[str] = None
@@ -46,7 +47,7 @@ class LeaseOut(LeaseBase):
     space_name: Optional[str] = None
     building_name: Optional[str] = None  # This must be here
     building_block_id: Optional[UUID] = None  # This must be here
-    
+
     model_config = {"from_attributes": True}
 
 

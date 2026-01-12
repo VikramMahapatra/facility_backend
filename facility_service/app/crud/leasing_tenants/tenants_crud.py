@@ -524,8 +524,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
             space_id=space.space_id,
             role=space.role,
             status=current_space_status,
-            created_at=now,
-            updated_at=now
+            created_at=now
         )
         db.add(db_space_assignment)
 
@@ -674,7 +673,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                 ts = active_assignments[space_id]
                 if ts.role != space.role:
                     ts.role = space.role
-                    ts.updated_at = now
                 continue
 
             if space_id in deleted_assignments:
@@ -682,7 +680,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                 ts.is_deleted = False
                 ts.deleted_at = None
                 ts.role = space.role
-                ts.updated_at = now
             else:
                 current_space_status = "pending"
                 if space.role == "owner":
@@ -698,7 +695,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                         status=current_space_status,
                         is_deleted=False,
                         created_at=now,
-                        updated_at=now,
                     )
                 )
 
@@ -723,8 +719,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
         for space_id, ts in active_assignments.items():
             if space_id not in incoming_space_ids:
                 ts.is_deleted = True
-                ts.deleted_at = now
-                ts.updated_at = now
 
     auth_db.commit()
     db.commit()

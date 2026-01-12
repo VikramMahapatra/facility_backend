@@ -517,7 +517,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         current_space_status = "pending"
         if space.role == "owner":
             current_space_status = "current" if active_lease_for_occupant_exists(
-                db, tenant_id, space.space_id) else "past"
+                db, db_tenant.id, space.space_id) else "past"
 
         db_space_assignment = TenantSpace(
             tenant_id=db_tenant.id,

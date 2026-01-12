@@ -1,52 +1,57 @@
 version: 0.2
- 
+
 phases:
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...
       - aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 960739390722.dkr.ecr.ap-south-1.amazonaws.com
-     
+      
       # Define Variables
       - REPO_URL=960739390722.dkr.ecr.ap-south-1.amazonaws.com
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
-     
+
+    
+      - echo "Patching Dockerfiles to use AWS Public ECR..."
+      - sed -i 's|FROM python:3.12-slim|FROM public.ecr.aws/docker/library/python:3.12-slim|g' auth_service/Dockerfile
+      - sed -i 's|FROM python:3.12-slim|FROM public.ecr.aws/docker/library/python:3.12-slim|g' facility_service/Dockerfile
+      # -------------------------------------
+      
   build:
     commands:
       - echo Build started on `date`
-     
+      
       # AUTH SERVICE
       - echo Building Auth Service...
+      
       - docker build -t $REPO_URL/facilitos-auth:latest -f auth_service/Dockerfile .
       - docker tag $REPO_URL/facilitos-auth:latest $REPO_URL/facilitos-auth:$IMAGE_TAG
-     
+      
       # FACILITY SERVICE
       - echo Building Facility Service...
+      
       - docker build -t $REPO_URL/facilitos-facility:latest -f facility_service/Dockerfile .
       - docker tag $REPO_URL/facilitos-facility:latest $REPO_URL/facilitos-facility:$IMAGE_TAG
- 
+
   post_build:
     commands:
       - echo Pushing Docker images...
-     
+      
       # Push Auth Service
       - docker push $REPO_URL/facilitos-auth:latest
       - docker push $REPO_URL/facilitos-auth:$IMAGE_TAG
-     
+      
       # Push Facility Service
       - docker push $REPO_URL/facilitos-facility:latest
       - docker push $REPO_URL/facilitos-facility:$IMAGE_TAG
-     
-      # --- CRITICAL ADDITION FOR AUTOMATION ---
-      # This creates the "Instruction Files" for the Deploy Stage.
-      # The 'name' MUST match the Container Name in your Task Definition.
-     
+      
+      # INSTRUCTION FILES
       - printf '[{"name":"auth-container","imageUri":"%s"}]' $REPO_URL/facilitos-auth:$IMAGE_TAG > imagedefinitions_auth.json
       - printf '[{"name":"facility-container","imageUri":"%s"}]' $REPO_URL/facilitos-facility:$IMAGE_TAG > imagedefinitions_facility.json
-     
+      
       - echo Build completed successfully!
- 
-# Pass these files to the next stage (Deploy)
+
+# Pass these files to the next stage dp
 artifacts:
   files:
     - imagedefinitions_auth.json

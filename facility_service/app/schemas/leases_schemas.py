@@ -8,7 +8,6 @@ from shared.core.schemas import CommonQueryParams
 
 
 class LeaseBase(BaseModel):
-    default_payer:Optional[str] = None
     org_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None           # "commercial" | "residential"

@@ -10,7 +10,7 @@ from shared.helpers.json_response_helper import error_response
 from shared.models.user_login_session import LoginPlatform, UserLoginSession
 from ..schemas.authschema import AuthenticationResponse
 from ..models.sites_safe import SiteSafe
-from ..models.space_tenants_safe import SpaceTenantSafe
+from ..models.tenant_spaces_safe import TenantSpaceSafe
 from ..models.tenants_safe import TenantSafe
 from shared.core import auth
 from ..models.orgs_safe import OrgSafe
@@ -157,7 +157,7 @@ def create_user(
             facility_db.flush()  # ✅ ensure id generated
 
             # ✅ Create space tenant link
-            space_tenant_link = SpaceTenantSafe(
+            space_tenant_link = TenantSpaceSafe(
                 site_id=user.site_id,
                 space_id=user.space_id,
                 tenant_id=tenant_obj.id,

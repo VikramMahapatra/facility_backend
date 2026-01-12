@@ -42,7 +42,7 @@ class LeaseOut(LeaseBase):
     tenant_name: str
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
-    space_code: Optional[str] = None
+    space_name: Optional[str] = None
     site_name: Optional[str] = None
     space_name: Optional[str] = None
     building_name: Optional[str] = None  # This must be here

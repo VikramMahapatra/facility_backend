@@ -7,7 +7,7 @@ from ...schemas.leases_schemas import LeaseOut
 from shared.core.schemas import CommonQueryParams
 
 
-class SpaceTenantBase(BaseModel):
+class TenantSpaceBase(BaseModel):
     site_id: UUID
     building_block_id: Optional[UUID] = None
     space_id: UUID
@@ -15,10 +15,11 @@ class SpaceTenantBase(BaseModel):
     role: str  # e.g., owner, occupant, etc.
 
 
-class SpaceTenantOut(SpaceTenantBase):
+class TenantSpaceOut(TenantSpaceBase):
     site_name: str = None
     space_name: str = None
-    building_block_name: str = None
+    building_block_name: Optional[str] = None
+    status: str = None
 
 
 class TenantBase(BaseModel):
@@ -33,7 +34,7 @@ class TenantBase(BaseModel):
     type: Optional[str] = None
     legal_name: Optional[str] = None
     # List of space IDs associated with the tenant
-    spaces: Optional[List[SpaceTenantBase]] = None
+    tenant_spaces: Optional[List[TenantSpaceOut]] = None
 
 
 class TenantCreate(TenantBase):
@@ -67,7 +68,7 @@ class TenantOut(BaseModel):
     tenant_leases: Optional[List[LeaseOut]] = None
     legal_name: Optional[str] = None
     # ADD THESE FIELDS FOR DISPLAY
-    spaces: Optional[List[SpaceTenantOut]] = None
+    tenant_spaces: Optional[List[TenantSpaceOut]] = None
 
     model_config = {"from_attributes": True}
 

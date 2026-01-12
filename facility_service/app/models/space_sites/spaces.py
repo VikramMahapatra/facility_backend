@@ -42,7 +42,7 @@ class Space(Base):
                           cascade="all, delete-orphan")
     filters = relationship(
         "SpaceFilter", back_populates="space", cascade="all, delete-orphan")
-    tenant_links = relationship("SpaceTenant", back_populates="space")
+    tenant_links = relationship("TenantSpace", back_populates="space")
 
     leases = relationship("Lease", back_populates="space")
     work_orders = relationship("WorkOrder", back_populates="space")

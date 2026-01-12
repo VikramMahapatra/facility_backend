@@ -34,4 +34,4 @@ class Tenant(Base):
     # relationships
     leases = relationship("Lease", back_populates="tenant")
     tickets = relationship("Ticket", back_populates="tenant")
-    space_links = relationship("SpaceTenant", back_populates="tenant")
+    tenant_spaces = relationship("TenantSpace", back_populates="tenant")

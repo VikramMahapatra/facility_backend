@@ -16,3 +16,7 @@ class TenantSpaceSafe(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey(
         "tenants.id", ondelete="CASCADE"))
     role = Column(String(16), nullable=False)  # owner | occupant
+    status = Column(
+        String(16),
+        default="pending"  # pending | current | past
+    )

@@ -55,12 +55,10 @@ def create_tenant_endpoint(
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
-     _ : UserToken = Depends(allow_admin)
+    _: UserToken = Depends(allow_admin)
 
 ):
-    # Assign org_id from current user if needed
-    # tenant.org_id = current_user.org_id  # Uncomment if your Tenant model has org_id
-    return crud.create_tenant(db,auth_db, tenant)
+    return crud.create_tenant(db, auth_db, current_user.org_id, tenant)
 
 
 # ----------------- Update Tenant -----------------
@@ -70,9 +68,9 @@ def update_tenant(
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
-    _ : UserToken = Depends(allow_admin)
+    _: UserToken = Depends(allow_admin)
 ):
-    return crud.update_tenant(db,auth_db, update_data.id, update_data)
+    return crud.update_tenant(db, auth_db, current_user.org_id, update_data.id, update_data)
 
 
 # ---------------- Delete Tenant ----------------
@@ -82,7 +80,7 @@ def delete_tenant_route(
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
-): return crud.delete_tenant(db,auth_db, tenant_id)
+): return crud.delete_tenant(db, auth_db, tenant_id)
 
 # ----------------  Type Lookup ----------------
 
@@ -105,7 +103,6 @@ def tenant_status_lookup_endpoint(
     return crud.tenant_status_lookup(db, current_user.org_id)
 
 
-
 # Add to app/routes/leasing_tenants/tenants_router.py
 
 @router.get("/by-site-space")
@@ -119,7 +116,7 @@ def get_tenants_by_site_and_space(
     Get tenants filtered by both site_id and space_id
     """
     tenants = crud.get_tenants_by_site_and_space(db, site_id, space_id)
-    
+
     # If you're using success_response wrapper
     return success_response(
         data=tenants,  # This should be a list

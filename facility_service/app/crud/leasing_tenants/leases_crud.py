@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
 
+from facility_service.app.models.leasing_tenants.space_tenants import SpaceTenant
 from facility_service.app.models.space_sites.buildings import Building
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.utils.enums import UserAccountType
@@ -75,7 +76,6 @@ def get_overview(db: Session, user: UserToken, params: LeaseRequest):
         db.query(Lease)
         .join(Site, Site.id == Lease.site_id)
         .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
-        .outerjoin(CommercialPartner, CommercialPartner.id == Lease.partner_id)
         .filter(*build_filters(user.org_id, params))
     )
     if allowed_space_ids is not None:
@@ -143,7 +143,6 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
         db.query(Lease)
         .join(Site, Site.id == Lease.site_id)
         .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
-        .outerjoin(CommercialPartner, CommercialPartner.id == Lease.partner_id)
         .outerjoin(Space, Space.id == Lease.space_id)  # Add Space join
         .outerjoin(Building, Building.id == Space.building_block_id)  # Add Building join through Space
         .filter(*build_filters(user.org_id, params))
@@ -157,13 +156,9 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
 
     leases = []
     for row in rows:
-        tenant_name = None
-        if row.partner is not None:
-            tenant_name = row.partner.legal_name
-        elif row.tenant is not None:
-            tenant_name = row.tenant.name
-        else:
-            tenant_name = "Unknown"
+        tenant_name = "Unknown"  
+        if row.tenant:
+            tenant_name = row.tenant.legal_name or row.tenant.name
 
         space_code = None
         site_name = None
@@ -227,36 +222,111 @@ def get_by_id(db: Session, lease_id: str) -> Optional[Lease]:
         .first()
     )
 
+# Create new lease with space validation
 
-# ----------------------------------------------------
-# ✅ Create new lease with space validation
-# ----------------------------------------------------
+
 def create(db: Session, payload: LeaseCreate) -> Lease:
-    if payload.kind == "commercial" and not payload.partner_id:
-        raise ValueError("partner_id is required for commercial leases")
-    if payload.kind == "residential" and not payload.tenant_id:
-        raise ValueError("tenant_id is required for residential leases")
+    # -------------------------------------------------
+    # 0️⃣ Basic payload validation
+    # -------------------------------------------------
+    if not payload.tenant_id:
+        raise ValueError("tenant_id is required")
 
-    # ✅ STRICT VALIDATION: Check if space already has ANY lease (active OR inactive)
-    existing_any_lease = db.query(Lease).filter(
-        Lease.space_id == payload.space_id,
-        Lease.is_deleted == False
-        # NO status filter - check ALL leases regardless of status
-        # NO kind filter - check BOTH commercial and residential
+    yesterday = date.today() - timedelta(days=1)
+
+    # -------------------------------------------------
+    # 1️⃣ Fetch & validate tenant
+    # -------------------------------------------------
+    tenant = db.query(Tenant).filter(
+        Tenant.id == payload.tenant_id,
+        Tenant.is_deleted == False,
+        Tenant.status == "active"
     ).first()
 
-    if existing_any_lease:
+    if not tenant:
+        raise ValueError("Invalid or inactive tenant")
+
+    # Validate tenant kind vs payload kind
+    if payload.kind == "commercial" and tenant.kind != "commercial":
+        raise ValueError("Tenant is not a commercial tenant")
+
+    if payload.kind == "residential" and tenant.kind != "residential":
+        raise ValueError("Tenant is not a residential tenant")
+
+    # -------------------------------------------------
+    # 2️⃣ BLOCK if ACTIVE tenant lease already exists
+    # -------------------------------------------------
+    active_tenant_lease = db.query(Lease).filter(
+        Lease.space_id == payload.space_id,
+        Lease.status == "active",
+        Lease.default_payer == "tenant",
+        Lease.is_deleted == False
+    ).first()
+
+    if active_tenant_lease:
         return error_response(
-            message="This space is already occupied by active tenant."
+            message="Space already has an active tenant lease."
         )
 
-    lease_data = payload.model_dump(exclude={"reference","space_name"})
+    # -------------------------------------------------
+    # 3️⃣ Expire ACTIVE owner lease (if exists)
+    # -------------------------------------------------
+    owner_lease = db.query(Lease).filter(
+        Lease.space_id == payload.space_id,
+        Lease.status == "active",
+        Lease.default_payer == "owner",
+        Lease.is_deleted == False
+    ).first()
 
-    obj = Lease(**lease_data)
-    db.add(obj)
+    if owner_lease:
+        owner_lease.status = "expired"
+        owner_lease.end_date = yesterday
+
+    # -------------------------------------------------
+    # 4️⃣ Expire ACTIVE owner occupancy (if exists)
+    # -------------------------------------------------
+    owner_occupancy = db.query(SpaceTenant).filter(
+        SpaceTenant.space_id == payload.space_id,
+        SpaceTenant.role == "owner",
+        SpaceTenant.is_active == True,
+        SpaceTenant.is_deleted == False
+    ).first()
+
+    if owner_occupancy:
+        owner_occupancy.is_active = False
+        owner_occupancy.end_date = yesterday
+
+    # -------------------------------------------------
+    # 5️⃣ Create TENANT occupancy
+    # -------------------------------------------------
+    tenant_occupancy = SpaceTenant(
+        site_id=payload.site_id,
+        space_id=payload.space_id,
+        tenant_id=payload.tenant_id,
+        role="occupant",
+        start_date=payload.start_date,
+        is_active=True
+    )
+    db.add(tenant_occupancy)
+
+    # -------------------------------------------------
+    # 6️⃣ Create & ACTIVATE tenant lease
+    # -------------------------------------------------
+    lease_data = payload.model_dump(
+        exclude={"reference", "space_name"}
+    )
+
+    lease_data.update({
+        "status": "active",
+        "default_payer": "tenant"
+    })
+
+    lease = Lease(**lease_data)
+    db.add(lease)
+
     db.commit()
-    db.refresh(obj)
-    return obj
+    db.refresh(lease)
+    return lease
 
 
 # ----------------------------------------------------
@@ -268,92 +338,78 @@ def update(db: Session, payload: LeaseUpdate):
         return None
 
     data = payload.model_dump(exclude_unset=True)
+    
+    tenant_id = data.get("tenant_id", obj.tenant_id)
+    kind = data.get("kind", obj.kind)
+
+    if not tenant_id:
+        raise ValueError("tenant_id is required")
+
+    tenant = db.query(Tenant).filter(
+        Tenant.id == tenant_id,
+        Tenant.is_deleted == False,
+        Tenant.status == "active"
+    ).first()
+
+    if not tenant:
+        raise ValueError("Invalid or inactive tenant")
+
+    if kind == "commercial" and tenant.kind != "commercial":
+        raise ValueError("Tenant is not a commercial tenant")
+
+    if kind == "residential" and tenant.kind != "residential":
+        raise ValueError("Tenant is not a residential tenant")
+
 
     # ✅ STRICT VALIDATION: Prevent updating partner_id/tenant_id on the same spaces
-    if 'partner_id' in data or 'tenant_id' in data:
-        # If space is not changing OR we're not changing space_id
-        target_space_id = data.get('space_id', obj.space_id)
+    if "tenant_id" in data or "space_id" in data:
+        target_space_id = data.get("space_id", obj.space_id)
 
         if target_space_id != obj.space_id:
-            existing_active_tenant_in_new_space = db.query(Tenant).filter(
-                Tenant.space_id == target_space_id,
-                Tenant.is_deleted == False,
-                Tenant.status == "active"
+            existing_active_tenant_lease = db.query(Lease).filter(
+                Lease.space_id == target_space_id,
+                Lease.status == "active",
+                Lease.default_payer == "tenant",
+                Lease.is_deleted == False,
+                Lease.id != payload.id
             ).first()
 
-            if existing_active_tenant_in_new_space:
+            if existing_active_tenant_lease:
                 return error_response(
-                    message="This space is already occupied by active tenant."
-                )
-            existing_active_partner_in_new_space = db.query(CommercialPartner).filter(
-                CommercialPartner.space_id == target_space_id,
-                CommercialPartner.is_deleted == False,
-                CommercialPartner.status == "active"
-            ).first()
-
-            if existing_active_partner_in_new_space:
-                return error_response(
-                    message=f"This space is already occupied by an active tenant."
+                    message="This space already has an active tenant lease."
                 )
 
     # ✅ STRICT VALIDATION: Check if space already has ANY lease (active OR inactive)
-    target_space_id = data.get('space_id', obj.space_id)
+    if "space_id" in data and data["space_id"] != obj.space_id:
+        existing_owner_occupancy = db.query(SpaceTenant).filter(
+            SpaceTenant.space_id == data["space_id"],
+            SpaceTenant.role == "owner",
+            SpaceTenant.is_active == True,
+            SpaceTenant.is_deleted == False
+        ).first()
 
-    existing_any_lease = db.query(Lease).filter(
-        Lease.space_id == target_space_id,
-        Lease.is_deleted == False,
-        Lease.id != payload.id  # Exclude current lease
-    ).first()
-
-    if existing_any_lease:
-        return error_response(
-            message="This space is already occupied by active tenant.",
-            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-            http_status=400
-        )
+        if existing_owner_occupancy:
+            return error_response(
+                message="Owner has not vacated the space yet."
+            )
 
     # ✅ If space_id is being changed, validate the new space doesn't have ACTIVE leases
-    if 'space_id' in data and data['space_id'] != obj.space_id:
+    if "space_id" in data and data["space_id"] != obj.space_id:
         existing_active_lease = db.query(Lease).filter(
-            Lease.space_id == data['space_id'],
-            Lease.is_deleted == False,
+            Lease.space_id == data["space_id"],
             Lease.status == "active",
+            Lease.is_deleted == False,
             Lease.id != payload.id
         ).first()
 
         if existing_active_lease:
             return error_response(
-                message="This space is already occupied by active lease",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message="This space is already occupied by an active lease."
             )
 
-    # ✅ If status is being changed to ACTIVE, validate the space doesn't have other ACTIVE leases
-    if 'status' in data and data['status'] == 'active':
-        existing_active_lease = db.query(Lease).filter(
-            Lease.space_id == obj.space_id,
-            Lease.is_deleted == False,
-            Lease.status == "active",  # ONLY check for ACTIVE
-            Lease.id != payload.id  # Exclude current lease
-        ).first()
 
-        if existing_active_lease:
-            return error_response(
-                message="This space is already occupied by active lease.",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
-            )
-
-    kind = data.get("kind", obj.kind)
-    partner_id = data.get("partner_id", obj.partner_id)
-    tenant_id = data.get("tenant_id", obj.tenant_id)
-
-    if kind == "commercial" and "partner_id" in payload.model_fields_set:
-        data["partner_id"] = partner_id
-        data["tenant_id"] = None
-    if kind == "residential" and "tenant_id" in payload.model_fields_set:
-        data["tenant_id"] = tenant_id
-        data["partner_id"] = None
+    if obj.status == "active" and "tenant_id" in data:
+        raise ValueError("Cannot change tenant on an active lease")
 
     for k, v in data.items():
         setattr(obj, k, v)
@@ -418,11 +474,8 @@ def lease_lookup(org_id: UUID, db: Session):
 
     lookups = []
     for lease in leases:
-        base_name = None
-        if lease.partner is not None:
-            base_name = lease.partner.legal_name
-        elif lease.tenant is not None:
-            base_name = lease.tenant.name
+        if lease.tenant is not None:
+            base_name = lease.tenant.legal_name or lease.tenant.name
         else:
             base_name = "Unknown"
 
@@ -453,44 +506,45 @@ def lease_status_lookup(org_id: UUID, db: Session):
         for status in LeaseStatus
     ]
 
-
 def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Session):
-    partners = []
-    if kind.lower() == LeaseKind.commercial:
-        partners = (
-            db.query(
-                CommercialPartner.id,
-                CommercialPartner.legal_name.label("name"),
-            )
-            .join(Site, CommercialPartner.site_id == Site.id)
-            .filter(
-                and_(
-                    Site.org_id == org_id,
-                    CommercialPartner.site_id == site_id,
-                    CommercialPartner.is_deleted == False,
-                    CommercialPartner.status == "active",
-                )
-            )
-            .distinct()
-            .order_by(CommercialPartner.legal_name.asc())
-            .all()
+    # 1️⃣ Subquery: tenants who already have ACTIVE lease
+    leased_tenants = (
+        db.query(Lease.tenant_id)
+        .join(Space, Lease.space_id == Space.id)
+        .join(Site, Space.site_id == Site.id)
+        .filter(
+            Lease.status == "active",
+            Lease.is_deleted == False,
+            Site.org_id == org_id,
         )
-    else:
-        partners = (
-            db.query(Tenant.id, Tenant.name)
-            .filter(
-                and_(
-                    Tenant.site_id == site_id,
-                    Tenant.is_deleted == False,
-                    Tenant.status == "active",
-                )
-            )
-            .distinct()
-            .order_by(Tenant.name.asc())
-            .all()
-        )
+    )
 
-    return partners
+    if site_id:
+        leased_tenants = leased_tenants.filter(Site.id == site_id)
+
+    leased_tenants = leased_tenants.subquery()
+
+    # 2️⃣ Query: tenants of the given kind who are not currently occupying and have no active lease
+    tenants = (
+        db.query(Tenant.id, Tenant.name)
+        .join(SpaceTenant, SpaceTenant.tenant_id == Tenant.id)
+        .join(Space, SpaceTenant.space_id == Space.id)
+        .join(Site, Space.site_id == Site.id)
+        .filter(
+            Site.org_id == org_id,
+            Tenant.kind == kind.lower(),
+            Tenant.status == "active",
+            Tenant.is_deleted == False,
+            SpaceTenant.is_deleted == False,
+            SpaceTenant.is_active == False,      # not physically occupying
+            ~Tenant.id.in_(leased_tenants),      # no active lease
+        )
+        .distinct()
+        .order_by(Tenant.name.asc())
+        .all()
+    )
+
+    return tenants
 
 
 def get_lease_by_id(db: Session, lease_id: str):
@@ -498,16 +552,13 @@ def get_lease_by_id(db: Session, lease_id: str):
         db.query(Lease)
         .join(Site, Site.id == Lease.site_id)
         .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
-        .outerjoin(CommercialPartner, CommercialPartner.id == Lease.partner_id)
         .filter(Lease.id == lease_id)
         .first()
     )
 
     tenant_name = None
-    if lease.partner is not None:
-        tenant_name = lease.partner.legal_name
-    elif lease.tenant is not None:
-        tenant_name = lease.tenant.name
+    if lease.tenant is not None:
+        tenant_name = lease.tenant.name or lease.tenant.legal_name
     else:
         tenant_name = "Unknown"
 

@@ -2,12 +2,13 @@
 from datetime import datetime
 from typing import Dict, Optional, List
 import uuid
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, func, literal, or_, select, case, tuple_
 from uuid import UUID
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
-from ...models.leasing_tenants.space_tenants import SpaceTenant
+from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.helpers.email_helper import EmailHelper
 from shared.helpers.password_generator import generate_secure_password
 from shared.helpers.property_helper import get_allowed_spaces
@@ -29,7 +30,7 @@ from ...models.space_sites.sites import Site
 from ...models.leasing_tenants.leases import Lease
 from ...models.leasing_tenants.tenants import Tenant
 from ...schemas.leasing_tenants.tenants_schemas import (
-    SpaceTenantBase,
+    TenantSpaceBase,
     TenantCreate,
     TenantUpdate,
     TenantOut,
@@ -79,8 +80,8 @@ def get_tenants_overview(db: Session, user: UserToken) -> dict:
                 )
             ).label("active_total"),
         )
-        .join(SpaceTenant, Tenant.id == SpaceTenant.tenant_id)
-        .join(Site, SpaceTenant.site_id == Site.id)
+        .join(TenantSpace, Tenant.id == TenantSpace.tenant_id)
+        .join(Site, TenantSpace.site_id == Site.id)
         .filter(
             Site.org_id == user.org_id,
             Tenant.is_deleted.is_(False),
@@ -89,7 +90,7 @@ def get_tenants_overview(db: Session, user: UserToken) -> dict:
     )
 
     if allowed_space_ids is not None:
-        query = query.filter(SpaceTenant.space_id.in_(allowed_space_ids))
+        query = query.filter(TenantSpace.space_id.in_(allowed_space_ids))
 
     result = query.one()
 
@@ -131,29 +132,38 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
             Tenant.vehicle_info,
             Tenant.contact,
             Tenant.updated_at.label("sort_field"),
-
-            func.json_agg(
-                func.distinct(
-                    func.json_build_object(
-                        "site_id", Site.id,
-                        "site_name", Site.name,
-                        "space_id", Space.id,
-                        "space_name", Space.name,
-                        "building_block_id", Building.id,
-                        "building_block_name", Building.name,
-                        "role", SpaceTenant.role
+            func.coalesce(
+                func.jsonb_agg(
+                    func.distinct(
+                        func.jsonb_build_object(
+                            "site_id", Site.id,
+                            "site_name", Site.name,
+                            "space_id", Space.id,
+                            "space_name", Space.name,
+                            "building_block_id", Building.id,
+                            "building_block_name", Building.name,
+                            "role", TenantSpace.role,
+                            "status", TenantSpace.status
+                        )
                     )
-                )
-            ).label("assignments")
+                ).filter(TenantSpace.id.isnot(None)),
+                literal("[]").cast(JSONB)
+            ).label("tenant_spaces")
         )
-        .join(SpaceTenant, SpaceTenant.tenant_id == Tenant.id)
-        .join(Site, Site.id == SpaceTenant.site_id)
-        .outerjoin(Space, Space.id == SpaceTenant.space_id)
+        .select_from(Tenant)
+        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+        .join(
+            Site,
+            and_(
+                Site.id == TenantSpace.site_id,
+                Site.org_id == user.org_id,
+                Site.is_deleted.is_(False),
+            )
+        )
+        .join(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
         .filter(
-            Site.org_id == user.org_id,
             Tenant.is_deleted.is_(False),
-            Site.is_deleted.is_(False),
         )
         .group_by(
             Tenant.id,
@@ -174,7 +184,7 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
 
     if allowed_space_ids is not None:
         tenant_query = tenant_query.filter(
-            SpaceTenant.space_id.in_(allowed_space_ids)
+            TenantSpace.space_id.in_(allowed_space_ids)
         )
 
     if params.status and params.status.lower() != "all":
@@ -233,13 +243,13 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
             record["contact_info"] = contact
 
         record["tenant_leases"] = get_tenant_leases(
-            db, user.org_id, record.get("id"), record.get("kind"))
+            db, user.org_id, record.get("id"))
         results.append(TenantOut.model_validate(record))
 
     return {"tenants": results, "total": total}
 
 
-def get_tenant_detail(db: Session, tenant_id: str) -> TenantOut:
+def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
     tenant = (
         db.query(
             Tenant.id.label("id"),
@@ -255,30 +265,32 @@ def get_tenant_detail(db: Session, tenant_id: str) -> TenantOut:
             Tenant.vehicle_info,
             Tenant.contact,
             Tenant.updated_at.label("sort_field"),
-
             # 🔥 Multi-site / multi-space assignments
-            func.json_agg(
-                func.distinct(
-                    func.json_build_object(
-                        "site_id", Site.id,
-                        "site_name", Site.name,
-                        "space_id", Space.id,
-                        "space_name", Space.name,
-                        "building_block_id", Building.id,
-                        "building_block_name", Building.name,
-                        "role", SpaceTenant.role
+            func.coalesce(
+                func.jsonb_agg(
+                    func.distinct(
+                        func.jsonb_build_object(
+                            "site_id", Site.id,
+                            "site_name", Site.name,
+                            "space_id", Space.id,
+                            "space_name", Space.name,
+                            "building_block_id", Building.id,
+                            "building_block_name", Building.name,
+                            "role", TenantSpace.role,
+                            "status", TenantSpace.status
+                        )
                     )
-                )
-            ).label("assignments"),
+                ).filter(TenantSpace.id.isnot(None)),
+                literal("[]").cast(JSONB)
+            ).label("tenant_spaces")
         )
-        .join(SpaceTenant, SpaceTenant.tenant_id == Tenant.id)
-        .join(Site, Site.id == SpaceTenant.site_id)
-        .outerjoin(Space, Space.id == SpaceTenant.space_id)
+        .select_from(Tenant)
+        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+        .join(Site, Site.id == TenantSpace.site_id)
+        .join(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
         .filter(
-            Tenant.id == tenant_id,
-            Tenant.is_deleted.is_(False),
-            Site.is_deleted.is_(False),
+            Tenant.id == tenant_id
         )
         .group_by(
             Tenant.id,
@@ -302,7 +314,7 @@ def get_tenant_detail(db: Session, tenant_id: str) -> TenantOut:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     record = dict(tenant._mapping)
-    record["assignments"] = record["assignments"] or []
+    record["tenant_spaces"] = record["tenant_spaces"] or []
 
     # ✅ Unified contact_info logic
     if record["kind"] == "residential":
@@ -329,60 +341,54 @@ def get_tenant_detail(db: Session, tenant_id: str) -> TenantOut:
     # ✅ Tenant leases (same as list API)
     record["tenant_leases"] = get_tenant_leases(
         db,
-        record.get("id"),
-        record.get("kind"),
+        org_id,
+        record.get("id")
     )
 
     return TenantOut.model_validate(record)
 
 
-def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str, tenant_type: str) -> List[LeaseOut]:
+def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str) -> List[LeaseOut]:
     # SHOW ACTIVE LEASES ONLY
-    query = db.query(Lease).filter(
-        Lease.org_id == org_id,
-        Lease.is_deleted == False,
-        Lease.status == "active"  # ONLY ACTIVE LEASES
+    lease_rows = (
+        db.query(Lease).filter(
+            Lease.org_id == org_id,
+            Lease.tenant_id == tenant_id,
+            Lease.is_deleted == False,
+            Lease.status == "active"  # ONLY ACTIVE LEASES
+        )
+        .all()
     )
 
-    if tenant_type == "commercial":
-        query = query.filter(Lease.partner_id == tenant_id)
-    else:  # individual
-        query = query.filter(Lease.tenant_id == tenant_id)
-
-    rows = query.all()
-
     leases = []
-    for row in rows:
+    for row in lease_rows:
         tenant_name = None
-        if row.partner is not None:
-            tenant_name = row.partner.legal_name
-        elif row.tenant is not None:
-            tenant_name = row.tenant.name
-        else:
-            tenant_name = "Unknown"
-
-        space_code = None
+        space_name = None
         site_name = None
-        if row.space_id:
-            space_code = db.query(Space.code).filter(
-                Space.id == row.space_id,
-                Space.is_deleted == False
-            ).scalar()
-        if row.site_id:
-            site_name = db.query(Site.name).filter(
-                Site.id == row.site_id,
-                Site.is_deleted == False
-            ).scalar()
-        leases.append(
-            LeaseOut.model_validate(
-                {
-                    **row.__dict__,
-                    "space_code": space_code,
-                    "site_name": site_name,
-                    "tenant_name": tenant_name
-                }
+
+        if row.tenant is not None:
+            tenant_name = row.tenant.name
+
+            if row.space_id:
+                space_name = db.query(Space.name).filter(
+                    Space.id == row.space_id,
+                    Space.is_deleted == False
+                ).scalar()
+            if row.site_id:
+                site_name = db.query(Site.name).filter(
+                    Site.id == row.site_id,
+                    Site.is_deleted == False
+                ).scalar()
+            leases.append(
+                LeaseOut.model_validate(
+                    {
+                        **row.__dict__,
+                        "space_name": space_name,
+                        "site_name": site_name,
+                        "tenant_name": tenant_name
+                    }
+                )
             )
-        )
     return leases
 
 # CRUD
@@ -408,8 +414,8 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
     tenant_id = None
     random_password = None
 
-    if tenant.spaces:
-        validate_active_tenants_for_spaces(db, tenant.spaces)
+    # Validate space assignments
+    validate_active_tenants_for_spaces(db, tenant.tenant_spaces)
 
     # Check for duplicate name (case-insensitive) within the same site
     existing_tenant_by_name = db.query(Tenant).filter(
@@ -487,8 +493,6 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
 
     # Create Tenant
     tenant_data = {
-        "site_id": tenant.site_id,
-        "space_id": tenant.space_id,
         "name": tenant.name,
         "email": tenant.email,
         "phone": tenant.phone,
@@ -506,198 +510,66 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
     }
     db_tenant = Tenant(**tenant_data)
     db.add(db_tenant)
+    db.flush()
+
+    # ASSIGN SPACES
+    for space in tenant.tenant_spaces or []:
+        db_space_assignment = TenantSpace(
+            tenant_id=db_tenant.id,
+            space_id=space.space_id,
+            created_at=now,
+            updated_at=now
+        )
+        db.add(db_space_assignment)
+
     db.commit()
     auth_db.commit()  # ✅ Commit auth_db too
     db.refresh(db_tenant)
 
     tenant_id = db_tenant.id
 
-    return get_tenant_detail(db, tenant_id)
+    return get_tenant_detail(db, org_id, tenant_id)
 
 
-def update_tenant(db: Session, auth_db: Session, tenant_id: UUID, update_data: TenantUpdate):
+def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, update_data: TenantUpdate):
     update_dict = update_data.dict(exclude_unset=True)
     update_dict["updated_at"] = datetime.utcnow()
 
-    if update_data.tenant_type == "individual":
-        db_tenant = get_tenant_by_id(db, tenant_id)
-        if not db_tenant:
+    db_tenant = get_tenant_by_id(db, tenant_id)
+    if not db_tenant:
+        return error_response(
+            message="Tenant not found",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=404
+        )
+
+    # Validate space assignments if provided
+    validate_tenant_space_update(db, tenant_id, update_dict, db_tenant)
+
+    # Check for duplicate name (case-insensitive) if name is being updated
+    if 'name' in update_dict and update_dict['name'] != db_tenant.name:
+        existing_tenant_by_name = db.query(Tenant).filter(
+            Tenant.site_id == db_tenant.site_id,
+            Tenant.id != tenant_id,
+            Tenant.is_deleted == False,
+            func.lower(Tenant.name) == func.lower(update_dict['name'])
+        ).first()
+
+        if existing_tenant_by_name:
             return error_response(
-                message="Tenant not found",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
-                http_status=404
+                message=f"Tenant with name '{update_dict['name']}' already exists in this site",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
             )
-    # Check if trying to update site/building/space when active leases exist
-        location_fields_updated = any(
-            field in update_dict
-            and update_dict[field] != getattr(db_tenant, field)
-            for field in ['site_id', 'building_id', 'space_id']
-        )
 
-        if location_fields_updated:
-            # Check if tenant has any active leases
-            has_active_leases = db.query(Lease).filter(
-                Lease.tenant_id == tenant_id,
-                Lease.is_deleted == False,
-                func.lower(Lease.status) == func.lower('active')
-            ).first()
-            if has_active_leases:
-                return error_response(
-                    message="Cannot update site, building, or space for a tenant that has active leases"
-                )
-                # Check if space_id is being updated and if new space already has an ACTIVE tenant OR commercial partner
-            if 'space_id' in update_dict and update_dict['space_id'] != db_tenant.space_id:
-                # First check for active individual tenants in the target space
-                existing_active_tenant_in_new_space = db.query(Tenant).filter(
-                    Tenant.space_id == update_dict['space_id'],
-                    Tenant.id != tenant_id,  # Exclude current tenant
-                    Tenant.is_deleted == False,
-                    Tenant.status == "active"
-                ).first()
-
-                if existing_active_tenant_in_new_space:
-                    return error_response(
-                        message=f"This space is already occupied by an active tenant"
-                    )
-
-            # If no active tenant found, then check for active commercial partners
-            existing_active_partner_in_new_space = db.query(CommercialPartner).filter(
-                CommercialPartner.space_id == update_dict['space_id'],
-                CommercialPartner.is_deleted == False,
-                CommercialPartner.status == "active"
-            ).first()
-
-            if existing_active_partner_in_new_space:
-                return error_response(
-                    message=f"This space is already occupied by an active tenant."
-                )
-
-        # Check for duplicate name (case-insensitive) if name is being updated
-        if 'name' in update_dict and update_dict['name'] != db_tenant.name:
-            existing_tenant_by_name = db.query(Tenant).filter(
-                Tenant.site_id == db_tenant.site_id,
-                Tenant.id != tenant_id,
-                Tenant.is_deleted == False,
-                func.lower(Tenant.name) == func.lower(update_dict['name'])
-            ).first()
-
-            if existing_tenant_by_name:
-                return error_response(
-                    message=f"Tenant with name '{update_dict['name']}' already exists in this site",
-                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                    http_status=400
-                )
-        if db_tenant.user_id:
-            user = auth_db.query(Users).filter(
-                Users.id == db_tenant.user_id,
-                Users.is_deleted == False
-            ).first()
-
-            if user:
-                user.full_name = update_dict.get("name", db_tenant.name)
-                user.email = update_dict.get("email", db_tenant.email)
-                user.phone = update_dict.get("phone", db_tenant.phone)
-                user.updated_at = datetime.utcnow()
-
-        # Update Tenant table
-        db.query(Tenant).filter(Tenant.id == tenant_id).update(
-            {
-                "name": update_dict.get("name", db_tenant.name),
-                "email": update_dict.get("email", db_tenant.email),
-                "phone": update_dict.get("phone", db_tenant.phone),
-                "status": update_dict.get("status", db_tenant.status),
-                "space_id": update_dict.get("space_id", db_tenant.space_id),
-                "address": (
-                    update_dict.get("contact_info", {}).get("address")
-                    if update_dict.get("contact_info")
-                    else db_tenant.address
-                ),
-                # ✅
-                "family_info": update_dict.get("family_info", db_tenant.family_info),
-                # ✅
-                "vehicle_info": update_dict.get("vehicle_info", db_tenant.vehicle_info),
-                "updated_at": datetime.utcnow(),
-            }
-        )
-# ----------------------------------------------for none building block id-------------changed
-        if 'building_block_id' in update_dict:
-            new_building_id = update_dict["building_block_id"]
-            if not new_building_id:  # covers None, "", or falsy values
-                new_building_id = None
-            db.query(Space).filter(
-                Space.id == update_dict.get("space_id", db_tenant.space_id)
-            ).update({
-                "building_block_id": new_building_id
-            })
-        auth_db.commit()  # ✅ ADD THIS LINE
-        db.commit()
-        db.refresh(db_tenant)
-
-    elif update_data.tenant_type == "commercial":
-        db_partner = get_commercial_partner_by_id(db, tenant_id)
-        if not db_partner:
-            return error_response(
-                message="Commercial partner not found",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
-                http_status=404
-            )
-    # Check if trying to update site/building/space when active leases exist
-        location_fields_updated = any(
-            field in update_dict
-            and update_dict[field] != getattr(db_partner, field)
-            for field in ['site_id', 'building_id', 'space_id']
-        )
-
-        if location_fields_updated:
-            # Check if commercial partner has any active leases
-            has_active_leases = db.query(Lease).filter(
-                Lease.partner_id == tenant_id,
-                Lease.is_deleted == False,
-                func.lower(Lease.status) == func.lower('active')
-            ).first()
-
-            if has_active_leases:
-                return error_response(
-                    message="Cannot update site, building, or space for a commercial partner that has active leases"
-                )
-
-            # ✅ Check if space_id is being updated and if new space already has an ACTIVE commercial partner OR tenant
-            if 'space_id' in update_dict and update_dict['space_id'] != db_partner.space_id:
-                # First check for active commercial partners in the target space
-                existing_active_partner_in_new_space = db.query(CommercialPartner).filter(
-                    CommercialPartner.space_id == update_dict['space_id'],
-                    CommercialPartner.id != tenant_id,  # Exclude current partner
-                    CommercialPartner.is_deleted == False,
-                    CommercialPartner.status == "active"
-                ).first()
-
-                if existing_active_partner_in_new_space:
-                    return error_response(
-                        message=f"This space is already occupied by an active tenant."
-                    )
-
-            # If no active commercial partner found, then check for active tenants
-            existing_active_tenant_in_new_space = db.query(Tenant).filter(
-                Tenant.space_id == update_dict['space_id'],
-                Tenant.is_deleted == False,
-                Tenant.status == "active"
-            ).first()
-
-            if existing_active_tenant_in_new_space:
-                return error_response(
-                    message=f"This space is already occupied by an active tenant"
-                )
-
-        # Check for duplicate legal_name (case-insensitive) if being updated
+    if update_dict.get("kind") == "commercial":
         new_legal_name = update_dict.get(
             "legal_name") or update_dict.get("name")
-        if new_legal_name and new_legal_name != db_partner.legal_name:
-            existing_partner_by_name = db.query(CommercialPartner).filter(
-                CommercialPartner.site_id == db_partner.site_id,
-                CommercialPartner.id != tenant_id,
-                CommercialPartner.is_deleted == False,
-                func.lower(CommercialPartner.legal_name) == func.lower(
-                    new_legal_name)
+        if new_legal_name and new_legal_name != db_tenant.legal_name:
+            existing_partner_by_name = db.query(Tenant).filter(
+                Tenant.id != tenant_id,
+                Tenant.is_deleted == False,
+                func.lower(Tenant.legal_name) == func.lower(new_legal_name)
             ).first()
 
             if existing_partner_by_name:
@@ -706,39 +578,45 @@ def update_tenant(db: Session, auth_db: Session, tenant_id: UUID, update_data: T
                     status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                     http_status=400
                 )
-        if db_partner.user_id:
-            user = auth_db.query(Users).filter(
-                Users.id == db_partner.user_id,
-                Users.is_deleted == False
-            ).first()
 
-            if user:
-                contact_info = update_dict.get(
-                    "contact_info") or db_partner.contact or {}
-                user.full_name = update_dict.get(
-                    "legal_name", db_partner.legal_name)
-                user.email = contact_info.get("email", user.email)
-                user.phone = contact_info.get("phone", user.phone)
-                user.updated_at = datetime.utcnow()
+    if db_tenant.user_id:
+        user = auth_db.query(Users).filter(
+            Users.id == db_tenant.user_id,
+            Users.is_deleted == False
+        ).first()
 
-        # Update commercial partner
-        if db_partner:
-            db_partner.legal_name = update_dict.get(
-                "legal_name", db_partner.legal_name)
-            db_partner.type = update_dict.get("type", db_partner.type)
-            db_partner.space_id = update_dict.get(
-                "space_id", db_partner.space_id)
-            db_partner.contact = update_dict.get(
-                "contact_info") or db_partner.contact
-            db_partner.status = update_dict.get("status", db_partner.status)
-            if 'vehicle_info' in update_dict:
-                db_partner.vehicle_info = update_dict['vehicle_info']
-            db_partner.updated_at = datetime.utcnow()
+        if user:
+            user.full_name = update_dict.get("name", db_tenant.name)
+            user.email = update_dict.get("email", db_tenant.email)
+            user.phone = update_dict.get("phone", db_tenant.phone)
+            user.updated_at = datetime.utcnow()
 
-        auth_db.commit()  # ✅ ADD THIS LINE
+        # Update Tenant table
+        db.query(Tenant).filter(Tenant.id == tenant_id).update(
+            {
+                "name": update_dict.get("name", db_tenant.name),
+                "kind": update_dict.get("kind", db_tenant.kind),
+                "email": update_dict.get("email", db_tenant.email),
+                "phone": update_dict.get("phone", db_tenant.phone),
+                "status": update_dict.get("status", db_tenant.status),
+                "address": (
+                    update_dict.get("contact_info", {}).get("address")
+                    if update_dict.get("contact_info")
+                    else db_tenant.address
+                ),
+                "family_info": update_dict.get("family_info", db_tenant.family_info),
+                "vehicle_info": update_dict.get("vehicle_info", db_tenant.vehicle_info),
+                "commercial_type": update_dict.get("type", db_tenant.commercial_type),
+                "legal_name": update_dict.get("legal_name", db_tenant.legal_name),
+                "contact": update_dict.get("contact_info") or db_tenant.contact,
+                "updated_at": datetime.utcnow(),
+            }
+        )
+
+        auth_db.commit()
         db.commit()
 
-    return get_tenant_detail(db, tenant_id)
+    return get_tenant_detail(db, org_id, tenant_id)
 
 
 # ----------------- Delete Tenant -----------------
@@ -884,13 +762,13 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
             Tenant.id,
             Tenant.name,
         )
-        .join(SpaceTenant, SpaceTenant.tenant_id == Tenant.id)
+        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
         .filter(
-            SpaceTenant.site_id == site_id,
-            SpaceTenant.space_id == space_id,
+            TenantSpace.site_id == site_id,
+            TenantSpace.space_id == space_id,
             Tenant.is_deleted == False,
             Tenant.status == "active",
-            SpaceTenant.is_active == True
+            TenantSpace.is_active == True
         )
         .all()
     )
@@ -905,43 +783,82 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
 
 def validate_active_tenants_for_spaces(
     db: Session,
-    spaces: list[SpaceTenantBase],
+    spaces: list[TenantSpaceBase],
+    exclude_tenant_id: UUID | None = None,
 ):
-    # Build (space_id, role) pairs from request
-    space_role_pairs = [(s.space_id, s.role) for s in spaces]
-
-    if not space_role_pairs:
-        return
-
-    existing = (
-        db.query(
-            SpaceTenant.space_id,
-            SpaceTenant.role,
-            Tenant.id.label("tenant_id"),
-            Tenant.name.label("tenant_name"),
-        )
-        .join(Tenant, Tenant.id == SpaceTenant.tenant_id)
-        .filter(
-            SpaceTenant.is_active.is_(True),
-            Tenant.status == "active",
-            Tenant.is_deleted.is_(False),
-            tuple_(SpaceTenant.space_id, SpaceTenant.role).in_(
-                space_role_pairs),
-        )
-        .all()
-    )
-
-    if existing:
-        conflicts = [
-            {
-                "space_id": row.space_id,
-                "role": row.role,
-                "tenant_id": row.tenant_id,
-                "tenant_name": row.tenant_name,
-            }
-            for row in existing
-        ]
-
+    if not spaces or len(spaces) == 0:
         return error_response(
-            message="One or more spaces already have an active tenant with the same role"
+            message="At least one tenant space is required"
         )
+
+    for ts in spaces:
+        if not ts.space_id:
+            return error_response(
+                message="Invalid space provided"
+            )
+
+        query = (
+            db.query(TenantSpace)
+            .join(Tenant, Tenant.id == TenantSpace.tenant_id)
+            .filter(
+                TenantSpace.space_id == ts.space_id,
+                TenantSpace.is_deleted.is_(False),
+                TenantSpace.status == "current",
+                Tenant.is_deleted.is_(False),
+                Tenant.status == "active",
+            )
+        )
+
+        # Role-based protection (only one owner etc.)
+        if ts.role:
+            query = query.filter(TenantSpace.role == ts.role)
+
+        if exclude_tenant_id:
+            query = query.filter(TenantSpace.tenant_id != exclude_tenant_id)
+
+        if query.first():
+            return error_response(
+                message="One or more spaces already have an active tenant with the same role"
+            )
+
+
+def validate_tenant_space_update(
+    db: Session,
+    tenant_id: UUID,
+    update_dict: dict,
+    db_tenant: Tenant,
+):
+    if "tenant_spaces" not in update_dict:
+        return error_response(
+            message="At least one tenant space is required"
+        )
+
+    existing_space_ids = {
+        ts.space_id for ts in db_tenant.tenant_spaces if ts.space_id
+    }
+
+    incoming_space_ids = {
+        ts["space_id"]
+        for ts in update_dict.get("tenant_spaces", [])
+        if ts.get("space_id")
+    }
+
+    if existing_space_ids != incoming_space_ids:
+        has_active_leases = db.query(Lease).filter(
+            Lease.tenant_id == tenant_id,
+            Lease.is_deleted.is_(False),
+            func.lower(Lease.status) == "active",
+        ).first()
+
+        if has_active_leases:
+            return error_response(
+                message="Cannot change tenant spaces while active leases exist"
+            )
+
+    # 🔥 Delegate occupancy check
+    return validate_active_tenants_for_spaces(
+        db=db,
+        spaces=[TenantSpaceBase(**ts)
+                for ts in update_dict.get("tenant_spaces", [])],
+        exclude_tenant_id=tenant_id,
+    )

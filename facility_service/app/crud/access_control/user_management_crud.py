@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from typing import Dict, List, Optional
 
-from auth_service.app.models.space_tenants_safe import SpaceTenantSafe
+from auth_service.app.models.tenant_spaces_safe import TenantSpaceSafe
 from auth_service.app.models.roles import Roles
 from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
 from facility_service.app.models.leasing_tenants.lease_charges import LeaseCharge
@@ -357,7 +357,7 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             facility_db.flush()  # ✅ ensure id generated
 
             # ✅ Create space tenant link
-            space_tenant_link = SpaceTenantSafe(
+            space_tenant_link = TenantSpaceSafe(
                 site_id=user.site_id,
                 space_id=user.space_id,
                 tenant_id=tenant_obj.id,

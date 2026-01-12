@@ -74,12 +74,12 @@ def lease_lookup(
     return crud.lease_lookup(current_user.org_id, db)
 
 
-@router.get("/kind-lookup", response_model=List[Lookup])
-def lease_kind_lookup(
+@router.get("/default-payer-lookup", response_model=List[Lookup])
+def lease_default_payer_lookup(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.lease_kind_lookup(current_user.org_id, db)
+    return crud.lease_default_payer_lookup(current_user.org_id, db)
 
 
 @router.get("/status-lookup", response_model=List[Lookup])
@@ -92,9 +92,8 @@ def lease_status_lookup(
 
 @router.get("/partner-lookup", response_model=List[Lookup])
 def lease_partner_lookup(
-    kind: str = Query(),
     site_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.lease_partner_lookup(current_user.org_id, kind, site_id, db)
+    return crud.lease_partner_lookup(current_user.org_id, site_id, db)

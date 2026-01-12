@@ -18,7 +18,6 @@ class LeaseChargeBase(BaseModel):
     charge_code_id: Optional[UUID] = None
 
 
-
 class LeaseChargeCreate(LeaseChargeBase):
     pass
 
@@ -54,8 +53,9 @@ class LeaseChargeOut(BaseModel):
     lease_end: Optional[date] = None
     rent_amount: Optional[Decimal] = None
     tax_amount: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
     tax_code_id: Optional[UUID]
-    tax_rate: Optional[Decimal]
+    tax_pct: Optional[Decimal]
     period_days: Optional[int] = None
     created_at: Optional[datetime] = None
     payer_type: str  # owner | occupant | split

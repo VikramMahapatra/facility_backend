@@ -419,14 +419,13 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
 
     # Check for duplicate name (case-insensitive) within the same site
     existing_tenant_by_name = db.query(Tenant).filter(
-        Tenant.site_id == tenant.site_id,
         Tenant.is_deleted == False,
         func.lower(Tenant.name) == func.lower(tenant.name)
     ).first()
 
     if existing_tenant_by_name:
         return error_response(
-            message=f"Tenant with name '{tenant.name}' already exists in this site",
+            message=f"Tenant with name '{tenant.name}' already exists",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
@@ -496,6 +495,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         "name": tenant.name,
         "email": tenant.email,
         "phone": tenant.phone,
+        "kind": tenant.kind,
         "address": (tenant.contact_info or {}).get("address"),
         "family_info": tenant.family_info if tenant.kind == "residential" else None,
         "commercial_type": tenant.type or "merchant" if tenant.kind == "commercial" else None,
@@ -517,7 +517,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         current_space_status = "pending"
         if space.role == "owner":
             current_space_status = "current" if active_lease_for_occupant_exists(
-                db, tenant_id, space.space_id) else "past"
+                db, db_tenant.id, space.space_id) else "past"
 
         db_space_assignment = TenantSpace(
             tenant_id=db_tenant.id,
@@ -525,19 +525,18 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
             space_id=space.space_id,
             role=space.role,
             status=current_space_status,
-            created_at=now,
-            updated_at=now
+            created_at=now
         )
         db.add(db_space_assignment)
 
         if space.role == "owner":
-            if not active_lease_exists(db, tenant_id, space.space_id):
+            if not active_lease_exists(db, db_tenant.id, space.space_id):
                 db.add(
                     Lease(
                         org_id=org_id,
-                        site_id=db_tenant.site_id,
+                        site_id=space.site_id,
                         space_id=space.space_id,
-                        tenant_id=tenant_id,
+                        tenant_id=db_tenant.id,
                         default_payer="owner",
                         start_date=now.date(),
                         status="inactive" if active_lease_for_occupant_exists(
@@ -575,7 +574,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
     # Check for duplicate name (case-insensitive) if name is being updated
     if 'name' in update_dict and update_dict['name'] != db_tenant.name:
         existing_tenant_by_name = db.query(Tenant).filter(
-            Tenant.site_id == db_tenant.site_id,
             Tenant.id != tenant_id,
             Tenant.is_deleted == False,
             func.lower(Tenant.name) == func.lower(update_dict['name'])
@@ -583,7 +581,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
 
         if existing_tenant_by_name:
             return error_response(
-                message=f"Tenant with name '{update_dict['name']}' already exists in this site",
+                message=f"Tenant with name '{update_dict['name']}' already exists",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
@@ -675,7 +673,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                 ts = active_assignments[space_id]
                 if ts.role != space.role:
                     ts.role = space.role
-                    ts.updated_at = now
                 continue
 
             if space_id in deleted_assignments:
@@ -683,7 +680,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                 ts.is_deleted = False
                 ts.deleted_at = None
                 ts.role = space.role
-                ts.updated_at = now
             else:
                 current_space_status = "pending"
                 if space.role == "owner":
@@ -699,7 +695,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                         status=current_space_status,
                         is_deleted=False,
                         created_at=now,
-                        updated_at=now,
                     )
                 )
 
@@ -708,7 +703,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                     db.add(
                         Lease(
                             org_id=org_id,
-                            site_id=db_tenant.site_id,
+                            site_id=space.site_id,
                             space_id=space_id,
                             tenant_id=tenant_id,
                             default_payer="owner",
@@ -724,8 +719,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
         for space_id, ts in active_assignments.items():
             if space_id not in incoming_space_ids:
                 ts.is_deleted = True
-                ts.deleted_at = now
-                ts.updated_at = now
 
     auth_db.commit()
     db.commit()

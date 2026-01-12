@@ -155,7 +155,6 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
 
     leases = []
     for row in rows:
-        tenant_name = "Unknown"  
         if row.tenant:
             tenant_name = row.tenant.legal_name or row.tenant.name
 
@@ -287,12 +286,12 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
     owner_occupancy = db.query(TenantSpace).filter(
         TenantSpace.space_id == payload.space_id,
         TenantSpace.role == "owner",
-        TenantSpace.is_active == True,
+        TenantSpace.status =="pending",
         TenantSpace.is_deleted == False
     ).first()
 
     if owner_occupancy:
-        owner_occupancy.is_active = False
+        owner_occupancy.status = "past"
         owner_occupancy.end_date = yesterday
 
     # -------------------------------------------------
@@ -304,7 +303,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         tenant_id=payload.tenant_id,
         role="occupant",
         start_date=payload.start_date,
-        is_active=True
+        status = "current"
     )
     db.add(tenant_occupancy)
 
@@ -383,7 +382,7 @@ def update(db: Session, payload: LeaseUpdate):
         existing_owner_occupancy = db.query(TenantSpace).filter(
             TenantSpace.space_id == data["space_id"],
             TenantSpace.role == "owner",
-            TenantSpace.is_active == True,
+            TenantSpace.status == "current",
             TenantSpace.is_deleted == False
         ).first()
 
@@ -475,8 +474,6 @@ def lease_lookup(org_id: UUID, db: Session):
     for lease in leases:
         if lease.tenant is not None:
             base_name = lease.tenant.legal_name or lease.tenant.name
-        else:
-            base_name = "Unknown"
 
         space_name = lease.space.name if lease.space else None
         site_name = lease.site.name if lease.site else None
@@ -535,7 +532,7 @@ def lease_partner_lookup(org_id: UUID, kind: str, site_id: Optional[str], db: Se
             Tenant.status == "active",
             Tenant.is_deleted == False,
             TenantSpace.is_deleted == False,
-            TenantSpace.is_active == False,      # not physically occupying
+            TenantSpace.status == "current",      # not physically occupying
             ~Tenant.id.in_(leased_tenants),      # no active lease
         )
         .distinct()
@@ -558,8 +555,7 @@ def get_lease_by_id(db: Session, lease_id: str):
     tenant_name = None
     if lease.tenant is not None:
         tenant_name = lease.tenant.name or lease.tenant.legal_name
-    else:
-        tenant_name = "Unknown"
+
 
     space_code = None
     site_name = None

@@ -5,6 +5,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
+from ...models.leasing_tenants.tenant_spaces import TenantSpace
+
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 
 from ...models.space_sites.sites import Site
@@ -38,14 +40,14 @@ def get_home_spaces(db: Session, user: UserToken):
         tenant = (
             db.query(Tenant)
             .options(
-                joinedload(Tenant.space).joinedload(Space.site),
-                joinedload(Tenant.space).joinedload(Space.building),
-                joinedload(Tenant.leases).joinedload(
-                    Lease.space).joinedload(Space.site),
-                joinedload(Tenant.leases).joinedload(
-                    Lease.space).joinedload(Space.building),
+                joinedload(Tenant.tenant_spaces)
+                .joinedload(TenantSpace.space)
+                .joinedload(Space.site),
+                joinedload(Tenant.tenant_spaces)
+                .joinedload(TenantSpace.space)
+                .joinedload(Space.building),
             )
-            .filter(Tenant.user_id == user.user_id)
+            .filter(Tenant.user_id == user.user_id, Tenant.is_deleted == False)
             .first()
         )
 
@@ -59,32 +61,27 @@ def get_home_spaces(db: Session, user: UserToken):
         seen_space_ids = set()
 
         # 1️⃣ Registered space
-        if tenant.space:
+        for ts in tenant.tenant_spaces:
+            if ts.is_deleted or not ts.space:
+                continue
+
+            space = ts.space
+            if space.id in seen_space_ids:
+                continue
+
             results.append({
                 "tenant_id": tenant.id,
-                "space_id": tenant.space.id,
-                "is_primary": True,
-                "space_name": tenant.space.name,
-                "site_id": tenant.site_id,
-                "site_name": tenant.space.site.name if tenant.space.site else None,
-                "building_name": tenant.space.building.name if tenant.space.building else None
+                "space_id": space.id,
+                "site_id": ts.site_id or space.site_id,
+                "space_name": space.name,
+                "site_name": space.site.name if space.site else None,
+                "building_name": space.building.name if space.building else None,
+                "role": ts.role,
+                "status": ts.status,
+                "is_primary": ts.role == "owner",
             })
-            seen_space_ids.add(tenant.space.id)
 
-        # 2️⃣ Leased spaces
-        for lease in tenant.leases:
-            space = lease.space
-            if space and space.id not in seen_space_ids:
-                results.append({
-                    "tenant_id": tenant.id,
-                    "space_id": space.id,
-                    "is_primary": False,
-                    "space_name": space.name,
-                    "site_id": space.site_id,
-                    "site_name": space.site.name if space.site else None,
-                    "building_name": space.building.name if space.building else None
-                })
-                seen_space_ids.add(space.id)
+            seen_space_ids.add(space.id)
 
     elif account_type == UserAccountType.STAFF:
         sites = (
@@ -149,29 +146,20 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
     if account_type in (UserAccountType.TENANT, UserAccountType.FLAT_OWNER):
         print("Tenant Type :", tenant_type)
         tenant_id = None
-        partner_id = None
-        if tenant_type == "individual":
-            tenant_id = db.query(Tenant.id).filter(and_(
-                Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
-        elif tenant_type == "commercial":
-            partner_id = db.query(CommercialPartner.id).filter(and_(
-                CommercialPartner.user_id == user.user_id, CommercialPartner.is_deleted == False)).scalar()
+        tenant_id = db.query(Tenant.id).filter(and_(
+            Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
 
         lease_query = (
             db.query(Lease)
             .filter(
                 and_(
                     Lease.space_id == params.space_id,
+                    Lease.tenant_id == tenant_id,
                     Lease.is_deleted == False,
                     Lease.end_date >= date.today()
                 )
             )
         )
-
-        if tenant_id:
-            lease_query = lease_query.filter(Lease.tenant_id == tenant_id)
-        elif partner_id:
-            lease_query = lease_query.filter(Lease.partner_id == partner_id)
 
         lease = lease_query.order_by(Lease.end_date.desc()).first()
 
@@ -182,16 +170,11 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                 .filter(
                     and_(
                         Lease.space_id == params.space_id,
+                        Lease.tenant_id == tenant_id,
                         Lease.is_deleted == False
                     )
                 )
             )
-
-            if tenant_id:
-                lease_query = lease_query.filter(Lease.tenant_id == tenant_id)
-            elif partner_id:
-                lease_query = lease_query.filter(
-                    Lease.partner_id == partner_id)
 
             lease = lease_query.order_by(Lease.end_date.desc()).first()
 

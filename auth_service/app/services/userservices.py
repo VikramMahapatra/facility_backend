@@ -128,7 +128,11 @@ def create_user(
                 )
 
             existing_tenant = facility_db.query(TenantSafe).filter(
-                and_(TenantSafe.space_id == user.space_id, TenantSafe.is_deleted == False)).first()
+                and_(
+                    TenantSafe.space_id == user.space_id,
+                    TenantSafe.role == "occupant",
+                    TenantSafe.is_deleted == False)
+            ).first()
 
             if existing_tenant:
                 return error_response(
@@ -161,7 +165,8 @@ def create_user(
                 site_id=user.site_id,
                 space_id=user.space_id,
                 tenant_id=tenant_obj.id,
-                role="occupant"
+                role="occupant",
+                status="pending"
             )
             facility_db.add(space_tenant_link)
 

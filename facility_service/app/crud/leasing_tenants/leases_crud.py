@@ -45,6 +45,7 @@ def build_filters(org_id: UUID, params: LeaseRequest):
                 Tenant.name.ilike(like),
                 Tenant.legal_name.ilike(like),
                 Site.name.ilike(like),
+                Space.name.ilike(like)
             )
         )
 
@@ -189,7 +190,14 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                 Site.id == row.site_id,
                 Site.is_deleted == False
             ).scalar()
-        
+                # TenantSpace role
+        if row.space_id and row.tenant_id:
+            tenant_role = db.query(TenantSpace.role).filter(
+                TenantSpace.space_id == row.space_id,
+                TenantSpace.tenant_id == row.tenant_id,
+                TenantSpace.is_deleted == False
+            ).scalar()
+            
         leases.append(
             LeaseOut.model_validate(
                 {
@@ -200,6 +208,7 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                     "space_name": space_name,
                     "building_name": building_name,  # Add this
                     "building_block_id": building_block_id,  # Add this
+                    "tenant_role": tenant_role,
                 }
             )
         )

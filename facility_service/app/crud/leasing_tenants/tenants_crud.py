@@ -541,6 +541,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
                         start_date=now.date(),
                         status="inactive" if active_lease_for_occupant_exists(
                             db, tenant_id, space.space_id) else "active",
+                        is_system=True,
                         created_at=now,
                         updated_at=now,
                     )
@@ -692,6 +693,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                             status="inactive"
                             if active_lease_for_occupant_exists(db, tenant_id, space_id)
                             else "active",
+                            is_system=True,
                             created_at=now,
                             updated_at=now,
                         )
@@ -733,6 +735,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                         status="inactive"
                         if active_lease_for_occupant_exists(db, tenant_id, space_id)
                         else "active",
+                        is_system=True,
                         created_at=now,
                         updated_at=now,
                     )
@@ -1021,7 +1024,7 @@ def compute_space_status(db, tenant_id, space_id, role):
         return "pending"
 
     return (
-        "current"
+        "past"
         if active_lease_for_occupant_exists(db, tenant_id, space_id)
-        else "past"
+        else "current"
     )

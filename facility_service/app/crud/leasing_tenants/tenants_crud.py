@@ -547,8 +547,16 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
                     )
                 )
 
+                current_space = (
+                    db.query(Space)
+                    .filter(Space.id == space.space_id)
+                    .first()
+                )
+                current_space.status = "occupied"
+
     if has_owner_space:
         db_tenant.status = TenantStatus.active
+
     else:
         db_tenant.status = TenantStatus.inactive
 
@@ -699,6 +707,13 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                         )
                     )
 
+                    current_space = (
+                        db.query(Space)
+                        .filter(Space.id == space.space_id)
+                        .first()
+                    )
+                    current_space.status = "occupied"
+
                 continue
 
             if space_id in deleted_assignments:
@@ -741,6 +756,13 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                     )
                 )
                 db_tenant.status = TenantStatus.active
+
+                current_space = (
+                    db.query(Space)
+                    .filter(Space.id == space_id)
+                    .first()
+                )
+                current_space.status = "occupied"
 
         # ➖ SOFT DELETE REMOVED
         for space_id, ts in active_assignments.items():

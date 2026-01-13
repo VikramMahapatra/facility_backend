@@ -515,10 +515,8 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
     # ASSIGN SPACES
     has_owner_space = False
     for space in tenant.tenant_spaces or []:
-        current_space_status = "pending"
-        if space.role == "owner":
-            current_space_status = "current" if active_lease_for_occupant_exists(
-                db, db_tenant.id, space.space_id) else "past"
+        current_space_status = compute_space_status(
+            db, db_tenant.id, space.space_id, space.role)
 
         db_space_assignment = TenantSpace(
             tenant_id=db_tenant.id,
@@ -555,7 +553,6 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
 
     db.commit()
     auth_db.commit()  # ✅ Commit auth_db too
-    db.refresh(db_tenant)
     return get_tenant_detail(db, org_id, db_tenant.id)
 
 
@@ -673,40 +670,17 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
 
         # ➕ ADD / RESTORE
         for space_id, space in incoming_map.items():
-            is_new_assignment = False
 
             if space_id in active_assignments:
-                # Update role if changed
                 ts = active_assignments[space_id]
+
                 if ts.role != space.role:
                     ts.role = space.role
-                continue
+                    ts.status = compute_space_status(
+                        db, tenant_id, space_id, space.role)
 
-            if space_id in deleted_assignments:
-                ts = deleted_assignments[space_id]
-                ts.is_deleted = False
-                ts.deleted_at = None
-                ts.role = space.role
-            else:
-                current_space_status = "pending"
-                if space.role == "owner":
-                    current_space_status = "current" if active_lease_for_occupant_exists(
-                        db, tenant_id, space_id) else "past"
-
-                db.add(
-                    TenantSpace(
-                        tenant_id=tenant_id,
-                        space_id=space_id,
-                        site_id=space.site_id,
-                        role=space.role,
-                        status=current_space_status,
-                        is_deleted=False,
-                        created_at=now,
-                    )
-                )
-
-            if space.role == "owner":
-                if not active_lease_exists(db, tenant_id, space_id):
+                # 🔑 Ensure lease exists if role becomes owner
+                if space.role == "owner" and not active_lease_exists(db, tenant_id, space_id):
                     db.add(
                         Lease(
                             org_id=org_id,
@@ -715,12 +689,55 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                             tenant_id=tenant_id,
                             default_payer="owner",
                             start_date=now.date(),
-                            status="inactive" if active_lease_for_occupant_exists(
-                                db, tenant_id, space_id) else "active",
+                            status="inactive"
+                            if active_lease_for_occupant_exists(db, tenant_id, space_id)
+                            else "active",
                             created_at=now,
                             updated_at=now,
                         )
                     )
+
+                continue
+
+            if space_id in deleted_assignments:
+                ts = deleted_assignments[space_id]
+                ts.is_deleted = False
+                ts.deleted_at = None
+                ts.role = space.role
+                ts.status = compute_space_status(
+                    db, tenant_id, space_id, space.role)
+
+            else:
+                ts = TenantSpace(
+                    tenant_id=tenant_id,
+                    space_id=space_id,
+                    site_id=space.site_id,
+                    role=space.role,
+                    status=compute_space_status(
+                        db, tenant_id, space_id, space.role),
+                    is_deleted=False,
+                    created_at=now,
+                )
+                db.add(ts)
+
+            # 🔑 Lease creation for restored / new owner
+            if space.role == "owner" and not active_lease_exists(db, tenant_id, space_id):
+                db.add(
+                    Lease(
+                        org_id=org_id,
+                        site_id=space.site_id,
+                        space_id=space_id,
+                        tenant_id=tenant_id,
+                        default_payer="owner",
+                        start_date=now.date(),
+                        status="inactive"
+                        if active_lease_for_occupant_exists(db, tenant_id, space_id)
+                        else "active",
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                db_tenant.status = TenantStatus.active
 
         # ➖ SOFT DELETE REMOVED
         for space_id, ts in active_assignments.items():
@@ -997,3 +1014,14 @@ def active_lease_for_occupant_exists(db: Session, tenant_id: UUID, space_id: UUI
         Lease.status == "active",
         Lease.is_deleted == False
     ).first() is not None
+
+
+def compute_space_status(db, tenant_id, space_id, role):
+    if role != "owner":
+        return "pending"
+
+    return (
+        "current"
+        if active_lease_for_occupant_exists(db, tenant_id, space_id)
+        else "past"
+    )

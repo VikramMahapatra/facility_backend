@@ -37,6 +37,7 @@ class LeaseUpdate(LeaseBase):
 
 class LeaseOut(LeaseBase):
     id: UUID
+    is_system: bool
     lease_number: str
     tenant_name: str
     default_payer: Optional[str] = None

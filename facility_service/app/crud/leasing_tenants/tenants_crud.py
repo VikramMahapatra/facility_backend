@@ -899,7 +899,8 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
             TenantSpace.space_id == space_id,
             Tenant.is_deleted == False,
             Tenant.status == "active",
-            TenantSpace.is_active == True
+            TenantSpace.status == "current",
+            TenantSpace.is_deleted == False,
         )
         .all()
     )

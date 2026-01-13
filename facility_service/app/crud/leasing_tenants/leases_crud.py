@@ -141,7 +141,14 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
         .join(Site, Site.id == Lease.site_id)
         .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
         .outerjoin(Space, Space.id == Lease.space_id)  # Add Space join
-        .outerjoin(Building, Building.id == Space.building_block_id)  # Add Building join through Space
+        .outerjoin(Building, Building.id == Space.building_block_id)# Add Building join through Space
+        .outerjoin(TenantSpace,
+        and_(
+        TenantSpace.space_id == Lease.space_id,
+        TenantSpace.tenant_id == Lease.tenant_id,
+        TenantSpace.is_deleted == False
+        ))
+
         .filter(*build_filters(user.org_id, params))
         .order_by(Lease.updated_at.desc())  # ✅ ADD THIS LINE - NEWEST FIRST
     )
@@ -191,12 +198,16 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                 Site.is_deleted == False
             ).scalar()
                 # TenantSpace role
-        if row.space_id and row.tenant_id:
-            tenant_role = db.query(TenantSpace.role).filter(
-                TenantSpace.space_id == row.space_id,
-                TenantSpace.tenant_id == row.tenant_id,
-                TenantSpace.is_deleted == False
-            ).scalar()
+        tenant_role = None
+
+        tenant_space = db.query(TenantSpace.role).filter(
+            TenantSpace.space_id == row.space_id,
+            TenantSpace.tenant_id == row.tenant_id,
+            TenantSpace.is_deleted == False
+        ).first()
+
+        if tenant_space:
+            tenant_role = tenant_space.role
             
         leases.append(
             LeaseOut.model_validate(

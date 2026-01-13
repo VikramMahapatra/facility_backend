@@ -541,6 +541,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
                         start_date=now.date(),
                         status="inactive" if active_lease_for_occupant_exists(
                             db, tenant_id, space.space_id) else "active",
+                        is_system=True,
                         created_at=now,
                         updated_at=now,
                     )
@@ -692,6 +693,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                             status="inactive"
                             if active_lease_for_occupant_exists(db, tenant_id, space_id)
                             else "active",
+                            is_system=True,
                             created_at=now,
                             updated_at=now,
                         )
@@ -733,6 +735,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                         status="inactive"
                         if active_lease_for_occupant_exists(db, tenant_id, space_id)
                         else "active",
+                        is_system=True,
                         created_at=now,
                         updated_at=now,
                     )
@@ -899,7 +902,8 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
             TenantSpace.space_id == space_id,
             Tenant.is_deleted == False,
             Tenant.status == "active",
-            TenantSpace.is_active == True
+            TenantSpace.status == "current",
+            TenantSpace.is_deleted == False,
         )
         .all()
     )
@@ -1021,7 +1025,7 @@ def compute_space_status(db, tenant_id, space_id, role):
         return "pending"
 
     return (
-        "current"
+        "past"
         if active_lease_for_occupant_exists(db, tenant_id, space_id)
-        else "past"
+        else "current"
     )

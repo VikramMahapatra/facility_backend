@@ -343,16 +343,6 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             # Update space status → occupied
             space.status = "occupied"
 
-            # Update tenant status → active (if has active lease)
-            active_lease_count = db.query(Lease).filter(
-                Lease.tenant_id == tenant.id,
-                Lease.status == "active",
-                Lease.is_deleted == False
-            ).count()
-
-            if active_lease_count > 0:
-                tenant.status = "active"
-
         # Create the lease record (always)
 
         lease_data = payload.model_dump(exclude={"reference", "space_name"})
@@ -363,6 +353,16 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
         lease = Lease(**lease_data)
         db.add(lease)
+
+        db.flush() 
+        if lease_status == "active":
+            active_lease_count = db.query(Lease).filter(
+                Lease.tenant_id == tenant.id,
+                Lease.status == "active",
+                Lease.is_deleted == False
+            ).count()
+
+            tenant.status = "active" if active_lease_count > 0 else tenant.status
 
 
         # Commit and return
@@ -382,6 +382,7 @@ def update(db: Session, payload: LeaseUpdate):
         if not obj:
             return None
 
+        old_space_id = obj.space_id 
         data = payload.model_dump(exclude_unset=True)
         tenant_id = data.get("tenant_id", obj.tenant_id)
         target_space_id = data.get("space_id", obj.space_id)
@@ -465,42 +466,48 @@ def update(db: Session, payload: LeaseUpdate):
                 TenantSpace.tenant_id != tenant_id
             ).update({"status": "past"})
 
+            
             #  Handle old occupancy if tenant moved to a new space
-            if target_space_id != obj.space_id:
+            if old_space_id != target_space_id:
                 old_occupancy = db.query(TenantSpace).filter(
-                    TenantSpace.space_id == obj.space_id,
+                    TenantSpace.space_id == old_space_id,
                     TenantSpace.tenant_id == tenant_id,
                     TenantSpace.role == "occupant",
+                    TenantSpace.status == "current",
                     TenantSpace.is_deleted == False
                 ).first()
+
                 if old_occupancy:
                     old_occupancy.status = "past"
 
         # SYNC TENANT OCCUPANCY BASED ON LEASE STATUS
-        occupancy = db.query(TenantSpace).filter(
-            TenantSpace.space_id == target_space_id,
-            TenantSpace.tenant_id == tenant_id,
-            TenantSpace.role == "occupant",
-            TenantSpace.is_deleted == False
-        ).first()
+        if obj.status != "draft":
 
-        if obj.status == "active":
-            if occupancy:
-                occupancy.status = "current"
-            else:
-                db.add(TenantSpace(
-                    site_id=obj.site_id,
-                    space_id=target_space_id,
-                    tenant_id=tenant_id,
-                    role="occupant",
-                    status="current"
-                ))
+            occupancy = db.query(TenantSpace).filter(
+                TenantSpace.space_id == target_space_id,
+                TenantSpace.tenant_id == tenant_id,
+                TenantSpace.role == "occupant",
+                TenantSpace.is_deleted == False
+            ).first()
 
-        elif obj.status in ("expired", "terminated"):
-            if occupancy:
-                occupancy.status = "past"
+            if obj.status == "active":
+                if occupancy:
+                    occupancy.status = "current"
+                else:
+                    db.add(TenantSpace(
+                        site_id=obj.site_id,
+                        space_id=target_space_id,
+                        tenant_id=tenant_id,
+                        role="occupant",
+                        status="current"
+                    ))
 
-        # UPDATE SPACE STATUS
+            elif obj.status in ("expired", "terminated"):
+                if occupancy:
+                    occupancy.status = "past"
+
+
+        # UPDATE TARGET SPACE STATUS (DERIVED FROM ACTIVE LEASES)
         space = db.query(Space).filter(
             Space.id == target_space_id,
             Space.is_deleted == False
@@ -509,10 +516,35 @@ def update(db: Session, payload: LeaseUpdate):
         if not space:
             return error_response(message="Invalid space")
 
-        if obj.status == "active":
-            space.status = "occupied"
-        elif obj.status in ("expired", "terminated"):
-            space.status = "available"
+        active_lease_exists = db.query(Lease).filter(
+            Lease.space_id == target_space_id,
+            Lease.status == "active",
+            Lease.is_deleted == False
+        ).count() > 0
+
+        space.status = "occupied" if active_lease_exists else "available"
+
+
+        # UPDATE OLD SPACE STATUS IF SPACE CHANGED
+        if old_space_id != target_space_id:
+            old_space = db.query(Space).filter(
+                Space.id == old_space_id,
+                Space.is_deleted == False
+            ).first()
+
+            if old_space:
+                old_active_exists = db.query(Lease).filter(
+                    Lease.space_id == old_space_id,
+                    Lease.status == "active",
+                    Lease.is_deleted == False
+                ).count() > 0
+
+                old_space.status = "occupied" if old_active_exists else "available"
+
+
+        # ✅ FLUSH AFTER ALL SPACE UPDATES
+        db.flush()
+
 
         # SYNC TENANT STATUS (DERIVED FROM ACTIVE LEASES)
         active_lease_count = db.query(Lease).filter(
@@ -522,6 +554,7 @@ def update(db: Session, payload: LeaseUpdate):
         ).count()
 
         tenant.status = "active" if active_lease_count > 0 else "inactive"
+
 
         db.commit()
         db.refresh(obj)

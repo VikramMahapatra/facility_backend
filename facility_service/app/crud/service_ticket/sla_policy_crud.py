@@ -406,6 +406,7 @@ def contact_lookup(db: Session, auth_db: Session, org_id: UUID, site_id: Optiona
     org_users = (
         auth_db.query(Users.id, Users.full_name)
         .filter(
+            Users.org_id == org_id,
             Users.account_type == "organization",
             Users.status == "active",
             Users.is_deleted == False

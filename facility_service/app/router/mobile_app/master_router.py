@@ -18,14 +18,14 @@ router = APIRouter(
 
 @router.post("/site-lookup", response_model=List[Lookup])
 def site_lookup(params: SiteRequest = None, db: Session = Depends(get_db)):
-    return site_crud.get_site_lookup(db, None, params)
+    return site_crud.get_site_master_lookup(db, params)
 
 
 @router.post("/building-lookup", response_model=List[Lookup])
 def building_lookup(params: MasterQueryParams = None, db: Session = Depends(get_db)):
-    return building_block_crud.get_building_lookup(db, params.site_id, None)
+    return building_block_crud.get_building_master_lookup(db, params.site_id)
 
 
 @router.post("/space-lookup", response_model=List[Lookup])
 def space_lookup(params: MasterQueryParams = None, db: Session = Depends(get_db)):
-    return spaces_crud.get_space_lookup(db, params.site_id, params.building_id, None)
+    return spaces_crud.get_space_master_lookup(db, params.site_id, params.building_id)

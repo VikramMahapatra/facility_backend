@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
+from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.core.schemas import UserToken
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.utils.app_status_code import AppStatusCode
@@ -102,11 +103,11 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
         if not allowed_space_ids:
             return {"spaces": [], "total": 0}
     base_query = get_space_query(db, user.org_id, params)
-    
-        # APPLY TENANT FILTER HERE
+
+    # APPLY TENANT FILTER HERE
     if allowed_space_ids is not None:
         base_query = base_query.filter(Space.id.in_(allowed_space_ids))
-        
+
     query = (
         base_query
         .join(Building, Space.building_block_id == Building.id, isouter=True)
@@ -142,30 +143,29 @@ def create_space(db: Session, space: SpaceCreate):
     # Check for duplicate space code within the same building (case-insensitive)
     if space.building_block_id:
         existing_space = db.query(Space).filter(
-            and_(  Space.building_block_id == space.building_block_id,
-            Space.is_deleted == False,
-            # Case-insensitive code within same building
-            or_ (func.lower(Space.code) == func.lower(space.code),
-                 func.lower(Space.name) == func.lower(space.name))
-        )).first()
-        
+            and_(Space.building_block_id == space.building_block_id,
+                 Space.is_deleted == False,
+                 # Case-insensitive code within same building
+                 or_(func.lower(Space.code) == func.lower(space.code),
+                     func.lower(Space.name) == func.lower(space.name))
+                 )).first()
+
     else:
-        existing_space=db.query(Space).filter(
+        existing_space = db.query(Space).filter(
             and_(or_(func.lower(Space.name) == func.lower(space.name),
                  func.lower(Space.code) == func.lower(space.code)),
-            Space.is_deleted==False,
-        )).first()
+                 Space.is_deleted == False,
+                 )).first()
 
     if existing_space:
         return error_response(
-                message=f"Space with code/name already exists ",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
-            )
-    
+            message=f"Space with code/name already exists ",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
 
-    # Create space - exclude building_block 
-    space.building_block_id =space.building_block_id if space.building_block_id else None
+    # Create space - exclude building_block
+    space.building_block_id = space.building_block_id if space.building_block_id else None
     space_data = space.model_dump(exclude={"building_block"})
     db_space = Space(**space_data)
     db.add(db_space)
@@ -185,7 +185,7 @@ def update_space(db: Session, space: SpaceUpdate):
 
     update_data = space.model_dump(
         exclude_unset=True, exclude={"building_block"})
-        # Convert empty UUID strings to None---------------------changed
+    # Convert empty UUID strings to None---------------------changed
     for field in ["building_block_id"]:
         if update_data.get(field) == "":
             update_data[field] = None
@@ -203,54 +203,61 @@ def update_space(db: Session, space: SpaceUpdate):
 
     if site_changed or building_changed:
         # Check if space has any active tenants
-        has_tenants = db.query(Tenant).filter(
-            Tenant.space_id == space.id,
-            Tenant.is_deleted == False
-        ).first()
-        
+        has_tenants = (
+            db.query(TenantSpace).filter(
+                TenantSpace.space_id == space.id,
+                TenantSpace.status == 'current',
+                TenantSpace.is_deleted == False
+            ).first()
+        )
+
         # Check if space has any active leases
         has_leases = db.query(Lease).filter(
             Lease.space_id == space.id,
             Lease.is_deleted == False,
-            func.lower(Lease.status) == func.lower('active') 
+            func.lower(Lease.status) == func.lower('active')
         ).first()
 
         if has_tenants or has_leases:
             return error_response(
                 message="Cannot update site or building for a space that has tenants or leases"
             )
-    building_id = update_data.get("building_block_id", db_space.building_block_id)
+    building_id = update_data.get(
+        "building_block_id", db_space.building_block_id)
 
     if building_id:
         existing_space = db.query(Space).filter(
-            and_(  Space.building_block_id == building_id,
-            Space.is_deleted == False,
-            Space.id != space.id,  
-            or_(
-                func.lower(Space.code) == func.lower(update_data.get("code", "")),
-                func.lower(Space.name) == func.lower(update_data.get("name", ""))
-            )
-        )).first()
-        
+            and_(Space.building_block_id == building_id,
+                 Space.is_deleted == False,
+                 Space.id != space.id,
+                 or_(
+                     func.lower(Space.code) == func.lower(
+                         update_data.get("code", "")),
+                     func.lower(Space.name) == func.lower(
+                         update_data.get("name", ""))
+                 )
+                 )).first()
+
     else:
         existing_space = db.query(Space).filter(
-        and_(
-            or_(
-                func.lower(Space.code) == func.lower(update_data.get("code", "")),
-                func.lower(Space.name) == func.lower(update_data.get("name", ""))
-            ),
-            Space.is_deleted == False,
-            Space.id != space.id  
-        )
-    ).first()
-
+            and_(
+                or_(
+                    func.lower(Space.code) == func.lower(
+                        update_data.get("code", "")),
+                    func.lower(Space.name) == func.lower(
+                        update_data.get("name", ""))
+                ),
+                Space.is_deleted == False,
+                Space.id != space.id
+            )
+        ).first()
 
     if existing_space:
         return error_response(
-                message=f"Space with code/name already exists ",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
-            )
+            message=f"Space with code/name already exists ",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            http_status=400
+        )
 
     # Update space
     for key, value in update_data.items():
@@ -260,8 +267,8 @@ def update_space(db: Session, space: SpaceUpdate):
         db.commit()
         db.refresh(db_space)
 
-        
-        building_name = db_space.building.name if db_space.building_block_id else None# Joined building name ------changed
+        # Joined building name ------changed
+        building_name = db_space.building.name if db_space.building_block_id else None
         data = {**db_space.__dict__, "building_block": building_name}
 
         return SpaceOut.model_validate(data)
@@ -281,11 +288,11 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
 
     # Check if there are any ACTIVE tenants associated with this space
     active_tenants = (
-        db.query(Tenant)
+        db.query(TenantSpace)
         .filter(
-            Tenant.space_id == space_id,
-            Tenant.is_deleted == False,
-            Tenant.status.in_(["active", "pending"])  # Active status tenants
+            TenantSpace.space_id == space_id,
+            TenantSpace.is_deleted == False,
+            TenantSpace.status == "current"  # Active status tenants
         )
         .first()
     )
@@ -330,7 +337,12 @@ def get_space_lookup(db: Session, site_id: str, building_id: str, user: UserToke
         )
         .join(Site, Space.site_id == Site.id)
         .outerjoin(Building, Space.building_block_id == Building.id)
-        .filter(Space.is_deleted == False)
+        .filter(Space.is_deleted == False ,
+                Site.is_deleted == False,
+                Site.status == "active",
+                Building.is_deleted == False,
+                Building.status == "active"
+                )
         .order_by(Space.name.asc())
     )
 
@@ -358,7 +370,9 @@ def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
         )
         .join(Building, Space.building_block_id == Building.id)
         # Updated filter
-        .filter(Space.org_id == org_id, Space.is_deleted == False)
+        .filter(Site.is_deleted == False, Site.status == "active",
+                Space.org_id == org_id, Space.is_deleted == False,
+                Building.is_deleted == False, Building.status == "active")
         .order_by(Space.name.asc())
     )
 

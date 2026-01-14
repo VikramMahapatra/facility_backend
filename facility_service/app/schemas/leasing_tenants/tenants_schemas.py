@@ -50,6 +50,7 @@ class TenantRequest(BaseModel):
     limit: int = 10
     status: Optional[str] = None
     type: Optional[str] = "merchant"
+    tenant_id: Optional[UUID] = None
 
 
 class TenantOut(BaseModel):

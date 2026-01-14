@@ -42,6 +42,7 @@ class Lease(Base):
                         server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False, nullable=False)
+    is_system = Column(Boolean, default=False, nullable=False)
 
     # relationships
     tenant = relationship("Tenant", back_populates="leases")

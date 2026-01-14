@@ -25,6 +25,15 @@ router = APIRouter(
     dependencies=[Depends(validate_current_token)],
 )
 
+
+@router.post("/detail", response_model=TenantListResponse)
+def tenant_detail(
+    params: TenantRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_tenant_detail(db=db, org_id=current_user.org_id, tenant_id=params.tenant_id)
+
 # ------------all
 
 

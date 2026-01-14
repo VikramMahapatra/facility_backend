@@ -21,7 +21,7 @@ class UserToken(BaseModel):
     # added for service request in lease_partner_lookup
     role_ids: Optional[List[str]] = None
     status: Optional[str] = None
-    exp: int
+    exp: Optional[int] = None
 
 
 class CommonQueryParams(EmptyStringModel):

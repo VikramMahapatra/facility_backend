@@ -32,7 +32,7 @@ def tenant_detail(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_tenant_detail(db=db, user=current_user, tenant_id=params.tenant_id)
+    return crud.get_tenant_detail(db=db, org_id=current_user.org_id, tenant_id=params.tenant_id)
 
 # ------------all
 

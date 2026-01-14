@@ -379,13 +379,26 @@ def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str) -> List[LeaseOu
                     Site.id == row.site_id,
                     Site.is_deleted == False
                 ).scalar()
+
+            tenant_role = None
+
+            tenant_space = db.query(TenantSpace.role).filter(
+                TenantSpace.space_id == row.space_id,
+                TenantSpace.tenant_id == row.tenant_id,
+                TenantSpace.is_deleted == False
+            ).first()
+
+            if tenant_space:
+                tenant_role = tenant_space.role
+
             leases.append(
                 LeaseOut.model_validate(
                     {
                         **row.__dict__,
                         "space_name": space_name,
                         "site_name": site_name,
-                        "tenant_name": tenant_name
+                        "tenant_name": tenant_name,
+                        "tenant_role": tenant_role
                     }
                 )
             )
@@ -547,13 +560,6 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
                     )
                 )
 
-                current_space = (
-                    db.query(Space)
-                    .filter(Space.id == space.space_id)
-                    .first()
-                )
-                current_space.status = "occupied"
-
     if has_owner_space:
         db_tenant.status = TenantStatus.active
 
@@ -707,13 +713,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                         )
                     )
 
-                    current_space = (
-                        db.query(Space)
-                        .filter(Space.id == space.space_id)
-                        .first()
-                    )
-                    current_space.status = "occupied"
-
                 continue
 
             if space_id in deleted_assignments:
@@ -757,17 +756,24 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                 )
                 db_tenant.status = TenantStatus.active
 
-                current_space = (
-                    db.query(Space)
-                    .filter(Space.id == space_id)
-                    .first()
-                )
-                current_space.status = "occupied"
-
         # ➖ SOFT DELETE REMOVED
         for space_id, ts in active_assignments.items():
             if space_id not in incoming_space_ids:
                 ts.is_deleted = True
+
+            tenant_lease = (
+                db.query(Lease)
+                .filter(
+                    Lease.tenant_id == tenant_id,
+                    Lease.space_id == space_id,
+                    Lease.is_deleted == False
+                )
+                .first()
+            )
+            if tenant_lease:
+                tenant_lease.status = "expired"
+                tenant_lease.updated_at = datetime.utcnow()
+                tenant_lease.end_date = datetime.utcnow().date()
 
     auth_db.commit()
     db.commit()
@@ -824,8 +830,9 @@ def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
             db.query(Lease).filter(
                 Lease.id.in_(lease_ids)
             ).update({
-                "is_deleted": True,
-                "updated_at": now
+                "status": "expired",
+                "end_date": datetime.utcnow().date(),
+                "updated_at": datetime.utcnow()
             }, synchronize_session=False)
 
             # ✅ 3. SOFT DELETE ALL LEASE CHARGES FOR THOSE LEASES
@@ -835,6 +842,15 @@ def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
             ).update({
                 "is_deleted": True
             }, synchronize_session=False)
+
+        # ✅ 4. UPDATE TENANT SPACES TO EXPIRED
+        db.query(TenantSpace).filter(
+            TenantSpace.tenant_id == tenant_id,
+            TenantSpace.is_deleted == False
+        ).update({
+            "status": "past",
+            "is_deleted": True
+        }, synchronize_session=False)
 
         db.commit()
         auth_db.commit()  # ✅ Commit auth_db changes

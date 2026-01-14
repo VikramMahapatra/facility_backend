@@ -68,7 +68,7 @@ def get_overview(db: Session, user: UserToken, params: LeaseRequest):
                 "expiringSoon": 0,
                 "avgLeaseTermMonths": 0.0,
             }
-            
+
     base = (
         db.query(Lease)
         .join(Site, Site.id == Lease.site_id)
@@ -141,13 +141,14 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
         .join(Site, Site.id == Lease.site_id)
         .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
         .outerjoin(Space, Space.id == Lease.space_id)  # Add Space join
-        .outerjoin(Building, Building.id == Space.building_block_id)# Add Building join through Space
+        # Add Building join through Space
+        .outerjoin(Building, Building.id == Space.building_block_id)
         .outerjoin(TenantSpace,
-        and_(
-        TenantSpace.space_id == Lease.space_id,
-        TenantSpace.tenant_id == Lease.tenant_id,
-        TenantSpace.is_deleted == False
-        ))
+                   and_(
+                       TenantSpace.space_id == Lease.space_id,
+                       TenantSpace.tenant_id == Lease.tenant_id,
+                       TenantSpace.is_deleted == False
+                   ))
 
         .filter(*build_filters(user.org_id, params))
         .order_by(Lease.updated_at.desc())  # ✅ ADD THIS LINE - NEWEST FIRST
@@ -179,36 +180,35 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                 Space.id == row.space_id,
                 Space.is_deleted == False
             ).first()
-            
+
             if space_details:
                 space_code = space_details.code
                 space_name = space_details.name
                 building_block_id = space_details.building_block_id
-                
+
                 # Get building name if building_block_id exists
                 if building_block_id:
                     building_name = db.query(Building.name).filter(
                         Building.id == building_block_id,
                         Building.is_deleted == False
                     ).scalar()
-        
+
         if row.site_id:
             site_name = db.query(Site.name).filter(
                 Site.id == row.site_id,
                 Site.is_deleted == False
             ).scalar()
-                # TenantSpace role
+            # TenantSpace role
         tenant_role = None
 
         tenant_space = db.query(TenantSpace.role).filter(
             TenantSpace.space_id == row.space_id,
-            TenantSpace.tenant_id == row.tenant_id,
-            TenantSpace.is_deleted == False
+            TenantSpace.tenant_id == row.tenant_id
         ).first()
 
         if tenant_space:
             tenant_role = tenant_space.role
-            
+
         leases.append(
             LeaseOut.model_validate(
                 {
@@ -238,6 +238,8 @@ def get_by_id(db: Session, lease_id: str) -> Optional[Lease]:
     )
 
 # Create new lease with space validation
+
+
 def create(db: Session, payload: LeaseCreate) -> Lease:
     try:
         yesterday = date.today() - timedelta(days=1)
@@ -245,7 +247,6 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         if not payload.tenant_id:
             return error_response(message="tenant_id is required")
 
-      
         # 1 Fetch & validate tenant
         tenant = db.query(Tenant).filter(
             Tenant.id == payload.tenant_id,
@@ -269,10 +270,9 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
         #  Determine lease status
         lease_status = payload.status or "draft"
-        
-        
+
         # If active, enforce business rules / system actions
-        
+
         if lease_status == "active":
 
             # BLOCK if active tenant lease already exists
@@ -354,7 +354,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         lease = Lease(**lease_data)
         db.add(lease)
 
-        db.flush() 
+        db.flush()
         if lease_status == "active":
             active_lease_count = db.query(Lease).filter(
                 Lease.tenant_id == tenant.id,
@@ -363,7 +363,6 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             ).count()
 
             tenant.status = "active" if active_lease_count > 0 else tenant.status
-
 
         # Commit and return
         db.commit()
@@ -382,7 +381,7 @@ def update(db: Session, payload: LeaseUpdate):
         if not obj:
             return None
 
-        old_space_id = obj.space_id 
+        old_space_id = obj.space_id
         data = payload.model_dump(exclude_unset=True)
         tenant_id = data.get("tenant_id", obj.tenant_id)
         target_space_id = data.get("space_id", obj.space_id)
@@ -401,7 +400,6 @@ def update(db: Session, payload: LeaseUpdate):
 
         if tenant.kind not in ("commercial", "residential"):
             return error_response(message="Invalid tenant kind")
-
 
         # Prevent multiple active tenant leases on the target space
         existing_active_tenant_lease = db.query(Lease).filter(
@@ -423,11 +421,9 @@ def update(db: Session, payload: LeaseUpdate):
         ):
             return error_response("Cannot change tenant on an active lease")
 
-
         # Update lease fields
         for k, v in data.items():
             setattr(obj, k, v)
-
 
         # SIDE EFFECTS WHEN LEASE IS ACTIVE
         if obj.status == "active":
@@ -466,7 +462,6 @@ def update(db: Session, payload: LeaseUpdate):
                 TenantSpace.tenant_id != tenant_id
             ).update({"status": "past"})
 
-            
             #  Handle old occupancy if tenant moved to a new space
             if old_space_id != target_space_id:
                 old_occupancy = db.query(TenantSpace).filter(
@@ -506,7 +501,6 @@ def update(db: Session, payload: LeaseUpdate):
                 if occupancy:
                     occupancy.status = "past"
 
-
         # UPDATE TARGET SPACE STATUS (DERIVED FROM ACTIVE LEASES)
         space = db.query(Space).filter(
             Space.id == target_space_id,
@@ -524,7 +518,6 @@ def update(db: Session, payload: LeaseUpdate):
 
         space.status = "occupied" if active_lease_exists else "available"
 
-
         # UPDATE OLD SPACE STATUS IF SPACE CHANGED
         if old_space_id != target_space_id:
             old_space = db.query(Space).filter(
@@ -541,10 +534,8 @@ def update(db: Session, payload: LeaseUpdate):
 
                 old_space.status = "occupied" if old_active_exists else "available"
 
-
         # ✅ FLUSH AFTER ALL SPACE UPDATES
         db.flush()
-
 
         # SYNC TENANT STATUS (DERIVED FROM ACTIVE LEASES)
         active_lease_count = db.query(Lease).filter(
@@ -554,7 +545,6 @@ def update(db: Session, payload: LeaseUpdate):
         ).count()
 
         tenant.status = "active" if active_lease_count > 0 else "inactive"
-
 
         db.commit()
         db.refresh(obj)
@@ -622,13 +612,13 @@ def lease_lookup(org_id: UUID, db: Session):
     for lease in leases:
         if lease.tenant is not None:
             base_name = lease.tenant.legal_name or lease.tenant.name
-            lease_no = lease.lease_number or "" 
+            lease_no = lease.lease_number or ""
         else:
-            continue  
+            continue
         space_name = lease.space.name if lease.space else None
         site_name = lease.site.name if lease.site else None
 
-        parts = [ lease_no,base_name]
+        parts = [lease_no, base_name]
         if space_name:
             parts.append(space_name)
         if site_name:
@@ -652,29 +642,30 @@ def lease_status_lookup(org_id: UUID, db: Session):
         for status in LeaseStatus
     ]
 
+
 def lease_partner_lookup(org_id: UUID, site_id: Optional[str], db: Session):
     tenants = (
-            db.query(
-                Tenant.id,
-                Tenant.legal_name,
-                Tenant.name
-            )
-            .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
-            .join(Site, Site.id == TenantSpace.site_id)
-            .filter(
-                Site.org_id == org_id,                 
-                Tenant.is_deleted == False,
-                TenantSpace.is_deleted == False,
-                TenantSpace.role == "occupant",       
-                TenantSpace.site_id == site_id,        
-            )
-            .distinct()
-            .order_by(
-                Tenant.legal_name.asc().nulls_last(),
-                Tenant.name.asc()
-            )
-            .all()
+        db.query(
+            Tenant.id,
+            Tenant.legal_name,
+            Tenant.name
         )
+        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+        .join(Site, Site.id == TenantSpace.site_id)
+        .filter(
+            Site.org_id == org_id,
+            Tenant.is_deleted == False,
+            TenantSpace.is_deleted == False,
+            TenantSpace.role == "occupant",
+            TenantSpace.site_id == site_id,
+        )
+        .distinct()
+        .order_by(
+            Tenant.legal_name.asc().nulls_last(),
+            Tenant.name.asc()
+        )
+        .all()
+    )
 
     return tenants
 
@@ -692,7 +683,6 @@ def get_lease_by_id(db: Session, lease_id: str):
     if lease.tenant is not None:
         tenant_name = lease.tenant.name or lease.tenant.legal_name
 
-
     space_code = None
     site_name = None
     space_name = None
@@ -709,19 +699,19 @@ def get_lease_by_id(db: Session, lease_id: str):
             Space.id == lease.space_id,
             Space.is_deleted == False
         ).first()
-        
+
         if space_details:
             space_code = space_details.code
             space_name = space_details.name
             building_block_id = space_details.building_block_id
-            
+
             # Get building name if building_block_id exists
             if building_block_id:
                 building_name = db.query(Building.name).filter(
                     Building.id == building_block_id,
                     Building.is_deleted == False
                 ).scalar()
-    
+
     if lease.site_id:
         site_name = db.query(Site.name).filter(
             Site.id == lease.site_id,

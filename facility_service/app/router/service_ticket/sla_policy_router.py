@@ -97,7 +97,7 @@ def get_user_contact_lookup(
     auth_db: Session = Depends(get_auth_db),  
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.contact_lookup(db, auth_db, site_id)
+    return crud.contact_lookup(db, auth_db, current_user.org_id, site_id)
 
 
 

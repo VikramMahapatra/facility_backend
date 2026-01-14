@@ -350,7 +350,7 @@ def service_category_lookup(db: Session, site_id: Optional[str] = None) -> List[
     ]
 
 # ---------------- Contact Lookup (for both default and escalation) ----------------
-def contact_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None) -> List[Lookup]:
+def contact_lookup(db: Session, auth_db: Session, org_id: UUID, site_id: Optional[str] = None) -> List[Lookup]:
     """
     Fetch contacts for a given site.
     Includes:
@@ -364,6 +364,7 @@ def contact_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None)
     staff_sites = (
         db.query(StaffSite.user_id, StaffSite.staff_role)
         .filter(
+            StaffSite.org_id == org_id,
             StaffSite.site_id == site_id,
             StaffSite.is_deleted == False
         )

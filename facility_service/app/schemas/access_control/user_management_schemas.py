@@ -4,6 +4,8 @@ from datetime import datetime
 from uuid import UUID
 from enum import Enum
 
+
+from ...schemas.leasing_tenants.tenants_schemas import TenantSpaceOut
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from ...schemas.access_control.role_management_schemas import RoleOut
 from shared.core.schemas import CommonQueryParams
@@ -20,11 +22,16 @@ class UserBase(EmptyStringModel):
     role_ids: Optional[List[str]] = []
     password :Optional[str]=None
 
+class UserTenantSpace(BaseModel):
+    site_id: UUID
+    space_id: UUID
+    role: str  # "owner" | "occupant"
 
 class UserCreate(UserBase):
-    site_id: Optional[UUID] = None
+    #site_id: Optional[UUID] = None
     tenant_type: Optional[str] = None
-    space_id: Optional[UUID] = None
+    tenant_spaces: Optional[List[UserTenantSpace]] = None
+    #space_id: Optional[UUID] = None
     site_ids: Optional[List[str]] = []
     staff_role: Optional[str] = None  # ADD HERE - for input only
     pass
@@ -55,6 +62,7 @@ class UserOut(BaseModel):
     tenant_type: Optional[str] = None
     site_ids: Optional[List[UUID]] = None
     staff_role: Optional[str] = None  # ADD THIS LINE
+    tenant_spaces: Optional[List[TenantSpaceOut]] = None
 
 
     model_config = ConfigDict(from_attributes=True)

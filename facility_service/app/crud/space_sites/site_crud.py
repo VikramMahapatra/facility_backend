@@ -380,3 +380,25 @@ def delete_site(db: Session, site_id: str) -> Dict:
     db.commit()
 
     return {"success": True, "message": "Site deleted successfully"}
+
+
+
+def get_site_master_lookup(db: Session, params: Optional[SiteRequest] = None):
+
+    site_query = db.query(Site.id, Site.name).filter(Site.is_deleted == False, Site.status == "active")
+
+    if params and params.search:
+        search_term = f"%{params.search}%"
+        site_query = site_query.filter(
+            or_(Site.name.ilike(search_term), Site.code.ilike(search_term))
+        )
+    site_query = site_query.order_by(Site.name.asc())
+
+    if params:
+        site_query = site_query.group_by(Site.id)
+        if params.skip:
+            site_query = site_query.offset(params.skip)
+        if params.limit:
+            site_query = site_query.limit(params.limit)
+
+    return site_query.all()

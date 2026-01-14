@@ -380,3 +380,31 @@ def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
         space_query = space_query.filter(Space.site_id == site_id)
 
     return space_query.all()
+
+
+
+def get_space_master_lookup(db: Session, site_id: str, building_id: str):
+    space_query = (
+        db.query(
+            Space.id,
+            Space.name
+        )
+        .join(Site, Space.site_id == Site.id)
+        .outerjoin(Building, Space.building_block_id == Building.id)
+        .filter(Space.is_deleted == False ,
+                Site.is_deleted == False,
+                Site.status == "active",
+                Building.is_deleted == False,
+                Building.status == "active"
+                )
+        .order_by(Space.name.asc())
+    )
+
+    if site_id and site_id.lower() != "all":
+        space_query = space_query.filter(Space.site_id == site_id)
+
+    if building_id and building_id.lower() != "all":
+        space_query = space_query.filter(
+            Space.building_block_id == building_id)
+
+    return space_query.all()

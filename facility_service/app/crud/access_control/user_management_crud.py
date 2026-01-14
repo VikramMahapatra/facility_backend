@@ -6,9 +6,12 @@ from typing import Dict, List, Optional
 
 from auth_service.app.models.tenant_spaces_safe import TenantSpaceSafe
 from auth_service.app.models.roles import Roles
+from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists, compute_space_status, validate_active_tenants_for_spaces
+from facility_service.app.enum.leasing_tenants_enum import TenantStatus
 from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
 from facility_service.app.models.leasing_tenants.lease_charges import LeaseCharge
 from facility_service.app.models.leasing_tenants.leases import Lease
+from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.models.users import Users
 from auth_service.app.models.userroles import UserRoles
 from ...models.common.staff_sites import StaffSite
@@ -91,6 +94,8 @@ def get_user(db: Session, user_id: str, facility_db: Session):
     building_block_id = None
     tenant_type = None
     site_ids = []
+    tenant_spaces = []
+
     staff_role = None
 
     # Normalize account_type for case-insensitive comparison
@@ -100,7 +105,9 @@ def get_user(db: Session, user_id: str, facility_db: Session):
     if account_type == "tenant":
         # Check individual tenant: Tenant → Space (no Building join)
         tenant_with_space = (facility_db.query(Tenant, Space)
-                             .join(Space, Space.id == Tenant.space_id)
+                             .select_from(Tenant)
+                             .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+                             .join(Space, Space.id == TenantSpace.space_id)  # ✅ ADD THIS LINE
                              .filter(
             Tenant.user_id == user.id,
             Tenant.is_deleted == False,
@@ -111,9 +118,33 @@ def get_user(db: Session, user_id: str, facility_db: Session):
         if tenant_with_space:
             tenant, space = tenant_with_space
             site_id = space.site_id  # Get site_id from Space
-            space_id = tenant.space_id
+            space_id = space.id  # Get space_id from Space
             building_block_id = space.building_block_id  # Get building_block_id from Space
             tenant_type = "individual"
+
+            # ✅ ONLY ADDITION (THIS WAS MISSING)
+            tenant_spaces_db = (
+                facility_db.query(TenantSpace)
+                .filter(
+                    TenantSpace.tenant_id == tenant.id,
+                    TenantSpace.is_deleted == False
+                )
+                .all()
+            )
+
+            tenant_spaces = []
+            for ts in tenant_spaces_db:
+                space = facility_db.query(Space).filter(
+                    Space.id == ts.space_id,
+                    Space.is_deleted == False
+                ).first()
+
+                tenant_spaces.append({
+                    "site_id": ts.site_id,
+                    "space_id": ts.space_id,
+                    "building_block_id": space.building_block_id if space else None,
+                    "role": ts.role,
+                })
 
     # FOR STAFF USERS - USE FACILITY_DB
     elif account_type == "staff":
@@ -156,7 +187,8 @@ def get_user(db: Session, user_id: str, facility_db: Session):
         building_block_id=building_block_id,
         tenant_type=tenant_type,
         site_ids=site_ids,
-        staff_role=staff_role
+        staff_role=staff_role,
+        tenant_spaces=tenant_spaces   # ✅ ADD THIS LINE ONLY
     )
 
 
@@ -208,7 +240,7 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             raise ValueError("Password is required for user creation")
 
         user_data = user.model_dump(
-            exclude={'roles', 'role_ids', 'site_id', 'space_id', 'site_ids', 'tenant_type', 'staff_role', 'password'})
+            exclude={'roles', 'role_ids', 'site_ids', 'tenant_type','tenant_spaces', 'staff_role', 'password'})
 
         # ✅ SET USERNAME FROM EMAIL (Requirement 1)
         if user.email:
@@ -271,99 +303,119 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                         facility_db.add(staff_site)
 
         elif account_type == "tenant":
-            # ✅ ENHANCED VALIDATION: Check for None and empty strings
-            if not user.site_id or user.site_id == "" or not user.space_id or user.space_id == "":
-                # ✅ ROLLBACK user creation if tenant validation fails
+
+            now = datetime.utcnow()
+            
+
+            if not user.tenant_spaces:
                 db.delete(db_user)
                 db.commit()
-                return error_response(
-                    message="space & Site required for individual tenant"
-                )
+                return error_response("At least one tenant space is required")
 
-            # Check if space already has a tenant
+            validate_active_tenants_for_spaces(
+                facility_db,
+                user.tenant_spaces
+            )
+
             existing_tenant = facility_db.query(Tenant).filter(
-                Tenant.space_id == user.space_id,
-                Tenant.is_deleted == False
+                Tenant.is_deleted == False,
+                func.lower(Tenant.name) == func.lower(user.full_name)
             ).first()
 
             if existing_tenant:
-                # ✅ ROLLBACK user creation if space is occupied
                 db.delete(db_user)
                 db.commit()
                 return error_response(
-                    message="This space is already occupied by an active tenant"
+                    message=f"Tenant with name '{user.full_name}' already exists"
                 )
 
-            # ==== NEW VALIDATION ADDED HERE ====
-            # VALIDATION: Check if space has active leases before creating tenant user
-            if user.space_id:
-                # Check if the space has any active leases
-                has_active_leases = facility_db.query(Lease).filter(
-                    Lease.space_id == user.space_id,
-                    Lease.is_deleted == False,
-                    func.lower(Lease.status) == func.lower('active')
-                ).first()
+            legal_name = None
+            contact_info = None
 
-                if has_active_leases:
-                    # ✅ ROLLBACK user creation if space has active leases
-                    db.delete(db_user)
-                    db.commit()
-                    return error_response(
-                        message="Cannot create tenant user in a space that has active leases"
-                    )
-
-            # ADDITIONAL VALIDATION: Check if building has active leases
-            if user.space_id:
-                # Get the building ID from the space
-                space_record = facility_db.query(Space).filter(
-                    Space.id == user.space_id,
-                    Space.is_deleted == False
-                ).first()
-
-                if space_record and space_record.building_block_id:
-                    # Check if any spaces in this building have active leases
-                    has_building_active_leases = facility_db.query(Lease).join(Space).filter(
-                        Space.building_block_id == space_record.building_block_id,
-                        Lease.is_deleted == False,
-                        func.lower(Lease.status) == func.lower('active')
-                    ).first()
-
-                    if has_building_active_leases:
-                        # ✅ ROLLBACK user creation if building has active leases
-                        db.delete(db_user)
-                        db.commit()
-                        return error_response(
-                            message="Cannot create tenant user in a building that has active leases"
-                        )
+            if user.tenant_type == "commercial":
+                legal_name = user.full_name
+                contact_info = {
+                    "name": user.full_name,
+                    "email": user.email,
+                    "phone": user.phone,
+                    "address": {
+                        "line1": "",
+                        "line2": "",
+                        "city": "",
+                        "state": "",
+                        "pincode": ""
+                    }
+                }
 
             tenant_obj = Tenant(
-                site_id=user.site_id,
-                space_id=user.space_id,
                 name=user.full_name,
                 email=user.email,
                 phone=user.phone,
-                status=user.status,
-                user_id=db_user.id,
                 kind=user.tenant_type,
                 commercial_type="merchant" if user.tenant_type == "commercial" else None,
-                legal_name=user.full_name if user.tenant_type == "commercial" else None,
-                contact={
-                    "name": user.full_name,
-                    "phone": user.phone,
-                    "email": user.email
-                } if user.tenant_type == "commercial" else None,
+                legal_name=legal_name,
+                contact=contact_info,
+                status=TenantStatus.inactive,
+                user_id=db_user.id,
+                created_at=now,
+                updated_at=now,
             )
-            facility_db.add(tenant_obj)
-            facility_db.flush()  # ✅ ensure id generated
 
-            # ✅ Create space tenant link
-            space_tenant_link = TenantSpaceSafe(
-                site_id=user.site_id,
-                space_id=user.space_id,
-                tenant_id=tenant_obj.id,
-                role="occupant"
+            facility_db.add(tenant_obj)
+            facility_db.flush()
+
+            has_owner_space = False
+
+            for space in user.tenant_spaces:
+                site_id = space.site_id
+                space_id = space.space_id
+                role = space.role
+
+                current_space_status = compute_space_status(
+                    facility_db,
+                    tenant_obj.id,
+                    space_id,
+                    role
+                )
+
+                facility_db.add(
+                    TenantSpace(
+                        tenant_id=tenant_obj.id,
+                        site_id=site_id,
+                        space_id=space_id,
+                        role=role,
+                        status=current_space_status,
+                        created_at=now
+                    )
+                )
+
+                if role == "owner":
+                    has_owner_space = True
+                    if not active_lease_exists(
+                        facility_db,
+                        tenant_obj.id,
+                        space_id
+                    ):
+                        facility_db.add(
+                            Lease(
+                                org_id=user.org_id,
+                                site_id=site_id,
+                                space_id=space_id,
+                                tenant_id=tenant_obj.id,
+                                default_payer="owner",
+                                start_date=now.date(),
+                                status="active",
+                                is_system=True,
+                                created_at=now,
+                                updated_at=now,
+                            )
+                        )
+
+            tenant_obj.status = (
+                TenantStatus.active if has_owner_space
+                else TenantStatus.inactive
             )
-            facility_db.add(space_tenant_link)
+
 
         elif account_type == "vendor":
             # Validate vendor-specific fields
@@ -570,27 +622,28 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
     # ======================================================
     # =============== TENANT ACCOUNT UPDATE ================
     # ======================================================
-    elif db_user.account_type.lower() == "tenant":  # -----------CHANGED TO ELIF
-        # ✅ FIXED: Better validation message
-        if not user.site_id or user.site_id == "" or not user.space_id or user.space_id == "":
+    elif db_user.account_type.lower() == "tenant":
+
+        if not user.tenant_spaces or len(user.tenant_spaces) == 0:
             return error_response(
-                message="Space & Site required for tenant",  # Fixed message
+                message="At least one space is required for tenant",
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
             )
 
-        # ✅ FIXED: Check space occupancy
-        if user.space_id:
-            existing_tenant = facility_db.query(Tenant).filter(
-                Tenant.space_id == user.space_id,
-                Tenant.is_deleted == False,
-                Tenant.user_id != db_user.id
-            ).first()
+       # ✅ MULTI-SPACE OCCUPANCY CHECK (CORRECT)
+        if user.tenant_spaces:
+            for ts in user.tenant_spaces:
+                existing_assignment = facility_db.query(TenantSpace).filter(
+                    TenantSpace.space_id == ts.space_id,
+                    TenantSpace.is_deleted == False
+                ).first()
 
-            if existing_tenant:
-                return error_response(
-                    message="This space is already occupied by an active tenant",
-                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
-                )
+                if existing_assignment and existing_assignment.tenant_id != db_user.id:
+                    return error_response(
+                        message="One of the selected spaces is already occupied by an active tenant",
+                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+                    )
+
 
         # ✅ FIXED: Lease validation with better queries
         current_tenant = facility_db.query(Tenant).filter(
@@ -598,8 +651,22 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             Tenant.is_deleted == False
         ).first()
 
+        # ✅ REPLACEMENT: lease safety for multi-space
+        has_active_lease = facility_db.query(Lease).filter(
+            Lease.tenant_id == current_tenant.id,
+            Lease.is_deleted == False,
+            func.lower(Lease.status) == "active"
+        ).first()
+
+        if has_active_lease:
+            return error_response(
+                message="Cannot update tenant spaces while active leases exist"
+            )
+        tenant = current_tenant
+
+
         # Check if site/space is being updated
-        site_changing = user.site_id is not None and (
+        """site_changing = user.site_id is not None and (
             (current_tenant and user.site_id != current_tenant.site_id)
         )
 
@@ -620,31 +687,29 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             if has_active_leases:
                 return error_response(
                     message="Cannot update site or space for a tenant user that has active leases"
-                )
+                )"""
 
-        tenant = facility_db.query(Tenant).filter(
+        """tenant = facility_db.query(Tenant).filter(
             Tenant.user_id == db_user.id
-        ).first()
+        ).first()"""
 
         if tenant:
-            tenant.site_id = user.site_id
-            tenant.space_id = user.space_id  # ✅ This should save now
             tenant.name = user.full_name
             tenant.phone = user.phone
             tenant.email = user.email
             tenant.status = user.status
             tenant.kind = user.tenant_type
-        else:
+        """else:
             tenant = Tenant(
-                site_id=user.site_id,
-                space_id=user.space_id,  # ✅ This should save now
+                #site_id=user.site_id,
+                #space_id=user.space_id,  # ✅ This should save now
                 name=user.full_name,
                 email=user.email,
                 phone=user.phone,
                 status=user.status,
                 user_id=db_user.id,
                 kind=user.tenant_type
-            )
+            )"""
 
         if user.tenant_type == "commercial":
             tenant.legal_name = user.full_name

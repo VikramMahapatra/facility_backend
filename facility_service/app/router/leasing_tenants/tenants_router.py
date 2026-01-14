@@ -26,7 +26,7 @@ router = APIRouter(
 )
 
 
-@router.post("/detail", response_model=TenantListResponse)
+@router.post("/detail", response_model=TenantOut)
 def tenant_detail(
     params: TenantRequest = Depends(),
     db: Session = Depends(get_db),

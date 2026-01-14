@@ -771,7 +771,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                 .first()
             )
             if tenant_lease:
-                tenant_lease.status = "expired"
+                tenant_lease.status = "terminated"
                 tenant_lease.updated_at = datetime.utcnow()
                 tenant_lease.end_date = datetime.utcnow().date()
 
@@ -779,18 +779,6 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
     db.commit()
 
     return get_tenant_detail(db, org_id, tenant_id)
-
-
-# ----------------- Delete Tenant -----------------
-def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
-    """Delete tenant with automatic type detection - DELETES LEASES & CHARGES TOO"""
-
-    # Try individual tenant first
-    tenant = get_tenant_by_id(db, tenant_id)
-    if tenant:
-        return delete_tenant(db, auth_db, tenant_id)
-
-    return {"success": False, "message": "Tenant not found"}
 
 
 def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
@@ -830,7 +818,7 @@ def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
             db.query(Lease).filter(
                 Lease.id.in_(lease_ids)
             ).update({
-                "status": "expired",
+                "status": "terminated",
                 "end_date": datetime.utcnow().date(),
                 "updated_at": datetime.utcnow()
             }, synchronize_session=False)

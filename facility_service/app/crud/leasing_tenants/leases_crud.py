@@ -3,6 +3,8 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
+
+from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from ...models.space_sites.buildings import Building
 from shared.helpers.property_helper import get_allowed_spaces
@@ -389,6 +391,14 @@ def update(db: Session, payload: LeaseUpdate):
         if not tenant_id:
             return error_response(message="tenant_id is required")
 
+        space = db.query(Space).filter(
+            Space.id == target_space_id,
+            Space.is_deleted == False
+        ).first()
+
+        if not space:
+            return error_response(message="Invalid space")
+
         # Validate tenant
         tenant = db.query(Tenant).filter(
             Tenant.id == tenant_id,
@@ -475,6 +485,9 @@ def update(db: Session, payload: LeaseUpdate):
                 if old_occupancy:
                     old_occupancy.status = "past"
 
+            # UPDATE TARGET SPACE STATUS (DERIVED FROM ACTIVE LEASES)
+            space.status = "occupied"
+
         # SYNC TENANT OCCUPANCY BASED ON LEASE STATUS
         if obj.status != "draft":
 
@@ -501,22 +514,9 @@ def update(db: Session, payload: LeaseUpdate):
                 if occupancy:
                     occupancy.status = "past"
 
-        # UPDATE TARGET SPACE STATUS (DERIVED FROM ACTIVE LEASES)
-        space = db.query(Space).filter(
-            Space.id == target_space_id,
-            Space.is_deleted == False
-        ).first()
-
-        if not space:
-            return error_response(message="Invalid space")
-
-        active_lease_exists = db.query(Lease).filter(
-            Lease.space_id == target_space_id,
-            Lease.status == "active",
-            Lease.is_deleted == False
-        ).count() > 0
-
-        space.status = "occupied" if active_lease_exists else "available"
+                space.status = "available"
+        else:
+            space.status = "available"
 
         # UPDATE OLD SPACE STATUS IF SPACE CHANGED
         if old_space_id != target_space_id:
@@ -643,7 +643,12 @@ def lease_status_lookup(org_id: UUID, db: Session):
     ]
 
 
-def lease_partner_lookup(org_id: UUID, site_id: Optional[str], db: Session):
+def lease_tenant_lookup(
+    org_id: UUID,
+    site_id: Optional[str],
+    space_id: Optional[str],
+    db: Session
+):
     tenants = (
         db.query(
             Tenant.id,
@@ -664,10 +669,12 @@ def lease_partner_lookup(org_id: UUID, site_id: Optional[str], db: Session):
             Tenant.legal_name.asc().nulls_last(),
             Tenant.name.asc()
         )
-        .all()
     )
 
-    return tenants
+    if space_id and space_id.lower() != "all":
+        tenants = tenants.filter(TenantSpace.space_id == space_id)
+
+    return tenants.all()
 
 
 def get_lease_by_id(db: Session, lease_id: str):

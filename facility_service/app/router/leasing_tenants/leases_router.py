@@ -34,17 +34,17 @@ def get_lease_overview(
 ):
     return crud.get_overview(db=db, user=current_user, params=params)
 
+
 @router.post("/", response_model=None)
 def create_lease(
     payload: LeaseCreate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
-    _ : UserToken = Depends(allow_admin)
-    
+    _: UserToken = Depends(allow_admin)
+
 ):
     payload.org_id = current_user.org_id
     return crud.create(db, payload)
-    
 
 
 @router.put("/", response_model=None)
@@ -52,7 +52,7 @@ def update_lease(
     payload: LeaseUpdate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
-    _ : UserToken = Depends(allow_admin)
+    _: UserToken = Depends(allow_admin)
 ):
     return crud.update(db, payload)
 
@@ -62,7 +62,7 @@ def delete_lease(
     lease_id: str,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
-): 
+):
     return crud.delete(db, lease_id, current_user.org_id)
 
 
@@ -90,10 +90,11 @@ def lease_status_lookup(
     return crud.lease_status_lookup(current_user.org_id, db)
 
 
-@router.get("/partner-lookup", response_model=List[Lookup])
-def lease_partner_lookup(
+@router.get("/tenant-lookup", response_model=List[Lookup])
+def lease_tenant_lookup(
     site_id: Optional[str] = Query(None),
+    space_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.lease_partner_lookup(current_user.org_id, site_id, db)
+    return crud.lease_tenant_lookup(current_user.org_id, site_id, space_id, db)

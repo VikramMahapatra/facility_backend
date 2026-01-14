@@ -379,13 +379,26 @@ def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str) -> List[LeaseOu
                     Site.id == row.site_id,
                     Site.is_deleted == False
                 ).scalar()
+
+            tenant_role = None
+
+            tenant_space = db.query(TenantSpace.role).filter(
+                TenantSpace.space_id == row.space_id,
+                TenantSpace.tenant_id == row.tenant_id,
+                TenantSpace.is_deleted == False
+            ).first()
+
+            if tenant_space:
+                tenant_role = tenant_space.role
+
             leases.append(
                 LeaseOut.model_validate(
                     {
                         **row.__dict__,
                         "space_name": space_name,
                         "site_name": site_name,
-                        "tenant_name": tenant_name
+                        "tenant_name": tenant_name,
+                        "tenant_role": tenant_role
                     }
                 )
             )
@@ -549,6 +562,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
 
     if has_owner_space:
         db_tenant.status = TenantStatus.active
+
     else:
         db_tenant.status = TenantStatus.inactive
 
@@ -747,22 +761,24 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
             if space_id not in incoming_space_ids:
                 ts.is_deleted = True
 
+            tenant_lease = (
+                db.query(Lease)
+                .filter(
+                    Lease.tenant_id == tenant_id,
+                    Lease.space_id == space_id,
+                    Lease.is_deleted == False
+                )
+                .first()
+            )
+            if tenant_lease:
+                tenant_lease.status = "terminated"
+                tenant_lease.updated_at = datetime.utcnow()
+                tenant_lease.end_date = datetime.utcnow().date()
+
     auth_db.commit()
     db.commit()
 
     return get_tenant_detail(db, org_id, tenant_id)
-
-
-# ----------------- Delete Tenant -----------------
-def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
-    """Delete tenant with automatic type detection - DELETES LEASES & CHARGES TOO"""
-
-    # Try individual tenant first
-    tenant = get_tenant_by_id(db, tenant_id)
-    if tenant:
-        return delete_tenant(db, auth_db, tenant_id)
-
-    return {"success": False, "message": "Tenant not found"}
 
 
 def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
@@ -802,8 +818,9 @@ def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
             db.query(Lease).filter(
                 Lease.id.in_(lease_ids)
             ).update({
-                "is_deleted": True,
-                "updated_at": now
+                "status": "terminated",
+                "end_date": datetime.utcnow().date(),
+                "updated_at": datetime.utcnow()
             }, synchronize_session=False)
 
             # ✅ 3. SOFT DELETE ALL LEASE CHARGES FOR THOSE LEASES
@@ -813,6 +830,15 @@ def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
             ).update({
                 "is_deleted": True
             }, synchronize_session=False)
+
+        # ✅ 4. UPDATE TENANT SPACES TO EXPIRED
+        db.query(TenantSpace).filter(
+            TenantSpace.tenant_id == tenant_id,
+            TenantSpace.is_deleted == False
+        ).update({
+            "status": "past",
+            "is_deleted": True
+        }, synchronize_session=False)
 
         db.commit()
         auth_db.commit()  # ✅ Commit auth_db changes

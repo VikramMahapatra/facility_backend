@@ -371,14 +371,14 @@ def contact_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None)
     )
 
     staff_user_ids = [s.user_id for s in staff_sites if s.user_id]
-
+    unique_staff_user_ids = list(set(staff_user_ids))
     # Step 2: Fetch staff user names from auth_db
     staff_users = []
-    if staff_user_ids:
+    if unique_staff_user_ids:
         users = (
             auth_db.query(Users.id, Users.full_name)
             .filter(
-                Users.id.in_(staff_user_ids),
+                Users.id.in_(unique_staff_user_ids),
                 Users.is_deleted == False,
                 Users.status == "active"
             )
@@ -397,7 +397,7 @@ def contact_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None)
                 id=user_id,
                 name=f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
             )
-            for user_id in staff_user_ids
+            for user_id in unique_staff_user_ids
             if user_id in user_map
         ]
     # Step 3:

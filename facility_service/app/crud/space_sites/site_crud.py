@@ -65,18 +65,15 @@ def get_sites(db: Session,  user: UserToken, params: SiteRequest):
     occupied_sq = (
         db.query(
             Space.site_id.label("site_id"),
-            func.count(Lease.id).label("occupied")
+            func.count(Space.id).label("occupied_spaces")
         )
-        .join(Lease, Lease.space_id == Space.id)
         .filter(
             Space.is_deleted == False,
-            Lease.start_date <= now,
-            Lease.end_date >= now
+            Space.status == "occupied"
         )
         .group_by(Space.site_id)
         .subquery()
     )
-
     # --------------------------
     # MAIN SITE QUERY
     # --------------------------
@@ -95,7 +92,7 @@ def get_sites(db: Session,  user: UserToken, params: SiteRequest):
             Site.updated_at,
             func.coalesce(spaces_sq.c.total_spaces, 0).label("total_spaces"),
             func.coalesce(buildings_sq.c.buildings, 0).label("buildings"),
-            func.coalesce(occupied_sq.c.occupied, 0).label("occupied")
+            func.coalesce(occupied_sq.c.occupied_spaces, 0).label("occupied")
         )
         .outerjoin(spaces_sq, spaces_sq.c.site_id == Site.id)
         .outerjoin(buildings_sq, buildings_sq.c.site_id == Site.id)
@@ -159,8 +156,8 @@ def get_site_lookup(db: Session, user: UserToken, params: Optional[SiteRequest] 
         # Tenant has no access
         if not allowed_site_ids:
             return {"sites": [], "total": 0}
-        
-    site_query = db.query(Site.id, Site.name).filter(Site.is_deleted == False)
+
+    site_query = db.query(Site.id, Site.name).filter(Site.is_deleted == False, Site.status == "active")
 
     
     if allowed_site_ids is not None:

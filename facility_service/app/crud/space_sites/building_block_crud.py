@@ -327,3 +327,23 @@ def get_building_by_id(db: Session, building_id: str):
     # Use _asdict() to convert Row objects to dictionaries
     
     return BuildingOut.model_validate(building._asdict())
+
+
+
+
+def get_building_master_lookup(db: Session, site_id: str):
+    building_query = (
+        db.query(Building.id, Building.name)
+        .join(Site, Site.id == Building.site_id)
+        .filter(
+            Building.is_deleted == False,  # Add this filter
+            Site.is_deleted == False,     # Add this filter
+            Site.status == "active",
+            Building.status == "active"
+        ).order_by(Building.name.asc())
+    )
+
+    if site_id and site_id.lower() != "all":
+        building_query = building_query.filter(Site.id == site_id)
+
+    return building_query.all()

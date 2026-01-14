@@ -217,7 +217,9 @@ def get_building_lookup(db: Session, site_id: str, user: UserToken):
         .join(Site, Site.id == Building.site_id)
         .filter(
             Building.is_deleted == False,  # Add this filter
-            Site.is_deleted == False      # Add this filter
+            Site.is_deleted == False,     # Add this filter
+            Site.status == "active",
+            Building.status == "active"
         ).order_by(Building.name.asc())
     )
 

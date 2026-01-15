@@ -17,11 +17,9 @@ class TenantSpace(Base):
         "spaces.id", ondelete="CASCADE"))
     tenant_id = Column(UUID(as_uuid=True), ForeignKey(
         "tenants.id", ondelete="CASCADE"))
-
-    role = Column(String(16), nullable=False)  # owner | occupant
     status = Column(
         String(16),
-        default="pending"  # pending | current | past
+        default="pending"  # pending |  occupied | vacant
     )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False)

@@ -143,7 +143,6 @@ def get_user(db: Session, user_id: str, facility_db: Session):
                     "site_id": ts.site_id,
                     "space_id": ts.space_id,
                     "building_block_id": space.building_block_id if space else None,
-                    "role": ts.role,
                 })
 
     # FOR STAFF USERS - USE FACILITY_DB
@@ -364,57 +363,21 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             facility_db.add(tenant_obj)
             facility_db.flush()
 
-            has_owner_space = False
 
             for space in user.tenant_spaces:
                 site_id = space.site_id
                 space_id = space.space_id
-                role = space.role
 
-                current_space_status = compute_space_status(
-                    facility_db,
-                    tenant_obj.id,
-                    space_id,
-                    role
-                )
 
                 facility_db.add(
                     TenantSpace(
                         tenant_id=tenant_obj.id,
                         site_id=site_id,
                         space_id=space_id,
-                        role=role,
-                        status=current_space_status,
+                        status="pending",
                         created_at=now
                     )
                 )
-
-                if role == "owner":
-                    has_owner_space = True
-                    if not active_lease_exists(
-                        facility_db,
-                        tenant_obj.id,
-                        space_id
-                    ):
-                        facility_db.add(
-                            Lease(
-                                org_id=user.org_id,
-                                site_id=site_id,
-                                space_id=space_id,
-                                tenant_id=tenant_obj.id,
-                                default_payer="owner",
-                                start_date=now.date(),
-                                status="active",
-                                is_system=True,
-                                created_at=now,
-                                updated_at=now,
-                            )
-                        )
-
-            tenant_obj.status = (
-                TenantStatus.active if has_owner_space
-                else TenantStatus.inactive
-            )
 
 
         elif account_type == "vendor":
@@ -632,13 +595,18 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
 
        # ✅ MULTI-SPACE OCCUPANCY CHECK (CORRECT)
         if user.tenant_spaces:
-            for ts in user.tenant_spaces:
-                existing_assignment = facility_db.query(TenantSpace).filter(
-                    TenantSpace.space_id == ts.space_id,
-                    TenantSpace.is_deleted == False
-                ).first()
+            incoming_space_ids = [ts.space_id for ts in user.tenant_spaces]
 
-                if existing_assignment and existing_assignment.tenant_id != db_user.id:
+            # Fetch all existing assignments for these spaces
+            existing_assignments = facility_db.query(TenantSpace).filter(
+                TenantSpace.space_id.in_(incoming_space_ids),
+                TenantSpace.is_deleted == False,
+                TenantSpace.status=="occupied" # only active/pending spaces
+            ).all()
+
+            for ts_assignment in existing_assignments:
+                # If the tenant is NOT the current user, conflict exists
+                if ts_assignment.tenant_id != db_user.id:
                     return error_response(
                         message="One of the selected spaces is already occupied by an active tenant",
                         status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)

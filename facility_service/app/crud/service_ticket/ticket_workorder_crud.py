@@ -1,8 +1,12 @@
+from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from uuid import UUID
 from typing import List, Optional , Dict, Any
 from datetime import datetime
+
+from facility_service.app.models.financials.tax_codes import TaxCode
+from facility_service.app.models.maintenance_assets import work_order
 
 from ...models.procurement.vendors import Vendor
 from shared.helpers.json_response_helper import error_response
@@ -196,6 +200,7 @@ def get_ticket_work_order_by_id(
             "ticket_no": ticket_no,
             "assigned_to_name": assigned_to_name,
             "site_name": site_name
+            
         })
     
     return None
@@ -231,7 +236,28 @@ def create_ticket_work_order(
     # Unpack the tuple correctly
     ticket, site_name = ticket_data  # ticket_data is (Ticket, site_name)
     # Create work order
-    db_work_order = TicketWorkOrder(**work_order.model_dump())
+    labour = Decimal(work_order.labour_cost or 0)
+    material = Decimal(work_order.material_cost or 0)
+    other = Decimal(work_order.other_expenses or 0)
+
+    base_amount = labour + material + other
+
+    tax_rate = Decimal("0")
+    if work_order.tax_code_id:
+        tax = db.query(TaxCode).filter(
+            TaxCode.id == work_order.tax_code_id,
+            TaxCode.is_deleted == False
+        ).first()
+        if tax:
+            tax_rate = tax.rate
+
+    tax_amount = (base_amount * tax_rate) / Decimal("100")
+    total_amount = base_amount + tax_amount
+
+    db_work_order = TicketWorkOrder(
+        **work_order.model_dump(exclude={"total_amount"}),
+        total_amount=total_amount
+    )   
     db.add(db_work_order)
     db.commit()
     db.refresh(db_work_order)
@@ -279,6 +305,24 @@ def update_ticket_work_order(
     update_data = work_order_update.model_dump(exclude_unset=True, exclude={'id'})
     for key, value in update_data.items():
         setattr(db_work_order, key, value)
+    labour = Decimal(db_work_order.labour_cost or 0)
+    material = Decimal(db_work_order.material_cost or 0)
+    other = Decimal(db_work_order.other_expenses or 0)
+
+    base_amount = labour + material + other
+
+    tax_rate = Decimal("0")
+    if db_work_order.tax_code_id:
+        tax = db.query(TaxCode).filter(
+            TaxCode.id == db_work_order.tax_code_id,
+            TaxCode.is_deleted == False
+        ).first()
+        if tax:
+            tax_rate = tax.rate
+
+    db_work_order.total_amount = base_amount + (
+        base_amount * tax_rate / Decimal("100")
+    )    
 
     db.commit()
     db.refresh(db_work_order)

@@ -964,7 +964,7 @@ def validate_active_tenants_for_spaces(
             .filter(
                 TenantSpace.space_id == ts.space_id,
                 TenantSpace.is_deleted.is_(False),
-                TenantSpace.status == "current",
+                # TenantSpace.status == "current",
                 Tenant.is_deleted.is_(False),
                 Tenant.status == "active",
             )

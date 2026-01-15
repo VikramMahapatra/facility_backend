@@ -142,7 +142,6 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
                             "space_name", Space.name,
                             "building_block_id", Building.id,
                             "building_block_name", Building.name,
-                            "role", TenantSpace.role,
                             "status", TenantSpace.status
                         )
                     )
@@ -276,7 +275,6 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
                             "space_name", Space.name,
                             "building_block_id", Building.id,
                             "building_block_name", Building.name,
-                            "role", TenantSpace.role,
                             "status", TenantSpace.status
                         )
                     )
@@ -380,16 +378,6 @@ def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str) -> List[LeaseOu
                     Site.is_deleted == False
                 ).scalar()
 
-            tenant_role = None
-
-            tenant_space = db.query(TenantSpace.role).filter(
-                TenantSpace.space_id == row.space_id,
-                TenantSpace.tenant_id == row.tenant_id,
-                TenantSpace.is_deleted == False
-            ).first()
-
-            if tenant_space:
-                tenant_role = tenant_space.role
 
             leases.append(
                 LeaseOut.model_validate(
@@ -397,8 +385,7 @@ def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str) -> List[LeaseOu
                         **row.__dict__,
                         "space_name": space_name,
                         "site_name": site_name,
-                        "tenant_name": tenant_name,
-                        "tenant_role": tenant_role
+                        "tenant_name": tenant_name
                     }
                 )
             )
@@ -526,45 +513,16 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
     db.flush()
 
     # ASSIGN SPACES
-    has_owner_space = False
     for space in tenant.tenant_spaces or []:
-        current_space_status = compute_space_status(
-            db, db_tenant.id, space.space_id, space.role)
-
         db_space_assignment = TenantSpace(
             tenant_id=db_tenant.id,
             site_id=space.site_id,
             space_id=space.space_id,
-            role=space.role,
-            status=current_space_status,
+            status="pending",
             created_at=now
         )
         db.add(db_space_assignment)
 
-        if space.role == "owner":
-            has_owner_space = True
-            if not active_lease_exists(db, db_tenant.id, space.space_id):
-                db.add(
-                    Lease(
-                        org_id=org_id,
-                        site_id=space.site_id,
-                        space_id=space.space_id,
-                        tenant_id=db_tenant.id,
-                        default_payer="owner",
-                        start_date=now.date(),
-                        status="inactive" if active_lease_for_occupant_exists(
-                            db, tenant_id, space.space_id) else "active",
-                        is_system=True,
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-
-    if has_owner_space:
-        db_tenant.status = TenantStatus.active
-
-    else:
-        db_tenant.status = TenantStatus.inactive
 
     db.commit()
     auth_db.commit()  # ✅ Commit auth_db too
@@ -585,7 +543,10 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
         )
 
     # Validate space assignments if provided
-    validate_tenant_space_update(db, tenant_id, update_dict, db_tenant)
+    if "tenant_spaces" in update_dict:
+        error =validate_tenant_space_update(db, tenant_id, update_dict, db_tenant)
+        if error:
+            return error
 
     # Check for duplicate name (case-insensitive) if name is being updated
     if 'name' in update_dict and update_dict['name'] != db_tenant.name:
@@ -687,78 +648,31 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
         for space_id, space in incoming_map.items():
 
             if space_id in active_assignments:
-                ts = active_assignments[space_id]
-
-                if ts.role != space.role:
-                    ts.role = space.role
-                    ts.status = compute_space_status(
-                        db, tenant_id, space_id, space.role)
-
-                # 🔑 Ensure lease exists if role becomes owner
-                if space.role == "owner" and not active_lease_exists(db, tenant_id, space_id):
-                    db.add(
-                        Lease(
-                            org_id=org_id,
-                            site_id=space.site_id,
-                            space_id=space_id,
-                            tenant_id=tenant_id,
-                            default_payer="owner",
-                            start_date=now.date(),
-                            status="inactive"
-                            if active_lease_for_occupant_exists(db, tenant_id, space_id)
-                            else "active",
-                            is_system=True,
-                            created_at=now,
-                            updated_at=now,
-                        )
-                    )
-
                 continue
 
             if space_id in deleted_assignments:
                 ts = deleted_assignments[space_id]
                 ts.is_deleted = False
                 ts.deleted_at = None
-                ts.role = space.role
-                ts.status = compute_space_status(
-                    db, tenant_id, space_id, space.role)
-
+                ts.status = "pending"
+                ts.updated_at = now
             else:
-                ts = TenantSpace(
-                    tenant_id=tenant_id,
-                    space_id=space_id,
-                    site_id=space.site_id,
-                    role=space.role,
-                    status=compute_space_status(
-                        db, tenant_id, space_id, space.role),
-                    is_deleted=False,
-                    created_at=now,
-                )
-                db.add(ts)
-
-            # 🔑 Lease creation for restored / new owner
-            if space.role == "owner" and not active_lease_exists(db, tenant_id, space_id):
                 db.add(
-                    Lease(
-                        org_id=org_id,
+                    TenantSpace(
+                        tenant_id=tenant_id,
                         site_id=space.site_id,
                         space_id=space_id,
-                        tenant_id=tenant_id,
-                        default_payer="owner",
-                        start_date=now.date(),
-                        status="inactive"
-                        if active_lease_for_occupant_exists(db, tenant_id, space_id)
-                        else "active",
-                        is_system=True,
+                        status="pending",
+                        is_deleted=False,
                         created_at=now,
-                        updated_at=now,
                     )
                 )
-                db_tenant.status = TenantStatus.active
 
+            
         # ➖ SOFT DELETE REMOVED
         for space_id, ts in active_assignments.items():
             if space_id not in incoming_space_ids:
+                ts.status = "vacant"
                 ts.is_deleted = True
 
             tenant_lease = (
@@ -964,22 +878,17 @@ def validate_active_tenants_for_spaces(
             .filter(
                 TenantSpace.space_id == ts.space_id,
                 TenantSpace.is_deleted.is_(False),
-                # TenantSpace.status == "current",
+                TenantSpace.status == "occupied", 
                 Tenant.is_deleted.is_(False),
-                Tenant.status == "active",
             )
         )
-
-        # Role-based protection (only one owner etc.)
-        if ts.role:
-            query = query.filter(TenantSpace.role == ts.role)
 
         if exclude_tenant_id:
             query = query.filter(TenantSpace.tenant_id != exclude_tenant_id)
 
         if query.first():
             return error_response(
-                message="One or more spaces already have an active tenant with the same role"
+                message="One or more spaces are already occupied"
             )
 
 

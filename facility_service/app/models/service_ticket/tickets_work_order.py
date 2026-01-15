@@ -33,8 +33,11 @@ class TicketWorkOrder(Base):
     other_expenses = Column(Numeric(10, 2), nullable=True)  # Other Expenses
     estimated_time = Column(Integer, nullable=True)  # Estimated time in minutes
     special_instructions = Column(Text, nullable=True)  # Special Instructions
+    total_amount = Column(Numeric(14, 2), nullable=False)
+    tax_code_id = Column(UUID(as_uuid=True), ForeignKey("tax_codes.id"))
 
     ticket = relationship("Ticket", back_populates="work_orders")
+    tax_code = relationship("TaxCode", back_populates="ticket_work_orders")
 
 
 

@@ -20,6 +20,7 @@ class TicketWorkOrderBase(BaseModel):
     other_expenses: Optional[float] = None
     estimated_time: Optional[int] = None
     special_instructions: Optional[str] = None
+    tax_code_id: Optional[UUID] = None   # ✅ ADD
 
 
 class TicketWorkOrderCreate(TicketWorkOrderBase):
@@ -40,6 +41,8 @@ class TicketWorkOrderOut(TicketWorkOrderBase):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     is_deleted: Optional[bool] = False
+    total_amount: Decimal
+    tax_code: Optional[str] = None  # From tax code relationship
 
     class Config:
         from_attributes = True

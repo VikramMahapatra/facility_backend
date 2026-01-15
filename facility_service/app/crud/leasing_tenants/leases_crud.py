@@ -603,7 +603,7 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
 def lease_lookup(org_id: UUID, db: Session):
     leases = (
         db.query(Lease)
-        .filter(Lease.org_id == org_id, Lease.is_deleted == False)
+        .filter(Lease.org_id == org_id, Lease.is_deleted == False,Lease.status == 'active')
         .distinct(Lease.id)
         .all()
     )

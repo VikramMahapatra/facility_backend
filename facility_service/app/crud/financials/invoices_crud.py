@@ -226,6 +226,7 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
     results = []
     for payment, invoice in payments:
         billable_item_name = None
+        customer_name = None 
         
         if invoice.billable_item_type and invoice.billable_item_id:
             if invoice.billable_item_type == "work order":
@@ -235,8 +236,7 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
                 ).first()
                 if ticket_work_order:
                     ticket = db.query(Ticket).filter(
-                        Ticket.id == ticket_work_order.ticket_id,
-                        Ticket.status == "open"
+                        Ticket.id == ticket_work_order.ticket_id
                     ).first()
                     
 
@@ -273,9 +273,8 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
                     if lease_charge.lease:
                         lease = lease_charge.lease
                         if lease.tenant:
-                            customer_name = f"{lease.tenant.name}"
-                        elif lease.partner:
-                            customer_name = lease.partner.legal_name
+                            customer_name = lease.tenant.name or lease.tenant.legal_name
+             
                         
                         
             elif invoice.billable_item_type == "parking pass":
@@ -314,6 +313,8 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
         }))
         
     return {"payments": results, "total": total}
+
+
 
 def get_invoice_by_id(db: Session, invoice_id: UUID):
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()

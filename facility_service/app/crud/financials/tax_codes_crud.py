@@ -79,7 +79,7 @@ def get_tax_overview(db: Session, org_id: UUID):
     return {
         "activeTaxCodes": tax_code_agg.active_tax_codes,
         "totalTaxCollected": float(total_tax_last_3_months),
-        "avgTaxRate": float(tax_code_agg.avg_tax_rate),
+       "avgTaxRate": round(float(tax_code_agg.avg_tax_rate), 2),
         "pendingReturns": pending_returns_all_time,
         "lastMonthActiveTaxCodes": last_month_active_tax_codes
     }

@@ -237,7 +237,16 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate, current_user_id
             message=f"Charge code '{payload.charge_code}' already exists for this lease with overlapping period"
         )
 
+    tax_rate = (db.query(TaxCode.rate)
+                .filter(TaxCode.id == payload.tax_code_id)
+                .scalar()) if payload.tax_code_id else Decimal("0")
+
+    total_amount = payload.amount + \
+        (payload.amount * tax_rate / Decimal("100"))
+
     obj = LeaseCharge(**payload.model_dump())
+    obj.total_amount = total_amount
+
     db.add(obj)
     #  Get lease details for notification
     lease = db.query(Lease).filter(
@@ -316,6 +325,14 @@ def update_lease_charge(
 
     # Update the timestamp
     obj.updated_at = datetime.utcnow()
+
+    tax_rate = (db.query(TaxCode.rate)
+                .filter(TaxCode.id == obj.tax_code_id)
+                .scalar()) if obj.tax_code_id else Decimal("0")
+
+    total_amount = obj.amount + (obj.amount * tax_rate / Decimal("100"))
+
+    obj.total_amount = total_amount
 
     db.commit()
     db.refresh(obj)
@@ -400,4 +417,3 @@ def tax_code_lookup(db: Session, org_id: UUID):
         .order_by("id")
     )
     return query.all()
-

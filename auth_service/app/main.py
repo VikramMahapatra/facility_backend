@@ -7,7 +7,7 @@ from shared.helpers.exception_handler import setup_exception_handlers
 from shared.wrappers.response_wrapper import JsonResponseMiddleware
 from .routers import authrouter, userrouter
 from shared.models import users, user_login_session, refresh_token
-from .models import roles, userroles, rolepolicy, user_otps,  otp_verifications
+from .models import roles, userroles, rolepolicy, user_otps,  otp_verifications, user_organizations, associations
 
 # Create tables
 AuthBase.metadata.create_all(bind=auth_engine)

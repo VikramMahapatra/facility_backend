@@ -5,6 +5,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 import requests
 from datetime import datetime, timedelta, timezone
+
+from auth_service.app.models.user_organizations import UserOrganization
 from ..models.otp_verifications import OtpVerification
 from shared.models.user_login_session import UserLoginSession
 from shared.helpers.email_helper import EmailHelper
@@ -78,6 +80,7 @@ def google_login(
         return userservices.get_user_token(request, db, facility_db, user)
 
     except ValueError as e:
+        print(f"Google token error: {e}")
         return error_response(
             message="Something went wrong",
             status_code=str(AppStatusCode.AUTHENTICATION_USER_OTP_EXPIRED),
@@ -332,3 +335,34 @@ def send_otp_email(background_tasks, db, otp, email):
         subject="Your One Time Password to login",
         context={"otp": otp},
     )
+
+
+def switch_account(
+        api_request: Request,
+        db: Session,
+        facility_db: Session,
+        user_id: str,
+        request: authschema.SwitchUserAccountRequest = None):
+
+    user = db.query(Users).filter(
+        Users.id == user_id,
+        Users.is_deleted == False
+    ).first()
+
+    if not user:
+        return error_response(
+            message="User not found",
+            status_code=str(AppStatusCode.AUTHENTICATION_USER_INVALID),
+            http_status=status.HTTP_404_NOT_FOUND
+        )
+
+    default_org = (
+        db.query(UserOrganization)
+        .filter(UserOrganization.id == request.user_org_id)
+        .first()
+    )
+
+    default_org.is_default = True
+    db.commit()
+
+    return userservices.get_user_token(api_request, db, facility_db, user)

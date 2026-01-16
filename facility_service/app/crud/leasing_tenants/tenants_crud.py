@@ -378,7 +378,6 @@ def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str) -> List[LeaseOu
                     Site.is_deleted == False
                 ).scalar()
 
-
             leases.append(
                 LeaseOut.model_validate(
                     {
@@ -523,7 +522,6 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         )
         db.add(db_space_assignment)
 
-
     db.commit()
     auth_db.commit()  # ✅ Commit auth_db too
     return get_tenant_detail(db, org_id, db_tenant.id)
@@ -544,7 +542,8 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
 
     # Validate space assignments if provided
     if "tenant_spaces" in update_dict:
-        error =validate_tenant_space_update(db, tenant_id, update_dict, db_tenant)
+        error = validate_tenant_space_update(
+            db, tenant_id, update_dict, db_tenant)
         if error:
             return error
 
@@ -668,11 +667,10 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                     )
                 )
 
-            
         # ➖ SOFT DELETE REMOVED
         for space_id, ts in active_assignments.items():
             if space_id not in incoming_space_ids:
-                ts.status = "vacant"
+                ts.status = "vacated"
                 ts.is_deleted = True
 
             tenant_lease = (
@@ -878,7 +876,7 @@ def validate_active_tenants_for_spaces(
             .filter(
                 TenantSpace.space_id == ts.space_id,
                 TenantSpace.is_deleted.is_(False),
-                TenantSpace.status == "occupied", 
+                TenantSpace.status == "occupied",
                 Tenant.is_deleted.is_(False),
             )
         )

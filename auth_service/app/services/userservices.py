@@ -4,6 +4,7 @@ from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func, and_
 
+from ..models.user_organizations import UserOrganization
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 
@@ -77,7 +78,6 @@ def create_user(
             username=user.email,
             phone=user.phone,
             picture_url=str(user.pictureUrl) if user.pictureUrl else None,
-            account_type=user.accountType.lower(),
             status="pending_approval"
         )
 
@@ -99,7 +99,7 @@ def create_user(
             facility_db.add(org_instance)
             facility_db.flush()  # ✅ ensure id generated
 
-            user_instance.org_id = org_instance.id
+            org_id = org_instance.id
 
         # ✅ ACCOUNT TYPE: TENANT
         elif user.accountType.lower() == "tenant":
@@ -112,13 +112,7 @@ def create_user(
                     status_code=str(AppStatusCode.INVALID_INPUT),
                 )
 
-            user_instance.org_id = site.org_id
-
-            if not user_instance.org_id:
-                return error_response(
-                    message="Selected site has no organization assigned",
-                    status_code=str(AppStatusCode.INVALID_INPUT),
-                )
+            org_id = site.org_id
 
             if not user.space_id:
                 return error_response(
@@ -140,8 +134,8 @@ def create_user(
                 )
 
             tenant_obj = TenantSafe(
-                #site_id=user.site_id,
-                #space_id=user.space_id,
+                # site_id=user.site_id,
+                # space_id=user.space_id,
                 name=full_name,
                 email=user.email,
                 phone=user.phone,
@@ -169,6 +163,16 @@ def create_user(
             facility_db.add(space_tenant_link)
 
         # ✅ Commit All OR Rollback All
+        user_org = UserOrganization(
+            user_id=user_instance.id,
+            org_id=org_id,
+            account_type=user.accountType.lower(),
+            status="active",
+            is_default=True
+        )
+        db.add(user_org)
+        db.flush()
+
         db.commit()
         facility_db.commit()
         db.refresh(user_instance)
@@ -188,7 +192,7 @@ def create_user(
 
 
 def get_user_token(request: Request, auth_db: Session, facility_db: Session, user: Users):
-    roles = [str(r.id) for r in user.roles]
+
     ip = request.client.host
     ua = request.headers.get("user-agent")
 
@@ -207,6 +211,24 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     auth_db.commit()
     auth_db.refresh(session)
 
+    user_org = (
+        auth_db.query(UserOrganization)
+        .filter(
+            UserOrganization.user_id == user.id,
+            UserOrganization.status == "active"
+        )
+        .order_by(
+            UserOrganization.is_default.desc(),
+            UserOrganization.joined_at.asc()
+        )
+        .first()
+    )
+
+    roles = [str(role.id) for role in user_org.roles]
+
+    if not user_org:
+        return error_response(message="User has no active organization")
+
     tenant = facility_db.query(TenantSafe).filter(
         TenantSafe.user_id == user.id,
         TenantSafe.is_deleted == False
@@ -218,8 +240,8 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     token_data = {
         "user_id": str(user.id),
         "session_id": str(session.id),
-        "org_id": str(user.org_id),
-        "account_type": user.account_type,
+        "org_id": str(user_org.org_id),
+        "account_type": user_org.account_type,
         "tenant_type": tenant_type,
         "role_ids": roles or []
     }
@@ -231,7 +253,7 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     if session.platform == LoginPlatform.portal:
         refresh_token = auth.create_refresh_token(auth_db, session.id)
 
-    user_data = get_user_by_id(facility_db, user)
+    user_data = get_user_by_id(facility_db, user, user_org)
 
     return AuthenticationResponse(
         needs_registration=False,
@@ -242,13 +264,13 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     )
 
 
-def get_user_by_id(facility_db: Session, user_data: Users):
+def get_user_by_id(facility_db: Session, user_data: Users, user_org: UserOrganization):
     user_org_data = facility_db.query(OrgSafe).filter(
-        OrgSafe.id == user_data.org_id).first()
+        OrgSafe.id == user_org.org_id).first()
 
     # ✅ Extract unique role policies
     role_policies = []
-    for role in user_data.roles:
+    for role in user_org.roles:
         for policy in role.policies:
             role_policies.append({
                 "resource": policy.resource,
@@ -264,11 +286,11 @@ def get_user_by_id(facility_db: Session, user_data: Users):
         "name": user_data.full_name,
         "email": user_data.email,
         "phone": user_data.phone,
-        "account_type": user_data.account_type,
+        "account_type": user_org.account_type,
         "organization_name": user_org_data.name if user_org_data else None,
         "status": user_data.status,
         "is_authenticated": True if user_data.status == "active" else False,
-        "roles": [RoleOut.model_validate(role) for role in user_data.roles],
+        "roles": [RoleOut.model_validate(role) for role in user_org.roles],
         "role_policies": role_policies
     }
 

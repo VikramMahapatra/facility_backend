@@ -19,7 +19,7 @@ class TenantSpace(Base):
         "tenants.id", ondelete="CASCADE"))
     status = Column(
         String(16),
-        default="pending"  # pending |  occupied | vacant
+        default="pending"  # pending |  occupied | vacated
     )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False)

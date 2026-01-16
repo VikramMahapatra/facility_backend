@@ -25,7 +25,6 @@ class UserBase(EmptyStringModel):
 class UserTenantSpace(BaseModel):
     site_id: UUID
     space_id: UUID
-    role: str  # "owner" | "occupant"
 
 class UserCreate(UserBase):
     #site_id: Optional[UUID] = None

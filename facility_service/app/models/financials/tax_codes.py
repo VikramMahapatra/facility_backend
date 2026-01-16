@@ -25,6 +25,7 @@ class TaxCode(Base):
     # Optional relationship if you have an Org model
     org = relationship("Org", back_populates="tax_codes")
     charge = relationship("LeaseCharge", back_populates="tax_code")
+    ticket_work_orders = relationship("TicketWorkOrder", back_populates="tax_code")
 
 
 class Currency(Base):

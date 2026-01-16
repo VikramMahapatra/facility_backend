@@ -21,7 +21,6 @@ from ..schemas.userschema import RoleOut, UserCreate
 from shared.core.config import settings
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
-
 # profile_pic_path = None
 
 # if file:
@@ -127,11 +126,11 @@ def create_user(
                     status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 )
 
-            existing_tenant = facility_db.query(TenantSafe).filter(
+            existing_tenant = facility_db.query(TenantSpaceSafe).filter(
                 and_(
-                    TenantSafe.space_id == user.space_id,
-                    TenantSafe.role == "occupant",
-                    TenantSafe.is_deleted == False)
+                    TenantSpaceSafe.space_id == user.space_id,
+                    TenantSpaceSafe.status == "occupied",
+                    TenantSpaceSafe.is_deleted == False)
             ).first()
 
             if existing_tenant:
@@ -141,8 +140,8 @@ def create_user(
                 )
 
             tenant_obj = TenantSafe(
-                site_id=user.site_id,
-                space_id=user.space_id,
+                #site_id=user.site_id,
+                #space_id=user.space_id,
                 name=full_name,
                 email=user.email,
                 phone=user.phone,
@@ -165,7 +164,6 @@ def create_user(
                 site_id=user.site_id,
                 space_id=user.space_id,
                 tenant_id=tenant_obj.id,
-                role="occupant",
                 status="pending"
             )
             facility_db.add(space_tenant_link)

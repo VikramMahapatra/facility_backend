@@ -52,30 +52,31 @@ def get_invoices_query(db: Session, org_id: UUID, params: InvoicesRequest):
 
 def get_invoices_overview(db: Session, org_id: UUID, params: InvoicesRequest):
     filters = build_invoices_filters(org_id, params)  # ✅ This now includes is_deleted == False
+    total = db.query(func.count(Invoice.id)).filter(*filters).scalar()
     
-    # Alias for convenience
-    grand_amount = cast(func.jsonb_extract_path_text(Invoice.totals, "grand"), Numeric)
-        
-    counts = db.query(
-        func.count(Invoice.id).label("total_invoices"),
-        func.coalesce(func.sum(grand_amount), 0).label("total_amount"),
-        func.coalesce(
-            func.sum(
-                case((Invoice.status == "paid", grand_amount), else_=0)
-            ), 0
-        ).label("paid_amount"),
-        func.coalesce(
-            func.sum(
-                case((Invoice.status.in_(["issued", "partial"]), grand_amount), else_=0)
-            ), 0
-        ).label("outstanding_amount"),
-    ).filter(*filters).one()
+    grand_amount = cast(
+        func.jsonb_extract_path_text(Invoice.totals, "grand"),
+        Numeric
+    )
+
+    total_amount = db.query(
+        func.coalesce(func.sum(grand_amount), 0)
+    ).filter(*filters).scalar()
+
+    paid_amount = (
+        db.query(
+            func.coalesce(func.sum(cast(PaymentAR.amount, Numeric)), 0)
+        )
+        .join(Invoice, PaymentAR.invoice_id == Invoice.id)
+        .filter(*filters , PaymentAR.org_id == org_id, Invoice.is_deleted == False)  # Ensure we only sum payments for non-deleted invoices
+        .scalar()
+    )
 
     return {
-        "totalInvoices": counts.total_invoices,
-        "totalAmount": float(counts.total_amount),
-        "paidAmount": float(counts.paid_amount),
-        "outstandingAmount": float(counts.outstanding_amount),
+        "totalInvoices": total,
+        "totalAmount": float(total_amount),
+        "paidAmount": float(paid_amount),
+        "outstandingAmount": float(total_amount - paid_amount),
     }
     
 def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> InvoicesResponse:
@@ -119,13 +120,14 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
                     LeaseCharge.is_deleted == False
                 ).first()
                 if lease_charge:
+                    charge_code = lease_charge.charge_code.code  
                     if lease_charge.period_start and lease_charge.period_end:
                         start_str = lease_charge.period_start.strftime("%d %b %Y")
                         end_str = lease_charge.period_end.strftime("%d %b %Y")
                         month_year = lease_charge.period_start.strftime("%b %Y")
-                        billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
+                        billable_item_name = f"{charge_code} | {start_str} - {end_str}"
                     else:
-                        billable_item_name = lease_charge.charge_code
+                        billable_item_name = charge_code
                         
             elif invoice.billable_item_type == "parking pass":
                 parking_pass = db.query(ParkingPass).filter(
@@ -261,13 +263,14 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
                     LeaseCharge.is_deleted == False
                 ).first()
                 if lease_charge:
+                    charge_code = lease_charge.charge_code.code
                     if lease_charge.period_start and lease_charge.period_end:
                         start_str = lease_charge.period_start.strftime("%d %b %Y")
                         end_str = lease_charge.period_end.strftime("%d %b %Y")
                         month_year = lease_charge.period_start.strftime("%b %Y")
-                        billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
+                        billable_item_name = f"{charge_code} | {start_str} - {end_str}"
                     else:
-                        billable_item_name = lease_charge.charge_code
+                        billable_item_name = charge_code
                     
                     # Get customer name from lease
                     if lease_charge.lease:
@@ -397,13 +400,14 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         lease = db.query(Lease).filter(Lease.id == lease_charge.lease_id).first()
 
         if lease_charge.period_start and lease_charge.period_end:
+            charge_code = lease_charge.charge_code.code
             start_str = lease_charge.period_start.strftime("%d %b %Y")
             end_str = lease_charge.period_end.strftime("%d %b %Y")
             month_year = lease_charge.period_start.strftime("%b %Y")
-            billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
+            billable_item_name = f"{charge_code} | {start_str} - {end_str}"
         else:
-            billable_item_name = lease_charge.charge_code
-    
+            billable_item_name = charge_code
+
     elif request.billable_item_type == "parking pass":
         parking_pass = db.query(ParkingPass).filter(
             ParkingPass.id == request.billable_item_id,
@@ -764,13 +768,14 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
                 LeaseCharge.is_deleted == False
             ).first()
             if lease_charge:
+                charge_code = lease_charge.charge_code.code
                 if lease_charge.period_start and lease_charge.period_end:
                     start_str = lease_charge.period_start.strftime("%d %b %Y")
                     end_str = lease_charge.period_end.strftime("%d %b %Y")
                     month_year = lease_charge.period_start.strftime("%b %Y")
-                    billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
+                    billable_item_name = f"{charge_code} | {start_str} - {end_str}"
                 else:
-                    billable_item_name = lease_charge.charge_code
+                    billable_item_name = charge_code
                     
         elif db_invoice.billable_item_type == "parking pass":
             parking_pass = db.query(ParkingPass).filter(
@@ -904,13 +909,13 @@ def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, billab
         
         for lc in lease_charges:
             if lc.charge_code:
-
+                charge_code = lc.charge_code.code  
                 if lc.period_start and lc.period_end:
                     start_str = lc.period_start.strftime("%d %b %Y")
                     end_str = lc.period_end.strftime("%d %b %Y")
-                    formatted_name = f"{lc.charge_code} | {start_str} - {end_str}"
+                    formatted_name = f"{charge_code} | {start_str} - {end_str}"
                 else:
-                    formatted_name = lc.charge_code
+                    formatted_name = charge_code
                     
                 entities.append(Lookup(
                     id=str(lc.id),
@@ -1070,12 +1075,13 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
                 LeaseCharge.is_deleted == False
             ).first()
             if lease_charge:
+                charge_code = lease_charge.charge_code.code
                 if lease_charge.period_start and lease_charge.period_end:
                     start_str = lease_charge.period_start.strftime("%d %b %Y")
                     end_str = lease_charge.period_end.strftime("%d %b %Y")
-                    billable_item_name = f"{lease_charge.charge_code} | {start_str} - {end_str}"
+                    billable_item_name = f"{charge_code} | {start_str} - {end_str}"
                 else:
-                    billable_item_name = lease_charge.charge_code
+                    billable_item_name = charge_code
                           
         # ✅ ADD: Get payments and calculate status
         payments = db.query(PaymentAR).filter(
@@ -1164,7 +1170,14 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
             
             # Calculate totals
             subtotal = lease_charge.amount
-            tax = (lease_charge.amount * (lease_charge.tax_pct or Decimal('0'))) / Decimal('100')
+            tax_rate = (
+                lease_charge.tax_code.rate
+                if lease_charge.tax_code and lease_charge.tax_code.rate
+                else Decimal('0')
+            )
+
+            tax = (subtotal * tax_rate) / Decimal('100')
+                    
             grand_total = subtotal + tax
                 
         else:

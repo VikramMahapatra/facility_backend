@@ -48,6 +48,14 @@ class UserCreate(BaseModel):
         from_attributes = True  # allows Pydantic to work with SQLAlchemy objects
 
 
+class UserOrganizationOut(BaseModel):
+    account_type: str
+    user_org_id: UUID
+    org_id: UUID
+    organization_name: Optional[str] = None
+    is_default: bool
+
+
 class RoleOut(BaseModel):
     id: UUID
     name: str
@@ -87,8 +95,9 @@ class UserResponse(EmptyStringModel):
     name: str
     email: str
     phone: str
-    account_type: str
-    organization_name: str
+    account_types: List[UserOrganizationOut]
+    default_account_type: str
+    default_organization_name: str
     status: str
     is_authenticated: bool = False
     roles: List[RoleOut]

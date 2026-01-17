@@ -32,6 +32,10 @@ class UserAuthRequest(BaseModel):
     password: str
 
 
+class SwitchUserAccountRequest(BaseModel):
+    user_org_id: str
+
+
 class OTPVerify(MobileRequest):
     otp: str
 

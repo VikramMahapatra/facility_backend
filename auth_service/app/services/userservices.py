@@ -18,7 +18,7 @@ from ..models.orgs_safe import OrgSafe
 from ..models.roles import Roles
 from ..models.userroles import UserRoles
 from shared.models.users import Users
-from ..schemas.userschema import RoleOut, UserCreate
+from ..schemas.userschema import RoleOut, UserCreate, UserOrganizationOut
 from shared.core.config import settings
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
@@ -253,7 +253,7 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     if session.platform == LoginPlatform.portal:
         refresh_token = auth.create_refresh_token(auth_db, session.id)
 
-    user_data = get_user_by_id(facility_db, user, user_org)
+    user_data = get_user_by_id(facility_db, auth_db, user)
 
     return AuthenticationResponse(
         needs_registration=False,
@@ -264,13 +264,29 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     )
 
 
-def get_user_by_id(facility_db: Session, user_data: Users, user_org: UserOrganization):
+def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
+
+    user_orgs = (
+        auth_db.query(UserOrganization)
+        .filter(
+            UserOrganization.user_id == user_data.id,
+            UserOrganization.status == "active"
+        )
+        .order_by(
+            UserOrganization.is_default.desc(),
+            UserOrganization.joined_at.asc()
+        )
+        .all()
+    )
+
+    default_org = user_orgs[0] if user_orgs else None
+
     user_org_data = facility_db.query(OrgSafe).filter(
-        OrgSafe.id == user_org.org_id).first()
+        OrgSafe.id == default_org.org_id).first()
 
     # ✅ Extract unique role policies
     role_policies = []
-    for role in user_org.roles:
+    for role in default_org.roles:
         for policy in role.policies:
             role_policies.append({
                 "resource": policy.resource,
@@ -281,16 +297,37 @@ def get_user_by_id(facility_db: Session, user_data: Users, user_org: UserOrganiz
     role_policies = [dict(t)
                      for t in {tuple(d.items()) for d in role_policies}]
 
+    org_ids = [org.org_id for org in user_orgs]
+
+    org_map = {
+        org.id: org.name
+        for org in facility_db.query(OrgSafe)
+        .filter(OrgSafe.id.in_(org_ids))
+        .all()
+    }
+
+    account_types = [
+        UserOrganizationOut.model_validate({
+            "user_org_id": org.id,
+            "org_id": org.org_id,
+            "account_type": org.account_type,
+            "organization_name": org_map.get(org.org_id),
+            "is_default": org.is_default
+        })
+        for org in user_orgs
+    ]
+
     user_dict = {
         "id": str(user_data.id),
         "name": user_data.full_name,
         "email": user_data.email,
         "phone": user_data.phone,
-        "account_type": user_org.account_type,
-        "organization_name": user_org_data.name if user_org_data else None,
+        "account_types": account_types,
+        "default_account_type": default_org.account_type if default_org else None,
+        "default_organization_name": user_org_data.name if user_org_data else None,
         "status": user_data.status,
         "is_authenticated": True if user_data.status == "active" else False,
-        "roles": [RoleOut.model_validate(role) for role in user_org.roles],
+        "roles": [RoleOut.model_validate(role) for role in default_org.roles],
         "role_policies": role_policies
     }
 

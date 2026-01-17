@@ -58,3 +58,13 @@ def logout(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(auth.validate_current_token)):
     return authservices.logout_user(db, current_user.user_id, refresh_token_str)
+
+
+@router.post("/switch-account", response_model=authschema.AuthenticationResponse)
+def switch_account(
+        api_request: Request,
+        request: authschema.SwitchUserAccountRequest = None,
+        db: Session = Depends(get_db),
+        facility_db: Session = Depends(get_facility_db),
+        current_user: UserToken = Depends(auth.validate_current_token)):
+    return authservices.switch_account(api_request, db, facility_db, current_user.user_id, request)

@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from auth_service.app.models.tenant_spaces_safe import TenantSpaceSafe
 from auth_service.app.models.roles import Roles
+from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists, compute_space_status, validate_active_tenants_for_spaces
 from facility_service.app.enum.leasing_tenants_enum import TenantStatus
 from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
@@ -13,7 +14,7 @@ from facility_service.app.models.leasing_tenants.lease_charges import LeaseCharg
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.models.users import Users
-from auth_service.app.models.userroles import UserRoles
+#from auth_service.app.models.userroles import UserRoles
 from ...models.common.staff_sites import StaffSite
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.procurement.vendors import Vendor
@@ -25,6 +26,8 @@ from shared.utils.app_status_code import AppStatusCode
 from ...schemas.access_control.role_management_schemas import RoleOut
 from shared.core.schemas import Lookup
 from ...enum.access_control_enum import UserRoleEnum, UserStatusEnum
+from auth_service.app.models.user_organizations import UserOrganization
+from auth_service.app.models.associations import user_org_roles
 
 from ...schemas.access_control.user_management_schemas import (
     UserCreate, UserOut, UserRequest, UserUpdate
@@ -33,12 +36,17 @@ from shared.helpers.email_helper import EmailHelper
 
 
 def get_users(db: Session, facility_db: Session, org_id: str, params: UserRequest):
-    user_query = db.query(Users).filter(
-        Users.org_id == org_id,
-        Users.is_deleted == False,
-        # ALWAYS EXCLUDE PENDING AND REJECTED STATUSES
-        Users.status.notin_(["pending_approval", "rejected"])
+    user_query = (
+        db.query(UserOrganization)
+        .join(Users)
+        .filter(
+            UserOrganization.org_id == org_id,   # ✅ CORRECT
+            UserOrganization.status == "active",
+            Users.is_deleted == False,
+            Users.status.notin_(["pending_approval", "rejected"])
+        )
     )
+
 
     # ADD STATUS FILTERING
     if params.status and params.status != "all":
@@ -56,7 +64,6 @@ def get_users(db: Session, facility_db: Session, org_id: str, params: UserReques
     total = user_query.with_entities(func.count(Users.id.distinct())).scalar()
     users = (
         user_query
-        .options(joinedload(Users.roles))
         .order_by(Users.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
@@ -65,10 +72,10 @@ def get_users(db: Session, facility_db: Session, org_id: str, params: UserReques
 
     # USE get_user FUNCTION TO GET FULL DETAILS FOR EACH USER
     user_list = []
-    for user in users:
-        user_details = get_user(
-            db, str(user.id), facility_db)  # Pass facility_db
-        user_list.append(user_details)
+    for user_org in users:
+        user_list.append(
+            get_user(db, str(user_org.user_id), org_id, facility_db)
+        )
 
     return {
         "users": user_list,
@@ -83,9 +90,22 @@ def get_user_by_id(db: Session, user_id: str):
     ).first()
 
 
-def get_user(db: Session, user_id: str, facility_db: Session):
+def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
     user = get_user_by_id(db, user_id)
     if not user:
+        return None
+    
+    # 🔴 CHANGED: FETCH USER_ORG
+    user_org = (
+        db.query(UserOrganization)
+        .filter(
+            UserOrganization.user_id == user.id,
+            UserOrganization.org_id == org_id,
+            UserOrganization.status == "active"
+        )
+        .first()
+    )
+    if not user_org:
         return None
 
     # GET ADDITIONAL DETAILS
@@ -99,7 +119,8 @@ def get_user(db: Session, user_id: str, facility_db: Session):
     staff_role = None
 
     # Normalize account_type for case-insensitive comparison
-    account_type = user.account_type.lower() if user.account_type else ""
+    account_type = user_org.account_type.lower() if user_org.account_type else ""
+
 
     # FOR TENANT USERS - USE FACILITY_DB
     if account_type == "tenant":
@@ -170,14 +191,14 @@ def get_user(db: Session, user_id: str, facility_db: Session):
     # Create UserOut manually instead of using from_orm
     return UserOut(
         id=user.id,
-        org_id=user.org_id,
+        org_id=user_org.org_id,
         full_name=user.full_name,
         email=user.email,
         phone=user.phone,
         picture_url=user.picture_url,
-        account_type=user.account_type,
+        account_type=user_org.account_type,
         status=user.status,
-        roles=[RoleOut.model_validate(role) for role in user.roles],
+        roles=[RoleOut.model_validate(role) for role in user_org.roles],
         created_at=user.created_at,
         updated_at=user.updated_at,
         # ADD NEW FIELDS
@@ -239,7 +260,7 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             raise ValueError("Password is required for user creation")
 
         user_data = user.model_dump(
-            exclude={'roles', 'role_ids', 'site_ids', 'tenant_type','tenant_spaces', 'staff_role', 'password'})
+            exclude={'org_id', 'roles', 'role_ids', 'site_ids', 'tenant_type','tenant_spaces', 'staff_role', 'password','account_type'})
 
         # ✅ SET USERNAME FROM EMAIL (Requirement 1)
         if user.email:
@@ -254,6 +275,18 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
         db.commit()
         db.flush(db_user)
 
+        # CREATE USER_ORG ENTRY
+        user_org = UserOrganization(
+            user_id=db_user.id,
+            org_id=user.org_id,
+            account_type=user.account_type,
+            status="active",
+            is_default=True,
+            
+        )
+        db.add(user_org)
+        db.flush()
+
         # ✅ SEND EMAIL IF STATUS IS ACTIVE (following your pattern)
         if user.status and user.status.lower() == "active" and user.email:
             send_user_credentials_email(
@@ -266,16 +299,18 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             )
 
         # Add roles if provided
-        if user.role_ids:
-            for role_id in user.role_ids:
-                role = db.query(Roles).filter(Roles.id == role_id).first()
-                if role:
-                    user_role = UserRoles(user_id=db_user.id, role_id=role.id)
-                    db.add(user_role)
-            db.commit()
+                # Add roles if provided (ORG BASED)
+        roles = db.query(Roles).filter(
+            Roles.id.in_(user.role_ids)
+        ).all()
+
+        user_org.roles.extend(roles)
+
+        db.commit()
 
         # Handle different account types
-        account_type = db_user.account_type.lower() if db_user.account_type else ""
+        account_type = user_org.account_type.lower() if user_org.account_type else ""
+
 
         if account_type == "staff":
             if user.site_ids is not None and len(user.site_ids) == 0:
@@ -406,7 +441,7 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             facility_db.add(vendor_obj)
 
         facility_db.commit()
-        return get_user(db, db_user.id, facility_db)
+        return get_user(db, db_user.id, user.org_id, facility_db)
 
     except Exception as e:
         # ✅ ROLLBACK everything if any error occurs
@@ -537,20 +572,37 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
     # -----------------------
     # UPDATE ROLES
     # -----------------------
+    # -----------------------
+# UPDATE ROLES (ORG BASED) 🔴 CHANGED
+# -----------------------
+   
     if user.role_ids is not None:
-        # Delete old roles
-        db.query(UserRoles).filter(UserRoles.user_id == user.id).delete()
 
-        # Add new roles
-        for role_id in user.role_ids:
-            role = db.query(Roles).filter(Roles.id == role_id).first()
-            if role:
-                db.add(UserRoles(user_id=db_user.id, role_id=role.id))
+        # get user-org mapping
+        user_org = db.query(UserOrganization).filter(
+            UserOrganization.user_id == user.id,
+            UserOrganization.org_id == user.org_id
+        ).first()
+
+        if not user_org:
+            return error_response("User is not linked to this organization")
+
+        # clear existing roles (association table auto-handled)
+        user_org.roles.clear()
+
+        # fetch new roles
+        roles = db.query(Roles).filter(
+            Roles.id.in_(user.role_ids)
+        ).all()
+
+        # attach new roles
+        user_org.roles.extend(roles)
+
 
     db.commit()
     db.refresh(db_user)
 
-    if db_user.account_type.lower() == "staff":
+    if user_org.account_type.lower() == "staff":
         if user.site_ids is not None and len(user.site_ids) == 0:
             return error_response(
                 message=" Site list required for  staff",
@@ -585,7 +637,7 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
     # ======================================================
     # =============== TENANT ACCOUNT UPDATE ================
     # ======================================================
-    elif db_user.account_type.lower() == "tenant":
+    elif user_org.account_type.lower() == "tenant":
 
         if not user.tenant_spaces or len(user.tenant_spaces) == 0:
             return error_response(
@@ -696,7 +748,7 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
     # ======================================================
     # ================= VENDOR ACCOUNT UPDATE ==============
     # ======================================================
-    elif db_user.account_type.lower() == "vendor":
+    elif user_org.account_type.lower() == "vendor":
         # Validate vendor-specific fields
         if not user.full_name:
             return error_response(
@@ -735,7 +787,7 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
         facility_db.commit()
 
     # FIX: Pass both db and facility_db to get_user
-    return get_user(db, db_user.id, facility_db)
+    return get_user(db, db_user.id, user.org_id, facility_db)
 
 
 def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
@@ -746,8 +798,18 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
             return {"success": False, "message": "User not found"}
 
         # Store user info for logging/messages
-        user_account_type = user.account_type.lower() if user.account_type else ""
+        # Store user info for logging/messages
+        user_org = db.query(UserOrganization).filter(
+            UserOrganization.user_id == user.id,
+            UserOrganization.is_default == True
+        ).first()
+
+        if not user_org:
+            return {"success": False, "message": "User organization not found"}
+
+        user_account_type = user_org.account_type.lower() if user_org.account_type else ""
         user_name = user.full_name or user.email
+
 
         # ✅ 1. SOFT DELETE THE USER
         user.is_deleted = True
@@ -832,15 +894,7 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
                 deleted_entities.append("staff site assignments")
 
         # ✅ 3. DELETE USER ROLES
-        user_roles = db.query(UserRoles).filter(
-            UserRoles.user_id == user_id
-        ).all()
-
-        if user_roles:
-            for user_role in user_roles:
-                db.delete(user_role)
-            deleted_entities.append("user roles")
-
+        
         # Commit all facility database changes
         facility_db.commit()
         db.commit()

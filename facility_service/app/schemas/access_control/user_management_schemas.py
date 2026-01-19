@@ -12,14 +12,14 @@ from shared.core.schemas import CommonQueryParams
 
 
 class UserBase(EmptyStringModel):
-    org_id: Optional[UUID] = None
+    #org_id: Optional[UUID] = None
     full_name: str
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     picture_url: Optional[str] = None
     account_type: Optional[str] = "regular"
     status: Optional[str] = "active"
-    role_ids: Optional[List[str]] = []
+    #role_ids: Optional[List[str]] = []
     password :Optional[str]=None
 
 class UserTenantSpace(BaseModel):
@@ -28,10 +28,13 @@ class UserTenantSpace(BaseModel):
 
 class UserCreate(UserBase):
     #site_id: Optional[UUID] = None
+    org_id: UUID          # REQUIRED
+    role_ids: List[UUID] # REQUIRED
+
     tenant_type: Optional[str] = None
     tenant_spaces: Optional[List[UserTenantSpace]] = None
     #space_id: Optional[UUID] = None
-    site_ids: Optional[List[str]] = []
+    site_ids: Optional[List[UUID]] = []
     staff_role: Optional[str] = None  # ADD HERE - for input only
     pass
 

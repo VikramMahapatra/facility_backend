@@ -93,3 +93,6 @@ class ApprovalStatusRequest(BaseModel):
     model_config = {
         "use_enum_values": True
     }
+
+class UserDetailRequest(CommonQueryParams):
+    user_id: Optional[UUID] = None

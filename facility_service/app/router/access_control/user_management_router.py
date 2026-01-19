@@ -7,7 +7,7 @@ from uuid import UUID
 
 from ...schemas.access_control.user_management_schemas import (
     UserListResponse, UserOut, UserCreate, UserRequest,
-    UserUpdate
+    UserUpdate, UserDetailRequest
 )
 from ...crud.access_control import user_management_crud as crud
 
@@ -82,9 +82,9 @@ def user_roles_lookup_endpoint(
 
 
 
-@router.get("/{user_id}", response_model=UserOut)
-def get_user_detail(
-    user_id: UUID,
+@router.post("/detail", response_model=UserOut)
+def user_detail(
+    params: UserDetailRequest = Depends(),
     db: Session = Depends(get_db),
     facility_db: Session = Depends(get_facility_db),
     current_user: UserToken = Depends(validate_current_token)
@@ -93,5 +93,6 @@ def get_user_detail(
         db=db,
         facility_db=facility_db,
         org_id=current_user.org_id,
-        user_id=user_id
-    )
+        user_id=params.user_id
+)
+

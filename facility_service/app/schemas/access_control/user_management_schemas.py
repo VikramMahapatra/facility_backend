@@ -25,10 +25,11 @@ class UserBase(EmptyStringModel):
 class UserTenantSpace(BaseModel):
     site_id: UUID
     space_id: UUID
+    building_block_id: Optional[UUID] = None
 
 class UserCreate(UserBase):
     #site_id: Optional[UUID] = None
-    org_id: UUID          # REQUIRED
+    org_id: Optional[UUID] = None         # REQUIRED
     role_ids: List[UUID] # REQUIRED
 
     tenant_type: Optional[str] = None
@@ -93,3 +94,6 @@ class ApprovalStatusRequest(BaseModel):
     model_config = {
         "use_enum_values": True
     }
+
+class UserDetailRequest(CommonQueryParams):
+    user_id: Optional[UUID] = None

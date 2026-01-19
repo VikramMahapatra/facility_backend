@@ -379,7 +379,8 @@ def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
             func.concat(Building.name, literal(
                 " - "), Space.name).label("name")
         )
-        .join(Building, Space.building_block_id == Building.id)
+        .join(Site, Space.site_id == Site.id)
+        .outerjoin(Building, Space.building_block_id == Building.id)
         # Updated filter
         .filter(Site.is_deleted == False, Site.status == "active",
                 Space.org_id == org_id, Space.is_deleted == False,

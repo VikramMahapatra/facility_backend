@@ -22,6 +22,16 @@ class UserBase(EmptyStringModel):
     #role_ids: Optional[List[str]] = []
     password :Optional[str]=None
 
+class UserOrganizationOut(BaseModel):
+    user_org_id: UUID
+    org_id: UUID
+    account_type: str
+    organization_name: Optional[str] = None
+    is_default: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class UserTenantSpace(BaseModel):
     site_id: UUID
     space_id: UUID
@@ -66,6 +76,7 @@ class UserOut(BaseModel):
     site_ids: Optional[List[UUID]] = None
     staff_role: Optional[str] = None  # ADD THIS LINE
     tenant_spaces: Optional[List[TenantSpaceOut]] = None
+    account_types: Optional[List[UserOrganizationOut]] = None
 
 
     model_config = ConfigDict(from_attributes=True)

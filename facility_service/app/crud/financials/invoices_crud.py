@@ -3,11 +3,12 @@ from decimal import Decimal
 from typing import Any, Dict 
 from uuid import UUID
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import Date, func, cast, or_, case, Numeric
-
+from sqlalchemy.orm import Session , joinedload
+from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
+from sqlalchemy.dialects.postgresql import JSONB
 from facility_service.app.models.leasing_tenants.leases import Lease
-from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType 
+from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType
+from shared.helpers.json_response_helper import error_response 
 
 from ...enum.revenue_enum import  InvoicePayementMethod
 
@@ -452,21 +453,53 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         db.flush()  # Get ID but don't commit yet
         
         payments_created = []
+        seen_ref_nos = set()   
+
         if payments_data:
-            for idx, payment in enumerate(payments_data):
-                ref_no = payment.ref_no or f"PAY-{db_invoice.invoice_no}-{idx+1}"
-                
+            for payment in payments_data:
+
+                # ref_no is mandatory
+                if not payment.ref_no:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="ref_no is mandatory and must be unique per invoice"
+                    )
+
+                #  Duplicate inside SAME request payload
+                if payment.ref_no in seen_ref_nos:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Duplicate ref_no '{payment.ref_no}' in request payload"
+                    )
+                seen_ref_nos.add(payment.ref_no)
+
+                # Duplicate in DB for SAME invoice
+                existing_payment = db.query(PaymentAR).filter(
+                    PaymentAR.org_id == org_id,
+                    PaymentAR.ref_no == payment.ref_no
+                ).first()
+
+                if existing_payment:
+                    raise HTTPException(
+                            status_code=400,
+                            detail=f"Payment ref_no '{payment.ref_no}' already exists"
+                        )
+
+                # Create payment
                 payment_ar = PaymentAR(
                     org_id=org_id,
                     invoice_id=db_invoice.id,
                     method=payment.method,
-                    ref_no=ref_no,
+                    ref_no=payment.ref_no,
                     amount=float(payment.amount),
                     paid_at=payment.paid_at or datetime.now(),
                     meta=payment.meta or {}
                 )
+
                 db.add(payment_ar)
                 payments_created.append(payment_ar)
+
+
         
         # Calculate invoice amount
         invoice_amount = 0.0
@@ -581,10 +614,16 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         invoice_out = InvoiceOut.model_validate(invoice_dict)
         return invoice_out
         
+    except HTTPException:
+        db.rollback()
+        raise
+
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to create invoice: {str(e)}")
-
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create invoice"
+        )
 
 def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     db_invoice = db.query(Invoice).filter(
@@ -592,158 +631,190 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
         Invoice.org_id == current_user.org_id,
         Invoice.is_deleted == False
     ).first()
-    
+
     if not db_invoice:
-        return None  
-    
-        # Validation: Check if we can update totals
+        return error_response(
+            message="Invoice not found"
+        )
+
+    # Validate totals if payments exist
     has_existing_payments = db.query(PaymentAR).filter(
         PaymentAR.invoice_id == db_invoice.id
     ).first() is not None
-    
-    if has_existing_payments:
-        if 'totals' in invoice_update.model_dump(exclude_unset=True):
-            # Get current and new totals for comparison
-            current_total = 0.0
-            if db_invoice.totals and "grand" in db_invoice.totals:
-                current_total = float(db_invoice.totals.get("grand", 0.0))
-            
-            new_totals = invoice_update.totals
-            new_total = 0.0
-            if new_totals and "grand" in new_totals:
-                new_total = float(new_totals.get("grand", 0.0))
-            
-            # Allow increasing totals (customer owes more)
-            # But don't allow decreasing totals if payments exist
-            if new_total < current_total:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Cannot decrease invoice total after payments have been made"
-                )
-    
-    update_data = invoice_update.model_dump(exclude_unset=True, exclude={"id", "payments"})
-    if 'status' in update_data:
-        del update_data['status']
-        
+
+    if has_existing_payments and 'totals' in invoice_update.model_dump(exclude_unset=True):
+        current_total = float(db_invoice.totals.get("grand", 0.0)) if db_invoice.totals else 0.0
+        new_total = float(invoice_update.totals.get("grand", 0.0)) if invoice_update.totals else 0.0
+
+        if new_total < current_total:
+            return error_response(
+                message="Cannot decrease invoice total after payments have been made"
+            )
+
+    # Update invoice fields (exclude id, payments, status)
+    update_data = invoice_update.model_dump(exclude_unset=True, exclude={"id", "payments", "status"})
     for k, v in update_data.items():
         setattr(db_invoice, k, v)
-    
-    # NEW CODE: Handle payments with update/create logic
-    payments_created = []  # Track newly created payments (without IDs)
-    payments_updated = []  # Track updated payments (with IDs)
-    
+
+    # Handle payments
+    payments_created = []
+    payments_updated = []
+
+    seen_ref_nos = set()
+
     if invoice_update.payments:
         for payment_data in invoice_update.payments:
+            if not payment_data.ref_no:
+                return error_response(
+                    message="ref_no is mandatory and must be unique per invoice"
+                )
+
+            ref_no = str(payment_data.ref_no).strip()
+
+            # ✅ Duplicate check ONLY within request payload
+            if ref_no in seen_ref_nos:
+                return error_response(
+                    message=f"Duplicate ref_no '{ref_no}' in request payload"
+                )
+            seen_ref_nos.add(ref_no)
+
+
             if payment_data.id:
-                # Update existing payment
                 existing_payment = db.query(PaymentAR).filter(
                     PaymentAR.id == payment_data.id,
                     PaymentAR.invoice_id == db_invoice.id,
-                    PaymentAR.org_id == current_user.org_id  # Security check
+                    PaymentAR.org_id == current_user.org_id
                 ).first()
-                
-                if existing_payment:
-                    # Update fields if provided
-                    if payment_data.method:
-                        existing_payment.method = payment_data.method
-                    if payment_data.ref_no:
-                        existing_payment.ref_no = payment_data.ref_no
-                    if payment_data.amount:
-                        existing_payment.amount = float(payment_data.amount)
-                    if payment_data.paid_at:
-                        existing_payment.paid_at = payment_data.paid_at
-                    if payment_data.meta is not None:
-                        existing_payment.meta = payment_data.meta or {}
-                    
-                    payments_updated.append(existing_payment)
-                else:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"Payment with ID {payment_data.id} not found"
+
+                if not existing_payment:
+                    return error_response(
+                        message=f"Payment with ID {payment_data.id} not found"
                     )
+
+                # ✅ DB duplicate check ONLY for updates
+                duplicate = db.query(PaymentAR).filter(
+                    PaymentAR.invoice_id == db_invoice.id,
+                    PaymentAR.org_id == current_user.org_id,
+                    PaymentAR.ref_no == ref_no,
+                    PaymentAR.id != payment_data.id
+                ).first()
+
+                if duplicate:
+                    return error_response(
+                        message=f"Duplicate payment ref_no '{ref_no}' for this invoice"
+                    )
+
+                # Update fields
+                existing_payment.method = payment_data.method or existing_payment.method
+                existing_payment.ref_no = ref_no
+                if payment_data.amount is not None:
+                    existing_payment.amount = float(payment_data.amount)
+                if payment_data.paid_at:
+                    existing_payment.paid_at = payment_data.paid_at
+                if payment_data.meta is not None:
+                    existing_payment.meta = payment_data.meta or {}
+
+                payments_updated.append(existing_payment)
+
+
+        else:
+            # 🔍 Check if payment already exists by ref_no for this invoice
+            existing_payment = db.query(PaymentAR).filter(
+                PaymentAR.invoice_id == db_invoice.id,
+                PaymentAR.org_id == current_user.org_id,
+                PaymentAR.ref_no == ref_no
+            ).first()
+
+            if existing_payment:
+                # 🔁 Treat as UPDATE (not create)
+                existing_payment.method = payment_data.method or existing_payment.method
+                if payment_data.amount is not None:
+                    existing_payment.amount = float(payment_data.amount)
+                if payment_data.paid_at:
+                    existing_payment.paid_at = payment_data.paid_at
+                if payment_data.meta is not None:
+                    existing_payment.meta = payment_data.meta or {}
+
+                payments_updated.append(existing_payment)
+
             else:
-                # Create new payment
-                existing_payments_count = db.query(PaymentAR).filter(
-                    PaymentAR.invoice_id == db_invoice.id
-                ).count()
-                
-                ref_no = payment_data.ref_no or f"PAY-{db_invoice.invoice_no}-{existing_payments_count + 1}"
-                
+                # ➕ Truly NEW payment
                 payment_ar = PaymentAR(
                     org_id=current_user.org_id,
                     invoice_id=db_invoice.id,
                     method=payment_data.method,
                     ref_no=ref_no,
                     amount=float(payment_data.amount),
-                    paid_at=payment_data.paid_at or datetime.now(),
+                    paid_at=payment_data.paid_at or datetime.utcnow(),
                     meta=payment_data.meta or {}
                 )
+
                 db.add(payment_ar)
                 payments_created.append(payment_ar)
-                
-                
-    
-    # Recalculate invoice amount from updated totals
+
+
+    # Flush payments for status calculation
+    db.flush()
+
+    # 6️⃣ Recalculate invoice amount from updated totals
     invoice_amount = 0.0
     if db_invoice.totals and "grand" in db_invoice.totals:
         invoice_amount = float(db_invoice.totals.get("grand", 0.0))
-    
-    # Calculate new status (includes any new payments)
+
+    #  Store old status
+    old_status = db_invoice.status
+
+    #  Calculate new status
     new_status = calculate_invoice_status(
         db=db,
         invoice_id=db_invoice.id,
         invoice_amount=invoice_amount,
         due_date=db_invoice.due_date
     )
-    
+
     db_invoice.status = new_status
     db_invoice.is_paid = (new_status == "paid")
-    
-    # ADD THIS: Notification logic for invoice update (lease charge only)
+
+    #  Notifications (lease charge only)
     if db_invoice.billable_item_type == "lease charge":
-        # 1. Notification for EACH NEW payment added
-        if payments_created:
-            for payment in payments_created:
-                payment_notification = Notification(
-                    user_id=current_user.user_id,
-                    type=NotificationType.alert,
-                    title="Lease Payment Added",
-                    message=f"Payment of {payment.amount} added to invoice {db_invoice.invoice_no}",
-                    posted_date=datetime.utcnow(),
-                    priority=PriorityType.medium,
-                    read=False,
-                    is_deleted=False,
-                    is_email=False
-                )
-                db.add(payment_notification)
-        
-        # 2. Notification if invoice becomes FULLY PAID after update
-        if new_status == "paid":
-            # Check if it was not already paid before
-            if db_invoice.status != "paid":  # Only notify if status changed to paid
-                full_payment_notification = Notification(
-                    user_id=current_user.user_id,
-                    type=NotificationType.alert,
-                    title="Lease Invoice Fully Paid",
-                    message=f"Invoice {db_invoice.invoice_no} has been fully paid",
-                    posted_date=datetime.utcnow(),
-                    priority=PriorityType.medium,
-                    read=False,
-                    is_deleted=False,
-                    is_email=False
-                )
-                db.add(full_payment_notification)
- 
+        #  Notification for each new payment
+        for payment in payments_created:
+            db.add(Notification(
+                user_id=current_user.user_id,
+                type=NotificationType.alert,
+                title="Lease Payment Added",
+                message=f"Payment of {payment.amount} added to invoice {db_invoice.invoice_no}",
+                posted_date=datetime.utcnow(),
+                priority=PriorityType.medium,
+                read=False,
+                is_deleted=False,
+                is_email=False
+            ))
+        #  Notification if invoice becomes fully paid (and was not before)
+        if new_status == "paid" and old_status != "paid":
+            db.add(Notification(
+                user_id=current_user.user_id,
+                type=NotificationType.alert,
+                title="Lease Invoice Fully Paid",
+                message=f"Invoice {db_invoice.invoice_no} has been fully paid",
+                posted_date=datetime.utcnow(),
+                priority=PriorityType.medium,
+                read=False,
+                is_deleted=False,
+                is_email=False
+            ))
+
+    #  Commit all changes
     db.commit()
     db.refresh(db_invoice)
-    
+
     # Refresh newly created payments
     for payment in payments_created:
         db.refresh(payment)
-    
+
+    #  Prepare response
     site_name = db_invoice.site.name if db_invoice.site else None
-    
-    
+
     billable_item_name = None
     if db_invoice.billable_item_type and db_invoice.billable_item_id:
         if db_invoice.billable_item_type == "work order":
@@ -794,11 +865,11 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
                 else:
                     billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
 
-    # Get ALL payments (existing + newly created) for response
+    # Get all payments for response
     all_payments = db.query(PaymentAR).filter(
         PaymentAR.invoice_id == db_invoice.id
     ).all()
-    
+
     payments_list = []
     for payment in all_payments:
         payments_list.append({
@@ -810,7 +881,7 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
             "method": payment.method,
             "ref_no": payment.ref_no,
             "amount": Decimal(str(payment.amount)),
-            "paid_at": payment.paid_at.date().isoformat(), 
+            "paid_at": payment.paid_at.date().isoformat(),
             "meta": payment.meta
         })
 
@@ -819,13 +890,14 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
         "date": db_invoice.date.isoformat() if db_invoice.date else None,
         "due_date": db_invoice.due_date.isoformat() if db_invoice.due_date else None,
         "site_name": site_name,
-        "status": new_status,  
-        "is_paid": (new_status == "paid"), 
+        "status": new_status,
+        "is_paid": (new_status == "paid"),
         "payments": payments_list
     }
+
     if billable_item_name:
         invoice_dict["billable_item_name"] = billable_item_name
-    
+
     invoice_out = InvoiceOut.model_validate(invoice_dict)
     return invoice_out
 
@@ -1198,3 +1270,180 @@ def invoice_payement_method_lookup(db: Session, org_id: UUID):
         Lookup(id=method.value, name=method.name.capitalize())
         for method in InvoicePayementMethod
     ]
+    
+    
+def build_invoice_billable_item_name(db, item_type, item_id):
+    if item_type == "lease charge":
+        charge = db.query(LeaseCharge).filter(
+            LeaseCharge.id == item_id,
+            LeaseCharge.is_deleted == False
+        ).first()
+        if charge:
+            code = charge.charge_code.code
+            if charge.period_start and charge.period_end:
+                return f"{code} | {charge.period_start:%d %b %Y} - {charge.period_end:%d %b %Y}"
+            return code
+
+    if item_type == "work order":
+        wo = db.query(TicketWorkOrder).filter(
+            TicketWorkOrder.id == item_id
+        ).first()
+        if wo:
+            ticket = db.query(Ticket).filter(
+                Ticket.id == wo.ticket_id
+            ).first()
+            return f"{wo.wo_no} | Ticket {ticket.ticket_no}" if ticket else wo.wo_no
+
+    if item_type == "parking pass":
+        pass_ = db.query(ParkingPass).filter(
+            ParkingPass.id == item_id
+        ).first()
+        if pass_:
+            return f"Parking Pass | {pass_.pass_no}"
+
+    return None
+
+
+def get_invoice_detail(db: Session, org_id: UUID, invoice_id: UUID) -> InvoiceOut:
+    invoice = (
+        db.query(Invoice)
+        .options(joinedload(Invoice.site))
+        .filter(
+            Invoice.id == invoice_id,
+            Invoice.org_id == org_id,
+            Invoice.is_deleted == False
+        )
+        .first()
+    )
+
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    site_name = invoice.site.name if invoice.site else None
+    billable_item_name = None
+    customer_name = None
+
+    # -------------------------------------------------
+    # BILLABLE ITEM + CUSTOMER
+    # -------------------------------------------------
+    if invoice.billable_item_type and invoice.billable_item_id:
+
+        # ---------- WORK ORDER ----------
+        if invoice.billable_item_type == "work order":
+            wo = db.query(TicketWorkOrder).filter(
+                TicketWorkOrder.id == invoice.billable_item_id,
+                TicketWorkOrder.is_deleted == False
+            ).first()
+
+            if wo:
+                ticket = db.query(Ticket).filter(
+                    Ticket.id == wo.ticket_id
+                ).first()
+
+                billable_item_name = (
+                    f"{wo.wo_no} | Ticket {ticket.ticket_no}"
+                    if ticket and ticket.ticket_no
+                    else wo.wo_no
+                )
+
+                if ticket:
+                    if ticket.tenant:
+                        customer_name = ticket.tenant.name or ticket.tenant.legal_name
+                    elif ticket.vendor:
+                        customer_name = ticket.vendor.name
+                    elif ticket.space and ticket.space.tenant:
+                        customer_name = ticket.space.tenant.name or ticket.space.tenant.legal_name
+
+        # ---------- LEASE CHARGE ----------
+        elif invoice.billable_item_type == "lease charge":
+            lease_charge = db.query(LeaseCharge).filter(
+                LeaseCharge.id == invoice.billable_item_id,
+                LeaseCharge.is_deleted == False
+            ).first()
+
+            if lease_charge:
+                charge_code = lease_charge.charge_code.code
+
+                if lease_charge.period_start and lease_charge.period_end:
+                    start_str = lease_charge.period_start.strftime("%d %b %Y")
+                    end_str = lease_charge.period_end.strftime("%d %b %Y")
+                    billable_item_name = f"{charge_code} | {start_str} - {end_str}"
+                else:
+                    billable_item_name = charge_code
+
+                # ✅ CUSTOMER (ALWAYS RUNS)
+                if lease_charge.lease and lease_charge.lease.tenant:
+                    tenant = lease_charge.lease.tenant
+                    customer_name = tenant.name or tenant.legal_name
+
+        # ---------- PARKING PASS ----------
+        elif invoice.billable_item_type == "parking pass":
+            parking_pass = db.query(ParkingPass).filter(
+                ParkingPass.id == invoice.billable_item_id,
+                ParkingPass.is_deleted == False
+            ).first()
+
+            if parking_pass:
+                if parking_pass.start_date and parking_pass.end_date:
+                    start_str = parking_pass.start_date.strftime("%d %b %Y")
+                    end_str = parking_pass.end_date.strftime("%d %b %Y")
+                    billable_item_name = (
+                        f"Parking Pass | {parking_pass.pass_no} | {start_str}–{end_str}"
+                    )
+                else:
+                    billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
+
+                # ✅ CUSTOMER (ALWAYS RUNS)
+                if parking_pass.pass_holder_name:
+                    customer_name = parking_pass.pass_holder_name
+                elif parking_pass.space and parking_pass.space.tenant:
+                    customer_name = parking_pass.space.tenant.name or parking_pass.space.tenant.legal_name
+
+    # -------------------------------------------------
+    # PAYMENTS
+    # -------------------------------------------------
+    payments = db.query(PaymentAR).filter(
+        PaymentAR.invoice_id == invoice.id
+    ).all()
+
+    payments_list = [
+        {
+            "id": p.id,
+            "org_id": p.org_id,
+            "invoice_id": p.invoice_id,
+            "invoice_no": invoice.invoice_no,
+            "billable_item_name": billable_item_name,
+            "method": p.method,
+            "ref_no": p.ref_no,
+            "amount": Decimal(str(p.amount)),
+            "paid_at": p.paid_at.date().isoformat() if p.paid_at else None,
+            "meta": p.meta,
+            "customer_name": customer_name
+        }
+        for p in payments
+    ]
+
+    # -------------------------------------------------
+    # STATUS
+    # -------------------------------------------------
+    invoice_amount = float(invoice.totals.get("grand", 0)) if invoice.totals else 0
+
+    actual_status = calculate_invoice_status(
+        db=db,
+        invoice_id=invoice.id,
+        invoice_amount=invoice_amount,
+        due_date=invoice.due_date
+    )
+
+    return InvoiceOut.model_validate({
+        **invoice.__dict__,
+        "date": invoice.date.isoformat() if invoice.date else None,
+        "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+        "site_name": site_name,
+        "billable_item_name": billable_item_name,
+        "customer_name": customer_name,
+        "status": actual_status,
+        "is_paid": actual_status == "paid",
+        "payments": payments_list,
+        "currency": "INR"
+    })

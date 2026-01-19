@@ -3,10 +3,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 from shared.core.database import get_auth_db as get_db, get_facility_db
 from shared.core.schemas import Lookup, UserToken
+from uuid import UUID
 
 from ...schemas.access_control.user_management_schemas import (
     UserListResponse, UserOut, UserCreate, UserRequest,
-    UserUpdate
+    UserUpdate, UserDetailRequest
 )
 from ...crud.access_control import user_management_crud as crud
 
@@ -76,3 +77,22 @@ def user_roles_lookup_endpoint(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.user_roles_lookup(db, current_user.org_id)
+
+
+
+
+
+@router.post("/detail", response_model=UserOut)
+def user_detail(
+    params: UserDetailRequest = Depends(),
+    db: Session = Depends(get_db),
+    facility_db: Session = Depends(get_facility_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_user_detail(
+        db=db,
+        facility_db=facility_db,
+        org_id=current_user.org_id,
+        user_id=params.user_id
+)
+

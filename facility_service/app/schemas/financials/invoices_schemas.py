@@ -133,3 +133,11 @@ class InvoiceTotalsResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+class InvoiceDetailRequest(BaseModel):
+    search: Optional[str] = None
+    skip: int = 0
+    limit: int = 10
+    status: Optional[str] = None
+    invoice_id: Optional[UUID] = None

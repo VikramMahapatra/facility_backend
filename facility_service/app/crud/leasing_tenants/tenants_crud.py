@@ -150,7 +150,7 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
             ).label("tenant_spaces")
         )
         .select_from(Tenant)
-        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+        .join(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
         .join(
             Site,
             and_(
@@ -283,7 +283,7 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
             ).label("tenant_spaces")
         )
         .select_from(Tenant)
-        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+        .join(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
         .join(Site, Site.id == TenantSpace.site_id)
         .join(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
@@ -670,7 +670,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
         # ➖ SOFT DELETE REMOVED
         for space_id, ts in active_assignments.items():
             if space_id not in incoming_space_ids:
-                ts.status = "vacated"
+                ts.status = "vacated" if ts.status == "occupied" else "pending"
                 ts.is_deleted = True
 
             tenant_lease = (

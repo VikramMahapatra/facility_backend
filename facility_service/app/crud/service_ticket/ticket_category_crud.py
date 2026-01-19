@@ -1,11 +1,12 @@
 # crud/service_ticket/ticket_category_crud.py
-from sqlalchemy.exc import IntegrityError 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, or_
 from uuid import UUID
 from typing import List, Optional
 from datetime import datetime
 
+from auth_service.app.models.user_organizations import UserOrganization
 from shared.models.users import Users
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
@@ -116,12 +117,12 @@ def create_ticket_category(db: Session, category: TicketCategoryCreate) -> Ticke
         TicketCategory.site_id == category.site_id,
         TicketCategory.is_deleted == False
     ).first()
-        
+
     if existing_category:
         return error_response(
             message=f"Ticket category '{category.category_name}' already exists for this site"
         )
-        
+
     if category.sla_id is None or category.sla_id == "":
         return error_response(
             message="SLA policy cannot be  empty",
@@ -172,8 +173,8 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate):
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
-            
-    #if ticketcategory has ticket then can not update site
+
+    # if ticketcategory has ticket then can not update site
     if 'site_id' in update_data and update_data['site_id'] != db_category.site_id:
         # Check if category has any assigned tickets
         has_tickets = db.query(Ticket).filter(
@@ -184,7 +185,7 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate):
             return error_response(
                 message="Cannot update site for category with assigned tickets"
             )
-    
+
     for key, value in update_data.items():
         setattr(db_category, key, value)
 
@@ -195,10 +196,10 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate):
     except IntegrityError as e:
         db.rollback()
         return error_response(
-        message="Error updating ticket category",
-        status_code=str(AppStatusCode.OPERATION_ERROR),
-        http_status=400
-    )
+            message="Error updating ticket category",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 # ---------------- Soft Delete ----------------
@@ -260,8 +261,8 @@ def sla_policy_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup
         db.query(SlaPolicy.id, SlaPolicy.service_category)
         .filter(
             SlaPolicy.is_deleted == False,
-            SlaPolicy.site_id == site_id ,
-            SlaPolicy.active == True # STRICT FILTER HERE
+            SlaPolicy.site_id == site_id,
+            SlaPolicy.active == True  # STRICT FILTER HERE
         )
         .order_by(SlaPolicy.service_category.asc())  # ASCENDING ORDER
     )
@@ -328,15 +329,17 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
 
     # Create a mapping of user_id to user data for quick lookup
     user_map = {user.id: user.full_name for user in users}
-    
+
     # Create a mapping of user_id to staff_role
     role_map = {staff.user_id: staff.staff_role for staff in staff_sites}
 
     org_users = (
         auth_db.query(Users.id, Users.full_name)
+        .join(Users.organizations)
         .filter(
-            Users.account_type == "organization",
-            Users.org_id == org_id,
+            UserOrganization.org_id == org_id,
+            UserOrganization.account_type == "organization",
+            UserOrganization.status == "active",
             Users.status == "active",
             Users.is_deleted == False
         )
@@ -344,7 +347,7 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
     )
 
     # Return with formatted name including role
-    staff_users= [
+    staff_users = [
         {
             "user_id": user_id,
             "full_name": f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
@@ -352,7 +355,7 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         for user_id in user_ids
         if user_id in user_map  # Only include users found in auth db
     ]
-        # Convert org users to EmployeeOut
+    # Convert org users to EmployeeOut
     org_users_lookup = [
         EmployeeOut(
             user_id=u.id,
@@ -361,6 +364,7 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         for u in org_users
     ]
     return staff_users + org_users_lookup
+
 
 def category_lookup(db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     """
@@ -403,7 +407,7 @@ def get_ticket_category_with_site_for_update(db: Session, category_id: UUID):
         )
         .first()
     )
-    
+
     if category:
         return TicketCategoryOut.model_validate({
             **category.__dict__,

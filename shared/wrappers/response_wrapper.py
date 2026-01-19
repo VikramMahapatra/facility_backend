@@ -50,6 +50,7 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
             # 🧨 Handle uncaught exceptions gracefully
             error_message = str(e)
             traceback.print_exc()
+            print(f"Internal Server Error: {error_message}")
 
             wrapped_error = JsonOutResult(
                 data="",
@@ -105,7 +106,7 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
                                 "message", data["message"])
                             data["status_code"] = parsed.get(
                                 "status_code", data["status_code"])
-                    except Exception as e :
+                    except Exception as e:
                         pass  # fallback to original message
                 return JSONResponse(
                     status_code=response.status_code,

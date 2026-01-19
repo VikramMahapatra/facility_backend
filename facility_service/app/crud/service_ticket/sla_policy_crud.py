@@ -5,6 +5,8 @@ from uuid import UUID
 from typing import List, Optional
 from datetime import datetime
 
+from auth_service.app.models.user_organizations import UserOrganization
+from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.models.space_sites.orgs import Org
 from shared.models.users import Users
 from shared.helpers.json_response_helper import error_response
@@ -405,9 +407,11 @@ def contact_lookup(db: Session, auth_db: Session, org_id: UUID, site_id: Optiona
     # Fetch all organization users with status='active'
     org_users = (
         auth_db.query(Users.id, Users.full_name)
+        .join(UserOrganization, UserOrganization.user_id == Users.id)
         .filter(
-            Users.org_id == org_id,
-            Users.account_type == "organization",
+            UserOrganization.org_id == org_id,
+            UserOrganization.account_type == "organization",
+            UserOrganization.status == "active",
             Users.status == "active",
             Users.is_deleted == False
         )

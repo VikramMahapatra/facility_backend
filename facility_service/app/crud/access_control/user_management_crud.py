@@ -28,6 +28,10 @@ from shared.core.schemas import Lookup
 from ...enum.access_control_enum import UserRoleEnum, UserStatusEnum
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.associations import user_org_roles
+from sqlalchemy import and_, literal
+from sqlalchemy.dialects.postgresql import JSONB
+from fastapi import HTTPException
+from uuid import UUID
 
 from ...schemas.access_control.user_management_schemas import (
     UserCreate, UserOut, UserRequest, UserUpdate
@@ -949,3 +953,181 @@ def user_roles_lookup(db: Session, org_id: str):
         .order_by(Roles.name.asc())
     )
     return query.all()
+
+
+def get_user_detail(
+    db: Session,
+    facility_db: Session,
+    org_id: UUID,
+    user_id: UUID
+) -> UserOut:
+
+    record = (
+        db.query(
+            Users.id.label("id"),
+            Users.full_name,
+            Users.email,
+            Users.phone,
+            Users.picture_url,
+            Users.status,
+            Users.created_at,
+            Users.updated_at,
+            UserOrganization.org_id,
+            UserOrganization.account_type,
+
+            # ---------------- ROLES ----------------
+            func.coalesce(
+                func.jsonb_agg(
+                    func.distinct(
+                        func.jsonb_build_object(
+                            "id", Roles.id,
+                            "name", Roles.name,
+                            "description", Roles.description   # ✅ ADD THIS
+                        )
+                    )
+                ).filter(Roles.id.isnot(None)),
+                literal("[]").cast(JSONB)
+            ).label("roles")
+        )
+        .select_from(Users)
+        .join(
+            UserOrganization,
+            and_(
+                UserOrganization.user_id == Users.id,
+                UserOrganization.org_id == org_id,
+                UserOrganization.status == "active"
+            )
+        )
+        .outerjoin(user_org_roles, user_org_roles.c.user_org_id == UserOrganization.id)
+        .outerjoin(Roles, Roles.id == user_org_roles.c.role_id)
+        .filter(
+            Users.id == user_id,
+            Users.is_deleted == False
+        )
+        .group_by(
+            Users.id,
+            Users.full_name,
+            Users.email,
+            Users.phone,
+            Users.picture_url,
+            Users.status,
+            Users.created_at,
+            Users.updated_at,
+            UserOrganization.org_id,
+            UserOrganization.account_type
+        )
+        .first()
+    )
+
+    if not record:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    data = dict(record._mapping)
+
+    # =====================================================
+    # TENANT DETAILS
+    # =====================================================
+    if data["account_type"].lower() == "tenant":
+
+        tenant = (
+            facility_db.query(
+                Tenant.kind.label("tenant_type"),
+                func.coalesce(
+                    func.jsonb_agg(
+                        func.distinct(
+                            func.jsonb_build_object(
+                                "site_id", Site.id,
+                                "site_name", Site.name,
+                                "space_id", Space.id,
+                                "space_name", Space.name,
+                                "building_block_id", Building.id,
+                                "building_block_name", Building.name,
+                                "status", TenantSpace.status
+                            )
+                        )
+                    ).filter(TenantSpace.id.isnot(None)),
+                    literal("[]").cast(JSONB)
+                ).label("tenant_spaces")
+            )
+            .select_from(Tenant)
+            .join(
+                TenantSpace,
+                and_(
+                    TenantSpace.tenant_id == Tenant.id,
+                    TenantSpace.is_deleted == False
+                )
+            )
+            .join(Site, Site.id == TenantSpace.site_id)
+            .join(Space, Space.id == TenantSpace.space_id)
+            .outerjoin(Building, Building.id == Space.building_block_id)
+            .filter(
+                Tenant.user_id == user_id,
+                Tenant.is_deleted == False
+            )
+            .group_by(Tenant.kind)
+            .first()
+        )
+
+        data["tenant_type"] = tenant.tenant_type if tenant else None
+        data["tenant_spaces"] = tenant.tenant_spaces if tenant else []
+
+    # =====================================================
+    # STAFF DETAILS
+    # =====================================================
+    elif data["account_type"].lower() == "staff":
+
+        staff = (
+            facility_db.query(
+                func.coalesce(
+                    func.jsonb_agg(
+                        func.jsonb_build_object(
+                            "site_id", StaffSite.site_id
+                        )
+                    ),
+                    literal("[]").cast(JSONB)
+                ).label("site_ids"),
+                func.max(StaffSite.staff_role).label("staff_role")
+            )
+            .filter(
+                StaffSite.user_id == user_id,
+                StaffSite.is_deleted == False
+            )
+            .first()
+        )
+
+        data["site_ids"] = [s["site_id"] for s in staff.site_ids] if staff else []
+        data["staff_role"] = staff.staff_role if staff else None
+
+    # =====================================================
+    # VENDOR DETAILS
+    # =====================================================
+    elif data["account_type"].lower() == "vendor":
+
+        vendor = (
+            facility_db.query(
+                Vendor.id.label("vendor_id"),
+                Vendor.name.label("vendor_name"),
+                Vendor.status.label("vendor_status"),
+                Vendor.contact.label("vendor_contact")
+            )
+            .filter(
+                Vendor.contact['user_id'].astext == str(user_id),
+                Vendor.is_deleted == False
+            )
+            .first()
+        )
+
+        data["vendor_id"] = vendor.vendor_id if vendor else None
+        data["vendor_name"] = vendor.vendor_name if vendor else None
+        data["vendor_status"] = vendor.vendor_status if vendor else None
+        data["vendor_contact"] = vendor.vendor_contact if vendor else None
+
+    # =====================================================
+    # DEFAULT SAFE FIELDS
+    # =====================================================
+    data.setdefault("tenant_spaces", [])
+    data.setdefault("site_ids", [])
+    data.setdefault("staff_role", None)
+    data.setdefault("tenant_type", None)
+
+    return UserOut.model_validate(data)

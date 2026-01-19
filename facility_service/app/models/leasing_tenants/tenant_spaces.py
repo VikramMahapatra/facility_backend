@@ -23,6 +23,7 @@ class TenantSpace(Base):
     )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
     tenant = relationship("Tenant", back_populates="tenant_spaces")
     space = relationship("Space", back_populates="tenant_links")
     site = relationship("Site", back_populates="tenant_links")

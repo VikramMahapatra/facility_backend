@@ -573,10 +573,7 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             # Don't fail user update if email fails
             print(f"Password update email failed: {email_error}")
 
-    # -----------------------
-    # UPDATE ROLES
-    # -----------------------
-    # -----------------------
+   
 # UPDATE ROLES (ORG BASED) 🔴 CHANGED
 # -----------------------
    
@@ -602,6 +599,8 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
         # attach new roles
         user_org.roles.extend(roles)
 
+    
+   # facility_db.commit()
 
     db.commit()
     db.refresh(db_user)
@@ -670,14 +669,21 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
 
 
         # ✅ FIXED: Lease validation with better queries
-        current_tenant = facility_db.query(Tenant).filter(
+        tenant = facility_db.query(Tenant).filter(
             Tenant.user_id == db_user.id,
             Tenant.is_deleted == False
         ).first()
 
-        # ✅ REPLACEMENT: lease safety for multi-space
+        # 🚨 SAFETY CHECK (THIS WAS MISSING)
+        if not tenant:
+            return error_response(
+                message="Tenant record not found for this user",
+                status_code=str(AppStatusCode.NOT_FOUND_ERROR)
+            )
+
+        # ✅ Lease safety check
         has_active_lease = facility_db.query(Lease).filter(
-            Lease.tenant_id == current_tenant.id,
+            Lease.tenant_id == tenant.id,
             Lease.is_deleted == False,
             func.lower(Lease.status) == "active"
         ).first()
@@ -686,54 +692,40 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             return error_response(
                 message="Cannot update tenant spaces while active leases exist"
             )
-        tenant = current_tenant
+        
+         # ================= TENANT SPACES UPDATE =================
+        existing_spaces = facility_db.query(TenantSpace).filter(
+            TenantSpace.tenant_id == tenant.id,
+            TenantSpace.is_deleted == False
+        ).all()
 
+        for ts in existing_spaces:
+            ts.is_deleted = True
+            ts.updated_at = datetime.utcnow()
 
-        # Check if site/space is being updated
-        """site_changing = user.site_id is not None and (
-            (current_tenant and user.site_id != current_tenant.site_id)
-        )
+        facility_db.flush()
 
-        space_changing = user.space_id is not None and (
-            (current_tenant and user.space_id != current_tenant.space_id)
-        )
-
-        if site_changing or space_changing:
-            has_active_leases = False
-
-            if current_tenant:
-                has_active_leases = facility_db.query(Lease).filter(
-                    Lease.tenant_id == current_tenant.id,
-                    Lease.is_deleted == False,
-                    func.lower(Lease.status) == func.lower('active')
-                ).first() is not None
-
-            if has_active_leases:
-                return error_response(
-                    message="Cannot update site or space for a tenant user that has active leases"
-                )"""
-
-        """tenant = facility_db.query(Tenant).filter(
-            Tenant.user_id == db_user.id
-        ).first()"""
-
+        now = datetime.utcnow()
+        for space in user.tenant_spaces:
+            facility_db.add(
+                TenantSpace(
+                    tenant_id=tenant.id,
+                    site_id=space.site_id,
+                    space_id=space.space_id,
+                    status="pending",
+                    created_at=now,
+                    updated_at=now
+                )
+            )
+    
+       
         if tenant:
             tenant.name = user.full_name
             tenant.phone = user.phone
             tenant.email = user.email
             tenant.status = user.status
             tenant.kind = user.tenant_type
-        """else:
-            tenant = Tenant(
-                #site_id=user.site_id,
-                #space_id=user.space_id,  # ✅ This should save now
-                name=user.full_name,
-                email=user.email,
-                phone=user.phone,
-                status=user.status,
-                user_id=db_user.id,
-                kind=user.tenant_type
-            )"""
+        
 
         if user.tenant_type == "commercial":
             tenant.legal_name = user.full_name

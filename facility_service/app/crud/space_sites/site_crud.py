@@ -97,14 +97,14 @@ def get_sites(db: Session,  user: UserToken, params: SiteRequest):
         .outerjoin(spaces_sq, spaces_sq.c.site_id == Site.id)
         .outerjoin(buildings_sq, buildings_sq.c.site_id == Site.id)
         .outerjoin(occupied_sq, occupied_sq.c.site_id == Site.id)
-        .filter( Site.is_deleted == False)
+        .filter(Site.is_deleted == False)
     )
 
     if allowed_site_ids is not None:
         site_query = site_query.filter(Site.id.in_(allowed_site_ids))
     else:
         site_query = site_query.filter(Site.org_id == user.org_id)
-        
+
     # ------------- Filters --------------
     if params.kind and params.kind.lower() != "all":
         site_query = site_query.filter(
@@ -157,9 +157,9 @@ def get_site_lookup(db: Session, user: UserToken, params: Optional[SiteRequest] 
         if not allowed_site_ids:
             return {"sites": [], "total": 0}
 
-    site_query = db.query(Site.id, Site.name).filter(Site.is_deleted == False, Site.status == "active")
+    site_query = db.query(Site.id, Site.name).filter(
+        Site.is_deleted == False, Site.status == "active")
 
-    
     if allowed_site_ids is not None:
         site_query = site_query.filter(Site.id.in_(allowed_site_ids))
     else:
@@ -221,7 +221,7 @@ def get_site(db: Session, site_id: str):
     ) or 0
 
     occupied_percent = round(max(
-        0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0)),2)
+        0.0, min(100.0, (occupied / total_spaces * 100) if total_spaces else 0.0)), 2)
 
     return SiteOut(
         id=site.id,
@@ -249,7 +249,7 @@ def create_site(db: Session, site: SiteCreate):
         Site.is_deleted == False,
         func.lower(Site.name) == func.lower(site.name)
     ).first()
-   
+
     if existing_name and existing_name.name.lower() == site.name.lower():
         return error_response(
             message=f"Site with name '{site.name}' already exists",
@@ -382,10 +382,10 @@ def delete_site(db: Session, site_id: str) -> Dict:
     return {"success": True, "message": "Site deleted successfully"}
 
 
-
 def get_site_master_lookup(db: Session, params: Optional[SiteRequest] = None):
 
-    site_query = db.query(Site.id, Site.name).filter(Site.is_deleted == False, Site.status == "active")
+    site_query = db.query(Site.id, Site.name).filter(
+        Site.is_deleted == False, Site.status == "active")
 
     if params and params.search:
         search_term = f"%{params.search}%"

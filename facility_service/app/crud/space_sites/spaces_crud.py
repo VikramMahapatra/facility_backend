@@ -110,8 +110,9 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
 
     query = (
         base_query
+        .join(Site, Space.site_id == Site.id)
         .join(Building, Space.building_block_id == Building.id, isouter=True)
-        .add_columns(Building.name.label("building_block_name"))
+        .add_columns(Building.name.label("building_block_name"), Site.name.label("site_name"))
     )
     total = db.query(func.count()).select_from(query.subquery()).scalar()
 
@@ -127,8 +128,13 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
     for row in spaces:
         space = row[0]                     # Space object
         building_name = row.building_block_name  # Joined building name
+        site_name = row.site_name              # Joined site name
 
-        data = {**space.__dict__, "building_block": building_name}
+        data = {
+            **space.__dict__,
+            "building_block": building_name,
+            "site_name": site_name
+        }
         results.append(SpaceOut.model_validate(data))
 
     return {"spaces": results, "total": total}
@@ -269,7 +275,12 @@ def update_space(db: Session, space: SpaceUpdate):
 
         # Joined building name ------changed
         building_name = db_space.building.name if db_space.building_block_id else None
-        data = {**db_space.__dict__, "building_block": building_name}
+        site_name = db_space.site.name if db_space.site_id else None
+        data = {
+            **db_space.__dict__,
+            "building_block": building_name,
+            "site_name": site_name
+        }
 
         return SpaceOut.model_validate(data)
     except IntegrityError as e:
@@ -337,7 +348,7 @@ def get_space_lookup(db: Session, site_id: str, building_id: str, user: UserToke
         )
         .join(Site, Space.site_id == Site.id)
         .outerjoin(Building, Space.building_block_id == Building.id)
-        .filter(Space.is_deleted == False ,
+        .filter(Space.is_deleted == False,
                 Site.is_deleted == False,
                 Site.status == "active",
                 Building.is_deleted == False,
@@ -382,7 +393,6 @@ def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
     return space_query.all()
 
 
-
 def get_space_master_lookup(db: Session, site_id: str, building_id: str):
     space_query = (
         db.query(
@@ -391,7 +401,7 @@ def get_space_master_lookup(db: Session, site_id: str, building_id: str):
         )
         .join(Site, Space.site_id == Site.id)
         .outerjoin(Building, Space.building_block_id == Building.id)
-        .filter(Space.is_deleted == False ,
+        .filter(Space.is_deleted == False,
                 Site.is_deleted == False,
                 Site.status == "active",
                 Building.is_deleted == False,

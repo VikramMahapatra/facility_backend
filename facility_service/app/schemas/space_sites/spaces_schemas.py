@@ -35,6 +35,7 @@ class SpaceUpdate(SpaceBase):
 
 class SpaceOut(SpaceBase):
     id: UUID
+    site_name: Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 

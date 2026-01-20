@@ -728,25 +728,47 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             TenantSpace.is_deleted == False
         ).all()
 
-        for ts in existing_spaces:
-            ts.is_deleted = True
-            ts.updated_at = datetime.utcnow()
+        existing_space_map = {ts.space_id: ts for ts in existing_spaces}
 
-        facility_db.flush()
+        incoming_primary_space_id = None
+        for s in user.tenant_spaces:
+            if s.is_primary:
+                incoming_primary_space_id = s.space_id
+                break
 
         now = datetime.utcnow()
+
         for space in user.tenant_spaces:
-            facility_db.add(
-                TenantSpace(
-                    tenant_id=tenant.id,
-                    site_id=space.site_id,
-                    space_id=space.space_id,
-                    status="pending",
-                    is_primary=space.is_primary,
-                    created_at=now,
-                    updated_at=now
+            if space.space_id in existing_space_map:
+                # ✅ EXISTING SPACE
+                ts = existing_space_map[space.space_id]
+
+                # update primary only if needed
+                if incoming_primary_space_id:
+                    ts.is_primary = (ts.space_id == incoming_primary_space_id)
+
+                ts.updated_at = now
+
+            else:
+                # ✅ NEW SPACE
+                if space.is_primary:
+                    # new primary → unset all existing
+                    for ts in existing_spaces:
+                        ts.is_primary = False
+                        ts.updated_at = now
+
+                facility_db.add(
+                    TenantSpace(
+                        tenant_id=tenant.id,
+                        site_id=space.site_id,
+                        space_id=space.space_id,
+                        status="pending",
+                        is_primary=space.is_primary,
+                        created_at=now,
+                        updated_at=now
+                    )
                 )
-            )
+
 
        
         if tenant:

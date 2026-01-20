@@ -194,7 +194,7 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                     and_(
                         LeaseCharge.lease_id == lease.id,
                         LeaseCharge.is_deleted == False,
-                        LeaseCharge.charge_code == "RENT"
+                        LeaseCharge.charge_code.has(code="RENT")
                     )
                 )
             )
@@ -233,7 +233,7 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                     and_(
                         LeaseCharge.lease_id == lease.id,
                         LeaseCharge.is_deleted == False,
-                        LeaseCharge.charge_code == "MAINTENANCE"
+                        LeaseCharge.charge_code.has(code="MAINTENANCE")
                     )
                 )
             )

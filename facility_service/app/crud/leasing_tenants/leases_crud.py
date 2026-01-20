@@ -15,7 +15,7 @@ from ...models.leasing_tenants.tenants import Tenant
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
-from ...enum.leasing_tenants_enum import LeaseDefaultPayer, LeaseStatus
+from ...enum.leasing_tenants_enum import LeaseDefaultPayer, LeaseStatus, TenantStatus
 from shared.core.schemas import Lookup, UserToken
 
 from ...models.leasing_tenants.leases import Lease
@@ -461,6 +461,32 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
         LeaseCharge.lease_id == lease_id,
         LeaseCharge.is_deleted == False
     ).update({"is_deleted": True})
+
+        # ✅ ADD THIS
+    db.query(TenantSpace).filter(
+        TenantSpace.tenant_id == obj.tenant_id,
+        TenantSpace.is_deleted == False
+    ).update(
+        {"status": "vacant"},
+        synchronize_session=False
+    )
+
+    # ✅ CHECK OTHER ACTIVE LEASES
+    has_other_active_lease = db.query(Lease).filter(
+        Lease.tenant_id == obj.tenant_id,
+        Lease.is_deleted == False,
+        Lease.id != lease_id
+    ).first()
+
+    if not has_other_active_lease:
+        tenant = db.query(Tenant).filter(
+            Tenant.id == obj.tenant_id,
+            Tenant.is_deleted == False
+        ).first()
+
+        if tenant:
+            tenant.status = TenantStatus.inactive
+
 
     db.commit()
 

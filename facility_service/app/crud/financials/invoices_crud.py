@@ -20,7 +20,8 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket  
 from ...models.financials.invoices import Invoice, PaymentAR
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentOut
+from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentOut
+from facility_service.app.models.parking_access import parking_pass
 
 
 # ----------------------------------------------------------------------
@@ -1447,3 +1448,122 @@ def get_invoice_detail(db: Session, org_id: UUID, invoice_id: UUID) -> InvoiceOu
         "payments": payments_list,
         "currency": "INR"
     })
+
+
+
+def get_invoice_payment_history(
+    db: Session,
+    org_id: UUID,
+    invoice_id: UUID
+) -> InvoicePaymentHistoryOut:
+
+    #  Fetch invoice
+    invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.org_id == org_id,
+        Invoice.is_deleted == False
+    ).first()
+
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    # Calculate totals (grand_total)
+    totals = calculate_invoice_totals(
+        db,
+        InvoiceTotalsRequest(
+            billable_item_type=invoice.billable_item_type,
+            billable_item_id=invoice.billable_item_id
+        )
+    )
+
+    #  Derive billable_item_name (SAME logic you already use)
+    billable_item_name = None
+    customer_name = None 
+
+    if invoice.billable_item_type == "work order":
+        wo = db.query(TicketWorkOrder).filter(
+            TicketWorkOrder.id == invoice.billable_item_id,
+            TicketWorkOrder.is_deleted == False
+        ).first()
+        if wo:
+            ticket = db.query(Ticket).filter(
+                Ticket.id == wo.ticket_id
+            ).first()
+            if ticket and ticket.ticket_no:
+                billable_item_name = f"{wo.wo_no} | Ticket {ticket.ticket_no}"
+            else:
+                billable_item_name = wo.wo_no
+
+        # Get customer name from ticket
+        if ticket.tenant:
+            customer_name = f"{ticket.tenant.name}"
+        elif ticket.vendor:
+            customer_name = ticket.vendor.name
+        elif ticket.space and ticket.space.tenant:
+             # Fallback: get from space tenant
+            space_tenant = ticket.space.tenant
+            customer_name = f"{space_tenant.name} {space_tenant.name}"
+            
+            
+    elif invoice.billable_item_type == "lease charge":
+        lc = db.query(LeaseCharge).filter(
+            LeaseCharge.id == invoice.billable_item_id,
+            LeaseCharge.is_deleted == False
+        ).first()
+        if lc:
+            billable_item_name = lc.charge_code.code
+
+                            # Get customer name from lease
+        if lc.lease:
+            lease = lc.lease
+        if lease.tenant:
+            customer_name = lease.tenant.name or lease.tenant.legal_name
+
+    elif invoice.billable_item_type == "parking pass":
+        pp = db.query(ParkingPass).filter(
+            ParkingPass.id == invoice.billable_item_id,
+            ParkingPass.is_deleted == False
+        ).first()
+        if pp:
+            billable_item_name = f"Parking Pass | {pp.pass_no}"
+        # Get customer name
+        if pp.pass_holder_name:
+            customer_name = pp.pass_holder_name
+        elif pp.space and pp.space.tenant:
+            # Fallback to space tenant
+            space_tenant = pp.space.tenant
+            customer_name = f"{space_tenant.name} {space_tenant.name}"
+                        
+        
+    # Fetch payments
+    payments = db.query(PaymentAR).filter(
+        PaymentAR.invoice_id == invoice_id,
+        PaymentAR.org_id == org_id,
+        PaymentAR.is_deleted == False
+    ).order_by(PaymentAR.paid_at.asc()).all()
+
+    payment_out_list = [
+        PaymentOut.model_validate({
+            "id": p.id,
+            "org_id": p.org_id,
+            "invoice_id": p.invoice_id,
+            "invoice_no": invoice.invoice_no,
+            "billable_item_name": billable_item_name,
+            "method": p.method,
+            "ref_no": p.ref_no,
+            "amount": p.amount,
+            "paid_at": p.paid_at,
+            "meta": p.meta,
+            "customer_name": customer_name
+        })
+        for p in payments
+    ]
+
+    # Final response
+    return InvoicePaymentHistoryOut(
+        invoice_id=invoice.id,
+        invoice_no=invoice.invoice_no,
+        total_amount=totals.grand_total,
+        status=invoice.status,
+        payments=payment_out_list
+    )

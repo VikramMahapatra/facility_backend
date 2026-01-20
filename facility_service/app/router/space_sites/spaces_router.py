@@ -1,10 +1,10 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from shared.core.database import get_facility_db as get_db
+from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.utils.app_status_code import AppStatusCode
-from ...schemas.space_sites.spaces_schemas import SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate
 from ...crud.space_sites import spaces_crud as crud
 from shared.core.auth import allow_admin,  validate_current_token  # for dependicies
 from shared.core.schemas import Lookup, UserToken
@@ -39,7 +39,7 @@ def create_space(
     space: SpaceCreate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
-    _ : UserToken = Depends(allow_admin)
+    _: UserToken = Depends(allow_admin)
 ):
     space.org_id = current_user.org_id
     return crud.create_space(db, space)
@@ -50,9 +50,9 @@ def update_space(
     space: SpaceUpdate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
-     _ : UserToken = Depends(allow_admin)
+    _: UserToken = Depends(allow_admin)
 ):
-    
+
     return crud.update_space(db, space)
 
 
@@ -75,3 +75,20 @@ def space_building_lookup(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.get_space_with_building_lookup(db, site_id, current_user.org_id)
+
+
+@router.get("/{space_id}", response_model=SpaceOut)
+def get_space_details(space_id: str, db: Session = Depends(get_db)):
+    db_space = crud.get_space_details_by_id(db, space_id)
+    return db_space
+
+
+@router.get("/active-owners/{space_id}", response_model=List[ActiveOwnerResponse])
+def get_active_space_owners(
+    space_id: str,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    owners = crud.get_active_owners(db, auth_db, space_id)
+    return owners

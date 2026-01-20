@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, func, literal, or_, select, case, tuple_
 from uuid import UUID
 from auth_service.app.models.roles import Roles
+from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.userroles import UserRoles
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.helpers.email_helper import EmailHelper
@@ -150,7 +151,7 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
             ).label("tenant_spaces")
         )
         .select_from(Tenant)
-        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+        .join(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
         .join(
             Site,
             and_(
@@ -283,7 +284,7 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
             ).label("tenant_spaces")
         )
         .select_from(Tenant)
-        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+        .join(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
         .join(Site, Site.id == TenantSpace.site_id)
         .join(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
@@ -430,29 +431,61 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         )
 
     # GENERATE RANDOM PASSWORD
-    random_password = generate_secure_password()
+    #  CHECK EXISTING USER (EMAIL OR PHONE)
+    existing_user = auth_db.query(Users).filter(
+        Users.is_deleted == False,
+        or_(
+            Users.email == tenant.email,
+            Users.phone == tenant.phone
+        )
+    ).first()
 
-    # ✅ ADD: CREATE USER
-    new_user_id = str(uuid.uuid4())
-    new_user = Users(
-        id=new_user_id,
-        org_id=org_id,
-        full_name=tenant.name,
-        email=tenant.email,
-        phone=tenant.phone,
-        account_type="tenant",
-        status="inactive",
-        is_deleted=False,
-        created_at=now,
-        updated_at=now,
-        username=tenant.email or f"user_{new_user_id[:8]}",
-        password=""
-    )
-    new_user.set_password(random_password)
+    random_password = None
 
-    auth_db.add(new_user)  # ✅ Use auth_db
-    auth_db.flush()  # ✅ Use auth_db
+    if existing_user:
+        user_id = existing_user.id
+    else:
+        # CREATE NEW USER
+        user_id = uuid.uuid4()
+        random_password = generate_secure_password()
 
+        # ✅ ADD: CREATE USER
+        new_user = Users(
+            id=user_id,
+            org_id=org_id,
+            full_name=tenant.name,
+            email=tenant.email,
+            phone=tenant.phone,
+            account_type="tenant",
+            status="inactive",
+            is_deleted=False,
+            created_at=now,
+            updated_at=now,
+            username=tenant.email or f"user_{user_id[:8]}",
+            password=""
+        )
+        new_user.set_password(random_password)
+
+        auth_db.add(new_user)  # ✅ Use auth_db
+        auth_db.flush()  # ✅ Use auth_db
+    
+        # CREATE USER_ORGANIZATION ENTRY (IF NOT EXISTS)
+    # ---------------------------------------------------------
+    user_org = auth_db.query(UserOrganization).filter(
+        UserOrganization.user_id == user_id,
+        UserOrganization.org_id == org_id
+    ).first()
+
+    if not user_org:
+        user_org = UserOrganization(
+            user_id=user_id,
+            org_id=org_id,
+            account_type="tenant",
+            status="active",
+            is_default=False
+        )
+        auth_db.add(user_org)
+        
     if tenant.kind == "commercial":
         legal_name = tenant.legal_name or tenant.name
         # ✅ AUTO-FILL CONTACT INFO IF EMPTY
@@ -503,7 +536,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         "contact":  contact_info if tenant.kind == "commercial" else None,
         "vehicle_info": tenant.vehicle_info,
         "status": TenantStatus.inactive,
-        "user_id": new_user_id,  # ✅ ADD THIS LINE
+        "user_id": user_id,  # ✅ ADD THIS LINE
         "created_at": now,
         "updated_at": now,
     }
@@ -670,7 +703,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
         # ➖ SOFT DELETE REMOVED
         for space_id, ts in active_assignments.items():
             if space_id not in incoming_space_ids:
-                ts.status = "vacated"
+                ts.status = "vacated" if ts.status == "occupied" else "pending"
                 ts.is_deleted = True
 
             tenant_lease = (

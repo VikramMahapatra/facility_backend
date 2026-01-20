@@ -12,26 +12,40 @@ from shared.core.schemas import CommonQueryParams
 
 
 class UserBase(EmptyStringModel):
-    org_id: Optional[UUID] = None
+    #org_id: Optional[UUID] = None
     full_name: str
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     picture_url: Optional[str] = None
     account_type: Optional[str] = "regular"
     status: Optional[str] = "active"
-    role_ids: Optional[List[str]] = []
+    #role_ids: Optional[List[str]] = []
     password :Optional[str]=None
+
+class UserOrganizationOut(BaseModel):
+    user_org_id: UUID
+    org_id: UUID
+    account_type: str
+    organization_name: Optional[str] = None
+    is_default: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class UserTenantSpace(BaseModel):
     site_id: UUID
     space_id: UUID
+    building_block_id: Optional[UUID] = None
 
 class UserCreate(UserBase):
     #site_id: Optional[UUID] = None
+    org_id: Optional[UUID] = None         # REQUIRED
+    role_ids: List[UUID] # REQUIRED
+
     tenant_type: Optional[str] = None
     tenant_spaces: Optional[List[UserTenantSpace]] = None
     #space_id: Optional[UUID] = None
-    site_ids: Optional[List[str]] = []
+    site_ids: Optional[List[UUID]] = []
     staff_role: Optional[str] = None  # ADD HERE - for input only
     pass
 
@@ -62,6 +76,7 @@ class UserOut(BaseModel):
     site_ids: Optional[List[UUID]] = None
     staff_role: Optional[str] = None  # ADD THIS LINE
     tenant_spaces: Optional[List[TenantSpaceOut]] = None
+    account_types: Optional[List[UserOrganizationOut]] = None
 
 
     model_config = ConfigDict(from_attributes=True)
@@ -90,3 +105,6 @@ class ApprovalStatusRequest(BaseModel):
     model_config = {
         "use_enum_values": True
     }
+
+class UserDetailRequest(CommonQueryParams):
+    user_id: Optional[UUID] = None

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 from pydantic import BaseModel
 from typing import List, Optional, Any
@@ -35,10 +35,21 @@ class SpaceUpdate(SpaceBase):
 
 class SpaceOut(SpaceBase):
     id: UUID
+    site_name: Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
+
+
+class ActiveOwnerResponse(BaseModel):
+    id: UUID
+    owner_type: str
+    owner_id: UUID
+    owner_name: str
+    ownership_percentage: Decimal
+    start_date: date
+    end_date: Optional[date] = None
 
 
 class SpaceRequest(CommonQueryParams):

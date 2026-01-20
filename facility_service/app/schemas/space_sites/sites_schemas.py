@@ -42,6 +42,7 @@ class SiteOut(SiteBase):
 
 class SiteRequest(CommonQueryParams):
     kind: Optional[str] = None
+    search: Optional[str] = None
 
 
 class SiteListResponse(BaseModel):

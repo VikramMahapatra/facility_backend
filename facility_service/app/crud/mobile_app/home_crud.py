@@ -76,9 +76,9 @@ def get_home_spaces(db: Session, user: UserToken):
                 "space_name": space.name,
                 "site_name": space.site.name if space.site else None,
                 "building_name": space.building.name if space.building else None,
-                "role": ts.role,
+                "role": "tenant",
                 "status": ts.status,
-                "is_primary": ts.role == "owner",
+                "is_primary": True
             })
 
             seen_space_ids.add(space.id)

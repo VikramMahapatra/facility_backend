@@ -276,7 +276,8 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
                             "space_name", Space.name,
                             "building_block_id", Building.id,
                             "building_block_name", Building.name,
-                            "status", TenantSpace.status
+                            "status", TenantSpace.status,
+                            "is_primary", TenantSpace.is_primary
                         )
                     )
                 ).filter(TenantSpace.id.isnot(None)),
@@ -551,7 +552,8 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
             site_id=space.site_id,
             space_id=space.space_id,
             status="pending",
-            created_at=now
+            created_at=now,
+            is_primary=space.is_primary,  
         )
         db.add(db_space_assignment)
 
@@ -676,10 +678,35 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
             ts.space_id: ts for ts in existing_assignments if ts.is_deleted
         }
 
+        # -------- FIND PRIMARY SPACE --------
+        incoming_primary_space_id = None
+        for s in update_dict.get("tenant_spaces", []):
+            if s.get("is_primary") is True:
+                incoming_primary_space_id = s.get("space_id")
+                break
+
+        # Fallback if none sent
+        if incoming_primary_space_id is None:
+            incoming_primary_space_id = incoming_spaces[0].space_id
+
+        # -------- RESET OLD PRIMARY (RUN ONCE) --------
+        db.query(TenantSpace).filter(
+            TenantSpace.tenant_id == tenant_id,
+            TenantSpace.space_id != incoming_primary_space_id,
+            TenantSpace.is_deleted == False
+        ).update(
+            {"is_primary": False},
+            synchronize_session=False
+        )
+        
         # ➕ ADD / RESTORE
         for space_id, space in incoming_map.items():
 
+            # ACTIVE → UPDATE PRIMARY FLAG
             if space_id in active_assignments:
+                ts = active_assignments[space_id]
+                ts.is_primary = (space_id == incoming_primary_space_id)
+                ts.updated_at = now
                 continue
 
             if space_id in deleted_assignments:
@@ -687,6 +714,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                 ts.is_deleted = False
                 ts.deleted_at = None
                 ts.status = "pending"
+                ts.is_primary = (space_id == incoming_primary_space_id)
                 ts.updated_at = now
             else:
                 db.add(
@@ -695,6 +723,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                         site_id=space.site_id,
                         space_id=space_id,
                         status="pending",
+                        is_primary=(space_id == incoming_primary_space_id),
                         is_deleted=False,
                         created_at=now,
                     )
@@ -705,6 +734,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
             if space_id not in incoming_space_ids:
                 ts.status = "vacated" if ts.status == "occupied" else "pending"
                 ts.is_deleted = True
+                ts.is_primary = False
 
             tenant_lease = (
                 db.query(Lease)

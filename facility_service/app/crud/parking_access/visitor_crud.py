@@ -83,6 +83,7 @@ def get_visitors(db: Session, org_id: UUID, params: VisitorRequest) -> VisitorsR
     for visitor in results:
         visiting = (
             db.query(
+                func.coalesce(Site.name, '').label("site_name"),
                 func.concat(
                     func.coalesce(Building.name, ''),
                     '-',
@@ -90,13 +91,15 @@ def get_visitors(db: Session, org_id: UUID, params: VisitorRequest) -> VisitorsR
                 ).label("space_name")
             )
             .select_from(Space)
+            .join(Site, Space.site_id == Site.id)
             .join(Building, Space.building_block_id == Building.id)
             .filter(Space.id == visitor.space_id)
-            .scalar()
+            .first()
         )
         visitors.append(VisitorOut.model_validate({
             **visitor.__dict__,
-            "visiting": visiting
+            "space_name": visiting.space_name,
+            "site_name": visiting.site_name,
         }))
 
     return {"visitors": visitors, "total": total}

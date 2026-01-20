@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
+from facility_service.app.models.space_sites.space_owners import SpaceOwner
+from shared.models.users import Users
+
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.core.schemas import UserToken
 from shared.helpers.property_helper import get_allowed_spaces
@@ -19,7 +22,7 @@ from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.leases import Lease
-from ...schemas.space_sites.spaces_schemas import SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
@@ -292,6 +295,32 @@ def update_space(db: Session, space: SpaceUpdate):
         )
 
 
+def get_space_details_by_id(db: Session, space_id: str) -> Optional[SpaceOut]:
+    db_space = (
+        db.query(Space)
+        .join(Site, Space.site_id == Site.id)
+        .outerjoin(Building, Space.building_block_id == Building.id)
+        .add_columns(Building.name.label("building_block_name"), Site.name.label("site_name"))
+        .filter(Space.id == space_id, Space.is_deleted == False)
+        .first()
+    )
+
+    if not db_space:
+        return None
+
+    space = db_space[0]  # Space object
+    building_name = db_space.building_block_name  # Joined building name
+    site_name = db_space.site_name  # Joined site name
+
+    data = {
+        **space.__dict__,
+        "building_block": building_name,
+        "site_name": site_name
+    }
+
+    return SpaceOut.model_validate(data)
+
+
 def delete_space(db: Session, space_id: str) -> Optional[Space]:
     db_space = get_space_by_id(db, space_id)
     if not db_space:
@@ -418,3 +447,53 @@ def get_space_master_lookup(db: Session, site_id: str, building_id: str):
             Space.building_block_id == building_id)
 
     return space_query.all()
+
+
+def get_active_owners(
+    db: Session,
+    auth_db: Session,
+    space_id: UUID
+):
+    owners = (
+        db.query(SpaceOwner)
+        .filter(
+            SpaceOwner.space_id == space_id,
+            SpaceOwner.is_active == True
+        )
+        .all()
+    )
+
+    user_ids = [
+        o.owner_user_id
+        for o in owners
+        if o.owner_user_id
+    ]
+
+    users_map = {}
+    if user_ids:
+        users = (
+            auth_db.query(Users.id, Users.full_name)
+            .filter(Users.id.in_(user_ids))
+            .all()
+        )
+        users_map = {
+            u.id: u.full_name or ""
+            for u in users
+        }
+
+    result = []
+
+    for o in owners:
+        if o.owner_user_id:
+            result.append(
+                ActiveOwnerResponse(
+                    id=o.id,
+                    owner_type="user",
+                    owner_id=o.owner_user.id,
+                    owner_name=users_map.get(o.owner_user_id, ""),
+                    ownership_percentage=o.ownership_percentage,
+                    start_date=o.start_date,
+                )
+            )
+
+    return result

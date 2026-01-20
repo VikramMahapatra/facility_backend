@@ -55,6 +55,11 @@ class Space(Base):
                           cascade="all, delete-orphan")
     tickets = relationship("Ticket", back_populates="space")
     parking_passes = relationship("ParkingPass", back_populates="space")
+    owners = relationship(
+        "SpaceOwner",
+        back_populates="space",
+        cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
 

@@ -72,3 +72,34 @@ class SpaceOverview(BaseModel):
     outOfServices: int
 
     model_config = {"from_attributes": True}
+
+
+
+
+
+class AssignSpaceOwnerOut(BaseModel):
+    space_id: UUID
+    owners: List[ActiveOwnerResponse]
+
+    model_config = {"from_attributes": True}
+    
+class AssignSpaceOwnerIn(BaseModel):
+    space_id: UUID
+    ownership_type: str = "primary"   # primary / joint / investor
+    owner_user_id: UUID
+    ownership_percentage: Decimal = 100
+    start_date: date
+    end_date: Optional[date] = None
+    
+    
+class OwnershipHistoryOut(BaseModel):
+    id: UUID
+    owner_user_id: Optional[UUID]
+    owner_name: Optional[str]
+    ownership_type: str
+    ownership_percentage: Decimal
+    start_date: date
+    end_date: Optional[date]
+    is_active: bool
+
+    model_config = {"from_attributes": True}

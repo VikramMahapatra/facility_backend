@@ -96,3 +96,14 @@ def user_detail(
         user_id=params.user_id
 )
 
+@router.get("/search-user",response_model=List[UserOut])
+def search_user(
+    search_users:Optional[str]=None,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.search_user(
+        db=db,
+        org_id=current_user.org_id,
+        search_users=search_users
+)

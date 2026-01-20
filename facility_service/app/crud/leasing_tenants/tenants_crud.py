@@ -453,11 +453,9 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         # ✅ ADD: CREATE USER
         new_user = Users(
             id=user_id,
-            org_id=org_id,
             full_name=tenant.name,
             email=tenant.email,
             phone=tenant.phone,
-            account_type="tenant",
             status="inactive",
             is_deleted=False,
             created_at=now,

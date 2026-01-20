@@ -357,7 +357,23 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                 facility_db,
                 user.tenant_spaces
             )
+            # ---------- PRIMARY SPACE VALIDATION ----------
+            primary_spaces = [
+                s for s in user.tenant_spaces if s.is_primary is True
+            ]
 
+            if len(primary_spaces) > 1:
+                db.delete(db_user)
+                db.commit()
+                return error_response(
+                    message="Only one tenant space can be primary",
+                    http_status=400
+                )
+
+            if len(primary_spaces) == 0:
+                user.tenant_spaces[0].is_primary = True
+                
+            # Check for existing tenant with same name
             existing_tenant = facility_db.query(Tenant).filter(
                 Tenant.is_deleted == False,
                 func.lower(Tenant.name) == func.lower(user.full_name)
@@ -416,6 +432,7 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                         tenant_id=tenant_obj.id,
                         site_id=site_id,
                         space_id=space_id,
+                        is_primary=space.is_primary is True,
                         status="pending",
                         created_at=now
                     )
@@ -644,13 +661,23 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
     # =============== TENANT ACCOUNT UPDATE ================
     # ======================================================
     elif user_org.account_type.lower() == "tenant":
-
+        # Validate tenant-specific fields
         if not user.tenant_spaces or len(user.tenant_spaces) == 0:
             return error_response(
                 message="At least one space is required for tenant",
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
             )
 
+            # ---------- PRIMARY VALIDATION ----------
+        primary_spaces = [s for s in user.tenant_spaces if s.is_primary]
+
+        if len(primary_spaces) > 1:
+            return error_response("Only one primary space allowed")
+
+        if len(primary_spaces) == 0:
+            user.tenant_spaces[0].is_primary = True
+            
+            
        # ✅ MULTI-SPACE OCCUPANCY CHECK (CORRECT)
         if user.tenant_spaces:
             incoming_space_ids = [ts.space_id for ts in user.tenant_spaces]
@@ -683,7 +710,6 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                 message="Tenant record not found for this user",
                 status_code=str(AppStatusCode.NOT_FOUND_ERROR)
             )
-
         # ✅ Lease safety check
         has_active_lease = facility_db.query(Lease).filter(
             Lease.tenant_id == tenant.id,
@@ -716,6 +742,7 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                     site_id=space.site_id,
                     space_id=space.space_id,
                     status="pending",
+                    is_primary=space.is_primary,
                     created_at=now,
                     updated_at=now
                 )
@@ -1037,7 +1064,8 @@ def get_user_detail(
                                 "space_name", Space.name,
                                 "building_block_id", Building.id,
                                 "building_block_name", Building.name,
-                                "status", TenantSpace.status
+                                "status", TenantSpace.status,
+                                "is_primary", TenantSpace.is_primary
                             )
                         )
                     ).filter(TenantSpace.id.isnot(None)),

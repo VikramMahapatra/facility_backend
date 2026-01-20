@@ -36,6 +36,8 @@ class UserTenantSpace(BaseModel):
     site_id: UUID
     space_id: UUID
     building_block_id: Optional[UUID] = None
+    is_primary: Optional[bool] = False
+    
 
 class UserCreate(UserBase):
     #site_id: Optional[UUID] = None

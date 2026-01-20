@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from typing import Dict, List, Optional
 
+from auth_service.app.models.orgs_safe import OrgSafe
 from auth_service.app.models.tenant_spaces_safe import TenantSpaceSafe
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
@@ -34,7 +35,7 @@ from fastapi import HTTPException
 from uuid import UUID
 
 from ...schemas.access_control.user_management_schemas import (
-    UserCreate, UserOut, UserRequest, UserUpdate
+    UserCreate, UserOrganizationOut, UserOut, UserRequest, UserUpdate
 )
 from shared.helpers.email_helper import EmailHelper
 
@@ -717,7 +718,7 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                     updated_at=now
                 )
             )
-    
+
        
         if tenant:
             tenant.name = user.full_name
@@ -1121,5 +1122,44 @@ def get_user_detail(
     data.setdefault("site_ids", [])
     data.setdefault("staff_role", None)
     data.setdefault("tenant_type", None)
+
+
+    # =====================================================
+# ACCOUNT TYPES (FOR SWITCH ACCOUNT) – SAME AS AUTH
+# =====================================================
+
+    user_orgs = (
+        db.query(UserOrganization)
+        .filter(
+            UserOrganization.user_id == user_id,
+            UserOrganization.status == "active"
+        )
+        .order_by(
+            UserOrganization.is_default.desc(),
+            UserOrganization.joined_at.asc()
+        )
+        .all()
+    )
+
+    org_ids = [uo.org_id for uo in user_orgs]
+
+    org_map = {
+        org.id: org.name
+        for org in facility_db.query(OrgSafe)
+        .filter(OrgSafe.id.in_(org_ids))
+        .all()
+    }
+
+    data["account_types"] = [
+        UserOrganizationOut.model_validate({
+            "user_org_id": uo.id,
+            "org_id": uo.org_id,
+            "account_type": uo.account_type,
+            "organization_name": org_map.get(uo.org_id),
+            "is_default": uo.is_default
+        })
+        for uo in user_orgs
+    ]
+
 
     return UserOut.model_validate(data)

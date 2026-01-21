@@ -3,12 +3,16 @@ from datetime import datetime
 from typing import Dict, Optional, List
 import uuid
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session , joinedload
 from sqlalchemy import and_, desc, func, literal, or_, select, case, tuple_
 from uuid import UUID
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.userroles import UserRoles
+from facility_service.app.models.financials.invoices import Invoice, PaymentAR
+from facility_service.app.models.parking_access.parking_pass import ParkingPass
+from facility_service.app.models.service_ticket.tickets import Ticket
+from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.helpers.email_helper import EmailHelper
 from shared.helpers.password_generator import generate_secure_password
@@ -276,7 +280,8 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
                             "space_name", Space.name,
                             "building_block_id", Building.id,
                             "building_block_name", Building.name,
-                            "status", TenantSpace.status
+                            "status", TenantSpace.status,
+                            "is_primary", TenantSpace.is_primary
                         )
                     )
                 ).filter(TenantSpace.id.isnot(None)),
@@ -452,11 +457,9 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         # ✅ ADD: CREATE USER
         new_user = Users(
             id=user_id,
-            org_id=org_id,
             full_name=tenant.name,
             email=tenant.email,
             phone=tenant.phone,
-            account_type="tenant",
             status="inactive",
             is_deleted=False,
             created_at=now,
@@ -551,7 +554,8 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
             site_id=space.site_id,
             space_id=space.space_id,
             status="pending",
-            created_at=now
+            created_at=now,
+            is_primary=space.is_primary,  
         )
         db.add(db_space_assignment)
 
@@ -676,10 +680,35 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
             ts.space_id: ts for ts in existing_assignments if ts.is_deleted
         }
 
+        # -------- FIND PRIMARY SPACE --------
+        incoming_primary_space_id = None
+        for s in update_dict.get("tenant_spaces", []):
+            if s.get("is_primary") is True:
+                incoming_primary_space_id = s.get("space_id")
+                break
+
+        # Fallback if none sent
+        if incoming_primary_space_id is None:
+            incoming_primary_space_id = incoming_spaces[0].space_id
+
+        # -------- RESET OLD PRIMARY (RUN ONCE) --------
+        db.query(TenantSpace).filter(
+            TenantSpace.tenant_id == tenant_id,
+            TenantSpace.space_id != incoming_primary_space_id,
+            TenantSpace.is_deleted == False
+        ).update(
+            {"is_primary": False},
+            synchronize_session=False
+        )
+        
         # ➕ ADD / RESTORE
         for space_id, space in incoming_map.items():
 
+            # ACTIVE → UPDATE PRIMARY FLAG
             if space_id in active_assignments:
+                ts = active_assignments[space_id]
+                ts.is_primary = (space_id == incoming_primary_space_id)
+                ts.updated_at = now
                 continue
 
             if space_id in deleted_assignments:
@@ -687,6 +716,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                 ts.is_deleted = False
                 ts.deleted_at = None
                 ts.status = "pending"
+                ts.is_primary = (space_id == incoming_primary_space_id)
                 ts.updated_at = now
             else:
                 db.add(
@@ -695,6 +725,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
                         site_id=space.site_id,
                         space_id=space_id,
                         status="pending",
+                        is_primary=(space_id == incoming_primary_space_id),
                         is_deleted=False,
                         created_at=now,
                     )
@@ -705,6 +736,7 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
             if space_id not in incoming_space_ids:
                 ts.status = "vacated" if ts.status == "occupied" else "pending"
                 ts.is_deleted = True
+                ts.is_primary = False
 
             tenant_lease = (
                 db.query(Lease)
@@ -995,3 +1027,124 @@ def compute_space_status(db, tenant_id, space_id, role):
         if active_lease_for_occupant_exists(db, tenant_id, space_id)
         else "current"
     )
+
+
+
+def get_tenant_payment_history(db: Session, tenant_id: UUID ,org_id: UUID) -> List[Dict]:
+    """
+    Simple function to fetch all payment history for a specific tenant.
+    """
+    
+    # Get all invoices and payments where the tenant is involved
+    tenant_payments = []
+    
+    # 1. Check for LEASE CHARGE invoices
+    lease_charges = db.query(LeaseCharge).filter(
+        LeaseCharge.is_deleted == False,
+        LeaseCharge.lease.has(tenant_id=tenant_id)  # Lease belongs to tenant
+    ).all()
+    
+    for lease_charge in lease_charges:
+        # Find invoices for this lease charge
+        invoices = db.query(Invoice).filter(
+            Invoice.billable_item_type == "lease charge",
+            Invoice.billable_item_id == lease_charge.id,
+            Invoice.is_deleted == False
+        ).all()
+        
+        for invoice in invoices:
+            # Get payments for this invoice
+            payments = db.query(PaymentAR).filter(
+                PaymentAR.invoice_id == invoice.id,
+                PaymentAR.is_deleted == False
+            ).all()
+            
+            for payment in payments:
+                tenant_payments.append({
+                    "type": "Lease",
+                    "payment_date": payment.paid_at,
+                    "amount": payment.amount,
+                    "invoice_no": invoice.invoice_no,
+                    "reference": payment.ref_no,
+                    "method": payment.method,
+                    "description": f"Lease Charge: {lease_charge.charge_code.code if lease_charge.charge_code else 'Charge'}",
+                    "site": invoice.site.name if invoice.site else None
+                })
+    
+    # 2. Check for WORK ORDER invoices
+    tickets = db.query(Ticket).filter(
+        Ticket.tenant_id == tenant_id,
+        Ticket.status.in_(["open", "closed", "returned", "reopened", "escalated", "in_progress", "on_hold"]),
+    ).all()
+    
+    for ticket in tickets:
+        # Find work orders for this ticket
+        work_orders = db.query(TicketWorkOrder).filter(
+            TicketWorkOrder.ticket_id == ticket.id,
+            TicketWorkOrder.is_deleted == False
+        ).all()
+        
+        for work_order in work_orders:
+            # Find invoices for this work order
+            invoices = db.query(Invoice).filter(
+                Invoice.billable_item_type == "work order",
+                Invoice.billable_item_id == work_order.id,
+                Invoice.is_deleted == False
+            ).all()
+            
+            for invoice in invoices:
+                # Get payments for this invoice
+                payments = db.query(PaymentAR).filter(
+                    PaymentAR.invoice_id == invoice.id,
+                    PaymentAR.is_deleted == False
+                ).all()
+                
+                for payment in payments:
+                    tenant_payments.append({
+                        "type": "Work Order",
+                        "payment_date": payment.paid_at,
+                        "amount": payment.amount,
+                        "invoice_no": invoice.invoice_no,
+                        "reference": payment.ref_no,
+                        "method": payment.method,
+                        "description": f"Work Order: {work_order.wo_no}",
+                        "site": invoice.site.name if invoice.site else None
+                    })
+    
+    # 3. Check for PARKING PASS invoices
+    parking_passes = db.query(ParkingPass).filter(
+        ParkingPass.partner_id == tenant_id,  # tenant_id stored as partner_id
+        ParkingPass.is_deleted == False
+    ).all()
+    
+    for parking_pass in parking_passes:
+        # Find invoices for this parking pass
+        invoices = db.query(Invoice).filter(
+            Invoice.billable_item_type == "parking pass",
+            Invoice.billable_item_id == parking_pass.id,
+            Invoice.is_deleted == False
+        ).all()
+        
+        for invoice in invoices:
+            # Get payments for this invoice
+            payments = db.query(PaymentAR).filter(
+                PaymentAR.invoice_id == invoice.id,
+                PaymentAR.is_deleted == False
+            ).all()
+            
+            for payment in payments:
+                tenant_payments.append({
+                    "type": "Parking",
+                    "payment_date": payment.paid_at,
+                    "amount": payment.amount,
+                    "invoice_no": invoice.invoice_no,
+                    "reference": payment.ref_no,
+                    "method": payment.method,
+                    "description": f"Parking Pass: {parking_pass.pass_no}",
+                    "site": invoice.site.name if invoice.site else None
+                })
+    
+    # Sort by payment date (newest first)
+    tenant_payments.sort(key=lambda x: x["payment_date"], reverse=True)
+    
+    return tenant_payments

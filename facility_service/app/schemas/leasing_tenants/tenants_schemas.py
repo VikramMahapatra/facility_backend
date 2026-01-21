@@ -11,6 +11,7 @@ class TenantSpaceBase(BaseModel):
     site_id: UUID
     building_block_id: Optional[UUID] = None
     space_id: UUID
+    is_primary: bool = False
     
 
 
@@ -19,6 +20,7 @@ class TenantSpaceOut(TenantSpaceBase):
     space_name: str = None
     building_block_name: Optional[str] = None
     status: str = None
+    is_primary: bool = False
 
 
 class TenantBase(BaseModel):

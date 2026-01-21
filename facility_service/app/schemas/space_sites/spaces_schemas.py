@@ -72,3 +72,72 @@ class SpaceOverview(BaseModel):
     outOfServices: int
 
     model_config = {"from_attributes": True}
+
+
+
+
+
+class AssignSpaceOwnerOut(BaseModel):
+    space_id: UUID
+    owners: List[ActiveOwnerResponse]
+
+    model_config = {"from_attributes": True}
+    
+class AssignSpaceOwnerIn(BaseModel):
+    space_id: UUID
+    ownership_type: str = "primary"   # primary / joint / investor
+    owner_user_id: UUID
+    ownership_percentage: Decimal = 100
+    start_date: date
+    end_date: Optional[date] = None
+    
+    
+class OwnershipHistoryOut(BaseModel):
+    id: UUID
+    owner_user_id: Optional[UUID]
+    owner_name: Optional[str]
+    ownership_type: str
+    ownership_percentage: Decimal
+    start_date: date
+    end_date: Optional[date]
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+    
+    
+    
+
+class OwnerMaintenanceRequest(CommonQueryParams):
+    """Request schema for filtering owner maintenance records"""
+    site_id: Optional[UUID] = None
+    status: Optional[str] = None
+    search: Optional[str] = None
+
+
+class OwnerMaintenanceOut(BaseModel):
+    """Response schema for owner maintenance records"""
+    id: UUID
+    maintenance_no: str
+    space_id: UUID
+    space_owner_id: UUID
+    period_start: date
+    period_end: date
+    invoice_id: Optional[UUID]
+    amount: float
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    is_deleted: bool
+    
+    # Additional fields for display
+    space_name: Optional[str]
+    owner_name: Optional[str]
+    site_name: Optional[str]
+    
+    model_config = {"from_attributes": True}
+
+
+class OwnerMaintenanceListResponse(BaseModel):
+    """Response wrapper for list of maintenance records"""
+    maintenances: List[OwnerMaintenanceOut]
+    total: int

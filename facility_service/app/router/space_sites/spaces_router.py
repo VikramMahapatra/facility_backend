@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.utils.app_status_code import AppStatusCode
-from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, OwnerMaintenanceListResponse, OwnerMaintenanceRequest, OwnershipHistoryOut, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate
 from ...crud.space_sites import spaces_crud as crud
 from shared.core.auth import allow_admin,  validate_current_token  # for dependicies
 from shared.core.schemas import Lookup, UserToken
@@ -16,6 +16,17 @@ router = APIRouter(
 )
 
 # -----------------------------------------------------------------
+
+@router.get("/all-owner-maintenances", response_model=OwnerMaintenanceListResponse)
+def get_all_owner_maintenances(
+    params: OwnerMaintenanceRequest = Depends(),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """Get all owner maintenance records with site filter"""
+    return crud.get_owner_maintenances(db=db, auth_db=auth_db, user=current_user, params=params)
+
 
 
 @router.get("/all", response_model=SpaceListResponse)
@@ -92,3 +103,40 @@ def get_active_space_owners(
 ):
     owners = crud.get_active_owners(db, auth_db, space_id)
     return owners
+
+
+
+@router.post("/assign-owner/{space_id}", response_model=AssignSpaceOwnerOut)
+def assign_owner(
+    space_id: UUID,
+    payload: AssignSpaceOwnerIn,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    payload.space_id = space_id  
+
+    return crud.assign_space_owner(
+        space_id=space_id,
+        db=db,
+        auth_db=auth_db,
+        org_id=current_user.org_id,
+        payload=payload
+    )
+    
+    
+@router.get("/ownership-history/{space_id}",response_model=List[OwnershipHistoryOut])
+def ownership_history(
+    space_id: UUID,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_space_ownership_history(
+        db=db,
+        auth_db=auth_db,
+        space_id=space_id,
+        org_id=current_user.org_id
+    )
+
+

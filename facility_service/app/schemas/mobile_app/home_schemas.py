@@ -23,10 +23,18 @@ class SpaceDetailResponse(EmptyStringModel):
     model_config = {"from_attributes": True}
 
 
+class SiteResponse(EmptyStringModel):
+    site_id: UUID
+    site_name: Optional[str] = None
+    is_primary: bool = False
+    org_id: Optional[UUID] = None
+    org_name: Optional[str] = None
+    address: Optional[Any] = None
+    
+    
 class MasterDetailResponse(EmptyStringModel):
-    spaces: List[SpaceDetailResponse] = None
-    account_type: Optional[str] = None
-    status: Optional[str] = None
+    sites : List[SiteResponse] = []
+    
 
 
 class Period(EmptyStringModel):

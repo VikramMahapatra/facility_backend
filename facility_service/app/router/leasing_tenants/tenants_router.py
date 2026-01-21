@@ -131,3 +131,22 @@ def get_tenants_by_site_and_space(
         data=tenants,  # This should be a list
         message="Data retrieved successfully"
     )
+
+
+
+@router.get("/payment-history/{tenant_id}")
+def tenant_payment_history(
+    tenant_id: UUID ,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Fetch payment history for a tenant.
+    Includes lease charge, work order, and parking pass invoices.
+    """
+
+    return crud.get_tenant_payment_history(
+        db=db,
+        tenant_id=tenant_id,
+        org_id=current_user.org_id
+    )

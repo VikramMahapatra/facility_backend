@@ -3,12 +3,16 @@ from datetime import datetime
 from typing import Dict, Optional, List
 import uuid
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session , joinedload
 from sqlalchemy import and_, desc, func, literal, or_, select, case, tuple_
 from uuid import UUID
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.userroles import UserRoles
+from facility_service.app.models.financials.invoices import Invoice, PaymentAR
+from facility_service.app.models.parking_access.parking_pass import ParkingPass
+from facility_service.app.models.service_ticket.tickets import Ticket
+from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.helpers.email_helper import EmailHelper
 from shared.helpers.password_generator import generate_secure_password
@@ -1023,3 +1027,124 @@ def compute_space_status(db, tenant_id, space_id, role):
         if active_lease_for_occupant_exists(db, tenant_id, space_id)
         else "current"
     )
+
+
+
+def get_tenant_payment_history(db: Session, tenant_id: UUID ,org_id: UUID) -> List[Dict]:
+    """
+    Simple function to fetch all payment history for a specific tenant.
+    """
+    
+    # Get all invoices and payments where the tenant is involved
+    tenant_payments = []
+    
+    # 1. Check for LEASE CHARGE invoices
+    lease_charges = db.query(LeaseCharge).filter(
+        LeaseCharge.is_deleted == False,
+        LeaseCharge.lease.has(tenant_id=tenant_id)  # Lease belongs to tenant
+    ).all()
+    
+    for lease_charge in lease_charges:
+        # Find invoices for this lease charge
+        invoices = db.query(Invoice).filter(
+            Invoice.billable_item_type == "lease charge",
+            Invoice.billable_item_id == lease_charge.id,
+            Invoice.is_deleted == False
+        ).all()
+        
+        for invoice in invoices:
+            # Get payments for this invoice
+            payments = db.query(PaymentAR).filter(
+                PaymentAR.invoice_id == invoice.id,
+                PaymentAR.is_deleted == False
+            ).all()
+            
+            for payment in payments:
+                tenant_payments.append({
+                    "type": "Lease",
+                    "payment_date": payment.paid_at,
+                    "amount": payment.amount,
+                    "invoice_no": invoice.invoice_no,
+                    "reference": payment.ref_no,
+                    "method": payment.method,
+                    "description": f"Lease Charge: {lease_charge.charge_code.code if lease_charge.charge_code else 'Charge'}",
+                    "site": invoice.site.name if invoice.site else None
+                })
+    
+    # 2. Check for WORK ORDER invoices
+    tickets = db.query(Ticket).filter(
+        Ticket.tenant_id == tenant_id,
+        Ticket.status.in_(["open", "closed", "returned", "reopened", "escalated", "in_progress", "on_hold"]),
+    ).all()
+    
+    for ticket in tickets:
+        # Find work orders for this ticket
+        work_orders = db.query(TicketWorkOrder).filter(
+            TicketWorkOrder.ticket_id == ticket.id,
+            TicketWorkOrder.is_deleted == False
+        ).all()
+        
+        for work_order in work_orders:
+            # Find invoices for this work order
+            invoices = db.query(Invoice).filter(
+                Invoice.billable_item_type == "work order",
+                Invoice.billable_item_id == work_order.id,
+                Invoice.is_deleted == False
+            ).all()
+            
+            for invoice in invoices:
+                # Get payments for this invoice
+                payments = db.query(PaymentAR).filter(
+                    PaymentAR.invoice_id == invoice.id,
+                    PaymentAR.is_deleted == False
+                ).all()
+                
+                for payment in payments:
+                    tenant_payments.append({
+                        "type": "Work Order",
+                        "payment_date": payment.paid_at,
+                        "amount": payment.amount,
+                        "invoice_no": invoice.invoice_no,
+                        "reference": payment.ref_no,
+                        "method": payment.method,
+                        "description": f"Work Order: {work_order.wo_no}",
+                        "site": invoice.site.name if invoice.site else None
+                    })
+    
+    # 3. Check for PARKING PASS invoices
+    parking_passes = db.query(ParkingPass).filter(
+        ParkingPass.partner_id == tenant_id,  # tenant_id stored as partner_id
+        ParkingPass.is_deleted == False
+    ).all()
+    
+    for parking_pass in parking_passes:
+        # Find invoices for this parking pass
+        invoices = db.query(Invoice).filter(
+            Invoice.billable_item_type == "parking pass",
+            Invoice.billable_item_id == parking_pass.id,
+            Invoice.is_deleted == False
+        ).all()
+        
+        for invoice in invoices:
+            # Get payments for this invoice
+            payments = db.query(PaymentAR).filter(
+                PaymentAR.invoice_id == invoice.id,
+                PaymentAR.is_deleted == False
+            ).all()
+            
+            for payment in payments:
+                tenant_payments.append({
+                    "type": "Parking",
+                    "payment_date": payment.paid_at,
+                    "amount": payment.amount,
+                    "invoice_no": invoice.invoice_no,
+                    "reference": payment.ref_no,
+                    "method": payment.method,
+                    "description": f"Parking Pass: {parking_pass.pass_no}",
+                    "site": invoice.site.name if invoice.site else None
+                })
+    
+    # Sort by payment date (newest first)
+    tenant_payments.sort(key=lambda x: x["payment_date"], reverse=True)
+    
+    return tenant_payments

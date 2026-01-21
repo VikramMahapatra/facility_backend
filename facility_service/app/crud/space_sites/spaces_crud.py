@@ -1,12 +1,13 @@
 from sqlite3 import IntegrityError
 import uuid
 from typing import List, Optional
-from datetime import datetime
+from datetime import date, datetime
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
+from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
 from shared.models.users import Users
 
@@ -22,7 +23,7 @@ from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.leases import Lease
-from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, OwnershipHistoryOut, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
@@ -490,7 +491,7 @@ def get_active_owners(
                 ActiveOwnerResponse(
                     id=o.id,
                     owner_type="user",
-                    owner_id=o.owner_user.id,
+                    owner_id=o.owner_user_id,
                     owner_name=users_map.get(o.owner_user_id, ""),
                     ownership_percentage=o.ownership_percentage,
                     start_date=o.start_date,
@@ -498,3 +499,163 @@ def get_active_owners(
             )
 
     return result
+
+
+
+def assign_space_owner(
+    space_id: UUID,
+    db: Session,
+    auth_db: Session,
+    org_id: UUID,
+    payload: AssignSpaceOwnerIn
+):
+    #  Validate space
+    space = (
+        db.query(Space)
+        .filter(
+            Space.id == space_id,
+            Space.org_id == org_id,
+            Space.is_deleted == False
+        )
+        .first()
+    )
+
+    if not space:
+        raise HTTPException(status_code=404, detail="Space not found")
+
+    #  Check existing ACTIVE owner for this space + ownership type
+    existing_owner = (
+        db.query(SpaceOwner)
+        .filter(
+            SpaceOwner.space_id == space_id,
+            SpaceOwner.ownership_type == payload.ownership_type,
+            SpaceOwner.is_active == True
+        )
+        .first()
+    )
+
+    #  SAME OWNER → BLOCK
+    if existing_owner and existing_owner.owner_user_id == payload.owner_user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="This owner is already assigned to the space"
+        )
+
+    #  DIFFERENT OWNER → CLOSE PREVIOUS ENTRY
+    if existing_owner:
+        existing_owner.is_active = False
+        existing_owner.end_date = date.today()
+        
+        #  SOFT DELETE OLD OWNER ACCOUNT ORG ENTRY
+        old_user_org = auth_db.query(UserOrganization).filter(
+            UserOrganization.user_id == existing_owner.owner_user_id,
+            UserOrganization.org_id == org_id,
+            UserOrganization.account_type == "owner",
+            UserOrganization.is_deleted == False
+        ).first()
+
+        if old_user_org:
+            old_user_org.is_deleted = True,
+            old_user_org.status = "inactive"
+
+
+    # CREATE NEW OWNER ENTRY
+    new_owner = SpaceOwner(
+        space_id=space_id,
+        owner_user_id=payload.owner_user_id,
+        owner_org_id=org_id,  # FROM TOKEN
+        ownership_type=payload.ownership_type,
+        ownership_percentage=payload.ownership_percentage,
+        start_date=payload.start_date,
+        end_date=None,
+        is_active=True
+    )
+    
+     # ADD THIS: CREATE / REVIVE USER_ORGANIZATION OWNER ENTRY
+    user_org = auth_db.query(UserOrganization).filter(
+        UserOrganization.user_id == payload.owner_user_id,
+        UserOrganization.org_id == org_id,
+        UserOrganization.account_type == "owner"
+    ).first()
+
+    if user_org:
+        user_org.is_deleted = False
+    else:
+        auth_db.add(
+            UserOrganization(
+                user_id=payload.owner_user_id,
+                org_id=org_id,
+                status ="active",
+                account_type="owner",
+                is_deleted=False
+            )
+        )
+
+
+    db.add(new_owner)
+    db.commit()
+    auth_db.commit()
+    db.refresh(new_owner)
+
+    # RETURN ACTIVE OWNERS
+    active_owners = get_active_owners(db=db,auth_db=auth_db,space_id=space_id)
+
+    return AssignSpaceOwnerOut(
+        space_id=space_id,
+        owners=active_owners)
+
+
+def get_space_ownership_history(
+    db: Session,
+    auth_db: Session,
+    space_id: UUID,
+    org_id: UUID
+):
+    # Validate space
+    space = (
+        db.query(Space)
+        .filter(
+            Space.id == space_id,
+            Space.org_id == org_id,
+            Space.is_deleted == False
+        )
+        .first()
+    )
+
+    if not space:
+        raise HTTPException(status_code=404, detail="Space not found")
+
+    owners = (
+        db.query(SpaceOwner)
+        .filter(SpaceOwner.space_id == space_id)
+        .order_by(SpaceOwner.start_date.desc())
+        .all()
+    )
+
+    response = []
+
+    for owner in owners:
+        owner_name = None
+
+        if owner.owner_user_id:
+            user = (
+                auth_db.query(Users)
+                .filter(Users.id == owner.owner_user_id)
+                .first()
+            )
+            owner_name = user.full_name if user else None
+
+        response.append(
+            OwnershipHistoryOut(
+                id=owner.id,
+                owner_user_id=owner.owner_user_id,
+                owner_name=owner_name,
+                ownership_type=owner.ownership_type,
+                ownership_percentage=owner.ownership_percentage,
+                start_date=owner.start_date,
+                end_date=owner.end_date,
+                is_active=owner.is_active
+            )
+        )
+
+    return response

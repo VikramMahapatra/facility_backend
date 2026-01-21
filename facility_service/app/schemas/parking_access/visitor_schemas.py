@@ -40,7 +40,9 @@ class VisitorRequest(CommonQueryParams):
 
 class VisitorOut(VisitorBase):
     id: UUID
-    visiting: str
+    site_name: Optional[str] = None  # From site relationship
+    space_name: Optional[str] = None  # From space relationship     
+
 
 
 class VisitorsResponse(BaseModel):

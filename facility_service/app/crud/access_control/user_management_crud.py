@@ -8,12 +8,14 @@ from auth_service.app.models.orgs_safe import OrgSafe
 from auth_service.app.models.tenant_spaces_safe import TenantSpaceSafe
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
+from auth_service.app.models.userroles import UserRoles
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists, compute_space_status, validate_active_tenants_for_spaces
 from facility_service.app.enum.leasing_tenants_enum import TenantStatus
 from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
 from facility_service.app.models.leasing_tenants.lease_charges import LeaseCharge
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
+from facility_service.app.schemas.leasing_tenants.tenants_schemas import TenantSpaceOut
 from shared.models.users import Users
 # from auth_service.app.models.userroles import UserRoles
 from ...models.common.staff_sites import StaffSite
@@ -690,7 +692,8 @@ def get_user_detail(
                                 "space_name", Space.name,
                                 "building_block_id", Building.id,
                                 "building_block_name", Building.name,
-                                "status", TenantSpace.status
+                                "status", TenantSpace.status,
+                                "is_primary", TenantSpace.is_primary
                             )
                         )
                     ).filter(TenantSpace.id.isnot(None)),
@@ -817,3 +820,65 @@ def get_user_detail(
     ]
 
     return UserOut.model_validate(data)
+
+
+def search_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -> List[UserOut]:
+    #  USERS
+    user_query = (
+        db.query(Users)
+        .join(
+            UserOrganization,
+            and_(
+                UserOrganization.user_id == Users.id,
+                UserOrganization.org_id == org_id,
+                UserOrganization.status == "active",
+                Users.is_deleted == False
+            )
+        )
+        .filter(Users.is_deleted == False)
+    )
+
+    if search_users:
+        search_users = search_users.strip()
+        user_query = user_query.filter(
+            or_(
+                Users.full_name.ilike(f"%{search_users}%"),
+                Users.email.ilike(f"%{search_users}%"),
+                Users.phone.ilike(f"%{search_users}%")
+            )
+        )
+
+    users = user_query.order_by(Users.full_name.asc()).all()
+    if not users:
+        return []
+
+    user_ids = [u.id for u in users]
+
+    #  ROLES
+    roles_map: Dict[UUID, list] = {}
+    role_rows = (
+        db.query(UserRoles.user_id, Roles)
+        .join(Roles, Roles.id == UserRoles.role_id)
+        .filter(
+            UserRoles.user_id.in_(user_ids)
+        )
+        .all()
+    )
+
+    for user_id, role in role_rows:
+        roles_map.setdefault(user_id, []).append(role)
+
+    #  BUILD RESPONSE
+    response: List[UserOut] = []
+
+    for user in users:
+        user_data = {
+            **user.__dict__,
+            "org_id": org_id,
+            "roles": roles_map.get(user.id, [])
+        }
+        user_data.pop("_sa_instance_state", None)
+
+        response.append(UserOut.model_validate(user_data))
+
+    return response

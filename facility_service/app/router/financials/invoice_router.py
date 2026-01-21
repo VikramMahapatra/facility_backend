@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from shared.helpers.json_response_helper import success_response
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentOut, PaymentResponse
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import Lookup, UserToken
@@ -133,3 +133,16 @@ def invoice_payement_method_lookup(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.invoice_payement_method_lookup(db, current_user.org_id)
+
+
+@router.get("/payment-history/{invoice_id}",response_model=InvoicePaymentHistoryOut)
+def invoice_payment_history(
+    invoice_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_invoice_payment_history(
+        db=db,
+        org_id=current_user.org_id,
+        invoice_id=invoice_id
+    )

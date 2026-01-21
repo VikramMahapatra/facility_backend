@@ -3,11 +3,12 @@ import uuid
 from typing import List, Optional
 from datetime import date, datetime
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session ,joinedload
 from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
 from auth_service.app.models.user_organizations import UserOrganization
+from ...models.space_sites.owner_maintenances import OwnerMaintenanceCharge
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
 from shared.models.users import Users
 
@@ -23,7 +24,7 @@ from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.leases import Lease
-from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, OwnershipHistoryOut, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, OwnerMaintenanceListResponse, OwnerMaintenanceOut, OwnerMaintenanceRequest, OwnershipHistoryOut, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
@@ -659,3 +660,108 @@ def get_space_ownership_history(
         )
 
     return response
+
+
+
+
+def build_owner_maintenance_filters(org_id: UUID, params: OwnerMaintenanceRequest):
+    """Build filters for owner maintenance queries"""
+    filters = [
+        OwnerMaintenanceCharge.is_deleted == False
+    ]
+    
+    # Filter by site_id
+    if params.site_id and params.site_id.lower() != "all":
+        filters.append(Space.site_id == UUID(params.site_id))
+    
+    # Filter by status
+    if params.status and params.status.lower() != "all":
+        filters.append(OwnerMaintenanceCharge.status == params.status)
+    
+    # Search filter
+    if params.search:
+        search_term = f"%{params.search}%"
+        filters.append(or_(
+            OwnerMaintenanceCharge.maintenance_no.ilike(search_term)
+        ))
+    
+    return filters
+
+
+def get_owner_maintenance_query(db: Session, org_id: UUID, params: OwnerMaintenanceRequest):
+    """Base query WITHOUT joins - use filters differently"""
+    filters = build_owner_maintenance_filters(org_id, params)
+    
+    # Don't join in base query
+    query = db.query(OwnerMaintenanceCharge).filter(*filters)
+    
+    return query
+
+
+def get_owner_maintenances(
+    db: Session, 
+    auth_db: Session,
+    user: UserToken, 
+    params: OwnerMaintenanceRequest
+) -> OwnerMaintenanceListResponse:
+    """Get paginated list of owner maintenance records"""
+    
+    base_query = get_owner_maintenance_query(db, user.org_id, params)
+    
+    # Add organization filter differently
+    base_query = base_query.filter(
+        OwnerMaintenanceCharge.space_id.in_(
+            db.query(Space.id)
+            .join(Site, Space.site_id == Site.id)
+            .filter(
+                Space.org_id == user.org_id,
+                Site.org_id == user.org_id
+            )
+        )
+    )
+    
+    # Use joinedload for relationships
+    query = (
+        base_query
+        .options(
+            joinedload(OwnerMaintenanceCharge.space).joinedload(Space.site),
+            joinedload(OwnerMaintenanceCharge.space_owner)
+        )
+    )
+    
+    # Get total count
+    total = db.query(func.count()).select_from(base_query.subquery()).scalar()
+    
+    # Get paginated results
+    results = (
+        query
+        .order_by( 
+            OwnerMaintenanceCharge.created_at.desc()
+        )
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+    
+    # Transform results
+    maintenances = []
+    for maintenance in results:
+        space_name = maintenance.space.name if maintenance.space else None
+        site_name = maintenance.space.site.name if maintenance.space and maintenance.space.site else None
+        #owner_name = maintenance.space_owner.owner_name if maintenance.space_owner else None
+        
+        data = {
+            **maintenance.__dict__,
+            "space_name": space_name,
+            "site_name": site_name,
+            "owner_name": None
+        }
+        maintenances.append(OwnerMaintenanceOut.model_validate(data))
+    
+    return OwnerMaintenanceListResponse(
+        maintenances=maintenances,
+        total=total or 0
+    )
+    
+    
+

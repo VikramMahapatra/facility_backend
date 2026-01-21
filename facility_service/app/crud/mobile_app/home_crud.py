@@ -5,6 +5,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
+from facility_service.app.enum.space_sites_enum import OwnershipType
+from facility_service.app.models.space_sites.space_owners import SpaceOwner
+
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
@@ -32,8 +35,7 @@ from shared.utils.enums import UserAccountType
 
 
 def get_home_spaces(db: Session, user: UserToken):
-    results = []
-
+    sites = []
     account_type = user.account_type.lower()
 
     if account_type in (UserAccountType.TENANT, UserAccountType.FLAT_OWNER):
@@ -42,10 +44,8 @@ def get_home_spaces(db: Session, user: UserToken):
             .options(
                 joinedload(Tenant.tenant_spaces)
                 .joinedload(TenantSpace.space)
-                .joinedload(Space.site),
-                joinedload(Tenant.tenant_spaces)
-                .joinedload(TenantSpace.space)
-                .joinedload(Space.building),
+                .joinedload(Space.site)
+                .joinedload(Site.org)
             )
             .filter(Tenant.user_id == user.user_id, Tenant.is_deleted == False)
             .first()
@@ -53,62 +53,93 @@ def get_home_spaces(db: Session, user: UserToken):
 
         if not tenant:
             return {
-                "spaces": [],
-                "account_type": user.account_type,
-                "status": user.status,
+                "sites": []
+               
             }
 
-        seen_space_ids = set()
+        seen_site_ids = set()
 
         # 1️⃣ Registered space
         for ts in tenant.tenant_spaces:
-            if ts.is_deleted or not ts.space:
+            if ts.is_deleted or not ts.space or not ts.space.site:
                 continue
 
-            space = ts.space
-            if space.id in seen_space_ids:
+            site = ts.space.site
+            if site.id in seen_site_ids:
                 continue
+            
+            # Check if site has any space with primary active space owner
+            has_primary_owner = db.query(SpaceOwner).join(
+                Space, SpaceOwner.space_id == Space.id
+            ).filter(
+                Space.site_id == site.id,
+                SpaceOwner.ownership_type == OwnershipType.PRIMARY,
+                SpaceOwner.is_active == True
+            ).first() is not None
 
-            results.append({
-                "tenant_id": tenant.id,
-                "space_id": space.id,
-                "site_id": ts.site_id or space.site_id,
-                "space_name": space.name,
-                "site_name": space.site.name if space.site else None,
-                "building_name": space.building.name if space.building else None,
-                "role": "tenant",
-                "status": ts.status,
-                "is_primary": True
+            sites.append({
+                "site_id": site.id,
+                "site_name": site.name,
+                "is_primary": has_primary_owner,
+                "org_id": site.org_id,
+                "org_name": site.org.name if site.org else None,
+                "address": site.address,
             })
 
-            seen_space_ids.add(space.id)
+            seen_site_ids.add(site.id)
 
     elif account_type == UserAccountType.STAFF:
-        sites = (
+        staff_sites = (
             db.query(StaffSite)
             .filter(StaffSite.user_id == user.user_id)
             .all()
         )
-        results = [
-            {"site_id": s.site_id, "site_name": s.site.name, "is_primary": True}
-            for s in sites
-        ]
+        for staff_site in staff_sites:
+            site = staff_site.site
+            # Check if site has any space with primary active space owner
+            has_primary_owner = db.query(SpaceOwner).join(
+                Space, SpaceOwner.space_id == Space.id
+            ).filter(
+                Space.site_id == site.id,
+                SpaceOwner.ownership_type == OwnershipType.PRIMARY,
+                SpaceOwner.is_active == True
+            ).first() is not None
+            sites.append({
+                "site_id": site.id,
+                "site_name": site.name, 
+                "is_primary": has_primary_owner,
+                "org_id": site.org_id,
+                "org_name": site.org.name if site.org else None,
+                "address": site.address,
+                }
+            )
 
     else:
-        sites = (
+        sites_records = (
             db.query(Site)
             .filter(Site.org_id == user.org_id)
             .all()
         )
-        results = [
-            {"site_id": s.id, "site_name": s.name, "is_primary": True}
-            for s in sites
-        ]
+        for site in sites_records:
+            # Check if site has any space with primary active space owner
+            has_primary_owner = db.query(SpaceOwner).join(
+                Space, SpaceOwner.space_id == Space.id
+            ).filter(
+                Space.site_id == site.id,
+                SpaceOwner.ownership_type == OwnershipType.PRIMARY,
+                SpaceOwner.is_active == True
+            ).first() is not None
+            sites.append({
+                "site_id": site.id,
+                "site_name": site.name,
+                "is_primary": has_primary_owner,
+                "org_id": site.org_id,
+                "org_name": site.org.name if site.org else None,
+                "address": site.address,
+                })
 
     return {
-        "spaces": results,
-        "account_type": user.account_type,
-        "status": user.status,
+        "sites": sites,
     }
 
 
@@ -153,7 +184,7 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
             db.query(Lease)
             .filter(
                 and_(
-                    Lease.space_id == params.space_id,
+                    Lease.site_id == params.site_id,
                     Lease.tenant_id == tenant_id,
                     Lease.is_deleted == False,
                     Lease.end_date >= date.today()
@@ -169,7 +200,7 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                 db.query(Lease)
                 .filter(
                     and_(
-                        Lease.space_id == params.space_id,
+                        Lease.site_id == params.site_id,
                         Lease.tenant_id == tenant_id,
                         Lease.is_deleted == False
                     )
@@ -285,7 +316,7 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
     if params.site_id:
         ticket_filters.append(Ticket.site_id == params.site_id)
     if params.space_id and user.account_type != UserAccountType.STAFF:
-        ticket_filters.append(Ticket.space_id == params.space_id)
+        ticket_filters.append(Ticket.site_id == params.site_id)
 
     ticket_query = db.query(Ticket).filter(*ticket_filters)
 

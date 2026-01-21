@@ -36,7 +36,6 @@ class UserTenantSpace(BaseModel):
     space_id: UUID
     building_block_id: Optional[UUID] = None
     is_primary: Optional[bool] = False
-    
 
 
 class UserCreate(UserBase):
@@ -60,8 +59,43 @@ class UserOut(BaseModel):
     status: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    account_type: Optional[str] = None
+    account_types: Optional[List[str]] = None
     roles: Optional[List[RoleOut]] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StaffSiteOut(BaseModel):
+    site_id: UUID
+    site_name: str
+
+
+class UserAccountOut(BaseModel):
+    account_type: Optional[str] = None
+    status: Optional[str] = None
+    organization_name: Optional[str] = None
+    is_default: Optional[bool] = False
+    roles: Optional[List[RoleOut]] = None
+    site_ids: Optional[List[str]] = None
+    sites: Optional[List[StaffSiteOut]] = None
+    tenant_type: Optional[str] = None
+    staff_role: Optional[str] = None
+    tenant_spaces: Optional[List[TenantSpaceOut]] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserDetailOut(BaseModel):
+    id: UUID
+    org_id: Optional[UUID] = None
+    full_name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    picture_url: Optional[str] = None
+    status: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    accounts: Optional[List[UserAccountOut]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

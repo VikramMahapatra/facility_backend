@@ -46,12 +46,12 @@ class OwnerMaintenance(Base):
     )
 
     # ✅ Index definition
-    __table_args__ = (
-        Index(
-            "ix_owner_maintenance_owner",
-            "space_owner_id"
-        ),
-    )
+    # __table_args__ = (
+    #     Index(
+    #         "ix_owner_maintenance_owner",
+    #         "space_owner_id"
+    #     ),
+    # )
 
     # Relationships
     space_owner = relationship("SpaceOwner")

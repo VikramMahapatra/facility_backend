@@ -45,7 +45,9 @@ from .models.parking_access import parking_zones, parking_pass, access_events, v
 from .models.crm import contacts, companies
 from .models.financials import invoices
 from .models.leasing_tenants import leases, lease_charges, tenant_spaces, tenants, lease_charge_code
-from .models.space_sites import buildings, orgs, sites, space_filter_models, space_group_members, space_groups, space_owners
+from .models.space_sites import (
+    buildings, orgs, sites, space_filter_models, space_group_members, space_groups, space_owners, owner_maintenances
+)
 from .models.system import notifications, notification_settings, system_settings
 from .models.common import comments, attachments, staff_sites
 from .models import (

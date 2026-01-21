@@ -15,7 +15,7 @@ from facility_service.app.models.leasing_tenants.lease_charges import LeaseCharg
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.models.users import Users
-#from auth_service.app.models.userroles import UserRoles
+# from auth_service.app.models.userroles import UserRoles
 from ...models.common.staff_sites import StaffSite
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.procurement.vendors import Vendor
@@ -52,7 +52,6 @@ def get_users(db: Session, facility_db: Session, org_id: str, params: UserReques
         )
     )
 
-
     # ADD STATUS FILTERING
     if params.status and params.status != "all":
         user_query = user_query.filter(Users.status == params.status)
@@ -79,7 +78,7 @@ def get_users(db: Session, facility_db: Session, org_id: str, params: UserReques
     user_list = []
     for user_org in users:
         user_list.append(
-            get_user(db, str(user_org.user_id), org_id, facility_db)
+            get_user_by_id(db, str(user_org.user_id), user_org.org_id)
         )
 
     return {
@@ -88,18 +87,42 @@ def get_users(db: Session, facility_db: Session, org_id: str, params: UserReques
     }
 
 
-def get_user_by_id(db: Session, user_id: str):
-    return db.query(Users).filter(
+def get_user_by_id(db: Session, user_id: str, org_id: str):
+    user = db.query(Users).filter(
         Users.id == user_id,
         Users.is_deleted == False
     ).first()
 
+    user_org = (
+        db.query(UserOrganization)
+        .filter(
+            UserOrganization.user_id == user.id,
+            UserOrganization.org_id == org_id,
+            UserOrganization.status == "active"
+        )
+        .first()
+    )
+
+    account_type = user_org.account_type.lower() if user_org.account_type else ""
+    roles = [RoleOut.model_validate(role)
+             for role in user_org.roles] if user_org else []
+
+    return UserOut.model_validate({
+        **user.__dict__,
+        "account_type": account_type,
+        "roles": roles
+    })
+
 
 def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
-    user = get_user_by_id(db, user_id)
+    user = db.query(Users).filter(
+        Users.id == user_id,
+        Users.is_deleted == False
+    ).first()
+
     if not user:
         return None
-    
+
     # 🔴 CHANGED: FETCH USER_ORG
     user_org = (
         db.query(UserOrganization)
@@ -126,14 +149,14 @@ def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
     # Normalize account_type for case-insensitive comparison
     account_type = user_org.account_type.lower() if user_org.account_type else ""
 
-
     # FOR TENANT USERS - USE FACILITY_DB
     if account_type == "tenant":
         # Check individual tenant: Tenant → Space (no Building join)
         tenant_with_space = (facility_db.query(Tenant, Space)
                              .select_from(Tenant)
                              .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
-                             .join(Space, Space.id == TenantSpace.space_id)  # ✅ ADD THIS LINE
+                             # ✅ ADD THIS LINE
+                             .join(Space, Space.id == TenantSpace.space_id)
                              .filter(
             Tenant.user_id == user.id,
             Tenant.is_deleted == False,
@@ -264,8 +287,7 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
         if not user.password:
             raise ValueError("Password is required for user creation")
 
-        user_data = user.model_dump(
-            exclude={'org_id', 'roles', 'role_ids', 'site_ids', 'tenant_type','tenant_spaces', 'staff_role', 'password','account_type'})
+        user_data = user.model_dump(exclude={'org_id'})
 
         # ✅ SET USERNAME FROM EMAIL (Requirement 1)
         if user.email:
@@ -284,10 +306,10 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
         user_org = UserOrganization(
             user_id=db_user.id,
             org_id=user.org_id,
-            account_type=user.account_type,
-            status="active",
+            account_type="pending",
+            status="inactive",
             is_default=True,
-            
+
         )
         db.add(user_org)
         db.flush()
@@ -303,150 +325,7 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                 full_name=user.full_name
             )
 
-        # Add roles if provided
-                # Add roles if provided (ORG BASED)
-        roles = db.query(Roles).filter(
-            Roles.id.in_(user.role_ids)
-        ).all()
-
-        user_org.roles.extend(roles)
-
-        db.commit()
-
-        # Handle different account types
-        account_type = user_org.account_type.lower() if user_org.account_type else ""
-
-
-        if account_type == "staff":
-            if user.site_ids is not None and len(user.site_ids) == 0:
-                # ✅ ROLLBACK user creation if staff validation fails
-                db.delete(db_user)
-                db.commit()
-                return error_response(
-                    message="Site list required for staff",
-                    status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
-                )
-
-            # Create staff site assignments
-            if user.site_ids:
-                for site_id in user.site_ids:
-                    site = facility_db.query(Site).filter(
-                        Site.id == site_id).first()
-                    if site:
-                        staff_site = StaffSite(
-                            user_id=db_user.id,
-                            site_id=site.id,
-                            org_id=user.org_id,
-                            staff_role=user.staff_role  # ADD THIS LINE - store staff_role
-                        )
-                        facility_db.add(staff_site)
-
-        elif account_type == "tenant":
-
-            now = datetime.utcnow()
-            
-
-            if not user.tenant_spaces:
-                db.delete(db_user)
-                db.commit()
-                return error_response("At least one tenant space is required")
-
-            validate_active_tenants_for_spaces(
-                facility_db,
-                user.tenant_spaces
-            )
-
-            existing_tenant = facility_db.query(Tenant).filter(
-                Tenant.is_deleted == False,
-                func.lower(Tenant.name) == func.lower(user.full_name)
-            ).first()
-
-            if existing_tenant:
-                db.delete(db_user)
-                db.commit()
-                return error_response(
-                    message=f"Tenant with name '{user.full_name}' already exists"
-                )
-
-            legal_name = None
-            contact_info = None
-
-            if user.tenant_type == "commercial":
-                legal_name = user.full_name
-                contact_info = {
-                    "name": user.full_name,
-                    "email": user.email,
-                    "phone": user.phone,
-                    "address": {
-                        "line1": "",
-                        "line2": "",
-                        "city": "",
-                        "state": "",
-                        "pincode": ""
-                    }
-                }
-
-            tenant_obj = Tenant(
-                name=user.full_name,
-                email=user.email,
-                phone=user.phone,
-                kind=user.tenant_type,
-                commercial_type="merchant" if user.tenant_type == "commercial" else None,
-                legal_name=legal_name,
-                contact=contact_info,
-                status=TenantStatus.inactive,
-                user_id=db_user.id,
-                created_at=now,
-                updated_at=now,
-            )
-
-            facility_db.add(tenant_obj)
-            facility_db.flush()
-
-
-            for space in user.tenant_spaces:
-                site_id = space.site_id
-                space_id = space.space_id
-
-
-                facility_db.add(
-                    TenantSpace(
-                        tenant_id=tenant_obj.id,
-                        site_id=site_id,
-                        space_id=space_id,
-                        status="pending",
-                        created_at=now
-                    )
-                )
-
-
-        elif account_type == "vendor":
-            # Validate vendor-specific fields
-            if not user.full_name:
-                # ✅ ROLLBACK user creation if vendor validation fails
-                db.delete(db_user)
-                db.commit()
-                return error_response(
-                    message="Vendor name is required",
-                    status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
-                )
-
-            # Create vendor entry
-            vendor_obj = Vendor(
-                org_id=user.org_id,
-                name=user.full_name,
-                contact={
-                    "name": user.full_name,
-                    "email": user.email,
-                    "phone": user.phone,
-                    "user_id": str(db_user.id)
-                },
-                status=user.status or "active"
-            )
-            facility_db.add(vendor_obj)
-
-        facility_db.commit()
-        return get_user(db, db_user.id, user.org_id, facility_db)
+        return get_user_by_id(db, db_user.id, user_org.org_id)
 
     except Exception as e:
         # ✅ ROLLBACK everything if any error occurs
@@ -483,7 +362,11 @@ def send_password_update_email(background_tasks, db, email, username, password, 
 
 def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Session, user: UserUpdate):
     # Fetch existing user
-    db_user = get_user_by_id(db, user.id)
+    db_user = db.query(Users).filter(
+        Users.id == user.id,
+        Users.is_deleted == False
+    ).first()
+
     if not db_user:
         return None
 
@@ -507,9 +390,8 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
     # ✅ ADDED: VALIDATE EMAIL & PHONE DUPLICATES
     # -----------------------
     update_data = user.model_dump(
-        exclude_unset=True,
-        exclude={'roles', 'role_ids', 'site_id',
-                 'space_id', 'site_ids', 'tenant_type', 'staff_role', 'password'}
+        exclude_unset=True
+
     )
     #  ADD THIS: PREVENT EMAIL AND PHONE UPDATES
     # Check if email is being updated
@@ -519,34 +401,12 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             message="Email cannot be updated. Please contact administrator."
         )
 
-    # Check email duplicate (if email is being updated)
-#    if 'email' in update_data and update_data['email'] != db_user.email:
-#        existing_email_user = db.query(Users).filter(
-#            Users.email == update_data['email'],
-#            Users.is_deleted == False,
-#            Users.id != user.id  # Exclude current user
-#        ).first()
-#        if existing_email_user:
-#            return error_response(
-#                message="User with this email already exists",
-#                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+
 #            )
     if 'phone' in update_data and update_data['phone'] != db_user.phone:
         return error_response(
             message="phone cannot be updated. Please contact administrator."
         )
-    # Check phone duplicate (if phone is being updated)
-#    if 'phone' in update_data and update_data['phone'] != db_user.phone:
-#        existing_phone_user = db.query(Users).filter(
-#            Users.phone == update_data['phone'],
-#            Users.is_deleted == False,
-#            Users.id != user.id  # Exclude current user
-#        ).first()
-#        if existing_phone_user:
-#            return error_response(
-#                message="User with this phone number already exists",
-#                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
-#            )
 
     # -----------------------
     # UPDATE BASE USER FIELDS
@@ -574,223 +434,19 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             # Don't fail user update if email fails
             print(f"Password update email failed: {email_error}")
 
-   
-# UPDATE ROLES (ORG BASED) 🔴 CHANGED
-# -----------------------
-   
-    if user.role_ids is not None:
-
-        # get user-org mapping
-        user_org = db.query(UserOrganization).filter(
-            UserOrganization.user_id == user.id,
-            UserOrganization.org_id == user.org_id
-        ).first()
-
-        if not user_org:
-            return error_response("User is not linked to this organization")
-
-        # clear existing roles (association table auto-handled)
-        user_org.roles.clear()
-
-        # fetch new roles
-        roles = db.query(Roles).filter(
-            Roles.id.in_(user.role_ids)
-        ).all()
-
-        # attach new roles
-        user_org.roles.extend(roles)
-
-    
-   # facility_db.commit()
-
     db.commit()
     db.refresh(db_user)
 
-    if user_org.account_type.lower() == "staff":
-        if user.site_ids is not None and len(user.site_ids) == 0:
-            return error_response(
-                message=" Site list required for  staff",
-                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
-            )
-
-        # ======================================================
-        # ================= STAFF ACCOUNT UPDATE ===============
-        # ======================================================
-        if user.site_ids is not None:
-            # Remove old mappings
-            facility_db.query(StaffSite).filter(
-                StaffSite.user_id == db_user.id
-            ).delete()
-
-            # Add new mappings
-            for site_id in user.site_ids:
-                site = facility_db.query(Site).filter(
-                    Site.id == site_id).first()
-                if site:
-                    facility_db.add(
-                        StaffSite(
-                            user_id=db_user.id,
-                            site_id=site.id,
-                            org_id=user.org_id,
-                            staff_role=user.staff_role  # This will work now
-                        )
-                    )
-
-            facility_db.commit()
-
-    # ======================================================
-    # =============== TENANT ACCOUNT UPDATE ================
-    # ======================================================
-    elif user_org.account_type.lower() == "tenant":
-
-        if not user.tenant_spaces or len(user.tenant_spaces) == 0:
-            return error_response(
-                message="At least one space is required for tenant",
-                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
-            )
-
-       # ✅ MULTI-SPACE OCCUPANCY CHECK (CORRECT)
-        if user.tenant_spaces:
-            incoming_space_ids = [ts.space_id for ts in user.tenant_spaces]
-
-            # Fetch all existing assignments for these spaces
-            existing_assignments = facility_db.query(TenantSpace).filter(
-                TenantSpace.space_id.in_(incoming_space_ids),
-                TenantSpace.is_deleted == False,
-                TenantSpace.status=="occupied" # only active/pending spaces
-            ).all()
-
-            for ts_assignment in existing_assignments:
-                # If the tenant is NOT the current user, conflict exists
-                if ts_assignment.tenant_id != db_user.id:
-                    return error_response(
-                        message="One of the selected spaces is already occupied by an active tenant",
-                        status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
-                    )
-
-
-        # ✅ FIXED: Lease validation with better queries
-        tenant = facility_db.query(Tenant).filter(
-            Tenant.user_id == db_user.id,
-            Tenant.is_deleted == False
-        ).first()
-
-        # 🚨 SAFETY CHECK (THIS WAS MISSING)
-        if not tenant:
-            return error_response(
-                message="Tenant record not found for this user",
-                status_code=str(AppStatusCode.NOT_FOUND_ERROR)
-            )
-
-        # ✅ Lease safety check
-        has_active_lease = facility_db.query(Lease).filter(
-            Lease.tenant_id == tenant.id,
-            Lease.is_deleted == False,
-            func.lower(Lease.status) == "active"
-        ).first()
-
-        if has_active_lease:
-            return error_response(
-                message="Cannot update tenant spaces while active leases exist"
-            )
-        
-         # ================= TENANT SPACES UPDATE =================
-        existing_spaces = facility_db.query(TenantSpace).filter(
-            TenantSpace.tenant_id == tenant.id,
-            TenantSpace.is_deleted == False
-        ).all()
-
-        for ts in existing_spaces:
-            ts.is_deleted = True
-            ts.updated_at = datetime.utcnow()
-
-        facility_db.flush()
-
-        now = datetime.utcnow()
-        for space in user.tenant_spaces:
-            facility_db.add(
-                TenantSpace(
-                    tenant_id=tenant.id,
-                    site_id=space.site_id,
-                    space_id=space.space_id,
-                    status="pending",
-                    created_at=now,
-                    updated_at=now
-                )
-            )
-
-       
-        if tenant:
-            tenant.name = user.full_name
-            tenant.phone = user.phone
-            tenant.email = user.email
-            tenant.status = user.status
-            tenant.kind = user.tenant_type
-        
-
-        if user.tenant_type == "commercial":
-            tenant.legal_name = user.full_name
-            tenant.commercial_type = "merchant",
-            tenant.contact = {
-                "name": user.full_name,
-                "phone": user.phone,
-                "email": user.email,
-                # ✅ FIXED: Add user_id to contact
-                "user_id": str(db_user.id)
-            }
-
-        facility_db.add(tenant)
-        facility_db.commit()
-
-    # ======================================================
-    # ================= VENDOR ACCOUNT UPDATE ==============
-    # ======================================================
-    elif user_org.account_type.lower() == "vendor":
-        # Validate vendor-specific fields
-        if not user.full_name:
-            return error_response(
-                message="Vendor name is required",
-                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
-            )
-
-        # Update or create vendor entry
-        vendor = facility_db.query(Vendor).filter(
-            Vendor.contact['user_id'].astext == str(db_user.id)
-        ).first()
-
-        if vendor:
-            vendor.name = user.full_name
-            vendor.contact = {
-                "name": user.full_name,
-                "email": user.email,
-                "phone": user.phone,
-                "user_id": str(db_user.id)
-            }
-            vendor.status = user.status or "active"
-        else:
-            vendor = Vendor(
-                org_id=user.org_id,
-                name=user.full_name,
-                contact={
-                    "name": user.full_name,
-                    "email": user.email,
-                    "phone": user.phone,
-                    "user_id": str(db_user.id)
-                },
-                status=user.status or "active"
-            )
-            facility_db.add(vendor)
-
-        facility_db.commit()
-
-    # FIX: Pass both db and facility_db to get_user
-    return get_user(db, db_user.id, user.org_id, facility_db)
+    return get_user_by_id(db, db_user.id)
 
 
 def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
     """Soft delete user and all related data (tenant/partner, leases, charges)"""
     try:
-        user = get_user_by_id(db, user_id)
+        user = db.query(Users).filter(
+            Users.id == user_id,
+            Users.is_deleted == False
+        ).first()
         if not user:
             return {"success": False, "message": "User not found"}
 
@@ -806,7 +462,6 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
 
         user_account_type = user_org.account_type.lower() if user_org.account_type else ""
         user_name = user.full_name or user.email
-
 
         # ✅ 1. SOFT DELETE THE USER
         user.is_deleted = True
@@ -891,7 +546,7 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
                 deleted_entities.append("staff site assignments")
 
         # ✅ 3. DELETE USER ROLES
-        
+
         # Commit all facility database changes
         facility_db.commit()
         db.commit()
@@ -1088,7 +743,8 @@ def get_user_detail(
             .first()
         )
 
-        data["site_ids"] = [s["site_id"] for s in staff.site_ids] if staff else []
+        data["site_ids"] = [s["site_id"]
+                            for s in staff.site_ids] if staff else []
         data["staff_role"] = staff.staff_role if staff else None
 
     # =====================================================
@@ -1122,7 +778,6 @@ def get_user_detail(
     data.setdefault("site_ids", [])
     data.setdefault("staff_role", None)
     data.setdefault("tenant_type", None)
-
 
     # =====================================================
 # ACCOUNT TYPES (FOR SWITCH ACCOUNT) – SAME AS AUTH
@@ -1160,6 +815,5 @@ def get_user_detail(
         })
         for uo in user_orgs
     ]
-
 
     return UserOut.model_validate(data)

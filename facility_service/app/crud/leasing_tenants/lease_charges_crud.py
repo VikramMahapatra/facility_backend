@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import String, and_, func, extract, or_, cast, Date
 from sqlalchemy import desc
 
+from facility_service.app.models.financials.invoices import Invoice
+
 from ...models.system.notifications import Notification, NotificationType, PriorityType
 from shared.helpers.json_response_helper import error_response
 from shared.helpers.property_helper import get_allowed_spaces
@@ -182,6 +184,15 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
         if lease.tenant:
             display_name = lease.tenant.legal_name or lease.tenant.name
 
+         # ✅ SIMPLE CHECK: Get invoice status for this lease charge
+        invoice = db.query(Invoice).filter(
+            Invoice.billable_item_type == "lease charge",
+            Invoice.billable_item_id == lc.id,
+            Invoice.is_deleted == False
+        ).first()
+        
+        invoice_status = invoice.status if invoice else None    
+
         items.append(LeaseChargeOut.model_validate({
             **lc.__dict__,
             "lease_start": lease.start_date,
@@ -195,6 +206,7 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
             "space_name": lease.space.name if lease.space else None,
             "charge_code": lc.charge_code.code if lc.charge_code else None,
             "tax_pct": tax_rate,
+            "invoice_status": invoice_status
         }))
 
     return {"items": items, "total": total}

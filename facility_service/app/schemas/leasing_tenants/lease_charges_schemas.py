@@ -59,6 +59,7 @@ class LeaseChargeOut(BaseModel):
     period_days: Optional[int] = None
     created_at: Optional[datetime] = None
     payer_type: str  # owner | occupant | split
+    invoice_status: Optional[str] = None  # 'issued', 'partial', 'paid', 'overdue'
 
     model_config = {
         "from_attributes": True

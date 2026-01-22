@@ -4,6 +4,7 @@ from typing import Optional, List, Any
 from datetime import date
 from pydantic import BaseModel
 
+from facility_service.app.schemas.access_control.user_management_schemas import UserOrganizationOut
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 
 from ...schemas.system.notifications_schemas import NotificationOut
@@ -30,11 +31,13 @@ class SiteResponse(EmptyStringModel):
     org_id: Optional[UUID] = None
     org_name: Optional[str] = None
     address: Optional[Any] = None
-    
-    
+
+
 class MasterDetailResponse(EmptyStringModel):
-    sites : List[SiteResponse] = []
-    
+    sites: List[SiteResponse] = []
+    status: str
+    default_account_type: str
+    account_types: Optional[List[UserOrganizationOut]] = None
 
 
 class Period(EmptyStringModel):

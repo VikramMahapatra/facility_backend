@@ -196,7 +196,7 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
     }
 
 
-def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
+def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, user: UserToken):
     """
     Get comprehensive home details for a specific space
     """
@@ -204,7 +204,15 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
     account_type = user.account_type.lower()
     tenant_type = user.tenant_type.lower() if user.tenant_type else None
     period_end = date.today()
-    period_start = period_end - timedelta(days=30)
+    
+    user_record = auth_db.query(Users).filter(
+        Users.id == user.user_id,
+        Users.is_deleted == False
+    ).first()
+    if user_record and user_record.created_at:
+        period_start = user_record.created_at.date()
+        
+        
     spaces_response = []
     # ✅ Always define placeholders at top level
     lease_contract_detail = {
@@ -379,8 +387,7 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
                             # Get maintenance from lease charges
                             maint_query = db.query(LeaseCharge).filter(
                                 LeaseCharge.lease_id == lease.id,
-                                LeaseCharge.is_deleted == False,
-                                LeaseCharge.charge_code.has(code="MAINTENANCE")
+                                LeaseCharge.is_deleted == False
                             )
                             
                             maint_charges = maint_query.all()
@@ -416,7 +423,7 @@ def get_home_details(db: Session, params: MasterQueryParams, user: UserToken):
             spaces_response.append(SpaceDetailsResponse(
                 space_id=space.id,
                 space_name=space.name,
-                building_id=space.building_id,
+                building_id=space.building_block_id,
                 building_name=space.building.name if space.building else None,
                 is_owner=space_is_owner,
                 lease_contract_exist=space_lease_contract_exist,

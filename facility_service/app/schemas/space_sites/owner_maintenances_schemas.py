@@ -8,13 +8,11 @@ from shared.core.schemas import CommonQueryParams
 
 
 class OwnerMaintenanceBase(EmptyStringModel):
-    space_owner_id: UUID
     space_id: UUID
     period_start: date
     period_end: date
     amount: Decimal
     status: Optional[str] = "pending"
-    invoice_id: Optional[UUID] = None
 
 
 class OwnerMaintenanceCreate(OwnerMaintenanceBase):
@@ -23,7 +21,7 @@ class OwnerMaintenanceCreate(OwnerMaintenanceBase):
 
 class OwnerMaintenanceUpdate(OwnerMaintenanceBase):
     id: UUID
-    maintenance_no: Optional[str] = None
+    
 
 
 class OwnerMaintenanceOut(OwnerMaintenanceBase):
@@ -34,9 +32,12 @@ class OwnerMaintenanceOut(OwnerMaintenanceBase):
     is_deleted: bool
     
     # Additional fields for display
-    space_name: Optional[str]
-    owner_name: Optional[str]
-    site_name: Optional[str]
+    space_name: Optional[str]= None
+    owner_name: Optional[str]= None
+    site_name: Optional[str]= None
+    building_name: Optional[str]= None
+    invoice_id: Optional[UUID]= None
+    owner_user_id: Optional[UUID]= None
     
     model_config = {"from_attributes": True}
 

@@ -33,6 +33,7 @@ def get_master_details(
 def get_home_details(
     params: MasterQueryParams = None,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return home_crud.get_home_details(db, params, current_user)
+    return home_crud.get_home_details(db, auth_db, params, current_user)

@@ -16,7 +16,7 @@ from ...models.space_sites.owner_maintenances import OwnerMaintenanceCharge
 from shared.core.schemas import Lookup, UserToken
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
-from ...schemas.space_sites.owner_maintenances_schemas import  OwnerMaintenanceCreate, OwnerMaintenanceListResponse, OwnerMaintenanceOut, OwnerMaintenanceRequest, OwnerMaintenanceUpdate
+from ...schemas.space_sites.owner_maintenances_schemas import  OwnerMaintenanceBySpaceRequest, OwnerMaintenanceBySpaceResponse, OwnerMaintenanceCreate, OwnerMaintenanceListResponse, OwnerMaintenanceOut, OwnerMaintenanceRequest, OwnerMaintenanceUpdate
 
 
 
@@ -392,6 +392,7 @@ def update_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
             detail="Error updating maintenance record"
         )
         
+        
 def delete_owner_maintenance(db: Session, maintenance_id: str):
     """Soft delete an owner maintenance record"""
     
@@ -406,10 +407,9 @@ def delete_owner_maintenance(db: Session, maintenance_id: str):
     
     # Check if maintenance is already invoiced or paid
     if db_maintenance.status in ["invoiced", "paid"]:
-        return error_response(
-            message=f"Cannot delete maintenance record with status '{db_maintenance.status}'",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=400
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete maintenance record with status '{db_maintenance.status}'"
         )
     
     # Soft delete - set is_deleted to True
@@ -420,19 +420,12 @@ def delete_owner_maintenance(db: Session, maintenance_id: str):
         db.commit()
         db.refresh(db_maintenance)
         
-        # Get the deleted maintenance with relationships
-        deleted_maintenance = get_owner_maintenance_by_id(db, str(db_maintenance.id))
-        return deleted_maintenance
+        # Wrap in dictionary for OwnerMaintenanceDetailResponse
+        return {"maintenance": db_maintenance}
         
     except IntegrityError as e:
         db.rollback()
-        return error_response(
-            message="Error deleting maintenance record",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=400
-        )
-
-
+        raise HTTPException(status_code=400, detail="Error deleting maintenance record")
 
 def owner_maintenances_status_lookup(db: Session, org_id: str) -> List[Dict]:
     return [
@@ -521,3 +514,126 @@ def get_spaceowner_with_building_lookup(
     except Exception as e:
         print(f"Error in get_spaceowner_with_building_lookup: {str(e)}")
         return []
+    
+def get_owner_maintenances_by_space(
+    db: Session, 
+    auth_db: Session,
+    params: OwnerMaintenanceBySpaceRequest,
+    user: UserToken
+) -> OwnerMaintenanceBySpaceResponse:
+    """Get all owner maintenance records for a specific space"""
+    
+    try:
+        # Verify the space exists and belongs to user's organization
+        space = db.query(Space).filter(
+            Space.id == params.space_id,
+            Space.org_id == user.org_id,
+            Space.is_deleted == False
+        ).options(
+            joinedload(Space.site),
+            joinedload(Space.building)
+        ).first()
+        
+        if not space:
+            raise HTTPException(status_code=404, detail="Space not found or you don't have access")
+        
+        # Build filters
+        filters = [
+            OwnerMaintenanceCharge.space_id == params.space_id,
+            OwnerMaintenanceCharge.is_deleted == False
+        ]
+        
+        # Add status filter if provided
+        if params.status and params.status.lower() != "all":
+            filters.append(OwnerMaintenanceCharge.status == params.status)
+        
+        # Add search filter if provided
+        if params.search:
+            search_term = f"%{params.search}%"
+            filters.append(or_(
+                OwnerMaintenanceCharge.maintenance_no.ilike(search_term)
+            ))
+        
+        # Base query
+        base_query = (
+            db.query(OwnerMaintenanceCharge)
+            .join(Space, OwnerMaintenanceCharge.space_id == Space.id)
+            .join(Site, Space.site_id == Site.id)
+            .outerjoin(SpaceOwner, OwnerMaintenanceCharge.space_owner_id == SpaceOwner.id)
+            .filter(*filters)
+        )
+        
+        # Get total count
+        total = db.query(func.count()).select_from(base_query.subquery()).scalar()
+        
+        # Get paginated results
+        results = (
+            base_query
+            .options(
+                joinedload(OwnerMaintenanceCharge.space).joinedload(Space.site),
+                joinedload(OwnerMaintenanceCharge.space_owner)
+            )
+            .order_by(OwnerMaintenanceCharge.created_at.desc())
+            .offset(params.skip)
+            .limit(params.limit)
+            .all()
+        )
+        
+        # Transform results
+        maintenances = []
+        for maintenance in results:
+            space_name = maintenance.space.name if maintenance.space else None
+            site_name = maintenance.space.site.name if maintenance.space and maintenance.space.site else None
+            
+            # Get owner name based on owner type
+            owner_name = None
+            owner_user_id = None
+            if maintenance.space_owner:
+                if maintenance.space_owner.owner_user_id:
+                    owner_user_id = maintenance.space_owner.owner_user_id
+                    user_record = auth_db.query(Users).filter(
+                        Users.id == maintenance.space_owner.owner_user_id,
+                        Users.is_deleted == False
+                    ).first()
+                    owner_name = f"{user_record.full_name}" if user_record else None
+                elif maintenance.space_owner.owner_org:
+                    owner_name = maintenance.space_owner.owner_org.name
+            
+            # Get building name if building exists
+            building_name = None
+            if maintenance.space and maintenance.space.building:
+                building_name = maintenance.space.building.name
+            
+            # Create data dict with ALL fields
+            data = {
+                **maintenance.__dict__,
+                "space_name": space_name,
+                "site_name": site_name,
+                "owner_name": owner_name,
+                "building_name": building_name,
+                "owner_user_id": owner_user_id,
+                "invoice_id": maintenance.invoice_id,
+                "space_owner_id": maintenance.space_owner_id
+            }
+            
+            # Use model_validate with error handling
+            try:
+                maintenance_out = OwnerMaintenanceOut.model_validate(data)
+                maintenances.append(maintenance_out)
+            except Exception:
+                # Use from_attributes as fallback
+                maintenance_out = OwnerMaintenanceOut.model_validate(data, from_attributes=True)
+                maintenances.append(maintenance_out)
+        
+        # SIMPLE: Just use params.space_id - Pydantic will handle UUID conversion
+        return OwnerMaintenanceBySpaceResponse(
+            space_id=params.space_id,  # Pydantic converts string to UUID
+            space_name=space.name,
+            site_name=space.site.name if space.site else None,
+            total_records=total or 0,
+            maintenances=maintenances
+        )
+        
+    except Exception as e:
+        print(f"Error in get_owner_maintenances_by_space: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")

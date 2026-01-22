@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_auth_db, get_facility_db as get_db
-from ...schemas.space_sites.owner_maintenances_schemas import OwnerMaintenanceCreate, OwnerMaintenanceDetailResponse, OwnerMaintenanceListResponse, OwnerMaintenanceRequest, OwnerMaintenanceUpdate
+from ...schemas.space_sites.owner_maintenances_schemas import OwnerMaintenanceBySpaceRequest, OwnerMaintenanceBySpaceResponse, OwnerMaintenanceCreate, OwnerMaintenanceDetailResponse, OwnerMaintenanceListResponse, OwnerMaintenanceRequest, OwnerMaintenanceUpdate
 from ...crud.space_sites import owner_maintenances_crud as crud
 from shared.core.auth import   validate_current_token  
 from shared.core.schemas import Lookup, UserToken
@@ -49,6 +49,22 @@ def spaceowner_building_lookup(
         org_id=current_user.org_id
     )
 
+
+@router.get("/by-space", response_model=OwnerMaintenanceBySpaceResponse)
+def get_owner_maintenances_by_space(
+    params: OwnerMaintenanceBySpaceRequest = Depends(),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """Get all owner maintenance records for a specific space"""
+    return crud.get_owner_maintenances_by_space(
+        db=db, 
+        auth_db=auth_db, 
+        params=params, 
+        user=current_user
+    )
+    
 
 @router.post("/", response_model=OwnerMaintenanceDetailResponse)
 def create_owner_maintenance(

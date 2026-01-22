@@ -1,4 +1,5 @@
 
+from .router.space_sites import owner_maintenances_router
 from .router.leasing_tenants import lease_charge_code_router
 from shared.models import email_template
 from .router.system import notifiaction_settings_router
@@ -146,7 +147,7 @@ app.include_router(ticket_work_order_router.router)
 app.include_router(lease_charge_code_router.router)
 app.include_router(system_settings_router.router)
 app.include_router(parking_pass_router.router)
-
+app.include_router(owner_maintenances_router.router)
 
 @app.get("/api/health")
 def health():

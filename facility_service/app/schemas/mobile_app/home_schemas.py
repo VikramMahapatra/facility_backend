@@ -66,12 +66,17 @@ class Statistics(EmptyStringModel):
     overdue_tickets: int = 0
     period: Optional[Period] = None  # Now contains actual date range
 
-
-class HomeDetailsResponse(EmptyStringModel):
-    lease_contract_exist: bool
+class SpaceDetailsResponse(EmptyStringModel):
+    space_id: UUID
+    space_name: Optional[str] = None
+    building_id: Optional[UUID] = None
+    building_name: Optional[str] = None
+    is_owner: bool = False
+    lease_contract_exist: bool = False
     lease_contract_detail: LeaseContractDetail
     maintenance_detail: MaintenanceDetail
+
+class HomeDetailsWithSpacesResponse(EmptyStringModel):
+    spaces: List[SpaceDetailsResponse] = []
     statistics: Statistics
     notifications: Optional[List[NotificationOut]] = None
-
-    model_config = {"from_attributes": True}

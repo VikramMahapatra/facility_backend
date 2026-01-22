@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from ...schemas.mobile_app.home_schemas import HomeDetailsResponse, MasterDetailResponse
+from ...schemas.mobile_app.home_schemas import  HomeDetailsWithSpacesResponse, MasterDetailResponse
 from shared.core.database import get_facility_db as get_db, get_auth_db
 from shared.core.auth import validate_token, validate_current_token
 from shared.core.schemas import MasterQueryParams, UserToken
@@ -28,7 +28,7 @@ def get_master_details(
 # home details
 
 
-@router.post("/details", response_model=HomeDetailsResponse)
+@router.post("/details", response_model=HomeDetailsWithSpacesResponse)
 def get_home_details(
     params: MasterQueryParams = None,
     db: Session = Depends(get_db),

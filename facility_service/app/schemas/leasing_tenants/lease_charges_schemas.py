@@ -77,3 +77,13 @@ class LeaseChargeListResponse(BaseModel):
 class LeaseChargeRequest(CommonQueryParams):
     month: Optional[str] = None
     charge_code: Optional[str] = None
+
+
+class LeaseRentAmountResponse(BaseModel):
+    lease_id: UUID
+    rent_amount: Optional[Decimal] = None
+
+    model_config = {
+        "from_attributes": True
+    }
+

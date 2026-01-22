@@ -5,8 +5,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
-from facility_service.app.enum.space_sites_enum import OwnershipType
-from facility_service.app.models.space_sites.space_owners import SpaceOwner
+from auth_service.app.models.user_organizations import UserOrganization
+from shared.models.users import Users
+from ...enum.space_sites_enum import OwnershipType
+from ...models.space_sites.orgs import Org
+from ...models.space_sites.space_owners import SpaceOwner
 
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 
@@ -34,7 +37,7 @@ from sqlalchemy.orm import joinedload
 from shared.utils.enums import UserAccountType
 
 
-def get_home_spaces(db: Session, user: UserToken):
+def get_home_spaces(db: Session, auth_db: Session, user: UserToken):
     sites = []
     account_type = user.account_type.lower()
 
@@ -54,7 +57,7 @@ def get_home_spaces(db: Session, user: UserToken):
         if not tenant:
             return {
                 "sites": []
-               
+
             }
 
         seen_site_ids = set()
@@ -67,7 +70,7 @@ def get_home_spaces(db: Session, user: UserToken):
             site = ts.space.site
             if site.id in seen_site_ids:
                 continue
-            
+
             # Check if site has any space with primary active space owner
             has_primary_owner = db.query(SpaceOwner).join(
                 Space, SpaceOwner.space_id == Space.id
@@ -106,12 +109,12 @@ def get_home_spaces(db: Session, user: UserToken):
             ).first() is not None
             sites.append({
                 "site_id": site.id,
-                "site_name": site.name, 
+                "site_name": site.name,
                 "is_primary": has_primary_owner,
                 "org_id": site.org_id,
                 "org_name": site.org.name if site.org else None,
                 "address": site.address,
-                }
+            }
             )
 
     else:
@@ -136,10 +139,31 @@ def get_home_spaces(db: Session, user: UserToken):
                 "org_id": site.org_id,
                 "org_name": site.org.name if site.org else None,
                 "address": site.address,
-                })
+            })
+
+    default_user_org = (
+        auth_db.query(UserOrganization)
+        .filter(
+            UserOrganization.user_id == user.user_id,
+            UserOrganization.is_default == True,
+            UserOrganization.status == "active"
+        )
+        .first()
+    )
+
+    current_user = (
+        auth_db.query(Users)
+        .filter(
+            Users.id == user.user_id,
+            Users.is_deleted == False
+        )
+        .first()
+    )
 
     return {
         "sites": sites,
+        "account_type": default_user_org.account_type,
+        "status": current_user.status
     }
 
 

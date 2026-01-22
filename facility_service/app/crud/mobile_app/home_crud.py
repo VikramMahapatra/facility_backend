@@ -431,9 +431,21 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
                 maintenance_detail=space_maintenance_detail
             ))
         
-        # Set ticket filters for tenant
+        # Set ticket filters for tenant/owner
         tenant_id = tenant.id if tenant else None
-        ticket_filters = [Ticket.tenant_id == tenant_id] if tenant_id else []
+        if tenant_id:
+            ticket_filters = [Ticket.tenant_id == tenant_id]
+        elif account_type == UserAccountType.FLAT_OWNER:
+            # For FLAT_OWNER, show tickets for spaces they own
+            owned_space_ids = [s.space_id for s in spaces_response if s.is_owner]
+            if owned_space_ids:
+                ticket_filters = [Ticket.space_id.in_(owned_space_ids)]
+            else:
+                ticket_filters = []  # No spaces owned, no tickets
+        else:
+            ticket_filters = []
+    
+    
     # ------------------------------
     # Staff / Organisation flow
     

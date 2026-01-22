@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeListResponse, LeaseChargeRequest, LeaseChargeUpdate, LeaseChargesOverview
+from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeListResponse, LeaseChargeRequest, LeaseChargeUpdate, LeaseChargesOverview, LeaseRentAmountResponse
 from ...crud.leasing_tenants import lease_charges_crud as crud
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import allow_admin, validate_current_token  # for dependicies
@@ -79,3 +79,21 @@ def get_tax_code_lookup(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.tax_code_lookup(db, current_user.org_id)
+
+
+@router.get("/lease-rent/{lease_id}", response_model=LeaseRentAmountResponse)
+def get_lease_rent_amount(
+    lease_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get lease rent amount by lease ID
+    Used to auto-fill amount when user selects "Rent" charge code
+    """
+    result = crud.get_lease_rent_amount(db, lease_id)
+    
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    
+    return result

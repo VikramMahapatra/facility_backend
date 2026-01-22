@@ -67,7 +67,8 @@ def google_login(
             )
 
         user = db.query(Users).filter(
-            Users.email == email, Users.is_deleted == False).first()
+            Users.email == email,
+            Users.is_deleted == False).first()
 
         if not user:
             return authschema.AuthenticationResponse(
@@ -159,7 +160,8 @@ def verify_otp(
                 http_status=status.HTTP_400_BAD_REQUEST
             )
 
-        user = db.query(Users).filter(Users.phone == request.mobile).first()
+        user = db.query(Users).filter(
+            Users.phone == request.mobile, Users.is_deleted == False).first()
     elif request.email:
         record = (
             db.query(OtpVerification)

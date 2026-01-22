@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session , joinedload
 from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
 from sqlalchemy.dialects.postgresql import JSONB
 from facility_service.app.models.leasing_tenants.leases import Lease
+from facility_service.app.models.space_sites.owner_maintenances import OwnerMaintenanceCharge
+from facility_service.app.models.space_sites.space_owners import SpaceOwner
+from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType
 from shared.helpers.json_response_helper import error_response 
 
@@ -430,11 +433,38 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         else:
             billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
 
+    elif request.billable_item_type == "owner maintenance":
+        owner_maintenance = db.query(OwnerMaintenanceCharge).filter(
+            OwnerMaintenanceCharge.id == request.billable_item_id,
+            OwnerMaintenanceCharge.is_deleted == False
+        ).first()
+        
+        if not owner_maintenance:
+            raise HTTPException(status_code=404, detail="Owner maintenance charge not found")
+        
+        # Get space and site info for notification
+        space = db.query(Space).filter(Space.id == owner_maintenance.space_id).first()
+        site = db.query(Site).filter(Site.id == space.site_id).first() if space else None
+        
+        # Get owner info
+        space_owner = db.query(SpaceOwner).filter(
+            SpaceOwner.id == owner_maintenance.space_owner_id,
+            SpaceOwner.is_active == True
+        ).first()
+        
+        # Build billable item name
+        if owner_maintenance.period_start and owner_maintenance.period_end:
+            start_str = owner_maintenance.period_start.strftime("%d %b %Y")
+            end_str = owner_maintenance.period_end.strftime("%d %b %Y")
+            space_name = space.name if space else "Unknown Space"
+            billable_item_name = (f"Owner Maintenance | {space_name} | {start_str} - {end_str} |{owner_maintenance.maintenance_no}")
+        else:
+            billable_item_name = f"Owner Maintenance | {owner_maintenance.maintenance_no}"
  
     else:
         raise HTTPException(
             status_code=400,
-            detail="Invalid module_type. Must be 'work order', 'lease charge', or 'parking pass'"
+              detail="Invalid module_type. Must be 'work order', 'lease charge', 'parking pass', or 'owner maintenance'"
         )
         
         

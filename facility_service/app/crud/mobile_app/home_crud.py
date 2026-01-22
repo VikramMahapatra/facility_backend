@@ -37,7 +37,7 @@ from sqlalchemy.orm import joinedload
 from shared.utils.enums import UserAccountType
 
 
-def get_home_spaces(db: Session, auth_db: Session, user: UserToken):
+def get_home_sites(db: Session, auth_db: Session, user: UserToken):
     sites = []
     account_type = user.account_type.lower()
 

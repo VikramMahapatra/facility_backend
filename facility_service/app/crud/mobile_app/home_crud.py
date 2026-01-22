@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from auth_service.app.models.user_organizations import UserOrganization
+from ...schemas.access_control.user_management_schemas import UserOrganizationOut
 from shared.models.users import Users
 from ...enum.space_sites_enum import OwnershipType
 from ...models.space_sites.orgs import Org
@@ -141,15 +142,20 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
                 "address": site.address,
             })
 
-    default_user_org = (
+    user_orgs = (
         auth_db.query(UserOrganization)
         .filter(
             UserOrganization.user_id == user.user_id,
-            UserOrganization.is_default == True,
             UserOrganization.status == "active"
         )
-        .first()
+        .order_by(
+            UserOrganization.is_default.desc(),
+            UserOrganization.joined_at.asc()
+        )
+        .all()
     )
+
+    default_user_org = user_orgs[0] if user_orgs else None
 
     current_user = (
         auth_db.query(Users)
@@ -160,10 +166,31 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
         .first()
     )
 
+    org_ids = [org.org_id for org in user_orgs]
+
+    org_map = {
+        org.id: org.name
+        for org in db.query(Org)
+        .filter(Org.id.in_(org_ids))
+        .all()
+    }
+
+    account_types = [
+        UserOrganizationOut.model_validate({
+            "user_org_id": org.id,
+            "org_id": org.org_id,
+            "account_type": org.account_type,
+            "organization_name": org_map.get(org.org_id),
+            "is_default": org.is_default
+        })
+        for org in user_orgs
+    ]
+
     return {
         "sites": sites,
-        "account_type": default_user_org.account_type,
-        "status": current_user.status
+        "default_account_type": default_user_org.account_type,
+        "status": current_user.status,
+        "account_types": account_types
     }
 
 

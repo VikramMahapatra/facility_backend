@@ -22,6 +22,7 @@ router = APIRouter(
 @router.post("/master-details", response_model=MasterDetailResponse)
 def get_master_details(
         db: Session = Depends(get_db),
+        auth_db: Session = Depends(get_auth_db),
         current_user: UserToken = Depends(validate_token)):
     return home_crud.get_home_sites(db, current_user)
 

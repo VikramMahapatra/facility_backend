@@ -222,19 +222,25 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate, current_user_id
         )
 
     # ✅ SIMPLE VALIDATION: Same charge code cannot have overlapping periods
-    existing_charge = db.query(LeaseCharge).join(Lease).filter(
+    existing_charge = (
+    db.query(LeaseCharge, LeaseChargeCode.code)
+    .join(LeaseChargeCode, LeaseCharge.charge_code_id == LeaseChargeCode.id)
+    .join(Lease)
+    .filter(
         LeaseCharge.lease_id == payload.lease_id,
         LeaseCharge.charge_code_id == payload.charge_code_id,
         LeaseCharge.is_deleted == False,
         Lease.is_deleted == False,
-        # Check if periods overlap
         LeaseCharge.period_start <= payload.period_end,
         LeaseCharge.period_end >= payload.period_start
-    ).first()
+    )
+    .first()
+ )
 
     if existing_charge:
+        charge, code_name = existing_charge
         return error_response(
-            message=f"Charge code '{payload.charge_code}' already exists for this lease with overlapping period"
+            message=f"Charge code '{code_name}' already exists for this lease with overlapping period"
         )
 
     tax_rate = (db.query(TaxCode.rate)
@@ -417,3 +423,23 @@ def tax_code_lookup(db: Session, org_id: UUID):
         .order_by("id")
     )
     return query.all()
+
+
+
+
+def get_lease_rent_amount(db: Session, lease_id: UUID):
+    """
+    Simple function to get lease rent amount by lease ID
+    """
+    lease = db.query(Lease).filter(
+        Lease.id == lease_id,
+        Lease.is_deleted == False
+    ).first()
+    
+    if not lease:
+        return {"error": "Lease not found"}
+    
+    return {
+        "lease_id": lease.id,
+        "rent_amount": lease.rent_amount if lease.rent_amount else Decimal("0")
+    }

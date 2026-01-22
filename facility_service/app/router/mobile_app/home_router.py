@@ -23,7 +23,7 @@ router = APIRouter(
 def get_master_details(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_token)):
-    return home_crud.get_home_spaces(db, current_user)
+    return home_crud.get_home_sites(db, current_user)
 
 # home details
 

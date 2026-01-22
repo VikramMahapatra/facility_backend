@@ -59,6 +59,7 @@ class LeaseChargeOut(BaseModel):
     period_days: Optional[int] = None
     created_at: Optional[datetime] = None
     payer_type: str  # owner | occupant | split
+    invoice_status: Optional[str] = None  # 'issued', 'partial', 'paid', 'overdue'
 
     model_config = {
         "from_attributes": True
@@ -77,3 +78,13 @@ class LeaseChargeListResponse(BaseModel):
 class LeaseChargeRequest(CommonQueryParams):
     month: Optional[str] = None
     charge_code: Optional[str] = None
+
+
+class LeaseRentAmountResponse(BaseModel):
+    lease_id: UUID
+    rent_amount: Optional[Decimal] = None
+
+    model_config = {
+        "from_attributes": True
+    }
+

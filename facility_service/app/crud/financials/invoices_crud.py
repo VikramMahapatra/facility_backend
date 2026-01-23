@@ -1684,6 +1684,6 @@ def get_invoice_payment_history(
 
 def invoice_type_lookup(db: Session, org_id: UUID):
     return [
-        Lookup(id=type.value, name=type.name.capitalize())
+        {"id": type.value, "name": type.name.replace('_', ' ').title()}
         for type in InvoiceType
     ]

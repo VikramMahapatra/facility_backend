@@ -80,6 +80,7 @@ class UserAccountBase(BaseModel):
     tenant_type: Optional[str] = None
     staff_role: Optional[str] = None
     tenant_spaces: Optional[List[UserTenantSpace]] = None
+    owner_spaces: Optional[List[UserTenantSpace]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -105,6 +106,7 @@ class UserAccountOut(BaseModel):
     tenant_type: Optional[str] = None
     staff_role: Optional[str] = None
     tenant_spaces: Optional[List[TenantSpaceOut]] = None
+    owner_spaces: Optional[List[TenantSpaceOut]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

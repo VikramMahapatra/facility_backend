@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, status
-from datetime import datetime
+from datetime import datetime, date
+
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
@@ -11,13 +12,14 @@ from auth_service.app.models.tenant_spaces_safe import TenantSpaceSafe
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.userroles import UserRoles
-from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists, compute_space_status, validate_active_tenants_for_spaces
-from facility_service.app.enum.leasing_tenants_enum import TenantStatus
-from facility_service.app.models.leasing_tenants.commercial_partners import CommercialPartner
-from facility_service.app.models.leasing_tenants.lease_charges import LeaseCharge
-from facility_service.app.models.leasing_tenants.leases import Lease
-from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
-from facility_service.app.schemas.leasing_tenants.tenants_schemas import TenantSpaceOut
+from ...crud.leasing_tenants.tenants_crud import active_lease_exists, compute_space_status, validate_active_tenants_for_spaces
+from ...enum.leasing_tenants_enum import TenantStatus
+from ...models.leasing_tenants.commercial_partners import CommercialPartner
+from ...models.leasing_tenants.lease_charges import LeaseCharge
+from ...models.leasing_tenants.leases import Lease
+from ...models.leasing_tenants.tenant_spaces import TenantSpace
+from ...models.space_sites.space_owners import SpaceOwner
+from ...schemas.leasing_tenants.tenants_schemas import TenantSpaceOut
 from shared.models.users import Users
 # from auth_service.app.models.userroles import UserRoles
 from ...models.common.staff_sites import StaffSite
@@ -740,6 +742,40 @@ def get_user_detail(
                 account["tenant_type"] = tenant.tenant_type
                 account["tenant_spaces"] = tenant.tenant_spaces
 
+        elif uo.account_type.lower() == "owner":
+
+            owner = (
+                facility_db.query(
+                    func.coalesce(
+                        func.jsonb_agg(
+                            func.jsonb_build_object(
+                                "site_id", Site.id,
+                                "site_name", Site.name,
+                                "space_id", Space.id,
+                                "space_name", Space.name,
+                                "building_block_id", Building.id,
+                                "building_block_name", Building.name,
+                                "status", "active" if SpaceOwner.is_active else "inactive",
+                                "is_primary", False
+                            )
+                        ),
+                        literal("[]").cast(JSONB)
+                    ).label("owner_spaces")
+                )
+                .select_from(SpaceOwner)
+                .join(Space, Space.id == SpaceOwner.space_id)
+                .join(Site, Site.id == TenantSpace.site_id)
+                .outerjoin(Building, Building.id == Space.building_block_id)
+                .filter(
+                    SpaceOwner.owner_user_id == user_id,
+                    SpaceOwner.owner_org_id == uo.org_id,
+                )
+                .first()
+            )
+
+            if owner:
+                account["owner_spaces"] = owner.owner_spaces
+
         # =====================================================
         # STAFF
         # =====================================================
@@ -1154,6 +1190,84 @@ def handle_account_type_update(
         facility_db.add(tenant)
         facility_db.commit()
 
+    # ================= SPACE OWNER =================
+    elif account_type == "owner":
+
+        if not user_account.owner_spaces:
+            return error_response(
+                message="At least one space is required for owner",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+            )
+
+        incoming_space_ids = [ts.space_id for ts in user_account.owner_spaces]
+
+        existing_assignments = facility_db.query(SpaceOwner).filter(
+            SpaceOwner.space_id.in_(incoming_space_ids),
+            SpaceOwner.is_active == True
+        ).all()
+
+        #  DIFFERENT OWNER → CLOSE PREVIOUS ENTRY
+        for ts in existing_assignments:
+            if ts.owner_user_id != db_user_org.user_id:
+                ts.is_active = False
+                ts.end_date = date.today()
+
+                other_spaces_count = (
+                    db.query(SpaceOwner)
+                    .filter(
+                        SpaceOwner.space_id != ts.space_id,
+                        SpaceOwner.owner_user_id == ts.owner_user_id,
+                        SpaceOwner.owner_org_id == org_id,
+                        SpaceOwner.is_active == True
+                    )
+                    .count()
+                )
+
+                #  SOFT DELETE OLD OWNER ACCOUNT ORG ENTRY
+                if other_spaces_count == 0:
+                    old_user_org = db.query(UserOrganization).filter(
+                        UserOrganization.user_id == ts.owner_user_id,
+                        UserOrganization.org_id == org_id,
+                        UserOrganization.account_type == "owner",
+                        UserOrganization.is_deleted == False
+                    ).first()
+
+                    if old_user_org:
+                        old_user_org.is_deleted = True,
+                        old_user_org.status = "inactive"
+
+        existing_by_space = {
+            sa.space_id: sa
+            for sa in existing_assignments
+        }
+
+        facility_db.query(SpaceOwner).filter(
+            SpaceOwner.owner_user_id == db_user_org.user_id,
+            SpaceOwner.owner_org_id == org_id,
+            SpaceOwner.is_deleted == False
+        ).update({"is_deleted": True})
+
+        now = datetime.utcnow()
+
+        for space in user_account.owner_spaces:
+            existing = existing_by_space.get(space.space_id)
+
+            if not existing:
+                # ➕ Insert new
+                facility_db.add(
+                    SpaceOwner(
+                        owner_user_id=db_user_org.user_id,
+                        space_id=space.space_id,
+                        owner_org_id=org_id,
+                        ownership_type="primary",
+                        is_active=True,
+                        is_deleted=False,
+                        start_date=now
+                    )
+                )
+
+        facility_db.commit()
+
     # ================= VENDOR =================
     elif account_type == "vendor":
 
@@ -1204,9 +1318,6 @@ def validate_unique_account(
         )
 
     return None
-
-
-router = APIRouter()
 
 
 def mark_account_default(

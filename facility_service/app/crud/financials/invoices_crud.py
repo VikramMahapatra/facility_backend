@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session , joinedload
 from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
 from sqlalchemy.dialects.postgresql import JSONB
 from facility_service.app.models.leasing_tenants.leases import Lease
+from facility_service.app.models.space_sites.owner_maintenances import OwnerMaintenanceCharge
+from facility_service.app.models.space_sites.space_owners import SpaceOwner
+from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType
 from shared.helpers.json_response_helper import error_response 
 
@@ -430,11 +433,38 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         else:
             billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
 
+    elif request.billable_item_type == "owner maintenance":
+        owner_maintenance = db.query(OwnerMaintenanceCharge).filter(
+            OwnerMaintenanceCharge.id == request.billable_item_id,
+            OwnerMaintenanceCharge.is_deleted == False
+        ).first()
+        
+        if not owner_maintenance:
+            raise HTTPException(status_code=404, detail="Owner maintenance charge not found")
+        
+        # Get space and site info for notification
+        space = db.query(Space).filter(Space.id == owner_maintenance.space_id).first()
+        site = db.query(Site).filter(Site.id == space.site_id).first() if space else None
+        
+        # Get owner info
+        space_owner = db.query(SpaceOwner).filter(
+            SpaceOwner.id == owner_maintenance.space_owner_id,
+            SpaceOwner.is_active == True
+        ).first()
+        
+        # Build billable item name
+        if owner_maintenance.period_start and owner_maintenance.period_end:
+            start_str = owner_maintenance.period_start.strftime("%d %b %Y")
+            end_str = owner_maintenance.period_end.strftime("%d %b %Y")
+            space_name = space.name if space else "Unknown Space"
+            billable_item_name = (f"Owner Maintenance | {space_name} | {start_str} - {end_str} |{owner_maintenance.maintenance_no}")
+        else:
+            billable_item_name = f"Owner Maintenance | {owner_maintenance.maintenance_no}"
  
     else:
         raise HTTPException(
             status_code=400,
-            detail="Invalid module_type. Must be 'work order', 'lease charge', or 'parking pass'"
+              detail="Invalid module_type. Must be 'work order', 'lease charge', 'parking pass', or 'owner maintenance'"
         )
         
         
@@ -576,7 +606,58 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
                     is_email=False
                 )
                 db.add(full_payment_notification)
-
+                
+                # ADD THIS: Notification for owner maintenance invoice
+        elif request.billable_item_type == "owner maintenance" and space_owner:
+            # 1. Notification for invoice creation
+            invoice_notification = Notification(
+                user_id=current_user.user_id,
+                type=NotificationType.alert,
+                title="Owner Maintenance Invoice Created",
+                message=f"Invoice {db_invoice.invoice_no} created for {billable_item_name}. Amount: {invoice_amount}",
+                posted_date=datetime.utcnow(),
+                priority=PriorityType.medium,
+                read=False,
+                is_deleted=False,
+                is_email=False
+            )
+            db.add(invoice_notification)
+            
+            # 2. Notification for EACH payment (if any payments)
+            if payments_created:
+                for payment in payments_created:
+                    payment_notification = Notification(
+                        user_id=current_user.user_id,
+                        type=NotificationType.alert,
+                        title="Owner Maintenance Payment Recorded",
+                        message=f"Payment of {payment.amount} recorded for invoice {db_invoice.invoice_no}",
+                        posted_date=datetime.utcnow(),
+                        priority=PriorityType.medium,
+                        read=False,
+                        is_deleted=False,
+                        is_email=False
+                    )
+                    db.add(payment_notification)
+            
+            # 3. Notification for FULL PAYMENT
+            if actual_status == "paid":
+                full_payment_notification = Notification(
+                    user_id=current_user.user_id,
+                    type=NotificationType.alert,
+                    title="Owner Maintenance Invoice Fully Paid",
+                    message=f"Invoice {db_invoice.invoice_no} has been fully paid. Total: {invoice_amount}",
+                    posted_date=datetime.utcnow(),
+                    priority=PriorityType.medium,
+                    read=False,
+                    is_deleted=False,
+                    is_email=False
+                )
+                db.add(full_payment_notification)
+                # ADD THIS: Update owner maintenance charge with invoice_id
+        if request.billable_item_type == "owner maintenance" and owner_maintenance:
+            owner_maintenance.invoice_id = db_invoice.id
+            owner_maintenance.status = "invoiced"
+            
         # Single commit for everything
         db.commit()
         
@@ -625,6 +706,7 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
             status_code=500,
             detail="Failed to create invoice"
         )
+
 
 def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     db_invoice = db.query(Invoice).filter(
@@ -1024,6 +1106,36 @@ def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, billab
             entities.append(Lookup(
                 id=str(pp.id),
                 name=formatted_name
+            ))
+    elif billable_item_type == "owner maintenance":
+        owner_maintenances = db.query(OwnerMaintenanceCharge).filter(
+            OwnerMaintenanceCharge.is_deleted == False,
+            ~OwnerMaintenanceCharge.id.in_(
+                db.query(Invoice.billable_item_id)
+                .filter(
+                    Invoice.org_id == org_id,
+                    Invoice.billable_item_type == "owner maintenance",
+                    Invoice.is_deleted == False,
+                    Invoice.status != "void"
+                )
+            ),
+            OwnerMaintenanceCharge.space.has(site_id=site_id),
+            OwnerMaintenanceCharge.space.has(org_id=org_id)
+        ).all()
+        
+        for om in owner_maintenances:
+            space = db.query(Space).filter(Space.id == om.space_id).first()
+            space_name = space.name if space else "Unknown Space"
+            if om.period_start and om.period_end:
+                start_str = om.period_start.strftime("%d %b %Y")
+                end_str = om.period_end.strftime("%d %b %Y")
+                formatted_name = (f"Owner Maintenance | {space_name} | {start_str} - {end_str} |{om.maintenance_no}")
+            else:
+                formatted_name = f"Owner Maintenance | {om.maintenance_no}"
+                
+            entities.append(Lookup(
+                id=str(om.id),
+                name=formatted_name  
             ))
 
     

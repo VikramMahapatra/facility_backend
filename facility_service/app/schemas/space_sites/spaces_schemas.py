@@ -85,11 +85,9 @@ class AssignSpaceOwnerOut(BaseModel):
     
 class AssignSpaceOwnerIn(BaseModel):
     space_id: UUID
-    ownership_type: str = "primary"   # primary / joint / investor
     owner_user_id: UUID
-    ownership_percentage: Decimal = 100
-    start_date: date
-    end_date: Optional[date] = None
+   
+    
     
     
 class OwnershipHistoryOut(BaseModel):

@@ -7,6 +7,7 @@ from shared.core.schemas import JsonOutResult
 from typing import Callable, Any
 import json
 import traceback
+from fastapi.responses import StreamingResponse
 
 
 def replace_nulls_with_empty(value: Any):
@@ -46,6 +47,8 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
+            if isinstance(response, StreamingResponse):
+                return response
         except Exception as e:
             # 🧨 Handle uncaught exceptions gracefully
             error_message = str(e)

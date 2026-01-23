@@ -146,3 +146,10 @@ def invoice_payment_history(
         org_id=current_user.org_id,
         invoice_id=invoice_id
     )
+
+@router.get("/invoice-type", response_model=List[Lookup])
+def invoice_type_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.invoice_type_lookup(db, current_user.org_id)

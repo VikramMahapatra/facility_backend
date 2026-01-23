@@ -12,3 +12,8 @@ class InvoicePayementMethod(str ,Enum):
     cash ="chash"
     card ="card"
     upi = "upi"
+    
+class InvoiceType(str ,Enum):
+    lease_charge = "lease charge"
+    owner_maintenance = "owner maintenance"
+    work_order = "work order"

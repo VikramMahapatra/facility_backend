@@ -1,3 +1,5 @@
+from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
@@ -37,7 +39,8 @@ from fastapi import HTTPException
 from uuid import UUID
 
 from ...schemas.access_control.user_management_schemas import (
-    StaffSiteOut, UserAccountOut, UserCreate, UserDetailOut, UserOrganizationOut, UserOut, UserRequest, UserUpdate
+    AccountRequest, StaffSiteOut, UserAccountCreate, UserAccountOut, UserAccountUpdate, UserCreate,
+    UserDetailOut, UserOrganizationOut, UserOut, UserRequest, UserUpdate
 )
 from shared.helpers.email_helper import EmailHelper
 
@@ -669,6 +672,7 @@ def get_user_detail(
     for uo in user_orgs:
 
         account = {
+            "id": uo.id,
             "account_type": uo.account_type,
             "status": uo.status,
             "organization_name": org_map.get(uo.org_id),
@@ -859,3 +863,434 @@ def search_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -
         response.append(UserOut.model_validate(user_data))
 
     return response
+
+
+def create_user_account(
+    db: Session,
+    facility_db: Session,
+    user_account: UserAccountCreate,
+    org_id: str,
+):
+    db_user = (
+        db.query(Users)
+        .filter(
+            Users.id == user_account.user_id,
+            Users.is_deleted == False
+        )
+        .first()
+    )
+
+    if not db_user:
+        return error_response(message="User not found")
+
+    # 2️⃣ Remove placeholder org mapping (if any)
+    delete_pending_org_mapping(
+        db=db,
+        user_id=db_user.id,
+        org_id=org_id,
+    )
+
+    # 3️⃣ Validate duplicates for real account type
+    error = validate_unique_account(
+        db=db,
+        user_id=db_user.id,
+        org_id=org_id,
+        account_type=user_account.account_type,
+    )
+
+    if error:
+        return error
+
+    # =========================
+    # CREATE USER-ORG MAPPING
+    # =========================
+    db_user_org = UserOrganization(
+        user_id=db_user.id,
+        org_id=org_id,
+        account_type=user_account.account_type,
+        status=db_user.status,
+    )
+    db.add(db_user_org)
+    db.flush()  # get user_org.id
+
+    # =========================
+    # ASSIGN ROLES
+    # =========================
+    if user_account.role_ids:
+        roles = db.query(Roles).filter(
+            Roles.id.in_(user_account.role_ids)
+        ).all()
+        db_user_org.roles.extend(roles)
+
+    db.commit()
+    db.refresh(db_user_org)
+
+    # =========================
+    # ACCOUNT-TYPE HANDLING
+    # =========================
+    error = handle_account_type_update(
+        db=db,
+        facility_db=facility_db,
+        db_user=db_user,
+        db_user_org=db_user_org,
+        user_account=user_account,
+        org_id=org_id,
+    )
+
+    if error:
+        return error
+
+    # =========================
+    # RESPONSE
+    # =========================
+    return get_user_detail(db, facility_db, org_id, db_user.id)
+
+
+def update_user_account(
+        db: Session,
+        facility_db: Session,
+        user_account: UserAccountUpdate,
+        org_id: str):
+
+    # Fetch existing user
+    db_user_org = (
+        db.query(UserOrganization)
+        .filter(
+            UserOrganization.user_id == user_account.user_id,
+            UserOrganization.org_id == org_id,
+            UserOrganization.id == user_account.user_org_id,
+            UserOrganization.is_deleted == False
+        )
+        .first()
+    )
+    if not db_user_org:
+        return error_response(message="User not found")
+
+    db_user = (
+        db.query(Users)
+        .filter(
+            Users.id == user_account.user_id,
+            Users.is_deleted == False
+        )
+        .first()
+    )
+
+    update_data = user_account.model_dump(
+        exclude_unset=True,
+        exclude={'user_org_id', 'role_ids', 'tenant_spaces',
+                 'site_ids', 'tenant_type', 'staff_role'}
+    )
+
+    # -----------------------
+    # UPDATE BASE USER FIELDS
+    # -----------------------
+    for key, value in update_data.items():
+        # ADD: Skip email and phone if you want to block updates
+        if key in ['account_type', 'org_id'] and value != getattr(db_user_org, key):
+            continue  # Skip updating email/phone
+        setattr(db_user_org, key, value)
+
+    # UPDATE ROLES (ORG BASED)
+
+    if user_account.role_ids is not None:
+        # fetch new roles
+        roles = db.query(Roles).filter(
+            Roles.id.in_(user_account.role_ids)
+        ).all()
+
+        # attach new roles
+        db_user_org.roles.extend(roles)
+
+    db.commit()
+    db.refresh(db_user_org)
+
+    error = handle_account_type_update(
+        db=db,
+        facility_db=facility_db,
+        db_user=db_user,
+        db_user_org=db_user_org,
+        user_account=user_account,
+        org_id=org_id
+    )
+
+    if error:
+        return error
+
+    # FIX: Pass both db and facility_db to get_user
+    return get_user_detail(db, facility_db, org_id, db_user.id)
+
+
+def delete_pending_org_mapping(
+    *,
+    db: Session,
+    user_id: str,
+    org_id: str,
+):
+    pending = db.query(UserOrganization).filter(
+        UserOrganization.user_id == user_id,
+        UserOrganization.org_id == org_id,
+        UserOrganization.account_type == "pending",
+        UserOrganization.is_deleted == False,
+    ).all()
+
+    for record in pending:
+        record.is_deleted = True
+        record.updated_at = datetime.utcnow()
+
+
+def handle_account_type_update(
+    *,
+    db: Session,
+    facility_db: Session,
+    db_user: Users,
+    db_user_org: UserOrganization,
+    user_account,
+    org_id: str,
+):
+    account_type = db_user_org.account_type.lower()
+
+    # ================= STAFF =================
+    if account_type == "staff":
+
+        if user_account.site_ids is not None and len(user_account.site_ids) == 0:
+            return error_response(
+                message="Site list required for staff",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+            )
+
+        if user_account.site_ids is not None:
+            facility_db.query(StaffSite).filter(
+                StaffSite.user_id == db_user_org.user_id
+            ).delete()
+
+            for site_id in user_account.site_ids:
+                site = facility_db.query(Site).filter(
+                    Site.id == site_id
+                ).first()
+                if site:
+                    facility_db.add(
+                        StaffSite(
+                            user_id=db_user_org.user_id,
+                            site_id=site.id,
+                            org_id=org_id,
+                            staff_role=user_account.staff_role
+                        )
+                    )
+
+            facility_db.commit()
+
+    # ================= TENANT =================
+    elif account_type == "tenant":
+
+        if not user_account.tenant_spaces:
+            return error_response(
+                message="At least one space is required for tenant",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+            )
+
+        incoming_space_ids = [ts.space_id for ts in user_account.tenant_spaces]
+
+        existing_assignments = facility_db.query(TenantSpace).filter(
+            TenantSpace.space_id.in_(incoming_space_ids),
+            TenantSpace.is_deleted == False,
+            TenantSpace.status == "occupied"
+        ).all()
+
+        for ts in existing_assignments:
+            if ts.tenant_id != db_user_org.user_id:
+                return error_response(
+                    message="One of the selected spaces is already occupied",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+                )
+
+        tenant = facility_db.query(Tenant).filter(
+            Tenant.user_id == db_user_org.user_id,
+            Tenant.is_deleted == False
+        ).first()
+
+        if not tenant:
+            tenant = Tenant(
+                user_id=db_user_org.user_id,
+                org_id=org_id,
+                status="active"
+            )
+            facility_db.add(tenant)
+            facility_db.flush()
+
+        has_active_lease = facility_db.query(Lease).filter(
+            Lease.tenant_id == tenant.id,
+            Lease.is_deleted == False,
+            func.lower(Lease.status) == "active"
+        ).first()
+
+        if has_active_lease:
+            return error_response(
+                message="Cannot update tenant spaces while active leases exist"
+            )
+
+        facility_db.query(TenantSpace).filter(
+            TenantSpace.tenant_id == tenant.id,
+            TenantSpace.is_deleted == False
+        ).update({"is_deleted": True})
+
+        now = datetime.utcnow()
+        for space in user_account.tenant_spaces:
+            facility_db.add(
+                TenantSpace(
+                    tenant_id=tenant.id,
+                    site_id=space.site_id,
+                    space_id=space.space_id,
+                    status="pending",
+                    created_at=now,
+                    updated_at=now
+                )
+            )
+
+        tenant.name = db_user.full_name
+        tenant.phone = db_user.phone
+        tenant.email = db_user.email
+        tenant.kind = user_account.tenant_type
+
+        facility_db.add(tenant)
+        facility_db.commit()
+
+    # ================= VENDOR =================
+    elif account_type == "vendor":
+
+        vendor = facility_db.query(Vendor).filter(
+            Vendor.contact['user_id'].astext == str(db_user.id)
+        ).first()
+
+        if not vendor:
+            vendor = Vendor(
+                org_id=org_id,
+                name=db_user.full_name,
+                status="active"
+            )
+            facility_db.add(vendor)
+
+        vendor.name = db_user.full_name
+        vendor.contact = {
+            "name": db_user.full_name,
+            "email": db_user.email,
+            "phone": db_user.phone,
+            "user_id": str(db_user.id)
+        }
+
+        facility_db.commit()
+
+    return None
+
+
+def validate_unique_account(
+    *,
+    db: Session,
+    user_id: str,
+    org_id: str,
+    account_type: str,
+):
+    existing = db.query(UserOrganization).filter(
+        UserOrganization.user_id == user_id,
+        UserOrganization.org_id == org_id,
+        func.lower(UserOrganization.account_type) == account_type.lower(),
+        UserOrganization.is_deleted == False,
+        UserOrganization.status.in_(["active"])
+    ).first()
+
+    if existing:
+        return error_response(
+            message=f"{account_type.capitalize()} account already exists for this user",
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
+        )
+
+    return None
+
+
+router = APIRouter()
+
+
+def mark_account_default(
+    data: AccountRequest,
+    auth_db: Session,
+    user_id: str,
+    org_id: str
+):
+    # Fetch the account
+    account = auth_db.query(UserOrganization).filter(
+        UserOrganization.id == data.user_org_id,
+        UserOrganization.user_id == user_id,
+        UserOrganization.is_deleted == False
+    ).first()
+
+    if not account:
+        return error_response(message="Account not found")
+
+    if account.status != "active":
+        return error_response(message="Cannot mark inactive account as default")
+
+    # Unset previous default
+    auth_db.query(UserOrganization).filter(
+        UserOrganization.user_id == user_id,
+        UserOrganization.is_default == True,
+        UserOrganization.org_id == org_id
+    ).update({"is_default": False})
+
+    # Set new default
+    account.is_default = True
+
+    auth_db.commit()
+    auth_db.refresh(account)
+    return {"message": "Account marked as default", "account_id": account.id}
+
+
+def deactivate_account(
+    data: AccountRequest,
+    db: Session,
+    user_id: str,
+    org_id: str
+):
+    # 1️⃣ Fetch the account
+    account = db.query(UserOrganization).filter(
+        UserOrganization.id == data.user_org_id,
+        UserOrganization.user_id == user_id,
+        UserOrganization.is_deleted == False
+    ).first()
+
+    if not account:
+        return error_response(message="Account not found")
+
+    # 2️⃣ Prevent deactivating default account
+    if account.is_default:
+        return error_response(message="Cannot deactivate default account")
+
+    # 3️⃣ Already inactive
+    if account.status == "inactive":
+        return error_response(message="Account is already inactive")
+
+    # 4️⃣ Deactivate the account
+    account.status = "inactive"
+    db.commit()
+    db.refresh(account)
+
+    # 5Check if it's the only active organization account
+    active_org_accounts = db.query(UserOrganization).filter(
+        UserOrganization.user_id == user_id,
+        UserOrganization.id != data.user_org_id,
+        UserOrganization.is_deleted == False,
+        UserOrganization.status == "active"
+    ).count()
+
+    if active_org_accounts == 0:
+        # Deactivate the user as well
+        user = db.query(Users).filter(Users.id == user_id,
+                                      Users.is_deleted == False).first()
+
+        if user:
+            user.status = "inactive"
+            db.commit()
+            db.refresh(user)
+
+    return {
+        "message": "Account deactivated successfully",
+        "account_id": account.id
+    }

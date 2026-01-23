@@ -70,7 +70,31 @@ class StaffSiteOut(BaseModel):
     site_name: str
 
 
+class UserAccountBase(BaseModel):
+    user_id: UUID
+    status: str
+    account_type: str
+    is_default: Optional[bool] = False
+    role_ids: Optional[List[str]] = None
+    site_ids: Optional[List[str]] = None
+    tenant_type: Optional[str] = None
+    staff_role: Optional[str] = None
+    tenant_spaces: Optional[List[UserTenantSpace]] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserAccountCreate(UserAccountBase):
+    pass
+
+
+class UserAccountUpdate(UserAccountBase):
+    user_org_id: UUID
+    pass
+
+
 class UserAccountOut(BaseModel):
+    id: UUID
     account_type: Optional[str] = None
     status: Optional[str] = None
     organization_name: Optional[str] = None
@@ -127,3 +151,7 @@ class ApprovalStatusRequest(BaseModel):
 
 class UserDetailRequest(CommonQueryParams):
     user_id: Optional[UUID] = None
+
+
+class AccountRequest(BaseModel):
+    user_org_id: str

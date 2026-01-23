@@ -765,7 +765,7 @@ def get_user_detail(
                 )
                 .select_from(SpaceOwner)
                 .join(Space, Space.id == SpaceOwner.space_id)
-                .join(Site, Site.id == TenantSpace.site_id)
+                .join(Site, Site.id == Space.site_id)
                 .outerjoin(Building, Building.id == Space.building_block_id)
                 .filter(
                     SpaceOwner.owner_user_id == user_id,

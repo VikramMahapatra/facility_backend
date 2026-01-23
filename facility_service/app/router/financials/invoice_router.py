@@ -150,15 +150,6 @@ def invoice_payment_history(
         invoice_id=invoice_id
     )
 
-<<<<<<< Updated upstream
-@router.get("/invoice-type", response_model=List[Lookup])
-def invoice_type_lookup(
-    db: Session = Depends(get_db),
-    current_user: UserToken = Depends(validate_current_token)
-):
-    return crud.invoice_type_lookup(db, current_user.org_id)
-=======
-
 
 @router.get("/{invoice_id}/download")
 def download_invoice_pdf(
@@ -187,4 +178,3 @@ def download_invoice_pdf(
             "Content-Disposition": f'attachment; filename="Invoice_{invoice.invoice_no}.pdf"'
         }
     )
->>>>>>> Stashed changes

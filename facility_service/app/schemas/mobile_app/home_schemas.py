@@ -74,6 +74,7 @@ class SpaceDetailsResponse(EmptyStringModel):
     space_name: Optional[str] = None
     building_id: Optional[UUID] = None
     building_name: Optional[str] = None
+    status: Optional[str] = None
     is_owner: bool = False
     lease_contract_exist: bool = False
     lease_contract_detail: LeaseContractDetail

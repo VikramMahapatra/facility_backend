@@ -95,18 +95,15 @@ def get_active_space_owners(
 
 
 
-@router.post("/assign-owner/{space_id}", response_model=AssignSpaceOwnerOut)
+@router.post("/assign-owner", response_model=AssignSpaceOwnerOut)
 def assign_owner(
-    space_id: UUID,
-    payload: AssignSpaceOwnerIn,
+       payload: AssignSpaceOwnerIn,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
-):
-    payload.space_id = space_id  
+): 
 
     return crud.assign_space_owner(
-        space_id=space_id,
         db=db,
         auth_db=auth_db,
         org_id=current_user.org_id,

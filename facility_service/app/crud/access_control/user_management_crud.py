@@ -49,13 +49,14 @@ from shared.helpers.email_helper import EmailHelper
 
 def get_users(db: Session, facility_db: Session, org_id: str, params: UserRequest):
     user_query = (
-        db.query(UserOrganization)
-        .join(Users)
+        db.query(Users)
+        .join(UserOrganization, UserOrganization.user_id == Users.id)
         .filter(
             UserOrganization.org_id == org_id,   # ✅ CORRECT
             Users.is_deleted == False,
             Users.status.notin_(["pending_approval", "rejected"])
         )
+        .distinct()
     )
 
     # ADD STATUS FILTERING
@@ -84,7 +85,7 @@ def get_users(db: Session, facility_db: Session, org_id: str, params: UserReques
     user_list = []
     for user_org in users:
         user_list.append(
-            get_user_by_id(db, str(user_org.user_id), user_org.org_id)
+            get_user_by_id(db, str(user_org.id), org_id)
         )
 
     return {
@@ -839,7 +840,7 @@ def get_user_detail(
     })
 
 
-def search_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -> List[UserOut]:
+def search_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -> List[Lookup]:
     #  USERS
     user_query = (
         db.query(Users)
@@ -869,36 +870,10 @@ def search_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -
     if not users:
         return []
 
-    user_ids = [u.id for u in users]
-
-    #  ROLES
-    roles_map: Dict[UUID, list] = {}
-    role_rows = (
-        db.query(UserRoles.user_id, Roles)
-        .join(Roles, Roles.id == UserRoles.role_id)
-        .filter(
-            UserRoles.user_id.in_(user_ids)
-        )
-        .all()
-    )
-
-    for user_id, role in role_rows:
-        roles_map.setdefault(user_id, []).append(role)
-
-    #  BUILD RESPONSE
-    response: List[UserOut] = []
-
-    for user in users:
-        user_data = {
-            **user.__dict__,
-            "org_id": org_id,
-            "roles": roles_map.get(user.id, [])
-        }
-        user_data.pop("_sa_instance_state", None)
-
-        response.append(UserOut.model_validate(user_data))
-
-    return response
+    return  [
+        Lookup(id=user.id, name=user.full_name)
+        for user in users
+    ]
 
 
 def create_user_account(

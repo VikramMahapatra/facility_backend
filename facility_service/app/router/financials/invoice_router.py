@@ -9,6 +9,9 @@ from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import Lookup, UserToken
 from uuid import UUID
+from fastapi.responses import StreamingResponse
+from shared.utils.invoice_pdf import generate_invoice_pdf
+from ...crud.financials.invoices_crud import get_invoice_detail
 
 router = APIRouter(
     prefix="/api/invoices",
@@ -147,9 +150,41 @@ def invoice_payment_history(
         invoice_id=invoice_id
     )
 
+<<<<<<< Updated upstream
 @router.get("/invoice-type", response_model=List[Lookup])
 def invoice_type_lookup(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.invoice_type_lookup(db, current_user.org_id)
+=======
+
+
+@router.get("/{invoice_id}/download")
+def download_invoice_pdf(
+    invoice_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    # 1️⃣ Fetch invoice data FIRST (DB used here)
+    invoice = get_invoice_detail(
+        db=db,
+        org_id=current_user.org_id,
+        invoice_id=invoice_id
+    )
+
+    # 2️⃣ Generate PDF in memory (NO DB here)
+    pdf_buffer = generate_invoice_pdf(invoice)
+
+    # 3️⃣ 🔥 VERY IMPORTANT: CLOSE DB BEFORE STREAMING
+    #db.close()
+
+    # 4️⃣ Stream PDF safely
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="Invoice_{invoice.invoice_no}.pdf"'
+        }
+    )
+>>>>>>> Stashed changes

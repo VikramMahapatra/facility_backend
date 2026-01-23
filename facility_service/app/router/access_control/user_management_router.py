@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.params import Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_auth_db as get_db, get_facility_db
 from shared.core.schemas import Lookup, UserToken
@@ -95,16 +96,16 @@ def user_detail(
     )
 
 
-@router.get("/search-user", response_model=List[UserOut])
+@router.get("/search-user", response_model=List[Lookup])
 def search_user(
-    search_users: Optional[str] = None,
+    search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.search_user(
         db=db,
         org_id=current_user.org_id,
-        search_users=search_users
+        search_users=search
     )
 
 

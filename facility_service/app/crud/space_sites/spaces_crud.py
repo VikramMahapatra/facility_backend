@@ -3,7 +3,7 @@ import uuid
 from typing import List, Optional
 from datetime import date, datetime
 from fastapi import HTTPException
-from sqlalchemy.orm import Session 
+from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -501,7 +501,6 @@ def get_active_owners(
     return result
 
 
-
 def assign_space_owner(
     space_id: UUID,
     db: Session,
@@ -528,7 +527,6 @@ def assign_space_owner(
         db.query(SpaceOwner)
         .filter(
             SpaceOwner.space_id == space_id,
-            SpaceOwner.ownership_type == payload.ownership_type,
             SpaceOwner.is_active == True
         )
         .first()
@@ -545,19 +543,30 @@ def assign_space_owner(
     if existing_owner:
         existing_owner.is_active = False
         existing_owner.end_date = date.today()
-        
+
+        other_spaces_count = (
+            db.query(SpaceOwner)
+            .filter(
+                SpaceOwner.space_id != space_id,
+                SpaceOwner.owner_user_id == payload.owner_user_id,
+                SpaceOwner.owner_org_id == org_id,
+                SpaceOwner.is_active == True
+            )
+            .count()
+        )
+
         #  SOFT DELETE OLD OWNER ACCOUNT ORG ENTRY
-        old_user_org = auth_db.query(UserOrganization).filter(
-            UserOrganization.user_id == existing_owner.owner_user_id,
-            UserOrganization.org_id == org_id,
-            UserOrganization.account_type == "owner",
-            UserOrganization.is_deleted == False
-        ).first()
+        if other_spaces_count == 0:
+            old_user_org = auth_db.query(UserOrganization).filter(
+                UserOrganization.user_id == existing_owner.owner_user_id,
+                UserOrganization.org_id == org_id,
+                UserOrganization.account_type == "owner",
+                UserOrganization.is_deleted == False
+            ).first()
 
-        if old_user_org:
-            old_user_org.is_deleted = True,
-            old_user_org.status = "inactive"
-
+            if old_user_org:
+                old_user_org.is_deleted = True,
+                old_user_org.status = "inactive"
 
     # CREATE NEW OWNER ENTRY
     new_owner = SpaceOwner(
@@ -570,8 +579,8 @@ def assign_space_owner(
         end_date=None,
         is_active=True
     )
-    
-     # ADD THIS: CREATE / REVIVE USER_ORGANIZATION OWNER ENTRY
+
+    # ADD THIS: CREATE / REVIVE USER_ORGANIZATION OWNER ENTRY
     user_org = auth_db.query(UserOrganization).filter(
         UserOrganization.user_id == payload.owner_user_id,
         UserOrganization.org_id == org_id,
@@ -585,12 +594,11 @@ def assign_space_owner(
             UserOrganization(
                 user_id=payload.owner_user_id,
                 org_id=org_id,
-                status ="active",
+                status="active",
                 account_type="owner",
                 is_deleted=False
             )
         )
-
 
     db.add(new_owner)
     db.commit()
@@ -598,7 +606,8 @@ def assign_space_owner(
     db.refresh(new_owner)
 
     # RETURN ACTIVE OWNERS
-    active_owners = get_active_owners(db=db,auth_db=auth_db,space_id=space_id)
+    active_owners = get_active_owners(
+        db=db, auth_db=auth_db, space_id=space_id)
 
     return AssignSpaceOwnerOut(
         space_id=space_id,
@@ -659,5 +668,3 @@ def get_space_ownership_history(
         )
 
     return response
-
-

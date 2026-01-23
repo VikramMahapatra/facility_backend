@@ -321,20 +321,28 @@ def update_lease_charge(
 
     lease_id = payload.lease_id if payload.lease_id is not None else obj.lease_id
 
-    existing_charge = db.query(LeaseCharge).join(Lease).filter(
-        LeaseCharge.id != payload.id,  # Exclude current record
-        LeaseCharge.lease_id == lease_id,
-        LeaseCharge.charge_code_id == charge_code_id,
-        LeaseCharge.is_deleted == False,
-        Lease.is_deleted == False,
-        # Check if periods overlap
-        LeaseCharge.period_start <= period_end,
-        LeaseCharge.period_end >= period_start
-    ).first()
+   # ✅ FIXED: Query to get both the charge and its code name (same as create)
+    existing_charge = (
+        db.query(LeaseCharge, LeaseChargeCode.code)
+        .join(LeaseChargeCode, LeaseCharge.charge_code_id == LeaseChargeCode.id)
+        .join(Lease)
+        .filter(
+            LeaseCharge.id != payload.id,  # Exclude current record
+            LeaseCharge.lease_id == lease_id,
+            LeaseCharge.charge_code_id == charge_code_id,
+            LeaseCharge.is_deleted == False,
+            Lease.is_deleted == False,
+            # Check if periods overlap
+            LeaseCharge.period_start <= period_end,
+            LeaseCharge.period_end >= period_start
+        )
+        .first()
+    )
 
     if existing_charge:
+        charge, code_name = existing_charge  # ✅ REQUIRED - unpacks the tuple
         return error_response(
-            message=f"Charge code '{charge_code_id}' already exists for this lease with overlapping period"
+            message=f"Charge code '{code_name}' already exists for this lease with overlapping period"
         )
 
     # Update the object with new values

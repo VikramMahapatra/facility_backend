@@ -74,19 +74,10 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
             if site.id in seen_site_ids:
                 continue
 
-            # Check if site has any space with primary active space owner
-            has_primary_owner = db.query(SpaceOwner).join(
-                Space, SpaceOwner.space_id == Space.id
-            ).filter(
-                Space.site_id == site.id,
-                SpaceOwner.ownership_type == OwnershipType.PRIMARY,
-                SpaceOwner.is_active == True
-            ).first() is not None
-
             sites.append({
                 "site_id": site.id,
                 "site_name": site.name,
-                "is_primary": has_primary_owner,
+                "is_primary": ts.is_primary,
                 "org_id": site.org_id,
                 "org_name": site.org.name if site.org else None,
                 "address": site.address,
@@ -94,6 +85,39 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
 
             seen_site_ids.add(site.id)
 
+        # 2️⃣ Owned spaces
+        owner_spaces = (
+            db.query(SpaceOwner)
+            .join(Space, SpaceOwner.space_id == Space.id)
+            .join(Site, Space.site_id == Site.id)
+            .filter(
+                SpaceOwner.owner_user_id == user.user_id,
+                SpaceOwner.is_active == True,
+                Space.is_deleted == False
+            )
+            .options(
+                joinedload(SpaceOwner.space)
+                .joinedload(Space.site)
+                .joinedload(Site.org)
+            )
+            .all()
+        )
+        for os in owner_spaces:
+            site = os.space.site
+            if site.id in seen_site_ids:
+                continue
+
+            sites.append({
+                "site_id": site.id,
+                "site_name": site.name,
+                "is_primary": False,
+                "org_id": site.org_id,
+                "org_name": site.org.name if site.org else None,
+                "address": site.address,
+            })
+
+            seen_site_ids.add(site.id)
+            
     elif account_type == UserAccountType.STAFF:
         staff_sites = (
             db.query(StaffSite)
@@ -241,15 +265,29 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
         print("Tenant Type :", tenant_type)
         
         # Get all spaces for the site
-        spaces_query = db.query(Space).filter(
-            Space.site_id == params.site_id,
-            Space.is_deleted == False
+        tenant_spaces_query = db.query(Space).join(
+            TenantSpace, TenantSpace.space_id == Space.id
+        ).join(Tenant, TenantSpace.tenant_id == Tenant.id).filter(
+            TenantSpace.site_id == params.site_id,
+            TenantSpace.is_deleted == False,
+            Tenant.user_id == user.user_id,
+            TenantSpace.status.in_(["occupied","pending"])
         ).options(
             joinedload(Space.building)
         )
-        
-        spaces = spaces_query.all()
-        
+        owner_spaces_query = db.query(Space).join(
+            SpaceOwner, SpaceOwner.space_id == Space.id
+        ).filter(
+            Space.site_id == params.site_id,
+            SpaceOwner.is_active == True,
+            SpaceOwner.owner_user_id == user.user_id
+        ).options(
+          joinedload(Space.building)
+        )
+        tenant_spaces = tenant_spaces_query.all()
+        owner_spaces = owner_spaces_query.all()
+        spaces = tenant_spaces + owner_spaces
+
         # Get tenant record
         tenant = db.query(Tenant).filter(
             Tenant.user_id == user.user_id,
@@ -424,6 +462,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
                 space_id=space.id,
                 space_name=space.name,
                 building_id=space.building_block_id,
+                status="active" if space_is_owner else tenant_space.status,
                 building_name=space.building.name if space.building else None,
                 is_owner=space_is_owner,
                 lease_contract_exist=space_lease_contract_exist,

@@ -13,7 +13,7 @@ from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType
 from shared.helpers.json_response_helper import error_response 
 
-from ...enum.revenue_enum import  InvoicePayementMethod
+from ...enum.revenue_enum import  InvoicePayementMethod, InvoiceType
 
 from ...models.parking_access.parking_pass import ParkingPass
 from ...models.space_sites.sites import Site
@@ -1679,3 +1679,11 @@ def get_invoice_payment_history(
         status=invoice.status,
         payments=payment_out_list
     )
+
+
+
+def invoice_type_lookup(db: Session, org_id: UUID):
+    return [
+        Lookup(id=type.value, name=type.name.capitalize())
+        for type in InvoiceType
+    ]

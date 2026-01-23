@@ -44,6 +44,8 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
         # Skip docs/openapi endpoints
         if request.url.path.startswith(("/openapi", "/docs", "/redoc")):
             return await call_next(request)
+        if request.url.path.endswith("/download"):
+            return await call_next(request)
 
         try:
             response = await call_next(request)

@@ -58,3 +58,21 @@ class OwnerMaintenanceListResponse(BaseModel):
 class OwnerMaintenanceDetailResponse(BaseModel):
     """Response for single maintenance record"""
     maintenance: OwnerMaintenanceOut
+    
+    
+
+class OwnerMaintenanceBySpaceRequest(CommonQueryParams):
+    space_id: str  
+    status: Optional[str] = None
+    search: Optional[str] = None
+    
+
+
+class OwnerMaintenanceBySpaceResponse(BaseModel):
+    space_id: str
+    space_name: Optional[str] = None
+    site_name: Optional[str] = None
+    total_records: int
+    maintenances: List[OwnerMaintenanceOut]
+
+    model_config = {"from_attributes": True}

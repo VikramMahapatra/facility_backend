@@ -6,13 +6,14 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from auth_service.app.models.user_organizations import UserOrganization
+from facility_service.app.models.space_sites.user_sites import UserSite
 from ...schemas.access_control.user_management_schemas import UserOrganizationOut
 from shared.models.users import Users
 from ...enum.space_sites_enum import OwnershipType
-from facility_service.app.models.space_sites.owner_maintenances import OwnerMaintenanceCharge
+from ...models.space_sites.owner_maintenances import OwnerMaintenanceCharge
 from ...models.space_sites.orgs import Org
 from ...models.space_sites.space_owners import SpaceOwner
-from facility_service.app.schemas.mobile_app.home_schemas import HomeDetailsWithSpacesResponse, LeaseContractDetail, MaintenanceDetail, Period, SpaceDetailsResponse
+from ...schemas.mobile_app.home_schemas import HomeDetailsWithSpacesResponse, LeaseContractDetail, MaintenanceDetail, Period, SpaceDetailsResponse
 
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 
@@ -45,104 +46,62 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
     account_type = user.account_type.lower()
 
     if account_type in (UserAccountType.TENANT, UserAccountType.FLAT_OWNER):
-        tenant = (
-            db.query(Tenant)
+
+        sites = []
+
+        user_sites = (
+            db.query(UserSite)
+            .join(Site, UserSite.site_id == Site.id)
             .options(
-                joinedload(Tenant.tenant_spaces)
-                .joinedload(TenantSpace.space)
-                .joinedload(Space.site)
+                joinedload(UserSite.site)
                 .joinedload(Site.org)
             )
-            .filter(Tenant.user_id == user.user_id, Tenant.is_deleted == False)
-            .first()
-        )
-
-        if not tenant:
-            return {
-                "sites": []
-
-            }
-
-        seen_site_ids = set()
-
-        # 1️⃣ Registered space
-        for ts in tenant.tenant_spaces:
-            if ts.is_deleted or not ts.space or not ts.space.site:
-                continue
-
-            site = ts.space.site
-            if site.id in seen_site_ids:
-                continue
-
-            sites.append({
-                "site_id": site.id,
-                "site_name": site.name,
-                "is_primary": ts.is_primary,
-                "org_id": site.org_id,
-                "org_name": site.org.name if site.org else None,
-                "address": site.address,
-            })
-
-            seen_site_ids.add(site.id)
-
-        # 2️⃣ Owned spaces
-        owner_spaces = (
-            db.query(SpaceOwner)
-            .join(Space, SpaceOwner.space_id == Space.id)
-            .join(Site, Space.site_id == Site.id)
             .filter(
-                SpaceOwner.owner_user_id == user.user_id,
-                SpaceOwner.is_active == True,
-                Space.is_deleted == False
-            )
-            .options(
-                joinedload(SpaceOwner.space)
-                .joinedload(Space.site)
-                .joinedload(Site.org)
+                UserSite.user_id == user.user_id
             )
             .all()
         )
-        for os in owner_spaces:
-            site = os.space.site
-            if site.id in seen_site_ids:
+
+        for us in user_sites:
+            site = us.site
+            if not site:
                 continue
 
             sites.append({
                 "site_id": site.id,
                 "site_name": site.name,
-                "is_primary": False,
+                "is_primary": us.is_primary,
                 "org_id": site.org_id,
                 "org_name": site.org.name if site.org else None,
-                "address": site.address,
+                "address": site.address
             })
 
-            seen_site_ids.add(site.id)
-            
     elif account_type == UserAccountType.STAFF:
         staff_sites = (
-            db.query(StaffSite)
+            db.query(StaffSite, UserSite.is_primary)
+            .join(
+                UserSite,
+                (UserSite.user_id == StaffSite.user_id) &
+                (UserSite.site_id == StaffSite.site_id)
+            )
+            .options(
+                joinedload(StaffSite.site)
+                .joinedload(Site.org)
+            )
             .filter(StaffSite.user_id == user.user_id)
             .all()
         )
-        for staff_site in staff_sites:
+        for staff_site, is_primary in staff_sites:
             site = staff_site.site
-            # Check if site has any space with primary active space owner
-            has_primary_owner = db.query(SpaceOwner).join(
-                Space, SpaceOwner.space_id == Space.id
-            ).filter(
-                Space.site_id == site.id,
-                SpaceOwner.ownership_type == OwnershipType.PRIMARY,
-                SpaceOwner.is_active == True
-            ).first() is not None
+
             sites.append({
                 "site_id": site.id,
                 "site_name": site.name,
-                "is_primary": has_primary_owner,
+                "is_primary": is_primary,   # ✅ from user_sites
                 "org_id": site.org_id,
                 "org_name": site.org.name if site.org else None,
                 "address": site.address,
-            }
-            )
+            })
 
     else:
         sites_records = (
@@ -150,19 +109,11 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
             .filter(Site.org_id == user.org_id)
             .all()
         )
-        for site in sites_records:
-            # Check if site has any space with primary active space owner
-            has_primary_owner = db.query(SpaceOwner).join(
-                Space, SpaceOwner.space_id == Space.id
-            ).filter(
-                Space.site_id == site.id,
-                SpaceOwner.ownership_type == OwnershipType.PRIMARY,
-                SpaceOwner.is_active == True
-            ).first() is not None
+        for idx, staff_site in enumerate(sites_records):
             sites.append({
                 "site_id": site.id,
                 "site_name": site.name,
-                "is_primary": has_primary_owner,
+                "is_primary": idx == 0,
                 "org_id": site.org_id,
                 "org_name": site.org.name if site.org else None,
                 "address": site.address,
@@ -228,15 +179,27 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
     account_type = user.account_type.lower()
     tenant_type = user.tenant_type.lower() if user.tenant_type else None
     period_end = date.today()
-    
+
     user_record = auth_db.query(Users).filter(
         Users.id == user.user_id,
         Users.is_deleted == False
     ).first()
     if user_record and user_record.created_at:
         period_start = user_record.created_at.date()
-        
-        
+
+    # make the current site as primary
+    user_site = (
+        db.query(UserSite)
+        .filter(
+            UserSite.user_id == user.user_id,
+            UserSite.site_id == params.site_id
+        )
+        .first()
+    )
+
+    user_site.is_primary = True
+    db.commit()
+
     spaces_response = []
     # ✅ Always define placeholders at top level
     lease_contract_detail = {
@@ -263,7 +226,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
     # ------------------------
     if account_type in (UserAccountType.TENANT, UserAccountType.FLAT_OWNER):
         print("Tenant Type :", tenant_type)
-        
+
         # Get all spaces for the site
         tenant_spaces_query = db.query(Space).join(
             TenantSpace, TenantSpace.space_id == Space.id
@@ -271,7 +234,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             TenantSpace.site_id == params.site_id,
             TenantSpace.is_deleted == False,
             Tenant.user_id == user.user_id,
-            TenantSpace.status.in_(["occupied","pending"])
+            TenantSpace.status.in_(["occupied", "pending"])
         ).options(
             joinedload(Space.building)
         )
@@ -282,7 +245,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             SpaceOwner.is_active == True,
             SpaceOwner.owner_user_id == user.user_id
         ).options(
-          joinedload(Space.building)
+            joinedload(Space.building)
         )
         tenant_spaces = tenant_spaces_query.all()
         owner_spaces = owner_spaces_query.all()
@@ -293,7 +256,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             Tenant.user_id == user.user_id,
             Tenant.is_deleted == False
         ).first()
-        
+
         # Process each space
         for space in spaces:
             # Initialize space-specific variables
@@ -301,30 +264,30 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             space_lease_contract_exist = False
             space_lease_contract_detail = LeaseContractDetail()
             space_maintenance_detail = MaintenanceDetail()
-            
+
             # 1. CHECK IF USER IS SPACE OWNER
             space_owner = db.query(SpaceOwner).filter(
                 SpaceOwner.space_id == space.id,
                 SpaceOwner.owner_user_id == user.user_id,
                 SpaceOwner.is_active == True
             ).first()
-            
+
             if space_owner:
                 space_is_owner = True
-                
+
                 # Get maintenance details from OwnerMaintenanceCharge
                 owner_maint_query = db.query(OwnerMaintenanceCharge).filter(
                     OwnerMaintenanceCharge.space_owner_id == space_owner.id,
                     OwnerMaintenanceCharge.is_deleted == False
                 ).order_by(OwnerMaintenanceCharge.period_end.desc())
-                
+
                 owner_maint_charges = owner_maint_query.all()
-                
+
                 # Calculate total maintenance paid
                 total_maint_paid = sum(
                     c.amount for c in owner_maint_charges if c.status == "paid"
                 ) if owner_maint_charges else 0.0
-                
+
                 # Find current/latest maintenance period
                 current_date = date.today()
                 for charge in owner_maint_charges:
@@ -344,11 +307,12 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
                             total_maintenance_paid=float(total_maint_paid)
                         )
                         break
-                
+
                 # If no current period found, use default with total paid
                 if space_maintenance_detail.total_maintenance_paid == 0:
-                    space_maintenance_detail.total_maintenance_paid = float(total_maint_paid)
-            
+                    space_maintenance_detail.total_maintenance_paid = float(
+                        total_maint_paid)
+
             # 2. CHECK IF USER IS TENANT (for lease contract)
             if tenant:
                 # Check if tenant has access to this space
@@ -357,7 +321,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
                     TenantSpace.space_id == space.id,
                     TenantSpace.is_deleted == False
                 ).first()
-                
+
                 if tenant_space:
                     # Get lease for this space
                     lease_query = db.query(Lease).filter(
@@ -366,9 +330,9 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
                         Lease.is_deleted == False,
                         Lease.end_date >= date.today()
                     )
-                    
+
                     lease = lease_query.order_by(Lease.end_date.desc()).first()
-                    
+
                     # Fallback to most recent if no active lease
                     if not lease:
                         lease_query = db.query(Lease).filter(
@@ -376,40 +340,43 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
                             Lease.tenant_id == tenant.id,
                             Lease.is_deleted == False
                         )
-                        lease = lease_query.order_by(Lease.end_date.desc()).first()
-                    
+                        lease = lease_query.order_by(
+                            Lease.end_date.desc()).first()
+
                     if lease:
                         space_lease_contract_exist = True
-                        
+
                         # Get rent payments
                         rent_query = db.query(LeaseCharge).filter(
                             LeaseCharge.lease_id == lease.id,
                             LeaseCharge.is_deleted == False,
                             LeaseCharge.charge_code.has(code="RENT")
                         )
-                        
+
                         rent_charges = rent_query.all()
                         total_rent_paid = sum(
                             c.amount for c in rent_charges
                         ) if rent_charges else 0.0
-                        
+
                         # Find current rent period
                         current_date = date.today()
                         all_rent_periods = rent_query.order_by(
                             LeaseCharge.period_end.desc()
                         ).all()
-                        
+
                         last_rent_paid, next_rent_due = None, None
                         for period in all_rent_periods:
                             if period.period_start <= current_date <= period.period_end:
                                 last_rent_paid = period.period_start
-                                next_rent_due = period.period_end + timedelta(days=1)
+                                next_rent_due = period.period_end + \
+                                    timedelta(days=1)
                                 break
                             elif period.period_end <= current_date:
                                 last_rent_paid = period.period_end
-                                next_rent_due = period.period_end + timedelta(days=1)
+                                next_rent_due = period.period_end + \
+                                    timedelta(days=1)
                                 break
-                        
+
                         space_lease_contract_detail = LeaseContractDetail(
                             start_date=lease.start_date,
                             expiry_date=lease.end_date,
@@ -419,7 +386,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
                             last_paid_date=last_rent_paid,
                             next_due_date=next_rent_due
                         )
-                        
+
                         # If user is NOT owner, get maintenance from lease charges
                         if not space_is_owner:
                             # Get maintenance from lease charges
@@ -427,36 +394,38 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
                                 LeaseCharge.lease_id == lease.id,
                                 LeaseCharge.is_deleted == False
                             )
-                            
+
                             maint_charges = maint_query.all()
                             total_maint_paid = sum(
                                 c.amount for c in maint_charges
                             ) if maint_charges else 0.0
-                            
+
                             all_maint_periods = maint_query.order_by(
                                 LeaseCharge.period_end.desc()
                             ).all()
-                            
+
                             last_paid, next_due, next_amount = None, None, None
                             for period in all_maint_periods:
                                 if period.period_start <= current_date <= period.period_end:
                                     last_paid = period.period_start
-                                    next_due = period.period_end + timedelta(days=1)
+                                    next_due = period.period_end + \
+                                        timedelta(days=1)
                                     next_amount = period.amount
                                     break
                                 elif period.period_end <= current_date:
                                     last_paid = period.period_end
-                                    next_due = period.period_end + timedelta(days=1)
+                                    next_due = period.period_end + \
+                                        timedelta(days=1)
                                     next_amount = period.amount
                                     break
-                            
+
                             space_maintenance_detail = MaintenanceDetail(
                                 last_paid=last_paid,
                                 next_due_date=next_due,
                                 total_maintenance_paid=float(total_maint_paid),
                                 next_maintenance_amount=float(next_amount or 0)
                             )
-            
+
             # Add space to response
             spaces_response.append(SpaceDetailsResponse(
                 space_id=space.id,
@@ -469,25 +438,25 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
                 lease_contract_detail=space_lease_contract_detail,
                 maintenance_detail=space_maintenance_detail
             ))
-        
+
         # Set ticket filters for tenant/owner
         tenant_id = tenant.id if tenant else None
         if tenant_id:
             ticket_filters = [Ticket.tenant_id == tenant_id]
         elif account_type == UserAccountType.FLAT_OWNER:
             # For FLAT_OWNER, show tickets for spaces they own
-            owned_space_ids = [s.space_id for s in spaces_response if s.is_owner]
+            owned_space_ids = [
+                s.space_id for s in spaces_response if s.is_owner]
             if owned_space_ids:
                 ticket_filters = [Ticket.space_id.in_(owned_space_ids)]
             else:
                 ticket_filters = []  # No spaces owned, no tickets
         else:
             ticket_filters = []
-    
-    
+
     # ------------------------------
     # Staff / Organisation flow
-    
+
     else:
         # For staff/org users, show all spaces in site without owner/tenant details
         spaces_query = db.query(Space).filter(
@@ -496,9 +465,9 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
         ).options(
             joinedload(Space.building)
         )
-        
+
         spaces = spaces_query.all()
-        
+
         for space in spaces:
             spaces_response.append(SpaceDetailsResponse(
                 space_id=space.id,
@@ -510,7 +479,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
                 lease_contract_detail=LeaseContractDetail(),
                 maintenance_detail=MaintenanceDetail()
             ))
-        
+
         ticket_filters = [Ticket.org_id == user.org_id]
 
         if account_type == UserAccountType.STAFF:

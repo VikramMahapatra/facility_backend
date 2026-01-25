@@ -57,9 +57,7 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
                 .joinedload(Site.org)
             )
             .filter(
-                UserSite.user_id == user.user_id,
-                # or map from account_type
-                UserSite.role.in_(["tenant", "owner"]),
+                UserSite.user_id == user.user_id
             )
             .all()
         )
@@ -188,6 +186,19 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
     ).first()
     if user_record and user_record.created_at:
         period_start = user_record.created_at.date()
+
+    # make the current site as primary
+    user_site = (
+        db.query(UserSite)
+        .filter(
+            UserSite.user_id == user.user_id,
+            UserSite.site_id == params.site_id
+        )
+        .first()
+    )
+
+    user_site.is_primary = True
+    db.commit()
 
     spaces_response = []
     # ✅ Always define placeholders at top level

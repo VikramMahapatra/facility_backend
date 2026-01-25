@@ -34,6 +34,7 @@ class UserAuthRequest(BaseModel):
 
 class SwitchUserAccountRequest(BaseModel):
     user_org_id: str
+    account_type: str
 
 
 class OTPVerify(MobileRequest):

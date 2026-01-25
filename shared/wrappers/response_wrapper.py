@@ -49,7 +49,14 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
-            if isinstance(response, StreamingResponse):
+            content_type = response.headers.get("content-type", "")
+
+            # 🚫 DO NOT TOUCH binary responses
+            if (
+                isinstance(response, StreamingResponse)
+                or content_type.startswith("application/pdf")
+                or content_type.startswith("application/octet-stream")
+            ):
                 return response
         except Exception as e:
             # 🧨 Handle uncaught exceptions gracefully

@@ -13,21 +13,27 @@ def generate_invoice_pdf(invoice):
 
     # -------- HEADER --------
     elements.append(Paragraph("<b>INVOICE RECEIPT</b>", styles["Title"]))
-    elements.append(Paragraph(f"Invoice No: {invoice.invoice_no}", styles["Normal"]))
-    elements.append(Paragraph(f"Invoice Date: {invoice.date}", styles["Normal"]))
-    elements.append(Paragraph(f"Due Date: {invoice.due_date}", styles["Normal"]))
-    elements.append(Paragraph(f"Status: {invoice.status.upper()}", styles["Normal"]))
+    elements.append(
+        Paragraph(f"Invoice No: {invoice.invoice_no}", styles["Normal"]))
+    elements.append(
+        Paragraph(f"Invoice Date: {invoice.date}", styles["Normal"]))
+    elements.append(
+        Paragraph(f"Due Date: {invoice.due_date}", styles["Normal"]))
+    elements.append(
+        Paragraph(f"Status: {invoice.status.upper()}", styles["Normal"]))
     elements.append(Paragraph("<br/>", styles["Normal"]))
 
     # -------- CUSTOMER --------
     elements.append(Paragraph("<b>Customer</b>", styles["Heading2"]))
-    elements.append(Paragraph(invoice.customer_name or "-", styles["Normal"]))
-    elements.append(Paragraph(f"Site: {invoice.site_name or '-'}", styles["Normal"]))
+    elements.append(Paragraph("-", styles["Normal"]))
+    elements.append(
+        Paragraph(f"Site: {invoice.site_name or '-'}", styles["Normal"]))
     elements.append(Paragraph("<br/>", styles["Normal"]))
 
     # -------- BILLABLE ITEM --------
     elements.append(Paragraph("<b>Billable Item</b>", styles["Heading2"]))
-    elements.append(Paragraph(invoice.billable_item_name or "-", styles["Normal"]))
+    elements.append(
+        Paragraph(invoice.billable_item_name or "-", styles["Normal"]))
     elements.append(Paragraph("<br/>", styles["Normal"]))
 
     # -------- TOTALS --------
@@ -52,10 +58,10 @@ def generate_invoice_pdf(invoice):
 
         for p in invoice.payments:
             rows.append([
-                p.get("paid_at"),
-                p.get("method"),
-                p.get("ref_no"),
-                f"₹ {p.get('amount')}"
+                p.paid_at,
+                p.method,
+                p.ref_no,
+                f"₹ {p.amount}"
             ])
 
         payment_table = Table(rows)

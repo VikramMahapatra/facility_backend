@@ -75,7 +75,6 @@ def get_user_profile_data(
             "space_id": str(space.id),
             "flat_number": tenant.flat_number or space.code or space.floor,
             "building": building_name,
-            "is_primary": False
         })
 
     # Prepare family members

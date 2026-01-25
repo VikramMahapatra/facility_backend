@@ -20,6 +20,8 @@ router = APIRouter(
 )
 
 # -----------------------------------------------------------------
+
+
 @router.post("/detail", response_model=InvoiceOut)
 def invoice_detail(
     params: InvoiceDetailRequest = Depends(),
@@ -48,12 +50,14 @@ def get_work_order(
         current_user: UserToken = Depends(validate_current_token)):
     return crud.get_work_order_invoices(db, current_user.org_id, params)
 
+
 @router.get("/all-lease-charge-invoices", response_model=InvoicesResponse)
 def get_work_order(
         params: InvoicesRequest = Depends(),
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.get_lease_charge_invoices(db, current_user.org_id, params)
+
 
 @router.get("/overview", response_model=InvoicesOverview)
 def get_invoices_overview(
@@ -71,7 +75,7 @@ def get_payments(
     return crud.get_payments(db, current_user.org_id, params)
 
 
-@router.get("/entity-lookup", response_model=List[Lookup]) 
+@router.get("/entity-lookup", response_model=List[Lookup])
 def get_invoice_lookup(
     site_id: UUID = Query(...),
     billable_item_type: str = Query(...),
@@ -128,8 +132,8 @@ def get_invoice_totals(
         db=db,
         params=params
     )
-    
-    
+
+
 @router.get("/payement-method", response_model=List[Lookup])
 def invoice_payement_method_lookup(
     db: Session = Depends(get_db),
@@ -138,7 +142,7 @@ def invoice_payement_method_lookup(
     return crud.invoice_payement_method_lookup(db, current_user.org_id)
 
 
-@router.get("/payment-history/{invoice_id}",response_model=InvoicePaymentHistoryOut)
+@router.get("/payment-history/{invoice_id}", response_model=InvoicePaymentHistoryOut)
 def invoice_payment_history(
     invoice_id: UUID,
     db: Session = Depends(get_db),
@@ -168,8 +172,10 @@ def download_invoice_pdf(
     pdf_buffer = generate_invoice_pdf(invoice)
 
     # 3️⃣ 🔥 VERY IMPORTANT: CLOSE DB BEFORE STREAMING
-    #db.close()
+    # db.close()
 
+    print(type(pdf_buffer))
+    pdf_buffer.seek(0)
     # 4️⃣ Stream PDF safely
     return StreamingResponse(
         pdf_buffer,

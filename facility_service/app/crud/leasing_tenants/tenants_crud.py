@@ -3,16 +3,17 @@ from datetime import datetime
 from typing import Dict, Optional, List
 import uuid
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Session , joinedload
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, desc, func, literal, or_, select, case, tuple_
 from uuid import UUID
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.userroles import UserRoles
-from facility_service.app.models.financials.invoices import Invoice, PaymentAR
-from facility_service.app.models.parking_access.parking_pass import ParkingPass
-from facility_service.app.models.service_ticket.tickets import Ticket
-from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
+from ...models.financials.invoices import Invoice, PaymentAR
+from ...models.parking_access.parking_pass import ParkingPass
+from ...models.service_ticket.tickets import Ticket
+from ...models.service_ticket.tickets_work_order import TicketWorkOrder
+from ...models.space_sites.user_sites import UserSite
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.helpers.email_helper import EmailHelper
 from shared.helpers.password_generator import generate_secure_password
@@ -281,7 +282,7 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
                             "building_block_id", Building.id,
                             "building_block_name", Building.name,
                             "status", TenantSpace.status,
-                            "is_primary", TenantSpace.is_primary
+                            "is_primary", False
                         )
                     )
                 ).filter(TenantSpace.id.isnot(None)),
@@ -416,160 +417,86 @@ def get_commercial_partner_by_id(db: Session, partner_id: str) -> Optional[Comme
 
 def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCreate):
     now = datetime.utcnow()
-    tenant_id = None
-    random_password = None
 
-    # Validate space assignments
     validate_active_tenants_for_spaces(db, tenant.tenant_spaces)
 
-    # Check for duplicate name (case-insensitive) within the same site
-    existing_tenant_by_name = db.query(Tenant).filter(
+    # Duplicate name check
+    if db.query(Tenant).filter(
         Tenant.is_deleted == False,
         func.lower(Tenant.name) == func.lower(tenant.name)
-    ).first()
-
-    if existing_tenant_by_name:
+    ).first():
         return error_response(
             message=f"Tenant with name '{tenant.name}' already exists",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
 
-    # GENERATE RANDOM PASSWORD
-    #  CHECK EXISTING USER (EMAIL OR PHONE)
-    existing_user = auth_db.query(Users).filter(
-        Users.is_deleted == False,
-        or_(
-            Users.email == tenant.email,
-            Users.phone == tenant.phone
-        )
-    ).first()
+    user, random_password = get_or_create_user_and_org(
+        auth_db=auth_db,
+        org_id=org_id,
+        name=tenant.name,
+        email=tenant.email,
+        phone=tenant.phone
+    )
 
-    random_password = None
-
-    if existing_user:
-        user_id = existing_user.id
-    else:
-        # CREATE NEW USER
-        user_id = uuid.uuid4()
-        random_password = generate_secure_password()
-
-        # ✅ ADD: CREATE USER
-        new_user = Users(
-            id=user_id,
-            full_name=tenant.name,
-            email=tenant.email,
-            phone=tenant.phone,
-            status="inactive",
-            is_deleted=False,
-            created_at=now,
-            updated_at=now,
-            username=tenant.email or f"user_{user_id[:8]}",
-            password=""
-        )
-        new_user.set_password(random_password)
-
-        auth_db.add(new_user)  # ✅ Use auth_db
-        auth_db.flush()  # ✅ Use auth_db
-    
-        # CREATE USER_ORGANIZATION ENTRY (IF NOT EXISTS)
-    # ---------------------------------------------------------
-    user_org = auth_db.query(UserOrganization).filter(
-        UserOrganization.user_id == user_id,
-        UserOrganization.org_id == org_id
-    ).first()
-
-    if not user_org:
-        user_org = UserOrganization(
-            user_id=user_id,
-            org_id=org_id,
-            account_type="tenant",
-            status="active",
-            is_default=False
-        )
-        auth_db.add(user_org)
-        
-    if tenant.kind == "commercial":
-        legal_name = tenant.legal_name or tenant.name
-        # ✅ AUTO-FILL CONTACT INFO IF EMPTY
-        contact_info = tenant.contact_info or {}
-
-        # If contact info is empty, create it from top-level fields
-        if not contact_info:
-            contact_info = {
-                "name": tenant.name,  # Use the name from top form
-                "email": tenant.email,  # Use the email from top form
-                "phone": tenant.phone,  # Use the phone from top form
-                "address": {
-                    "line1": "",
-                    "line2": "",
-                    "city": "",
-                    "state": "",
-                    "pincode": ""
-                }
-            }
-        else:
-            # If contact info exists but some fields are missing, fill them from top-level
-            if not contact_info.get("name"):
-                contact_info["name"] = tenant.name
-            if not contact_info.get("email"):
-                contact_info["email"] = tenant.email
-            if not contact_info.get("phone"):
-                contact_info["phone"] = tenant.phone
-            if not contact_info.get("address"):
-                contact_info["address"] = {
-                    "line1": "",
-                    "line2": "",
-                    "city": "",
-                    "state": "",
-                    "pincode": ""
-                }
-
-    # Create Tenant
-    tenant_data = {
+    # Normalize commercial contact
+    contact_info = tenant.contact_info or {
         "name": tenant.name,
         "email": tenant.email,
         "phone": tenant.phone,
-        "kind": tenant.kind,
-        "address": (tenant.contact_info or {}).get("address"),
-        "family_info": tenant.family_info if tenant.kind == "residential" else None,
-        "commercial_type": tenant.type or "merchant" if tenant.kind == "commercial" else None,
-        "legal_name": legal_name if tenant.kind == "commercial" else None,
-        # ✅ Use the auto-filled contact info
-        "contact":  contact_info if tenant.kind == "commercial" else None,
-        "vehicle_info": tenant.vehicle_info,
-        "status": TenantStatus.inactive,
-        "user_id": user_id,  # ✅ ADD THIS LINE
-        "created_at": now,
-        "updated_at": now,
+        "address": {}
     }
-    db_tenant = Tenant(**tenant_data)
+
+    db_tenant = Tenant(
+        name=tenant.name,
+        email=tenant.email,
+        phone=tenant.phone,
+        kind=tenant.kind,
+        legal_name=tenant.legal_name or tenant.name if tenant.kind == "commercial" else None,
+        contact=contact_info if tenant.kind == "commercial" else None,
+        family_info=tenant.family_info if tenant.kind == "residential" else None,
+        vehicle_info=tenant.vehicle_info,
+        status=TenantStatus.inactive,
+        user_id=user.id,
+        created_at=now,
+        updated_at=now
+    )
     db.add(db_tenant)
     db.flush()
 
-    # ASSIGN SPACES
-    for space in tenant.tenant_spaces or []:
-        db_space_assignment = TenantSpace(
-            tenant_id=db_tenant.id,
-            site_id=space.site_id,
-            space_id=space.space_id,
-            status="pending",
-            created_at=now,
-            is_primary=space.is_primary,  
+    for space in tenant.tenant_spaces:
+        db.add(
+            TenantSpace(
+                tenant_id=db_tenant.id,
+                site_id=space.site_id,
+                space_id=space.space_id,
+                status="pending",
+                created_at=now
+            )
         )
-        db.add(db_space_assignment)
 
+    # 🔑 user_sites (tenant role)
+    site_ids = get_site_ids_from_tenant_spaces(tenant.tenant_spaces)
+    upsert_user_sites_preserve_primary(
+        db=db,
+        user_id=user.id,
+        site_ids=site_ids
+    )
+
+    auth_db.commit()
     db.commit()
-    auth_db.commit()  # ✅ Commit auth_db too
+
     return get_tenant_detail(db, org_id, db_tenant.id)
 
 
-def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, update_data: TenantUpdate):
-    update_dict = update_data.dict(exclude_unset=True)
-    update_dict["updated_at"] = datetime.utcnow()
-
+def update_tenant(
+    db: Session,
+    auth_db: Session,
+    org_id: UUID,
+    tenant_id: UUID,
+    update_data: TenantUpdate
+):
     db_tenant = get_tenant_by_id(db, tenant_id)
-
     if not db_tenant:
         return error_response(
             message="Tenant not found",
@@ -577,184 +504,68 @@ def update_tenant(db: Session, auth_db: Session, org_id: UUID, tenant_id: UUID, 
             http_status=404
         )
 
-    # Validate space assignments if provided
-    if "tenant_spaces" in update_dict:
-        error = validate_tenant_space_update(
-            db, tenant_id, update_dict, db_tenant)
-        if error:
-            return error
+    update_dict = update_data.dict(exclude_unset=True)
+    now = datetime.utcnow()
 
-    # Check for duplicate name (case-insensitive) if name is being updated
-    if 'name' in update_dict and update_dict['name'] != db_tenant.name:
-        existing_tenant_by_name = db.query(Tenant).filter(
+    # Duplicate name check
+    if "name" in update_dict and update_dict["name"] != db_tenant.name:
+        if db.query(Tenant).filter(
             Tenant.id != tenant_id,
             Tenant.is_deleted == False,
-            func.lower(Tenant.name) == func.lower(update_dict['name'])
-        ).first()
-
-        if existing_tenant_by_name:
+            func.lower(Tenant.name) == func.lower(update_dict["name"])
+        ).first():
             return error_response(
                 message=f"Tenant with name '{update_dict['name']}' already exists",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
 
-    if update_dict.get("kind") == "commercial":
-        new_legal_name = update_dict.get(
-            "legal_name") or update_dict.get("name")
-        if new_legal_name and new_legal_name != db_tenant.legal_name:
-            existing_partner_by_name = db.query(Tenant).filter(
-                Tenant.id != tenant_id,
-                Tenant.is_deleted == False,
-                func.lower(Tenant.legal_name) == func.lower(new_legal_name)
-            ).first()
-
-            if existing_partner_by_name:
-                return error_response(
-                    message=f"Commercial partner with name '{new_legal_name}' already exists in this site",
-                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                    http_status=400
-                )
-
+    # Update linked user
     if db_tenant.user_id:
-        user = auth_db.query(Users).filter(
-            Users.id == db_tenant.user_id,
-            Users.is_deleted == False
-        ).first()
-
-        if user:
-            user.full_name = update_dict.get("name", db_tenant.name)
-            user.email = update_dict.get("email", db_tenant.email)
-            user.phone = update_dict.get("phone", db_tenant.phone)
-            user.updated_at = datetime.utcnow()
-
-    # Update Tenant table
-    db.query(Tenant).filter(Tenant.id == tenant_id).update(
-        {
-            "name": update_dict.get("name", db_tenant.name),
-            "kind": update_dict.get("kind", db_tenant.kind),
+        auth_db.query(Users).filter(
+            Users.id == db_tenant.user_id
+        ).update({
+            "full_name": update_dict.get("name", db_tenant.name),
             "email": update_dict.get("email", db_tenant.email),
             "phone": update_dict.get("phone", db_tenant.phone),
-            "status": update_dict.get("status", db_tenant.status),
-            "address": (
-                update_dict.get("contact_info", {}).get("address")
-                if update_dict.get("contact_info")
-                else db_tenant.address
-            ),
-            "family_info": update_dict.get("family_info", db_tenant.family_info),
-            "vehicle_info": update_dict.get("vehicle_info", db_tenant.vehicle_info),
-            "commercial_type": update_dict.get("type", db_tenant.commercial_type),
-            "legal_name": update_dict.get("legal_name", db_tenant.legal_name),
-            "contact": update_dict.get("contact_info") or db_tenant.contact,
-            "updated_at": datetime.utcnow(),
-        }
-    )
+            "updated_at": now
+        })
 
+    # Update tenant
+    update_dict["updated_at"] = now
+    db.query(Tenant).filter(Tenant.id == tenant_id).update(update_dict)
+
+    # Sync tenant spaces
     if "tenant_spaces" in update_dict:
-        now = datetime.utcnow()
-        incoming_spaces = [
-            TenantSpaceBase(**s)
-            for s in update_dict.get("tenant_spaces", [])
-        ]
+        validate_tenant_space_update(db, tenant_id, update_dict, db_tenant)
 
-        if not incoming_spaces:
-            return error_response(
-                message="At least one space must be assigned to the tenant",
-                status_code=str(AppStatusCode.VALIDATION_ERROR),
-                http_status=400
-            )
-
-        incoming_map = {s.space_id: s for s in incoming_spaces}
-        incoming_space_ids = {s.space_id for s in incoming_spaces}
-
-        existing_assignments = (
-            db.query(TenantSpace)
-            .filter(TenantSpace.tenant_id == tenant_id)
-            .all()
-        )
-
-        active_assignments = {
-            ts.space_id: ts for ts in existing_assignments if not ts.is_deleted
-        }
-        deleted_assignments = {
-            ts.space_id: ts for ts in existing_assignments if ts.is_deleted
-        }
-
-        # -------- FIND PRIMARY SPACE --------
-        incoming_primary_space_id = None
-        for s in update_dict.get("tenant_spaces", []):
-            if s.get("is_primary") is True:
-                incoming_primary_space_id = s.get("space_id")
-                break
-
-        # Fallback if none sent
-        if incoming_primary_space_id is None:
-            incoming_primary_space_id = incoming_spaces[0].space_id
-
-        # -------- RESET OLD PRIMARY (RUN ONCE) --------
         db.query(TenantSpace).filter(
-            TenantSpace.tenant_id == tenant_id,
-            TenantSpace.space_id != incoming_primary_space_id,
-            TenantSpace.is_deleted == False
-        ).update(
-            {"is_primary": False},
-            synchronize_session=False
-        )
-        
-        # ➕ ADD / RESTORE
-        for space_id, space in incoming_map.items():
+            TenantSpace.tenant_id == tenant_id
+        ).update({"is_deleted": True})
 
-            # ACTIVE → UPDATE PRIMARY FLAG
-            if space_id in active_assignments:
-                ts = active_assignments[space_id]
-                ts.is_primary = (space_id == incoming_primary_space_id)
-                ts.updated_at = now
-                continue
-
-            if space_id in deleted_assignments:
-                ts = deleted_assignments[space_id]
-                ts.is_deleted = False
-                ts.deleted_at = None
-                ts.status = "pending"
-                ts.is_primary = (space_id == incoming_primary_space_id)
-                ts.updated_at = now
-            else:
-                db.add(
-                    TenantSpace(
-                        tenant_id=tenant_id,
-                        site_id=space.site_id,
-                        space_id=space_id,
-                        status="pending",
-                        is_primary=(space_id == incoming_primary_space_id),
-                        is_deleted=False,
-                        created_at=now,
-                    )
+        for space in update_dict["tenant_spaces"]:
+            db.add(
+                TenantSpace(
+                    tenant_id=tenant_id,
+                    site_id=space["site_id"],
+                    space_id=space["space_id"],
+                    status="pending",
+                    is_deleted=False,
+                    created_at=now
                 )
-
-        # ➖ SOFT DELETE REMOVED
-        for space_id, ts in active_assignments.items():
-            if space_id not in incoming_space_ids:
-                ts.status = "vacated" if ts.status == "occupied" else "pending"
-                ts.is_deleted = True
-                ts.is_primary = False
-
-            tenant_lease = (
-                db.query(Lease)
-                .filter(
-                    Lease.tenant_id == tenant_id,
-                    Lease.space_id == space_id,
-                    Lease.is_deleted == False
-                )
-                .first()
             )
-            if tenant_lease:
-                tenant_lease.status = "terminated"
-                tenant_lease.updated_at = datetime.utcnow()
-                tenant_lease.end_date = datetime.utcnow().date()
+
+        # 🔑 Update user_sites
+        site_ids = get_site_ids_from_tenant_spaces(
+            update_dict["tenant_spaces"])
+        upsert_user_sites_preserve_primary(
+            db=db,
+            user_id=db_tenant.user_id,
+            site_ids=site_ids
+        )
 
     auth_db.commit()
     db.commit()
-
     return get_tenant_detail(db, org_id, tenant_id)
 
 
@@ -1029,21 +840,20 @@ def compute_space_status(db, tenant_id, space_id, role):
     )
 
 
-
-def get_tenant_payment_history(db: Session, tenant_id: UUID ,org_id: UUID) -> List[Dict]:
+def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> List[Dict]:
     """
     Simple function to fetch all payment history for a specific tenant.
     """
-    
+
     # Get all invoices and payments where the tenant is involved
     tenant_payments = []
-    
+
     # 1. Check for LEASE CHARGE invoices
     lease_charges = db.query(LeaseCharge).filter(
         LeaseCharge.is_deleted == False,
         LeaseCharge.lease.has(tenant_id=tenant_id)  # Lease belongs to tenant
     ).all()
-    
+
     for lease_charge in lease_charges:
         # Find invoices for this lease charge
         invoices = db.query(Invoice).filter(
@@ -1051,14 +861,14 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID ,org_id: UUID) -> Li
             Invoice.billable_item_id == lease_charge.id,
             Invoice.is_deleted == False
         ).all()
-        
+
         for invoice in invoices:
             # Get payments for this invoice
             payments = db.query(PaymentAR).filter(
                 PaymentAR.invoice_id == invoice.id,
                 PaymentAR.is_deleted == False
             ).all()
-            
+
             for payment in payments:
                 tenant_payments.append({
                     "type": "Lease",
@@ -1070,20 +880,21 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID ,org_id: UUID) -> Li
                     "description": f"Lease Charge: {lease_charge.charge_code.code if lease_charge.charge_code else 'Charge'}",
                     "site": invoice.site.name if invoice.site else None
                 })
-    
+
     # 2. Check for WORK ORDER invoices
     tickets = db.query(Ticket).filter(
         Ticket.tenant_id == tenant_id,
-        Ticket.status.in_(["open", "closed", "returned", "reopened", "escalated", "in_progress", "on_hold"]),
+        Ticket.status.in_(["open", "closed", "returned",
+                          "reopened", "escalated", "in_progress", "on_hold"]),
     ).all()
-    
+
     for ticket in tickets:
         # Find work orders for this ticket
         work_orders = db.query(TicketWorkOrder).filter(
             TicketWorkOrder.ticket_id == ticket.id,
             TicketWorkOrder.is_deleted == False
         ).all()
-        
+
         for work_order in work_orders:
             # Find invoices for this work order
             invoices = db.query(Invoice).filter(
@@ -1091,14 +902,14 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID ,org_id: UUID) -> Li
                 Invoice.billable_item_id == work_order.id,
                 Invoice.is_deleted == False
             ).all()
-            
+
             for invoice in invoices:
                 # Get payments for this invoice
                 payments = db.query(PaymentAR).filter(
                     PaymentAR.invoice_id == invoice.id,
                     PaymentAR.is_deleted == False
                 ).all()
-                
+
                 for payment in payments:
                     tenant_payments.append({
                         "type": "Work Order",
@@ -1110,13 +921,13 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID ,org_id: UUID) -> Li
                         "description": f"Work Order: {work_order.wo_no}",
                         "site": invoice.site.name if invoice.site else None
                     })
-    
+
     # 3. Check for PARKING PASS invoices
     parking_passes = db.query(ParkingPass).filter(
         ParkingPass.partner_id == tenant_id,  # tenant_id stored as partner_id
         ParkingPass.is_deleted == False
     ).all()
-    
+
     for parking_pass in parking_passes:
         # Find invoices for this parking pass
         invoices = db.query(Invoice).filter(
@@ -1124,14 +935,14 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID ,org_id: UUID) -> Li
             Invoice.billable_item_id == parking_pass.id,
             Invoice.is_deleted == False
         ).all()
-        
+
         for invoice in invoices:
             # Get payments for this invoice
             payments = db.query(PaymentAR).filter(
                 PaymentAR.invoice_id == invoice.id,
                 PaymentAR.is_deleted == False
             ).all()
-            
+
             for payment in payments:
                 tenant_payments.append({
                     "type": "Parking",
@@ -1143,8 +954,107 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID ,org_id: UUID) -> Li
                     "description": f"Parking Pass: {parking_pass.pass_no}",
                     "site": invoice.site.name if invoice.site else None
                 })
-    
+
     # Sort by payment date (newest first)
     tenant_payments.sort(key=lambda x: x["payment_date"], reverse=True)
-    
+
     return tenant_payments
+
+
+def get_or_create_user_and_org(
+    *,
+    auth_db: Session,
+    org_id: UUID,
+    name: str,
+    email: str,
+    phone: str
+):
+    now = datetime.utcnow()
+    random_password = None
+
+    user = auth_db.query(Users).filter(
+        Users.is_deleted == False,
+        or_(Users.email == email, Users.phone == phone)
+    ).first()
+
+    if not user:
+        random_password = generate_secure_password()
+        user = Users(
+            id=uuid.uuid4(),
+            full_name=name,
+            email=email,
+            phone=phone,
+            username=email or f"user_{uuid.uuid4().hex[:8]}",
+            status="inactive",
+            created_at=now,
+            updated_at=now
+        )
+        user.set_password(random_password)
+        auth_db.add(user)
+        auth_db.flush()
+
+    user_org = auth_db.query(UserOrganization).filter(
+        UserOrganization.user_id == user.id,
+        UserOrganization.org_id == org_id
+    ).first()
+
+    if not user_org:
+        auth_db.add(
+            UserOrganization(
+                user_id=user.id,
+                org_id=org_id,
+                account_type="tenant",
+                status="active"
+            )
+        )
+
+    return user, random_password
+
+
+def upsert_user_sites_preserve_primary(
+    *,
+    db: Session,
+    user_id: UUID,
+    site_ids: list[UUID]
+):
+    if not site_ids:
+        return
+
+    # Fetch existing primary site (if any)
+    existing_primary = (
+        db.query(UserSite)
+        .filter(
+            UserSite.user_id == user_id,
+            UserSite.is_primary == True
+        )
+        .first()
+    )
+
+    existing_primary_site_id = (
+        existing_primary.site_id if existing_primary else None
+    )
+
+    # Decide which site should be primary
+    if existing_primary_site_id in site_ids:
+        primary_site_id = existing_primary_site_id
+    else:
+        primary_site_id = site_ids[0]
+
+    # Clear old mappings
+    db.query(UserSite).filter(
+        UserSite.user_id == user_id
+    ).delete()
+
+    # Reinsert with preserved primary
+    for site_id in site_ids:
+        db.add(
+            UserSite(
+                user_id=user_id,
+                site_id=site_id,
+                is_primary=(site_id == primary_site_id)
+            )
+        )
+
+
+def get_site_ids_from_tenant_spaces(tenant_spaces):
+    return list({ts.site_id for ts in tenant_spaces})

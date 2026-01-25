@@ -12,6 +12,7 @@ from auth_service.app.models.tenant_spaces_safe import TenantSpaceSafe
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.userroles import UserRoles
+from ...models.space_sites.user_sites import UserSite
 from ...crud.leasing_tenants.tenants_crud import active_lease_exists, compute_space_status, validate_active_tenants_for_spaces
 from ...enum.leasing_tenants_enum import TenantStatus
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
@@ -718,7 +719,7 @@ def get_user_detail(
                                 "building_block_id", Building.id,
                                 "building_block_name", Building.name,
                                 "status", TenantSpace.status,
-                                "is_primary", TenantSpace.is_primary
+                                "is_primary", False
                             )
                         ),
                         literal("[]").cast(JSONB)
@@ -870,7 +871,7 @@ def search_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -
     if not users:
         return []
 
-    return  [
+    return [
         Lookup(id=user.id, name=user.full_name)
         for user in users
     ]
@@ -1088,7 +1089,13 @@ def handle_account_type_update(
                         )
                     )
 
-            facility_db.commit()
+            upsert_user_sites_preserve_primary(
+                db=facility_db,
+                user_id=db_user_org.user_id,
+                site_ids=user_account.site_ids
+            )
+
+        facility_db.commit()
 
     # ================= TENANT =================
     elif account_type == "tenant":
@@ -1161,6 +1168,16 @@ def handle_account_type_update(
         tenant.phone = db_user.phone
         tenant.email = db_user.email
         tenant.kind = user_account.tenant_type
+
+        tenant_site_ids = list({
+            space.site_id for space in user_account.tenant_spaces
+        })
+
+        upsert_user_sites_preserve_primary(
+            db=facility_db,
+            user_id=db_user_org.user_id,
+            site_ids=tenant_site_ids
+        )
 
         facility_db.add(tenant)
         facility_db.commit()
@@ -1240,6 +1257,21 @@ def handle_account_type_update(
                         start_date=now
                     )
                 )
+
+        owner_site_ids = (
+            facility_db.query(Space.site_id)
+            .filter(Space.id.in_(incoming_space_ids))
+            .distinct()
+            .all()
+        )
+
+        owner_site_ids = [row[0] for row in owner_site_ids]
+
+        upsert_user_sites_preserve_primary(
+            db=facility_db,
+            user_id=db_user_org.user_id,
+            site_ids=owner_site_ids
+        )
 
         facility_db.commit()
 
@@ -1380,3 +1412,49 @@ def deactivate_account(
         "message": "Account deactivated successfully",
         "account_id": account.id
     }
+
+
+def upsert_user_sites_preserve_primary(
+    *,
+    db: Session,
+    user_id: UUID,
+    site_ids: list[UUID],
+    role: str
+):
+    if not site_ids:
+        return
+
+    # Fetch existing primary site (if any)
+    existing_primary = (
+        db.query(UserSite)
+        .filter(
+            UserSite.user_id == user_id,
+            UserSite.is_primary == True
+        )
+        .first()
+    )
+
+    existing_primary_site_id = (
+        existing_primary.site_id if existing_primary else None
+    )
+
+    # Decide which site should be primary
+    if existing_primary_site_id in site_ids:
+        primary_site_id = existing_primary_site_id
+    else:
+        primary_site_id = site_ids[0]
+
+    # Clear old mappings
+    db.query(UserSite).filter(
+        UserSite.user_id == user_id
+    ).delete()
+
+    # Reinsert with preserved primary
+    for site_id in site_ids:
+        db.add(
+            UserSite(
+                user_id=user_id,
+                site_id=site_id,
+                is_primary=(site_id == primary_site_id)
+            )
+        )

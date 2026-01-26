@@ -12,6 +12,7 @@ from auth_service.app.models.tenant_spaces_safe import TenantSpaceSafe
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.userroles import UserRoles
+from shared.utils.enums import OwnershipStatus
 from ...models.space_sites.user_sites import UserSite
 from ...crud.leasing_tenants.tenants_crud import active_lease_exists, compute_space_status, validate_active_tenants_for_spaces
 from ...enum.leasing_tenants_enum import TenantStatus
@@ -19,7 +20,7 @@ from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.leasing_tenants.leases import Lease
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
-from ...models.space_sites.space_owners import OwnershipStatus, SpaceOwner
+from ...models.space_sites.space_owners import SpaceOwner
 from ...schemas.leasing_tenants.tenants_schemas import TenantSpaceOut
 from shared.models.users import Users
 # from auth_service.app.models.userroles import UserRoles
@@ -1254,7 +1255,6 @@ def handle_account_type_update(
                         ownership_type="primary",
                         status=OwnershipStatus.approved,
                         is_active=True,
-                        is_deleted=False,
                         start_date=now
                     )
                 )

@@ -6,3 +6,10 @@ class UserAccountType(str, Enum):
     TENANT = "tenant"
     STAFF = "staff"
     FLAT_OWNER = "owner"
+
+
+class OwnershipStatus(Enum):
+    requested = "requested"
+    approved = "approved"
+    rejected = "rejected"
+    revoked = "revoked"

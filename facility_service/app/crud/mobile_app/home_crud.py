@@ -14,7 +14,7 @@ from shared.models.users import Users
 from ...enum.space_sites_enum import OwnershipType
 from ...models.space_sites.owner_maintenances import OwnerMaintenanceCharge
 from ...models.space_sites.orgs import Org
-from ...models.space_sites.space_owners import OwnershipStatus, SpaceOwner
+from ...models.space_sites.space_owners import SpaceOwner
 from ...schemas.mobile_app.home_schemas import AddSpaceRequest, HomeDetailsWithSpacesResponse, LeaseContractDetail, MaintenanceDetail, Period, SpaceDetailsResponse
 
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
@@ -40,7 +40,7 @@ from shared.core.schemas import MasterQueryParams, UserToken
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.space_sites.spaces import Space
 from sqlalchemy.orm import joinedload
-from shared.utils.enums import UserAccountType
+from shared.utils.enums import OwnershipStatus, UserAccountType
 
 
 def get_home_sites(db: Session, auth_db: Session, user: UserToken):
@@ -573,7 +573,6 @@ def register_space(
                 ownership_type="primary",
                 status=OwnershipStatus.requested,
                 is_active=False,
-                is_deleted=False,
                 start_date=now
             )
         )

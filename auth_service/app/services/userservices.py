@@ -3,9 +3,7 @@ import shutil
 from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func, and_
-
-from facility_service.app.models.space_sites.space_owners import OwnershipStatus, SpaceOwner
-
+from ..models.space_owners_safe import SpaceOwnerSafe
 from ..models.user_organizations import UserOrganization
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
@@ -186,14 +184,11 @@ def create_user(
 
             # ➕ Insert new
             facility_db.add(
-                SpaceOwner(
+                SpaceOwnerSafe(
                     owner_user_id=user_instance.user_id,
                     space_id=user.space_id,
                     owner_org_id=org_id,
-                    ownership_type="primary",
-                    status=OwnershipStatus.requested,
                     is_active=False,
-                    is_deleted=False,
                     start_date=now
                 )
             )

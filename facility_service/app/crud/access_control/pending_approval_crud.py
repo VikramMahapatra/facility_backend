@@ -5,7 +5,8 @@ from sqlalchemy import UUID, func
 from typing import Dict, List, Optional
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
-from facility_service.app.models.space_sites.space_owners import OwnershipStatus, SpaceOwner
+from facility_service.app.models.space_sites.space_owners import SpaceOwner
+from shared.utils.enums import OwnershipStatus
 from ...models.leasing_tenants.leases import Lease
 from shared.helpers.json_response_helper import error_response
 from shared.models.users import Users

@@ -7,6 +7,8 @@ from typing import Dict, Optional
 
 from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.models.space_sites.user_sites import UserSite
+from shared.helpers.json_response_helper import error_response
+from shared.utils.app_status_code import AppStatusCode
 from ...schemas.access_control.user_management_schemas import UserOrganizationOut
 from shared.models.users import Users
 from ...enum.space_sites_enum import OwnershipType
@@ -536,3 +538,56 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
         statistics=statistics,
         notifications=notification_list or []
     )
+
+
+def register_space(
+        params: MasterQueryParams,
+        facility_db: Session,
+        auth_db: Session,
+        user: UserToken):
+
+    now = datetime.utcnow()
+
+    # ✅ Find site
+    site = facility_db.query(Site).filter(
+        Site.id == params.site_id).first()
+    if not site:
+        return error_response(
+            message="Invalid site selected",
+            status_code=str(AppStatusCode.INVALID_INPUT),
+        )
+
+    if not params.space_id:
+        return error_response(
+            message="Space required for tenant",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+        )
+
+    existing_tenant = facility_db.query(TenantSpace).filter(
+        and_(
+            TenantSpace.space_id == user.space_id,
+            TenantSpace.status == "occupied",
+            TenantSpace.is_deleted == False)
+    ).first()
+
+    if existing_tenant:
+        return error_response(
+            message="Tenant already registered for selected space",
+            status_code=str(AppStatusCode.USER_ALREADY_REGISTERED),
+        )
+
+    tenant_obj = (
+        facility_db.query(Tenant)
+        .filter(Tenant.user_id == user.user_id, Tenant.is_deleted == False)
+        .first()
+    )
+
+    # ✅ Create space tenant link
+    space_tenant_link = TenantSpace(
+        site_id=params.site_id,
+        space_id=params.space_id,
+        tenant_id=tenant_obj.id,
+        status="pending"
+    )
+    facility_db.add(space_tenant_link)
+    facility_db.commit()

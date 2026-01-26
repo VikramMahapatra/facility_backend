@@ -95,3 +95,8 @@ class Site(Base):
     ticket_categories = relationship("TicketCategory", back_populates="site")
     sla_policies = relationship("SlaPolicy", back_populates="site")
     parking_passes = relationship("ParkingPass", back_populates="site")
+    user_sites = relationship(
+        "UserSite",
+        back_populates="site",
+        cascade="all, delete-orphan"
+    )

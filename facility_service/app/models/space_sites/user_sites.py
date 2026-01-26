@@ -27,6 +27,8 @@ class UserSite(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    site = relationship("Site", back_populates="user_sites")
+
     __table_args__ = (
         Index(
             "uq_user_primary_site",

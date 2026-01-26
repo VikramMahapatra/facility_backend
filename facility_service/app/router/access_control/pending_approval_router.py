@@ -28,8 +28,10 @@ def get_users_for_approval(
 def update_user_approval_status(
         request: ApprovalStatusRequest,
         db: Session = Depends(get_db),
-        facility_db: Session = Depends(get_facility_db)):
-    db_user = crud.update_user_approval_status(db, facility_db, request)
+        facility_db: Session = Depends(get_facility_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    db_user = crud.update_user_approval_status(
+        db, facility_db, request, current_user.org_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     return db_user

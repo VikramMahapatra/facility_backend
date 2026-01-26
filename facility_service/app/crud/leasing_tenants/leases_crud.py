@@ -294,7 +294,6 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                     )
                 )
 
-            
         # Create the lease record (always)
 
         lease_data = payload.model_dump(exclude={"reference", "space_name"})
@@ -306,8 +305,8 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         lease = Lease(**lease_data)
         db.add(lease)
         if lease_status == "active":
-            tenant.status = "active" # Sync tenant status
-            space.status = "occupied" # Sync space status
+            tenant.status = "active"  # Sync tenant status
+            space.status = "occupied"  # Sync space status
 
         # Commit and return
         db.commit()
@@ -462,7 +461,7 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
         LeaseCharge.is_deleted == False
     ).update({"is_deleted": True})
 
-        # ✅ ADD THIS
+    # ✅ ADD THIS
     db.query(TenantSpace).filter(
         TenantSpace.tenant_id == obj.tenant_id,
         TenantSpace.is_deleted == False
@@ -487,7 +486,6 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
         if tenant:
             tenant.status = TenantStatus.inactive
 
-
     db.commit()
 
     # ✅ Return appropriate message
@@ -507,7 +505,7 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
 def lease_lookup(org_id: UUID, db: Session):
     leases = (
         db.query(Lease)
-        .filter(Lease.org_id == org_id, Lease.is_deleted == False,Lease.status == 'active')
+        .filter(Lease.org_id == org_id, Lease.is_deleted == False, Lease.status == 'active')
         .distinct(Lease.id)
         .all()
     )

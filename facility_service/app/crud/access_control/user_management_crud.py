@@ -19,7 +19,7 @@ from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.leasing_tenants.leases import Lease
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
-from ...models.space_sites.space_owners import SpaceOwner
+from ...models.space_sites.space_owners import OwnershipStatus, SpaceOwner
 from ...schemas.leasing_tenants.tenants_schemas import TenantSpaceOut
 from shared.models.users import Users
 # from auth_service.app.models.userroles import UserRoles
@@ -1252,6 +1252,7 @@ def handle_account_type_update(
                         space_id=space.space_id,
                         owner_org_id=org_id,
                         ownership_type="primary",
+                        status=OwnershipStatus.approved,
                         is_active=True,
                         is_deleted=False,
                         start_date=now

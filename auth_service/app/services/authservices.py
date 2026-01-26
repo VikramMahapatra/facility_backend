@@ -360,7 +360,7 @@ def switch_account(
 
     default_org = (
         db.query(UserOrganization)
-        .filter(UserOrganization.id == request.user_org_id)
+        .filter(UserOrganization.id == request.user_org_id, UserOrganization.account_type == request.account_type)
         .first()
     )
 

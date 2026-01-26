@@ -9,7 +9,7 @@ from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 
 from ...schemas.system.notifications_schemas import NotificationOut
 from ...schemas.leases_schemas import LeaseOut
-from shared.core.schemas import CommonQueryParams
+from shared.core.schemas import CommonQueryParams, MasterQueryParams
 
 
 class SpaceDetailResponse(EmptyStringModel):
@@ -69,6 +69,7 @@ class Statistics(EmptyStringModel):
     overdue_tickets: int = 0
     period: Optional[Period] = None  # Now contains actual date range
 
+
 class SpaceDetailsResponse(EmptyStringModel):
     space_id: UUID
     space_name: Optional[str] = None
@@ -80,7 +81,12 @@ class SpaceDetailsResponse(EmptyStringModel):
     lease_contract_detail: LeaseContractDetail
     maintenance_detail: MaintenanceDetail
 
+
 class HomeDetailsWithSpacesResponse(EmptyStringModel):
     spaces: List[SpaceDetailsResponse] = []
     statistics: Statistics
     notifications: Optional[List[NotificationOut]] = None
+
+
+class AddSpaceRequest(MasterQueryParams):
+    account_type: str

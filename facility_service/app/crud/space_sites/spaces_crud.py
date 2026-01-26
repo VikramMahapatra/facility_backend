@@ -8,7 +8,7 @@ from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
 from auth_service.app.models.user_organizations import UserOrganization
-from facility_service.app.models.space_sites.space_owners import SpaceOwner
+from ...models.space_sites.space_owners import OwnershipStatus, SpaceOwner
 from shared.models.users import Users
 
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
@@ -542,6 +542,7 @@ def assign_space_owner(
     if existing_owner:
         existing_owner.is_active = False
         existing_owner.end_date = date.today()
+        existing_owner.status = OwnershipStatus.revoked
 
         other_spaces_count = (
             db.query(SpaceOwner)
@@ -574,6 +575,7 @@ def assign_space_owner(
         owner_org_id=org_id,  # FROM TOKEN
         ownership_type="primary",  # DEFAULT TO PRIMARY
         ownership_percentage=100,
+        status=OwnershipStatus.approved,
         start_date=datetime.utcnow().date(),
         is_active=True
     )
@@ -604,7 +606,8 @@ def assign_space_owner(
     db.refresh(new_owner)
 
     # RETURN ACTIVE OWNERS
-    active_owners = get_active_owners(db=db,auth_db=auth_db,space_id=payload.space_id)
+    active_owners = get_active_owners(
+        db=db, auth_db=auth_db, space_id=payload.space_id)
 
     return AssignSpaceOwnerOut(
         space_id=payload.space_id,

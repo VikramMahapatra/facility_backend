@@ -4,6 +4,8 @@ from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func, and_
 
+from facility_service.app.models.space_sites.space_owners import OwnershipStatus, SpaceOwner
+
 from ..models.user_organizations import UserOrganization
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
@@ -162,20 +164,52 @@ def create_user(
             )
             facility_db.add(space_tenant_link)
 
+        elif user.account_type.lower() == "owner":
+            # ✅ Find site
+            site = facility_db.query(SiteSafe).filter(
+                SiteSafe.id == user.site_id).first()
+            if not site:
+                return error_response(
+                    message="Invalid site selected",
+                    status_code=str(AppStatusCode.INVALID_INPUT),
+                )
+
+            org_id = site.org_id
+
+            if not user.space_id:
+                return error_response(
+                    message="Space required for tenant",
+                    status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                )
+
+            now = datetime.utcnow()
+
+            # ➕ Insert new
+            facility_db.add(
+                SpaceOwner(
+                    owner_user_id=user_instance.user_id,
+                    space_id=user.space_id,
+                    owner_org_id=org_id,
+                    ownership_type="primary",
+                    status=OwnershipStatus.requested,
+                    is_active=False,
+                    is_deleted=False,
+                    start_date=now
+                )
+            )
+
         # ✅ Commit All OR Rollback All
         user_org = UserOrganization(
             user_id=user_instance.id,
             org_id=org_id,
             account_type=user.accountType.lower(),
-            status="active",
+            status="pending",
             is_default=True
         )
         db.add(user_org)
-        db.flush()
 
         db.commit()
         facility_db.commit()
-        db.refresh(user_instance)
 
     except HTTPException:
         db.rollback()

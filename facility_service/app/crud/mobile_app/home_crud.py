@@ -14,8 +14,8 @@ from shared.models.users import Users
 from ...enum.space_sites_enum import OwnershipType
 from ...models.space_sites.owner_maintenances import OwnerMaintenanceCharge
 from ...models.space_sites.orgs import Org
-from ...models.space_sites.space_owners import SpaceOwner
-from ...schemas.mobile_app.home_schemas import HomeDetailsWithSpacesResponse, LeaseContractDetail, MaintenanceDetail, Period, SpaceDetailsResponse
+from ...models.space_sites.space_owners import OwnershipStatus, SpaceOwner
+from ...schemas.mobile_app.home_schemas import AddSpaceRequest, HomeDetailsWithSpacesResponse, LeaseContractDetail, MaintenanceDetail, Period, SpaceDetailsResponse
 
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 
@@ -541,7 +541,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
 
 
 def register_space(
-        params: MasterQueryParams,
+        params: AddSpaceRequest,
         facility_db: Session,
         auth_db: Session,
         user: UserToken):
@@ -563,31 +563,49 @@ def register_space(
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
         )
 
-    existing_tenant = facility_db.query(TenantSpace).filter(
-        and_(
-            TenantSpace.space_id == user.space_id,
-            TenantSpace.status == "occupied",
-            TenantSpace.is_deleted == False)
-    ).first()
-
-    if existing_tenant:
-        return error_response(
-            message="Tenant already registered for selected space",
-            status_code=str(AppStatusCode.USER_ALREADY_REGISTERED),
+    if params.account_type.lower() == "owner":
+        # ➕ Insert new
+        facility_db.add(
+            SpaceOwner(
+                owner_user_id=user.user_id,
+                space_id=user.space_id,
+                owner_org_id=site.org_id,
+                ownership_type="primary",
+                status=OwnershipStatus.requested,
+                is_active=False,
+                is_deleted=False,
+                start_date=now
+            )
         )
 
-    tenant_obj = (
-        facility_db.query(Tenant)
-        .filter(Tenant.user_id == user.user_id, Tenant.is_deleted == False)
-        .first()
-    )
+    elif params.account_type.lower() == "tenant":
 
-    # ✅ Create space tenant link
-    space_tenant_link = TenantSpace(
-        site_id=params.site_id,
-        space_id=params.space_id,
-        tenant_id=tenant_obj.id,
-        status="pending"
-    )
-    facility_db.add(space_tenant_link)
+        existing_tenant = facility_db.query(TenantSpace).filter(
+            and_(
+                TenantSpace.space_id == user.space_id,
+                TenantSpace.status == "occupied",
+                TenantSpace.is_deleted == False)
+        ).first()
+
+        if existing_tenant:
+            return error_response(
+                message="Tenant already registered for selected space",
+                status_code=str(AppStatusCode.USER_ALREADY_REGISTERED),
+            )
+
+        tenant_obj = (
+            facility_db.query(Tenant)
+            .filter(Tenant.user_id == user.user_id, Tenant.is_deleted == False)
+            .first()
+        )
+
+        # ✅ Create space tenant link
+        space_tenant_link = TenantSpace(
+            site_id=params.site_id,
+            space_id=params.space_id,
+            tenant_id=tenant_obj.id,
+            status="pending"
+        )
+        facility_db.add(space_tenant_link)
+
     facility_db.commit()

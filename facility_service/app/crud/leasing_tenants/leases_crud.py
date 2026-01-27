@@ -10,6 +10,7 @@ from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from ...models.space_sites.buildings import Building
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.utils.enums import UserAccountType
+from ...models.financials.invoices import Invoice
 
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant
@@ -711,7 +712,7 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
             tenant_name = lease_related.tenant.legal_name or lease_related.tenant.name
         
         # Get invoice status
-        from ...models.financials.invoices import Invoice
+       
         invoice = db.query(Invoice).filter(
             Invoice.billable_item_type == "lease charge",
             Invoice.billable_item_id == lc.id,
@@ -743,6 +744,7 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
             "created_at": lc.created_at,
             "payer_type": lc.payer_type,
             "invoice_status": invoice_status
+            
         })
     
     # Parse utilities from lease.utilities field (NOT meta)
@@ -770,13 +772,16 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
     tenant_legal_name = None
     tenant_email = None
     tenant_phone = None
+    tenant_kind = None
+    
     
     if lease.tenant:
         tenant_name = lease.tenant.name
         tenant_legal_name = lease.tenant.legal_name
         tenant_email = lease.tenant.email
         tenant_phone = lease.tenant.phone
-    
+        tenant_kind = lease.tenant.kind
+
     # Get space kind
     space_kind = None
     if lease.space:
@@ -804,6 +809,7 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         "tenant_legal_name": tenant_legal_name,
         "tenant_email": tenant_email,
         "tenant_phone": tenant_phone,
+        "tenant_kind": tenant_kind,
         
         # Space/Site info
         "space_id": lease.space_id,

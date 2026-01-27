@@ -113,6 +113,7 @@ class LeaseDetailOut(BaseModel):
     tenant_legal_name: Optional[str] = None
     tenant_email: Optional[str] = None
     tenant_phone: Optional[str] = None
+    tenant_kind: Optional[str] = None
     
     # Space/Site info
     space_id: Optional[UUID] = None

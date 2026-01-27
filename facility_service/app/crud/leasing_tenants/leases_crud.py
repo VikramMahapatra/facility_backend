@@ -824,3 +824,100 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
        
         "charges": charges_list
     }
+    
+    
+    
+def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID) -> dict:
+    # Get tenant
+    # -----------------------------
+    tenant = (
+        db.query(Tenant)
+        .filter(
+            Tenant.id == tenant_id,
+            Tenant.is_deleted == False
+        )
+        .first()
+    )
+
+    if not tenant:
+        return error_response(status_code=404, detail="Tenant not found")
+
+    results = []
+
+    # -----------------------------
+    # Get all tenant-space links
+    # -----------------------------
+    tenant_spaces = (
+        db.query(TenantSpace)
+        .options(
+            joinedload(TenantSpace.space)
+        )
+        .filter(
+            TenantSpace.tenant_id == tenant_id,
+            TenantSpace.is_deleted == False
+        )
+        .all()
+    )
+
+    # -----------------------------
+    # Loop like lease charges
+    # -----------------------------
+    for ts in tenant_spaces:
+        space = ts.space
+
+        if not space:
+            continue
+
+        # -----------------------------
+        # Get site
+        # -----------------------------
+        site = (
+            db.query(Site)
+            .filter(
+                Site.id == space.site_id,
+                Site.is_deleted == False
+            )
+            .first()
+        )
+
+        # -----------------------------
+        # Get building
+        # -----------------------------
+        building = None
+        building_id = None
+        building_name = None
+
+        if space.building_block_id:
+            building = (
+                db.query(Building)
+                .filter(
+                    Building.id == space.building_block_id,
+                    Building.is_deleted == False
+                )
+                .first()
+            )
+
+            if building:
+                building_id = building.id
+                building_name = building.name
+
+        # -----------------------------
+        # Build response object (EXPLICIT)
+        # -----------------------------
+        results.append({
+            "tenant_id": tenant.id,
+            "tenant_name": tenant.legal_name or tenant.name,
+
+            "site_id": site.id if site else None,
+            "site_name": site.name if site else None,
+
+            "building_id": building_id,
+            "building_name": building_name,
+
+            "space_id": space.id,
+            "space_name": space.name,
+        })
+
+    return {
+        "tenant_data": results
+    }

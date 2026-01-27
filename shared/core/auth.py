@@ -6,6 +6,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from shared.models.refresh_token import RefreshToken
 from shared.models.user_login_session import LoginPlatform, UserLoginSession
+from shared.models.user_org_status import UserOrgStatus
 from shared.models.users import Users
 from shared.utils.app_status_code import AppStatusCode
 from shared.core.config import settings
@@ -142,6 +143,23 @@ def validate_current_token(
             http_status=403
         )
 
+    org_status = (
+        db.query(UserOrgStatus)
+        .filter(
+            UserOrgStatus.user_id == user_data.user_id,
+            UserOrgStatus.org_id == user_data.org_id,
+            UserOrgStatus.status == "active"
+        )
+        .first()
+    )
+
+    if not org_status:
+        return error_response(
+            message="User is inactive in this organization",
+            status_code=str(AppStatusCode.AUTHENTICATION_USER_ORG_INACTIVE),
+            http_status=403
+        )
+
     user_data.status = user.status
     return user_data
 
@@ -165,13 +183,11 @@ def validate_token(
     return user_data
 
 
-
-
 def allow_admin(current_user: UserToken = Depends(validate_current_token)):
     if current_user.account_type.lower() != "organization":
         return error_response(
             message="Access forbidden: Admins only",
             http_status=403
         )
-    
+
     return current_user

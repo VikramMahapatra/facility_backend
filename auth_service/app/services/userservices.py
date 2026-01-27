@@ -198,7 +198,7 @@ def create_user(
         user_org = UserOrganization(
             user_id=user_instance.id,
             org_id=org_id,
-            account_type=user.accountType.lower(),
+            account_type=user.account_type.lower(),
             status="pending",
             is_default=True
         )
@@ -245,7 +245,7 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         auth_db.query(UserOrganization)
         .filter(
             UserOrganization.user_id == user.id,
-            UserOrganization.status == "active"
+            UserOrganization.is_deleted == False
         )
         .order_by(
             UserOrganization.is_default.desc(),
@@ -254,10 +254,9 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         .first()
     )
 
-    roles = [str(role.id) for role in user_org.roles]
-
-    if not user_org:
-        return error_response(message="User has no active organization")
+    roles = []
+    if user_org.roles:
+        roles = [str(role.id) for role in user_org.roles]
 
     tenant = facility_db.query(TenantSafe).filter(
         TenantSafe.user_id == user.id,

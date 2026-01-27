@@ -88,7 +88,7 @@ def create_user(
         db.flush()
 
         # ✅ ACCOUNT TYPE: ORGANIZATION
-        if user.accountType.lower() == "organization":
+        if user.account_type.lower() == "organization":
             if not user.organizationName:
                 return error_response(
                     message="Organization name required",
@@ -103,7 +103,7 @@ def create_user(
             org_id = org_instance.id
 
         # ✅ ACCOUNT TYPE: TENANT
-        elif user.accountType.lower() == "tenant":
+        elif user.account_type.lower() == "tenant":
             # ✅ Find site
             site = facility_db.query(SiteSafe).filter(
                 SiteSafe.id == user.site_id).first()

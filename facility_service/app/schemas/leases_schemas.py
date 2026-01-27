@@ -129,3 +129,23 @@ class LeaseDetailOut(BaseModel):
     charges: List[LeaseChargeOut] = []
     
     model_config = {"from_attributes": True}
+
+
+#FOR AUTO  LEASE CREATION FEATURE
+class TenantSpaceItemOut(BaseModel):
+    tenant_id: UUID
+    tenant_name: str
+
+    site_id: Optional[UUID]
+    site_name: Optional[str]
+
+    building_id: Optional[UUID]
+    building_name: Optional[str]
+
+    space_id: UUID
+    space_name: str
+
+
+class TenantSpaceDetailOut(BaseModel):
+    tenant_data: List[TenantSpaceItemOut]
+

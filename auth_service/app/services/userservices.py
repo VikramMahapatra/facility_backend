@@ -299,7 +299,7 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
         auth_db.query(UserOrganization)
         .filter(
             UserOrganization.user_id == user_data.id,
-            UserOrganization.status == "active"
+            UserOrganization.is_deleted == False
         )
         .order_by(
             UserOrganization.is_default.desc(),
@@ -341,7 +341,8 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
             "org_id": org.org_id,
             "account_type": org.account_type,
             "organization_name": org_map.get(org.org_id),
-            "is_default": org.is_default
+            "is_default": org.is_default,
+            "status": org.status
         })
         for org in user_orgs
     ]

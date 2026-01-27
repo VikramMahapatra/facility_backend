@@ -1365,6 +1365,24 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
                     
             grand_total = subtotal + tax
                 
+        elif item_type == "owner maintenance":
+            maintenance = db.query(OwnerMaintenanceCharge).filter(
+                OwnerMaintenanceCharge.id == billable_item_id,
+                OwnerMaintenanceCharge.is_deleted == False
+            ).first()
+
+            if not maintenance:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Owner maintenance charge not found"
+                )
+
+            # ✅ USE STORED AMOUNT (CAM already calculated)
+            subtotal = maintenance.amount or Decimal("0")
+
+            tax = Decimal("0.00")  # GST can be added later
+            grand_total = subtotal + tax
+
         else:
             raise HTTPException(
                 status_code=400,

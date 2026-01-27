@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Optional, Dict
 from datetime import date, timedelta
 from sqlalchemy.orm import Session, joinedload
@@ -637,3 +638,183 @@ def get_lease_by_id(db: Session, lease_id: str):
             "building_block_id": building_block_id,  # Add this
         }
     )
+
+
+def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
+    """
+    Get lease detail EXACTLY like invoice detail endpoint
+    Simple and clean
+    """
+    # Get lease with all related data
+    lease = (
+        db.query(Lease)
+        .options(
+            joinedload(Lease.tenant),
+            joinedload(Lease.site),
+            joinedload(Lease.space)
+        )
+        .filter(
+            Lease.id == lease_id,
+            Lease.org_id == org_id,
+            Lease.is_deleted == False
+        )
+        .first()
+    )
+    
+    if not lease:
+        return error_response(status_code=404, detail="Lease not found")
+    
+    # Get building details
+    building_name = None
+    building_id = None
+    if lease.space and lease.space.building_block_id:
+        building = db.query(Building).filter(
+            Building.id == lease.space.building_block_id,
+            Building.is_deleted == False
+        ).first()
+        if building:
+            building_name = building.name
+            building_id = building.id
+    
+    # Get ALL lease charges 
+    charges = (
+        db.query(LeaseCharge)
+        .options(
+            joinedload(LeaseCharge.charge_code),
+            joinedload(LeaseCharge.tax_code)
+        )
+        .filter(
+            LeaseCharge.lease_id == lease_id,
+            LeaseCharge.is_deleted == False
+        )
+        .order_by(LeaseCharge.period_start.desc())
+        .all()
+    )
+    
+    # Format charges (EXACTLY like lease_charges_crud)
+    charges_list = []
+    for lc in charges:
+        lease_related = lc.lease
+        
+        # Calculate tax
+        tax_rate = lc.tax_code.rate if lc.tax_code else Decimal("0")
+        tax_amount = (lc.amount * tax_rate) / Decimal("100")
+        
+        # Calculate period days
+        period_days = None
+        if lc.period_start and lc.period_end:
+            period_days = (lc.period_end - lc.period_start).days
+        
+        # Get tenant name
+        tenant_name = None
+        if lease_related.tenant:
+            tenant_name = lease_related.tenant.legal_name or lease_related.tenant.name
+        
+        # Get invoice status
+        from ...models.financials.invoices import Invoice
+        invoice = db.query(Invoice).filter(
+            Invoice.billable_item_type == "lease charge",
+            Invoice.billable_item_id == lc.id,
+            Invoice.is_deleted == False
+        ).first()
+        
+        invoice_status = invoice.status if invoice else None
+        
+        # Build charge object
+        charges_list.append({
+            "id": lc.id,
+            "lease_id": lc.lease_id,
+            "tenant_name": tenant_name,
+            "site_name": lease_related.site.name if lease_related.site else None,
+            "space_name": lease_related.space.name if lease_related.space else None,
+            "charge_code": lc.charge_code.code if lc.charge_code else None,
+            "charge_code_id": lc.charge_code_id,
+            "period_start": lc.period_start,
+            "period_end": lc.period_end,
+            "amount": lc.amount,
+            "lease_start": lease_related.start_date,
+            "lease_end": lease_related.end_date,
+            "rent_amount": lease_related.rent_amount,
+            "tax_amount": tax_amount,
+            "total_amount": lc.total_amount,
+            "tax_code_id": lc.tax_code_id,
+            "tax_pct": tax_rate,
+            "period_days": period_days,
+            "created_at": lc.created_at,
+            "payer_type": lc.payer_type,
+            "invoice_status": invoice_status
+        })
+    
+    # Parse utilities from lease.utilities field (NOT meta)
+    electricity = None
+    water = None
+    
+    if lease.utilities:
+        try:
+            # If utilities is a JSON/dict
+            if isinstance(lease.utilities, dict):
+                electricity = lease.utilities.get('electricity')
+                water = lease.utilities.get('water')
+            # If utilities is a string, parse it as JSON
+            elif isinstance(lease.utilities, str):
+                import json
+                utilities_dict = json.loads(lease.utilities)
+                electricity = utilities_dict.get('electricity')
+                water = utilities_dict.get('water')
+        except:
+            # If parsing fails, set to None
+            pass
+    
+    # Get tenant details
+    tenant_name = None
+    tenant_legal_name = None
+    tenant_email = None
+    tenant_phone = None
+    
+    if lease.tenant:
+        tenant_name = lease.tenant.name
+        tenant_legal_name = lease.tenant.legal_name
+        tenant_email = lease.tenant.email
+        tenant_phone = lease.tenant.phone
+    
+    # Get space kind
+    space_kind = None
+    if lease.space:
+        space_kind = lease.space.kind
+    
+   
+    return {
+       
+        "id": lease.id,
+        "lease_number": lease.lease_number or "",
+        "status": lease.status,
+        "start_date": lease.start_date.isoformat() if lease.start_date else None,
+        "end_date": lease.end_date.isoformat() if lease.end_date else None,
+        "rent_amount": lease.rent_amount,
+        "deposit_amount": lease.deposit_amount,
+        "cam_rate": lease.cam_rate,
+        
+        # Utilities - parsed from lease.utilities
+        "electricity": electricity,
+        "water": water,
+        
+        # Tenant info
+        "tenant_id": lease.tenant_id,
+        "tenant_name": tenant_name,
+        "tenant_legal_name": tenant_legal_name,
+        "tenant_email": tenant_email,
+        "tenant_phone": tenant_phone,
+        
+        # Space/Site info
+        "space_id": lease.space_id,
+        "space_name": lease.space.name if lease.space else None,
+        "space_code": lease.space.code if lease.space else None,
+        "space_kind": space_kind,
+        "site_id": lease.site_id,
+        "site_name": lease.site.name if lease.site else None,
+        "building_name": building_name,
+        "building_id": building_id,
+        
+       
+        "charges": charges_list
+    }

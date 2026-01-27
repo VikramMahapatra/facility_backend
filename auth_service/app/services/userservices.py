@@ -81,7 +81,8 @@ def create_user(
             status="pending_approval"
         )
 
-        user_instance.set_password(user.password)
+        if user.password:
+            user_instance.set_password(user.password)
 
         db.add(user_instance)
         db.flush()

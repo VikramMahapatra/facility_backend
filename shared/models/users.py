@@ -22,7 +22,7 @@ class Users(AuthBase):
     full_name = Column(String(200), nullable=False)
 
     username = Column(String(100), unique=True, index=True, nullable=False)
-    password = Column(String(255), nullable=False)
+    password = Column(String(255), nullable=True)
 
     email = Column(String(200), nullable=True)
     phone = Column(String(20), nullable=True)

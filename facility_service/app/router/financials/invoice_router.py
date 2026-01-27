@@ -34,6 +34,12 @@ def invoice_detail(
         invoice_id=params.invoice_id
     )
 
+@router.get("/invoice-type", response_model=List[Lookup])
+def invoice_type_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.invoice_type_lookup(db, current_user.org_id)
 
 @router.get("/all", response_model=InvoicesResponse)
 def get_invoices(

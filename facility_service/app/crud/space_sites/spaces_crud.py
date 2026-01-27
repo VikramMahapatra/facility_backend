@@ -12,7 +12,7 @@ from ...models.space_sites.space_owners import OwnershipStatus, SpaceOwner
 from shared.models.users import Users
 
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
-from shared.core.schemas import UserToken
+from shared.core.schemas import CommonQueryParams, UserToken
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
@@ -668,3 +668,82 @@ def get_space_ownership_history(
         )
 
     return response
+
+
+def get_pending_space_owner_requests(
+    db: Session,
+    org_id: UUID,
+    params: CommonQueryParams
+):
+    base_query = (
+        db.query(SpaceOwner)
+        .join(Space)
+        .filter(
+            SpaceOwner.owner_org_id == org_id,
+            SpaceOwner.status == OwnershipStatus.requested,
+            SpaceOwner.is_active == True
+        )
+    )
+
+    if params.search:
+        search_term = f"%{params.search}%"
+        base_query.filter(or_(Space.name.ilike(search_term),
+                              Space.code.ilike(search_term)))
+
+    total = base_query.count()
+
+    requests = (
+        base_query
+        .order_by(SpaceOwner.requested_at.desc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+
+    return {
+        "requests": requests,
+        "total": total
+    }
+
+
+def update_space_owner_approval(
+    db: Session,
+    request_id: UUID,
+    action: OwnershipStatus
+):
+    owner = (
+        db.query(SpaceOwner)
+        .filter(
+            SpaceOwner.id == request_id,
+            SpaceOwner.is_active == True
+        )
+        .first()
+    )
+
+    if not owner:
+        return error_response(message="Ownership request not found")
+
+    if action == OwnershipStatus.approved:
+        # Ensure only one primary owner
+        if owner.ownership_type == "primary":
+            db.query(SpaceOwner).filter(
+                SpaceOwner.space_id == owner.space_id,
+                SpaceOwner.ownership_type == "primary",
+                SpaceOwner.is_active == True,
+                SpaceOwner.id != owner.id
+            ).update({
+                SpaceOwner.is_active: False,
+                SpaceOwner.status: OwnershipStatus.rejected
+            })
+
+        owner.status = OwnershipStatus.approved
+        owner.is_active = True
+
+    else:
+        owner.status = OwnershipStatus.rejected
+        owner.is_active = False
+        owner.end_date = date.today()
+
+    db.commit()
+    db.refresh(owner)
+    return owner

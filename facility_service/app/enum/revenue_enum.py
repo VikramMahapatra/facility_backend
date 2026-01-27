@@ -15,5 +15,6 @@ class InvoicePayementMethod(str ,Enum):
     
 class InvoiceType(str ,Enum):
     lease_charge = "lease charge"
-    owner_maintenance = "owner maintenance"
     work_order = "work order"
+    owner_maintenance = "owner maintenance"
+ 

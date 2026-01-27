@@ -198,7 +198,7 @@ def create_user(
         user_org = UserOrganization(
             user_id=user_instance.id,
             org_id=org_id,
-            account_type=user.accountType.lower(),
+            account_type=user.account_type.lower(),
             status="pending",
             is_default=True
         )

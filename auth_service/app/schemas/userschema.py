@@ -54,6 +54,7 @@ class UserOrganizationOut(BaseModel):
     org_id: UUID
     organization_name: Optional[str] = None
     is_default: bool
+    status: str
 
 
 class RoleOut(BaseModel):

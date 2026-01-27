@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session , joinedload
 from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
 from sqlalchemy.dialects.postgresql import JSONB
 from facility_service.app.models.leasing_tenants.leases import Lease
+from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from facility_service.app.models.space_sites.owner_maintenances import OwnerMaintenanceCharge
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
 from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType
-from shared.helpers.json_response_helper import error_response 
+from shared.helpers.json_response_helper import error_response
+from shared.models.users import Users 
 
 from ...enum.revenue_enum import  InvoicePayementMethod, InvoiceType
 
@@ -150,6 +152,24 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
                         )
                     else:
                         billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
+            
+            elif invoice.billable_item_type == "owner maintenance":
+                owner_maintenance = db.query(OwnerMaintenanceCharge).filter(
+                    OwnerMaintenanceCharge.id == invoice.billable_item_id,
+                    OwnerMaintenanceCharge.is_deleted == False
+                ).first()
+                
+                if owner_maintenance:
+                    # Get space info
+                    space = db.query(Space).filter(Space.id == owner_maintenance.space_id).first()
+                    
+                    if owner_maintenance.period_start and owner_maintenance.period_end:
+                        start_str = owner_maintenance.period_start.strftime("%d %b %Y")
+                        end_str = owner_maintenance.period_end.strftime("%d %b %Y")
+                        space_name = space.name 
+                        billable_item_name = (f"OM| {space_name} | {start_str} - {end_str} |{owner_maintenance.maintenance_no}")
+                    else:
+                        billable_item_name = f"OM | {owner_maintenance.maintenance_no}"
         
         # ✅ ADD THIS: Get payments for the invoice
         payments = db.query(PaymentAR).filter(
@@ -203,9 +223,9 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
         invoices=results,
         total=total
     )
-    
-    
-def get_payments(db: Session, org_id: str, params: InvoicesRequest):
+
+
+def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesRequest):
     total = (
         db.query(func.count(PaymentAR.id))
         .join(Invoice, PaymentAR.invoice_id == Invoice.id)
@@ -309,7 +329,49 @@ def get_payments(db: Session, org_id: str, params: InvoicesRequest):
                         # Fallback to space tenant
                         space_tenant = parking_pass.space.tenant
                         customer_name = f"{space_tenant.name} {space_tenant.name}"
+            
+            elif invoice.billable_item_type == "owner maintenance":
+                owner_maintenance = db.query(OwnerMaintenanceCharge).filter(
+                    OwnerMaintenanceCharge.id == invoice.billable_item_id,
+                    OwnerMaintenanceCharge.is_deleted == False
+                ).first()
+                
+                if owner_maintenance:
+                    # Get space info
+                    space = db.query(Space).filter(Space.id == owner_maintenance.space_id).first()
                     
+                    if owner_maintenance.period_start and owner_maintenance.period_end:
+                        start_str = owner_maintenance.period_start.strftime("%d %b %Y")
+                        end_str = owner_maintenance.period_end.strftime("%d %b %Y")
+                        space_name = space.name 
+                        billable_item_name = (f"OM | {space_name} | {start_str} - {end_str} |{owner_maintenance.maintenance_no}")
+                    else:
+                        billable_item_name = f"OM | {owner_maintenance.maintenance_no}"
+                    
+                    customer_name = None
+
+                    if owner_maintenance.space_owner_id:
+                        space_owner = (
+                            db.query(SpaceOwner)
+                            .filter(
+                                SpaceOwner.id == owner_maintenance.space_owner_id
+                            )
+                            .first()
+                        )
+
+                        if space_owner and space_owner.owner_user_id:
+                            user = (
+                                auth_db.query(Users)
+                                .filter(
+                                    Users.id == space_owner.owner_user_id,
+                                    Users.is_deleted == False
+                                )
+                                .first()
+                            )
+
+                            if user:
+                                customer_name = user.full_name
+                        
         # ✅ FIX: Convert date objects to strings for Pydantic model
         results.append(PaymentOut.model_validate({
             **payment.__dict__,
@@ -456,11 +518,11 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         if owner_maintenance.period_start and owner_maintenance.period_end:
             start_str = owner_maintenance.period_start.strftime("%d %b %Y")
             end_str = owner_maintenance.period_end.strftime("%d %b %Y")
-            space_name = space.name if space else "Unknown Space"
-            billable_item_name = (f"Owner Maintenance | {space_name} | {start_str} - {end_str} |{owner_maintenance.maintenance_no}")
+            space_name = space.name 
+            billable_item_name = (f"OM | {space_name} | {start_str} - {end_str} |{owner_maintenance.maintenance_no}")
         else:
-            billable_item_name = f"Owner Maintenance | {owner_maintenance.maintenance_no}"
- 
+            billable_item_name = f"OM | {owner_maintenance.maintenance_no}"
+
     else:
         raise HTTPException(
             status_code=400,
@@ -704,7 +766,7 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         db.rollback()
         raise HTTPException(
             status_code=500,
-            detail="Failed to create invoice"
+            detail=str(e)
         )
 
 
@@ -948,6 +1010,22 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
                 else:
                     billable_item_name = f"Parking Pass | {parking_pass.pass_no}"
 
+        elif db_invoice.billable_item_type == "owner maintenance":
+            owner_maintenance = db.query(OwnerMaintenanceCharge).filter(
+                OwnerMaintenanceCharge.id == db_invoice.billable_item_id,
+                OwnerMaintenanceCharge.is_deleted == False
+            ).first()
+            
+            if owner_maintenance:
+                space = db.query(Space).filter(Space.id == owner_maintenance.space_id).first()
+                if owner_maintenance.period_start and owner_maintenance.period_end:
+                    start_str = owner_maintenance.period_start.strftime("%d %b %Y")
+                    end_str = owner_maintenance.period_end.strftime("%d %b %Y")
+                    space_name = space.name 
+                    billable_item_name = (f"OM | {space_name} | {start_str} - {end_str} |{owner_maintenance.maintenance_no}")
+                else:
+                    billable_item_name = f"OM | {owner_maintenance.maintenance_no}"
+                    
     # Get all payments for response
     all_payments = db.query(PaymentAR).filter(
         PaymentAR.invoice_id == db_invoice.id
@@ -1125,13 +1203,13 @@ def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, billab
         
         for om in owner_maintenances:
             space = db.query(Space).filter(Space.id == om.space_id).first()
-            space_name = space.name if space else "Unknown Space"
+            space_name = space.name 
             if om.period_start and om.period_end:
                 start_str = om.period_start.strftime("%d %b %Y")
                 end_str = om.period_end.strftime("%d %b %Y")
-                formatted_name = (f"Owner Maintenance | {space_name} | {start_str} - {end_str} |{om.maintenance_no}")
+                formatted_name = (f"OM | {space_name} | {start_str} - {end_str} |{om.maintenance_no}")
             else:
-                formatted_name = f"Owner Maintenance | {om.maintenance_no}"
+                formatted_name = f"OM | {om.maintenance_no}"
                 
             entities.append(Lookup(
                 id=str(om.id),
@@ -1386,7 +1464,7 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
         else:
             raise HTTPException(
                 status_code=400,
-               detail="Invalid billable_item_type. Must be 'work order', 'lease charge', or 'parking pass'"
+               detail="Invalid billable_item_type. Must be 'work order', 'lease charge', or 'parking pass', 'owner maintenance'."
             )
         
         return InvoiceTotalsResponse(
@@ -1415,7 +1493,7 @@ def build_invoice_billable_item_name(db, item_type, item_id):
                 return f"{code} | {charge.period_start:%d %b %Y} - {charge.period_end:%d %b %Y}"
             return code
 
-    if item_type == "work order":
+    elif item_type == "work order":
         wo = db.query(TicketWorkOrder).filter(
             TicketWorkOrder.id == item_id
         ).first()
@@ -1425,17 +1503,33 @@ def build_invoice_billable_item_name(db, item_type, item_id):
             ).first()
             return f"{wo.wo_no} | Ticket {ticket.ticket_no}" if ticket else wo.wo_no
 
-    if item_type == "parking pass":
+    elif item_type == "parking pass":
         pass_ = db.query(ParkingPass).filter(
             ParkingPass.id == item_id
         ).first()
         if pass_:
             return f"Parking Pass | {pass_.pass_no}"
-
+        
+    elif item_type == "owner maintenance":
+        owner_maintenance = db.query(OwnerMaintenanceCharge).filter(
+            OwnerMaintenanceCharge.id == item_id,
+            OwnerMaintenanceCharge.is_deleted == False
+        ).first()
+        for om in owner_maintenance:
+            space = db.query(Space).filter(Space.id == om.space_id).first()
+            space_name = space.name 
+            if om.period_start and om.period_end:
+                start_str = om.period_start.strftime("%d %b %Y")
+                end_str = om.period_end.strftime("%d %b %Y")
+                formatted_name = (f"OM | {space_name} | {start_str} - {end_str} |{om.maintenance_no}")
+            else:
+                formatted_name = f"OM | {om.maintenance_no}"
+            return formatted_name
+        
     return None
 
 
-def get_invoice_detail(db: Session, org_id: UUID, invoice_id: UUID) -> InvoiceOut:
+def get_invoice_detail(db: Session, auth_db: Session, org_id: UUID, invoice_id: UUID) -> InvoiceOut:
     invoice = (
         db.query(Invoice)
         .options(joinedload(Invoice.site))
@@ -1529,6 +1623,47 @@ def get_invoice_detail(db: Session, org_id: UUID, invoice_id: UUID) -> InvoiceOu
                     customer_name = parking_pass.pass_holder_name
                 elif parking_pass.space and parking_pass.space.tenant:
                     customer_name = parking_pass.space.tenant.name or parking_pass.space.tenant.legal_name
+        
+        elif invoice.billable_item_type == "owner maintenance":
+            owner_maintenance = db.query(OwnerMaintenanceCharge).filter(
+                OwnerMaintenanceCharge.id == invoice.billable_item_id,
+                OwnerMaintenanceCharge.is_deleted == False
+            ).first()
+            
+            if owner_maintenance:
+                space = db.query(Space).filter(Space.id == owner_maintenance.space_id).first()
+                if owner_maintenance.period_start and owner_maintenance.period_end:
+                    start_str = owner_maintenance.period_start.strftime("%d %b %Y")
+                    end_str = owner_maintenance.period_end.strftime("%d %b %Y")
+                    space_name = space.name
+                    billable_item_name = (f"OM | {space_name} | {start_str} - {end_str} |{owner_maintenance.maintenance_no}")
+                else:
+                    billable_item_name = f"OM | {owner_maintenance.maintenance_no}"
+                
+                customer_name = None
+
+                if owner_maintenance.space_owner_id:
+                    space_owner = (
+                        db.query(SpaceOwner)
+                        .filter(
+                            SpaceOwner.id == owner_maintenance.space_owner_id
+                        )
+                        .first()
+                    )
+
+                    if space_owner and space_owner.owner_user_id:
+                        user = (
+                            auth_db.query(Users)
+                            .filter(
+                                Users.id == space_owner.owner_user_id,
+                                Users.is_deleted == False
+                            )
+                            .first()
+                        )
+
+                        if user:
+                            customer_name = user.full_name
+
 
     # -------------------------------------------------
     # PAYMENTS
@@ -1583,6 +1718,7 @@ def get_invoice_detail(db: Session, org_id: UUID, invoice_id: UUID) -> InvoiceOu
 
 def get_invoice_payment_history(
     db: Session,
+    auth_db: Session,
     org_id: UUID,
     invoice_id: UUID
 ) -> InvoicePaymentHistoryOut:
@@ -1664,7 +1800,46 @@ def get_invoice_payment_history(
             space_tenant = pp.space.tenant
             customer_name = f"{space_tenant.name} {space_tenant.name}"
                         
+    elif invoice.billable_item_type == "owner maintenance":
+        owner_maintenance = db.query(OwnerMaintenanceCharge).filter(
+            OwnerMaintenanceCharge.id == invoice.billable_item_id,
+            OwnerMaintenanceCharge.is_deleted == False
+        ).first()
         
+        if owner_maintenance:
+            space = db.query(Space).filter(Space.id == owner_maintenance.space_id).first()
+            if owner_maintenance.period_start and owner_maintenance.period_end:
+                start_str = owner_maintenance.period_start.strftime("%d %b %Y")
+                end_str = owner_maintenance.period_end.strftime("%d %b %Y")
+                space_name = space.name
+                billable_item_name = (f"OM | {space_name} | {start_str} - {end_str} |{owner_maintenance.maintenance_no}")
+            else:
+                billable_item_name = f"OM | {owner_maintenance.maintenance_no}"
+                
+                customer_name = None
+
+                if owner_maintenance.space_owner_id:
+                    space_owner = (
+                        db.query(SpaceOwner)
+                        .filter(
+                            SpaceOwner.id == owner_maintenance.space_owner_id
+                        )
+                        .first()
+                    )
+
+                    if space_owner and space_owner.owner_user_id:
+                        user = (
+                            auth_db.query(Users)
+                            .filter(
+                                Users.id == space_owner.owner_user_id,
+                                Users.is_deleted == False
+                            )
+                            .first()
+                        )
+
+                        if user:
+                            customer_name = user.full_name
+                
     # Fetch payments
     payments = db.query(PaymentAR).filter(
         PaymentAR.invoice_id == invoice_id,

@@ -36,13 +36,13 @@ class UserCreate(BaseModel):
     last_name: Optional[str] = None
     email: str
     phone: Optional[str] = None
-    accountType: Literal["organization", "vendor", "tenant", "flatowner"]
+    accountType: Literal["organization", "vendor", "tenant", "owner"]
     organizationName: Optional[str] = None
     site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
     pictureUrl: Optional[HttpUrl] = None
     tenant_type: Optional[str] = None
-    password: str  # ✅ ADD THIS LINE
+    password: Optional[str] = None
 
     class Config:
         from_attributes = True  # allows Pydantic to work with SQLAlchemy objects

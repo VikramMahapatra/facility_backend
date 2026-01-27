@@ -1,13 +1,17 @@
 # space_owner.py
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Column, Date, Boolean, ForeignKey, Numeric, String, Index
+from sqlalchemy import Column, Date, Boolean, DateTime, ForeignKey, Numeric, String, Index, Enum, func
 from sqlalchemy.orm import relationship
 import uuid
 from shared.core.database import Base
+import enum
+
+from shared.utils.enums import OwnershipStatus
 
 
 class SpaceOwner(Base):
     __tablename__ = "space_owners"
+    __table_args__ = {"extend_existing": True}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
@@ -42,6 +46,17 @@ class SpaceOwner(Base):
     end_date = Column(Date, nullable=True)
 
     is_active = Column(Boolean, default=True, nullable=False)
+
+    status = Column(
+        Enum(OwnershipStatus, name="ownership_status"),
+        default=OwnershipStatus.requested,
+        nullable=False
+    )
+
+    requested_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now()
+    )
 
     # Relationships
     space = relationship("Space", back_populates="owners")

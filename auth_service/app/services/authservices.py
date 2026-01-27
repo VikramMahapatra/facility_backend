@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 import requests
 from datetime import datetime, timedelta, timezone
 
-from auth_service.app.models.user_organizations import UserOrganization
+from ..models.user_organizations import UserOrganization
 from ..models.otp_verifications import OtpVerification
 from shared.models.user_login_session import UserLoginSession
 from shared.helpers.email_helper import EmailHelper
@@ -360,7 +360,7 @@ def switch_account(
 
     default_org = (
         db.query(UserOrganization)
-        .filter(UserOrganization.id == request.user_org_id)
+        .filter(UserOrganization.id == request.user_org_id, UserOrganization.account_type == request.account_type)
         .first()
     )
 

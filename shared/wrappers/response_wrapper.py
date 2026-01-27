@@ -7,6 +7,7 @@ from shared.core.schemas import JsonOutResult
 from typing import Callable, Any
 import json
 import traceback
+from fastapi.responses import StreamingResponse
 
 
 def replace_nulls_with_empty(value: Any):
@@ -43,9 +44,20 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
         # Skip docs/openapi endpoints
         if request.url.path.startswith(("/openapi", "/docs", "/redoc")):
             return await call_next(request)
+        if request.url.path.endswith("/download"):
+            return await call_next(request)
 
         try:
             response = await call_next(request)
+            content_type = response.headers.get("content-type", "")
+
+            # 🚫 DO NOT TOUCH binary responses
+            if (
+                isinstance(response, StreamingResponse)
+                or content_type.startswith("application/pdf")
+                or content_type.startswith("application/octet-stream")
+            ):
+                return response
         except Exception as e:
             # 🧨 Handle uncaught exceptions gracefully
             error_message = str(e)

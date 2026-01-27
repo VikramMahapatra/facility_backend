@@ -254,6 +254,7 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         .first()
     )
 
+    roles = []
     if user_org.roles:
         roles = [str(role.id) for role in user_org.roles]
 

@@ -186,7 +186,7 @@ def create_user(
             # ➕ Insert new
             facility_db.add(
                 SpaceOwnerSafe(
-                    owner_user_id=user_instance.user_id,
+                    owner_user_id=user_instance.id,
                     space_id=user.space_id,
                     owner_org_id=org_id,
                     is_active=False,

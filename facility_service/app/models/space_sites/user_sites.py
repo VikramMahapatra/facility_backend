@@ -1,5 +1,5 @@
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Boolean, Column, String, Date, DateTime, func, ForeignKey, Index
+from sqlalchemy import Boolean, Column, String, Date, DateTime, UniqueConstraint, func, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 import uuid
@@ -30,6 +30,11 @@ class UserSite(Base):
     site = relationship("Site", back_populates="user_sites")
 
     __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "site_id",
+            name="uq_user_site"
+        ),
         Index(
             "uq_user_primary_site",
             "user_id",

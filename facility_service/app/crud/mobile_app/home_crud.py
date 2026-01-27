@@ -125,7 +125,7 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
         auth_db.query(UserOrganization)
         .filter(
             UserOrganization.user_id == user.user_id,
-            UserOrganization.status == "active"
+            UserOrganization.is_deleted == False
         )
         .order_by(
             UserOrganization.is_default.desc(),
@@ -160,7 +160,8 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
             "org_id": org.org_id,
             "account_type": org.account_type,
             "organization_name": org_map.get(org.org_id),
-            "is_default": org.is_default
+            "is_default": org.is_default,
+            "status": org.status
         })
         for org in user_orgs
     ]
@@ -190,38 +191,24 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
         period_start = user_record.created_at.date()
 
     # make the current site as primary
-    user_site = (
-        db.query(UserSite)
-        .filter(
+    with db.begin():
+        db.query(UserSite).filter(
+            UserSite.user_id == user.user_id,
+            UserSite.is_primary == True
+        ).update(
+            {"is_primary": False},
+            synchronize_session=False
+        )
+
+        db.query(UserSite).filter(
             UserSite.user_id == user.user_id,
             UserSite.site_id == params.site_id
+        ).update(
+            {"is_primary": True},
+            synchronize_session=False
         )
-        .first()
-    )
-
-    user_site.is_primary = True
-    db.commit()
 
     spaces_response = []
-    # ✅ Always define placeholders at top level
-    lease_contract_detail = {
-        "start_date": None,
-        "expiry_date": None,
-        "rent_amount": 0.0,
-        "total_rent_paid": 0.0,
-        "rent_frequency": None,
-        "last_paid_date": None,
-        "next_due_date": None
-    }
-
-    maintenance_detail = {
-        "last_paid": None,
-        "next_due_date": None,
-        "total_maintenance_paid": 0.0,
-        "next_maintenance_amount": 0.0
-    }
-
-    lease_contract_exist = False
 
     # ------------------------------
     # Tenant or Flat Owner flow

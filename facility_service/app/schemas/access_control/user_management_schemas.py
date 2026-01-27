@@ -25,6 +25,7 @@ class UserOrganizationOut(BaseModel):
     user_org_id: UUID
     org_id: UUID
     account_type: str
+    status: str
     organization_name: Optional[str] = None
     is_default: bool
 

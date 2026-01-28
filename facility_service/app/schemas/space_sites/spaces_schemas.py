@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Any
 from decimal import Decimal
 
+from shared.utils.enums import OwnershipStatus
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from shared.core.schemas import CommonQueryParams
 
@@ -96,5 +97,17 @@ class OwnershipHistoryOut(BaseModel):
     start_date: date
     end_date: Optional[date]
     is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class OwnershipApprovalRequest(BaseModel):
+    action: OwnershipStatus
+    request_id: str
+
+
+class OwnershipApprovalListResponse(BaseModel):
+    request: List[OwnershipHistoryOut]
+    total: int
 
     model_config = {"from_attributes": True}

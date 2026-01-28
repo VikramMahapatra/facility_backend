@@ -391,7 +391,7 @@ def register_space(
         facility_db.add(
             SpaceOwner(
                 owner_user_id=user.user_id,
-                space_id=user.space_id,
+                space_id=params.space_id,
                 owner_org_id=site.org_id,
                 ownership_type="primary",
                 status=OwnershipStatus.requested,
@@ -404,7 +404,7 @@ def register_space(
 
         existing_tenant = facility_db.query(TenantSpace).filter(
             and_(
-                TenantSpace.space_id == user.space_id,
+                TenantSpace.space_id == params.space_id,
                 TenantSpace.status == "occupied",
                 TenantSpace.is_deleted == False)
         ).first()

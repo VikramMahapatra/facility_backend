@@ -747,8 +747,7 @@ def update_space_owner_approval(
     owner = (
         db.query(SpaceOwner)
         .filter(
-            SpaceOwner.id == request_id,
-            SpaceOwner.is_active == True
+            SpaceOwner.id == request_id
         )
         .first()
     )

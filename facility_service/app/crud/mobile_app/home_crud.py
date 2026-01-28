@@ -362,6 +362,7 @@ def register_space(
         user: UserToken):
 
     now = datetime.utcnow()
+    tenant_obj = None
 
     # ✅ Find site
     site = facility_db.query(Site).filter(

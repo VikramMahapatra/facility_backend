@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
 from ...schemas.leases_schemas import (
-    LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse,
+    LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut,
 )
 from ...crud.leasing_tenants import leases_crud as crud
 from shared.core.auth import allow_admin, validate_current_token
@@ -98,3 +98,29 @@ def lease_tenant_lookup(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.lease_tenant_lookup(current_user.org_id, site_id, space_id, db)
+
+
+@router.post("/detail", response_model=LeaseDetailOut)
+def lease_detail(
+    params: LeaseDetailRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    
+    return crud.get_lease_detail(
+        db=db,
+        org_id=current_user.org_id,
+        lease_id=params.lease_id
+    )
+
+@router.get("/tenant-lease/detail", response_model=TenantSpaceDetailOut)
+def tenant_space_detail(
+    tenant_id:UUID = Query(...),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_tenant_space_detail(
+        db=db,
+        org_id=current_user.org_id,
+        tenant_id=tenant_id
+    )

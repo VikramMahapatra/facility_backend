@@ -88,7 +88,7 @@ def create_user(
         db.flush()
 
         # ✅ ACCOUNT TYPE: ORGANIZATION
-        if user.accountType.lower() == "organization":
+        if user.account_type.lower() == "organization":
             if not user.organizationName:
                 return error_response(
                     message="Organization name required",
@@ -103,7 +103,7 @@ def create_user(
             org_id = org_instance.id
 
         # ✅ ACCOUNT TYPE: TENANT
-        elif user.accountType.lower() == "tenant":
+        elif user.account_type.lower() == "tenant":
             # ✅ Find site
             site = facility_db.query(SiteSafe).filter(
                 SiteSafe.id == user.site_id).first()
@@ -186,7 +186,7 @@ def create_user(
             # ➕ Insert new
             facility_db.add(
                 SpaceOwnerSafe(
-                    owner_user_id=user_instance.user_id,
+                    owner_user_id=user_instance.id,
                     space_id=user.space_id,
                     owner_org_id=org_id,
                     is_active=False,
@@ -198,7 +198,7 @@ def create_user(
         user_org = UserOrganization(
             user_id=user_instance.id,
             org_id=org_id,
-            account_type=user.accountType.lower(),
+            account_type=user.account_type.lower(),
             status="pending",
             is_default=True
         )
@@ -245,7 +245,7 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         auth_db.query(UserOrganization)
         .filter(
             UserOrganization.user_id == user.id,
-            UserOrganization.status == "active"
+            UserOrganization.is_deleted == False
         )
         .order_by(
             UserOrganization.is_default.desc(),
@@ -254,10 +254,9 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         .first()
     )
 
-    roles = [str(role.id) for role in user_org.roles]
-
-    if not user_org:
-        return error_response(message="User has no active organization")
+    roles = []
+    if user_org.roles:
+        roles = [str(role.id) for role in user_org.roles]
 
     tenant = facility_db.query(TenantSafe).filter(
         TenantSafe.user_id == user.id,
@@ -300,7 +299,7 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
         auth_db.query(UserOrganization)
         .filter(
             UserOrganization.user_id == user_data.id,
-            UserOrganization.status == "active"
+            UserOrganization.is_deleted == False
         )
         .order_by(
             UserOrganization.is_default.desc(),
@@ -342,7 +341,8 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
             "org_id": org.org_id,
             "account_type": org.account_type,
             "organization_name": org_map.get(org.org_id),
-            "is_default": org.is_default
+            "is_default": org.is_default,
+            "status": org.status
         })
         for org in user_orgs
     ]

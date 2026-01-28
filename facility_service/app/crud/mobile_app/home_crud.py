@@ -363,6 +363,7 @@ def register_space(
 
     now = datetime.utcnow()
     tenant_obj = None
+    tenant_space = None
 
     # ✅ Find site
     site = facility_db.query(Site).filter(
@@ -436,6 +437,7 @@ def register_space(
     # RESPONSE
     space_is_owner = False
     space_lease_contract_exist = False
+    space_status = ""
 
     # 1. CHECK IF USER IS SPACE OWNER
     space_owner = facility_db.query(SpaceOwner).filter(
@@ -446,6 +448,7 @@ def register_space(
 
     if space_owner:
         space_is_owner = True
+        space_status = space_owner.status
 
         # 2. CHECK IF USER IS TENANT (for lease contract)
     if tenant_obj and not space_is_owner:
@@ -457,6 +460,8 @@ def register_space(
         ).first()
 
         if tenant_space:
+            space_status = tenant_space.status
+
             # Get lease for this space
             lease_query = facility_db.query(Lease).filter(
                 Lease.space_id == space.id,
@@ -487,7 +492,7 @@ def register_space(
         site_id=space.site.id,
         site_name=space.site.name,
         building_id=space.building_block_id,
-        status=space_owner.status if space_is_owner else tenant_space.status,
+        status=space_status,
         building_name=space.building.name if space.building else None,
         is_owner=space_is_owner,
         lease_contract_exist=space_lease_contract_exist,

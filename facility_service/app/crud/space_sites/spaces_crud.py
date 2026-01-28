@@ -674,6 +674,7 @@ def get_space_ownership_history(
 
 def get_pending_space_owner_requests(
     db: Session,
+    auth_db: Session,
     org_id: UUID,
     params: CommonQueryParams
 ):
@@ -702,14 +703,41 @@ def get_pending_space_owner_requests(
         .all()
     )
 
+    response = []
+
+    for owner in requests:
+        owner_name = None
+
+        if owner.owner_user_id:
+            user = (
+                auth_db.query(Users)
+                .filter(Users.id == owner.owner_user_id)
+                .first()
+            )
+            owner_name = user.full_name if user else None
+
+        response.append(
+            OwnershipHistoryOut(
+                id=owner.id,
+                owner_user_id=owner.owner_user_id,
+                owner_name=owner_name,
+                ownership_type=owner.ownership_type,
+                ownership_percentage=owner.ownership_percentage,
+                start_date=owner.start_date,
+                end_date=owner.end_date,
+                is_active=owner.is_active
+            )
+        )
+
     return {
-        "requests": requests,
+        "requests": response,
         "total": total
     }
 
 
 def update_space_owner_approval(
     db: Session,
+    auth_db: Session,
     request_id: UUID,
     action: OwnershipStatus
 ):
@@ -748,4 +776,21 @@ def update_space_owner_approval(
 
     db.commit()
     db.refresh(owner)
-    return owner
+
+    user = (
+        auth_db.query(Users)
+        .filter(Users.id == owner.owner_user_id)
+        .first()
+    )
+    owner_name = user.full_name if user else None
+
+    return OwnershipHistoryOut(
+        id=owner.id,
+        owner_user_id=owner.owner_user_id,
+        owner_name=owner_name,
+        ownership_type=owner.ownership_type,
+        ownership_percentage=owner.ownership_percentage,
+        start_date=owner.start_date,
+        end_date=owner.end_date,
+        is_active=owner.is_active
+    )

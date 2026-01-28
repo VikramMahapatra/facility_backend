@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.utils.app_status_code import AppStatusCode
-from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut,OwnershipHistoryOut, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, OwnershipApprovalListResponse, OwnershipApprovalRequest, OwnershipHistoryOut, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate
 from ...crud.space_sites import spaces_crud as crud
 from shared.core.auth import allow_admin,  validate_current_token  # for dependicies
-from shared.core.schemas import Lookup, UserToken
+from shared.core.schemas import CommonQueryParams, Lookup, UserToken
 from uuid import UUID
 router = APIRouter(
     prefix="/api/spaces",
@@ -94,14 +94,13 @@ def get_active_space_owners(
     return owners
 
 
-
 @router.post("/assign-owner", response_model=AssignSpaceOwnerOut)
 def assign_owner(
-       payload: AssignSpaceOwnerIn,
+    payload: AssignSpaceOwnerIn,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
-): 
+):
 
     return crud.assign_space_owner(
         db=db,
@@ -109,9 +108,9 @@ def assign_owner(
         org_id=current_user.org_id,
         payload=payload
     )
-    
-    
-@router.get("/ownership-history/{space_id}",response_model=List[OwnershipHistoryOut])
+
+
+@router.get("/ownership-history/{space_id}", response_model=List[OwnershipHistoryOut])
 def ownership_history(
     space_id: UUID,
     db: Session = Depends(get_db),
@@ -126,3 +125,21 @@ def ownership_history(
     )
 
 
+@router.get("/pending-owner-request", response_model=List[OwnershipApprovalListResponse])
+def get_pending_space_owner_requests(
+    params: CommonQueryParams,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_pending_space_owner_requests(db, auth_db, current_user.org_id, params)
+
+
+@router.post("/update-owner-approval", response_model=OwnershipApprovalListResponse)
+def update_space_owner_approval(
+    params: OwnershipApprovalRequest,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.update_space_owner_approval(db, auth_db, params.request_id, params.action)

@@ -7,6 +7,7 @@ from typing import Dict, Optional
 
 from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.models.space_sites.user_sites import UserSite
+from facility_service.app.schemas.mobile_app.user_profile_schemas import MySpacesResponse
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
 from ...schemas.access_control.user_management_schemas import UserOrganizationOut
@@ -431,7 +432,65 @@ def register_space(
 
     facility_db.commit()
 
-    return get_space_detail(facility_db, user, space)
+    # RESPONSE
+    space_is_owner = False
+    space_lease_contract_exist = False
+
+    # 1. CHECK IF USER IS SPACE OWNER
+    space_owner = facility_db.query(SpaceOwner).filter(
+        SpaceOwner.space_id == space.id,
+        SpaceOwner.owner_user_id == user.user_id,
+        SpaceOwner.is_active == True
+    ).first()
+
+    if space_owner:
+        space_is_owner = True
+
+        # 2. CHECK IF USER IS TENANT (for lease contract)
+    if tenant_obj and not space_is_owner:
+        # Check if tenant has access to this space
+        tenant_space = facility_db.query(TenantSpace).filter(
+            TenantSpace.tenant_id == tenant_obj.id,
+            TenantSpace.space_id == space.id,
+            TenantSpace.is_deleted == False
+        ).first()
+
+        if tenant_space:
+            # Get lease for this space
+            lease_query = facility_db.query(Lease).filter(
+                Lease.space_id == space.id,
+                Lease.tenant_id == tenant_obj.id,
+                Lease.is_deleted == False,
+                Lease.end_date >= date.today()
+            )
+
+            lease = lease_query.order_by(Lease.end_date.desc()).first()
+
+            # Fallback to most recent if no active lease
+            if not lease:
+                lease_query = facility_db.query(Lease).filter(
+                    Lease.space_id == space.id,
+                    Lease.tenant_id == tenant_obj.id,
+                    Lease.is_deleted == False
+                )
+                lease = lease_query.order_by(
+                    Lease.end_date.desc()).first()
+
+            if lease:
+                space_lease_contract_exist = True
+
+        # Add space to response
+    return MySpacesResponse(
+        space_id=space.id,
+        space_name=space.name,
+        site_id=space.site.id,
+        site_name=space.site.name,
+        building_id=space.building_block_id,
+        status=space.status,
+        building_name=space.building.name if space.building else None,
+        is_owner=space_is_owner,
+        lease_contract_exist=space_lease_contract_exist,
+    )
 
 
 def get_space_detail(

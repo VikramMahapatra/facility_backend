@@ -296,7 +296,9 @@ def update_space(db: Session, space: SpaceUpdate):
         )
 
 
-def get_space_details_by_id(db: Session, space_id: str) -> Optional[SpaceOut]:
+def get_space_details_by_id(
+        db: Session,
+        space_id: str) -> Optional[SpaceOut]:
     db_space = (
         db.query(Space)
         .join(Site, Space.site_id == Site.id)
@@ -632,7 +634,7 @@ def get_space_ownership_history(
     )
 
     if not space:
-        raise HTTPException(status_code=404, detail="Space not found")
+        return error_response(message="Space not found")
 
     owners = (
         db.query(SpaceOwner)

@@ -38,6 +38,7 @@ class SpaceOut(SpaceBase):
     site_name: Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
+    owner_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -74,22 +75,18 @@ class SpaceOverview(BaseModel):
     model_config = {"from_attributes": True}
 
 
-
-
-
 class AssignSpaceOwnerOut(BaseModel):
     space_id: UUID
     owners: List[ActiveOwnerResponse]
 
     model_config = {"from_attributes": True}
-    
+
+
 class AssignSpaceOwnerIn(BaseModel):
     space_id: UUID
     owner_user_id: UUID
-   
-    
-    
-    
+
+
 class OwnershipHistoryOut(BaseModel):
     id: UUID
     owner_user_id: Optional[UUID]
@@ -101,4 +98,3 @@ class OwnershipHistoryOut(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
-    

@@ -225,7 +225,8 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             Tenant.user_id == user.user_id,
             TenantSpace.status.in_(["occupied", "pending"])
         ).options(
-            joinedload(Space.building)
+            joinedload(Space.building),
+            joinedload(Space.site)
         )
         owner_spaces_query = db.query(Space).join(
             SpaceOwner, SpaceOwner.space_id == Space.id
@@ -234,7 +235,8 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             SpaceOwner.is_active == True,
             SpaceOwner.owner_user_id == user.user_id
         ).options(
-            joinedload(Space.building)
+            joinedload(Space.building),
+            joinedload(Space.site)
         )
         tenant_spaces = tenant_spaces_query.all()
         owner_spaces = owner_spaces_query.all()
@@ -278,6 +280,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             Space.is_deleted == False
         ).options(
             joinedload(Space.building)
+            .joinedload(Space.site)
         )
 
         spaces = spaces_query.all()
@@ -355,7 +358,6 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
 def register_space(
         params: AddSpaceRequest,
         facility_db: Session,
-        auth_db: Session,
         user: UserToken):
 
     now = datetime.utcnow()
@@ -374,6 +376,14 @@ def register_space(
             message="Space required for tenant",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
         )
+
+    space = facility_db.query(Space).filter(
+        Space.id == params.space_id,
+        Space.is_deleted == False
+    ).options(
+        joinedload(Space.building),
+        joinedload(Space.site)
+    ).first()
 
     if params.account_type.lower() == "owner":
         # ➕ Insert new
@@ -420,6 +430,8 @@ def register_space(
         facility_db.add(space_tenant_link)
 
     facility_db.commit()
+
+    return get_space_detail(facility_db, user, space)
 
 
 def get_space_detail(
@@ -564,7 +576,7 @@ def get_space_detail(
         space_id=space.id,
         space_name=space.name,
         building_id=space.building_block_id,
-        status="active" if space_is_owner else tenant_space.status,
+        status=space_owner.status if space_is_owner else tenant_space.status,
         building_name=space.building.name if space.building else None,
         is_owner=space_is_owner,
         lease_contract_exist=space_lease_contract_exist,

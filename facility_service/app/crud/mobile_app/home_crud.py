@@ -486,7 +486,7 @@ def register_space(
         site_id=space.site.id,
         site_name=space.site.name,
         building_id=space.building_block_id,
-        status=space.status,
+        status=space_owner.status if space_is_owner else tenant_space.status,
         building_name=space.building.name if space.building else None,
         is_owner=space_is_owner,
         lease_contract_exist=space_lease_contract_exist,

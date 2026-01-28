@@ -135,7 +135,7 @@ def get_pending_space_owner_requests(
     return crud.get_pending_space_owner_requests(db, auth_db, current_user.org_id, params)
 
 
-@router.post("/update-owner-approval", response_model=OwnershipApprovalListResponse)
+@router.post("/update-owner-approval", response_model=OwnershipHistoryOut)
 def update_space_owner_approval(
     params: OwnershipApprovalRequest,
     db: Session = Depends(get_db),

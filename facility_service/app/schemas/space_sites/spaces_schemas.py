@@ -97,6 +97,8 @@ class OwnershipHistoryOut(BaseModel):
     start_date: date
     end_date: Optional[date]
     is_active: bool
+    space_id: Optional[UUID] = None
+    space_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -107,7 +109,7 @@ class OwnershipApprovalRequest(BaseModel):
 
 
 class OwnershipApprovalListResponse(BaseModel):
-    request: List[OwnershipHistoryOut]
+    requests: List[OwnershipHistoryOut]
     total: int
 
     model_config = {"from_attributes": True}

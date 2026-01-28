@@ -77,13 +77,13 @@ def space_building_lookup(
     return crud.get_space_with_building_lookup(db, site_id, current_user.org_id)
 
 
-@router.get("/{space_id}", response_model=SpaceOut)
+@router.get("/detail/{space_id:str}", response_model=SpaceOut)
 def get_space_details(space_id: str, db: Session = Depends(get_db)):
     db_space = crud.get_space_details_by_id(db, space_id)
     return db_space
 
 
-@router.get("/active-owners/{space_id}", response_model=List[ActiveOwnerResponse])
+@router.get("/active-owners/{space_id:str}", response_model=List[ActiveOwnerResponse])
 def get_active_space_owners(
     space_id: str,
     db: Session = Depends(get_db),
@@ -110,7 +110,7 @@ def assign_owner(
     )
 
 
-@router.get("/ownership-history/{space_id}", response_model=List[OwnershipHistoryOut])
+@router.get("/ownership-history/{space_id:uuid}", response_model=List[OwnershipHistoryOut])
 def ownership_history(
     space_id: UUID,
     db: Session = Depends(get_db),
@@ -125,9 +125,9 @@ def ownership_history(
     )
 
 
-@router.get("/pending-owner-request", response_model=List[OwnershipApprovalListResponse])
+@router.get("/pending-owner-request", response_model=OwnershipApprovalListResponse)
 def get_pending_space_owner_requests(
-    params: CommonQueryParams,
+    params: CommonQueryParams = Depends(),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)

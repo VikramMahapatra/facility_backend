@@ -680,13 +680,14 @@ def get_pending_space_owner_requests(
 ):
     base_query = (
         db.query(SpaceOwner)
-        .join(Space)
+        .join(Space, SpaceOwner.space_id == Space.id)
         .filter(
             SpaceOwner.owner_org_id == org_id,
-            SpaceOwner.status == OwnershipStatus.requested,
-            SpaceOwner.is_active == True
+            SpaceOwner.status == OwnershipStatus.requested
         )
     )
+
+    print(org_id)
 
     if params.search:
         search_term = f"%{params.search}%"
@@ -725,7 +726,9 @@ def get_pending_space_owner_requests(
                 ownership_percentage=owner.ownership_percentage,
                 start_date=owner.start_date,
                 end_date=owner.end_date,
-                is_active=owner.is_active
+                is_active=owner.is_active,
+                space_id=owner.space.id,
+                space_name=owner.space.name
             )
         )
 

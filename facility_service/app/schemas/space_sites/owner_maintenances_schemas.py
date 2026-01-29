@@ -13,6 +13,7 @@ class OwnerMaintenanceBase(EmptyStringModel):
     period_end: date
     amount: Decimal
     status: Optional[str] = "pending"
+    due_date: date
 
 
 class OwnerMaintenanceCreate(OwnerMaintenanceBase):
@@ -30,7 +31,7 @@ class OwnerMaintenanceOut(OwnerMaintenanceBase):
     created_at: datetime
     updated_at: datetime
     is_deleted: bool
-    
+    due_date: date
     # Additional fields for display
     space_name: Optional[str]= None
     owner_name: Optional[str]= None

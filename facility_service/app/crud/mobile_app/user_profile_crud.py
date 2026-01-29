@@ -232,8 +232,7 @@ def get_space_detail(
     # 1. CHECK IF USER IS SPACE OWNER
     space_owner = db.query(SpaceOwner).filter(
         SpaceOwner.space_id == space.id,
-        SpaceOwner.owner_user_id == user.user_id,
-        SpaceOwner.is_active == True
+        SpaceOwner.owner_user_id == user.user_id
     ).first()
 
     tenant = db.query(Tenant).filter(

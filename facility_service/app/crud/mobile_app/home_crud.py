@@ -442,8 +442,7 @@ def register_space(
     # 1. CHECK IF USER IS SPACE OWNER
     space_owner = facility_db.query(SpaceOwner).filter(
         SpaceOwner.space_id == space.id,
-        SpaceOwner.owner_user_id == user.user_id,
-        SpaceOwner.is_active == True
+        SpaceOwner.owner_user_id == user.user_id
     ).first()
 
     if space_owner:

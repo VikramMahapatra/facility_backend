@@ -625,15 +625,16 @@ def get_space_detail(
                             timedelta(days=1)
                         break
 
-            space_lease_contract_detail = LeaseContractDetail(
-                start_date=lease.start_date,
-                expiry_date=lease.end_date,
-                rent_amount=float(lease.rent_amount or 0),
-                total_rent_paid=float(total_rent_paid),
-                rent_frequency=lease.frequency,
-                last_paid_date=last_rent_paid,
-                next_due_date=next_rent_due
-            )
+            if space_lease_contract_exist:
+                space_lease_contract_detail = LeaseContractDetail(
+                    start_date=lease.start_date,
+                    expiry_date=lease.end_date,
+                    rent_amount=float(lease.rent_amount or 0),
+                    total_rent_paid=float(total_rent_paid),
+                    rent_frequency=lease.frequency,
+                    last_paid_date=last_rent_paid,
+                    next_due_date=next_rent_due
+                )
 
         # Add space to response
     return SpaceDetailsResponse(

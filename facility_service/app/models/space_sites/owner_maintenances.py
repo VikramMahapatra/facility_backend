@@ -37,7 +37,7 @@ class OwnerMaintenanceCharge(Base):  # Renamed class
         default="pending"
         # pending | invoiced | paid | waived
     )
-
+    due_date = Column(Date, nullable=False)
     invoice_id = Column(
         UUID(as_uuid=True),
         ForeignKey("invoices.id"),

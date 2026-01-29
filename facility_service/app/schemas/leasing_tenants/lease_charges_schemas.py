@@ -88,3 +88,22 @@ class LeaseRentAmountResponse(BaseModel):
         "from_attributes": True
     }
 
+class LeaseChargeAutoOut(BaseModel):
+    id: UUID
+    lease_id: UUID
+    charge_code_id: UUID
+    period_start: date
+    period_end: date
+    amount: Decimal
+    total_amount: Decimal
+    tax_code_id: Optional[UUID]
+    payer_type: str
+    payer_id: UUID
+
+    class Config:
+        from_attributes = True 
+        
+        
+class AutoLeaseChargeResponse(BaseModel):
+    charges: List[LeaseChargeAutoOut]
+    total: int

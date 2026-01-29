@@ -1,6 +1,7 @@
+from decimal import Decimal
 from sqlite3 import IntegrityError
 from typing import Dict, List, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session ,joinedload
 from sqlalchemy import and_, exists, func, cast, literal, or_, case
@@ -637,3 +638,89 @@ def get_owner_maintenances_by_space(
     except Exception as e:
         print(f"Error in get_owner_maintenances_by_space: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+    
+    
+    
+def auto_generate_owner_maintenance(
+    db: Session,
+    auth_db: Session,
+    input_date: date,
+    user: UserToken
+):
+    period_start = date(input_date.year, input_date.month, 1)
+    next_month = period_start.replace(day=28) + timedelta(days=4)
+    period_end = next_month.replace(day=1) - timedelta(days=1)
+    due_date = period_end + timedelta(days=10)
+
+    spaces = db.query(Space).filter(
+        Space.org_id == user.org_id,
+        Space.is_deleted == False
+    ).all()
+
+    if not spaces:
+        raise HTTPException(status_code=404, detail="No spaces found")
+
+    created_ids = []
+
+    for space in spaces:
+        space_owner = db.query(SpaceOwner).filter(
+            SpaceOwner.space_id == space.id,
+            SpaceOwner.is_active == True
+        ).first()
+
+        if not space_owner:
+            continue
+
+        # 🔹 Check overlapping maintenance
+        existing = db.query(OwnerMaintenanceCharge).filter(
+            OwnerMaintenanceCharge.space_owner_id == space_owner.id,
+            OwnerMaintenanceCharge.is_deleted == False,
+            OwnerMaintenanceCharge.period_start <= period_end,
+            OwnerMaintenanceCharge.period_end >= period_start
+        ).order_by(OwnerMaintenanceCharge.created_at.desc()).first()
+
+        if existing:
+            # Paid or invoiced → NEVER create
+            if existing.status in ["paid", "invoiced"]:
+                continue
+
+            # Pending but not due yet → skip
+            if existing.status == "pending" and existing.due_date >= date.today():
+                continue
+
+            # Pending + due date passed → allow creation
+
+        # ✅ Create maintenance
+        maintenance = OwnerMaintenanceCharge(
+            space_id=space.id,
+            space_owner_id=space_owner.id,
+            period_start=period_start,
+            period_end=period_end,
+            due_date=due_date,
+            amount=Decimal("1000.00"),
+            status="pending"
+        )
+
+        db.add(maintenance)
+        db.flush()
+        created_ids.append(maintenance.id)
+
+    if not created_ids:
+        return {"maintenances": [], "total": 0}
+
+    db.commit()
+
+    maintenances = []
+    for mid in created_ids:
+        data = get_owner_maintenance_by_id(
+            db=db,
+            auth_db=auth_db,
+            maintenance_id=str(mid)
+        )
+        if data:
+            maintenances.append(data)
+
+    return {
+        "maintenances": maintenances,
+        "total": len(maintenances)
+    }

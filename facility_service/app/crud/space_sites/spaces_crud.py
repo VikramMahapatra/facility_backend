@@ -493,8 +493,8 @@ def get_active_owners(
                 ActiveOwnerResponse(
                     id=o.id,
                     owner_type="user",
-                    owner_id=o.owner_user_id,
-                    owner_name=users_map.get(o.owner_user_id, ""),
+                    user_id=o.owner_user_id,
+                    full_name=users_map.get(o.owner_user_id, ""),
                     ownership_percentage=o.ownership_percentage,
                     start_date=o.start_date,
                 )

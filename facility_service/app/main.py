@@ -25,7 +25,9 @@ from .router.space_sites import (
     space_groups_router,
     spaces_router,
     building_block_router,
-    space_filter_router)
+    space_filter_router,
+    space_occupancy_router
+)
 from .router.leasing_tenants import lease_charges_router, leases_router, tenants_router
 from .router import (
     purchase_orders_router,
@@ -149,6 +151,7 @@ app.include_router(lease_charge_code_router.router)
 app.include_router(system_settings_router.router)
 app.include_router(parking_pass_router.router)
 app.include_router(owner_maintenances_router.router)
+app.include_router(space_occupancy_router.router)
 
 
 @app.get("/api/health")

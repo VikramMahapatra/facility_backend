@@ -224,7 +224,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             TenantSpace.site_id == params.site_id,
             TenantSpace.is_deleted == False,
             Tenant.user_id == user.user_id,
-            TenantSpace.status.in_(["occupied", "pending"])
+            TenantSpace.status.in_(["approved", "pending", "leased"])
         ).options(
             joinedload(Space.building),
             joinedload(Space.site)
@@ -407,7 +407,7 @@ def register_space(
         existing_tenant = facility_db.query(TenantSpace).filter(
             and_(
                 TenantSpace.space_id == params.space_id,
-                TenantSpace.status == "occupied",
+                TenantSpace.status == "leased",
                 TenantSpace.is_deleted == False)
         ).first()
 

@@ -1,5 +1,5 @@
 # schemas/space_occupancy.py
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 from pydantic import BaseModel
 from typing import Optional
@@ -7,9 +7,11 @@ from typing import Optional
 
 class MoveInRequest(BaseModel):
     occupant_type: str  # tenant | owner
-    source_id: UUID
-    move_in_date: date
+    space_id: UUID
+    occupant_user_id: UUID
+    tenant_id:  Optional[UUID] = None
     lease_id: Optional[UUID] = None
+    move_in_date: datetime
 
 
 class MoveOutRequest(BaseModel):

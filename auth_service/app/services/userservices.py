@@ -124,7 +124,7 @@ def create_user(
             existing_tenant = facility_db.query(TenantSpaceSafe).filter(
                 and_(
                     TenantSpaceSafe.space_id == user.space_id,
-                    TenantSpaceSafe.status == "occupied",
+                    TenantSpaceSafe.status == "leased",
                     TenantSpaceSafe.is_deleted == False)
             ).first()
 

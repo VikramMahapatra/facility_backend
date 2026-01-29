@@ -1,4 +1,5 @@
 # app/crud/leasing_tenants/tenants_crud.py
+from sqlalchemy import and_
 from datetime import datetime
 from typing import Dict, Optional, List
 import uuid
@@ -21,7 +22,7 @@ from shared.helpers.property_helper import get_allowed_spaces
 from shared.models.users import Users
 
 from shared.utils.app_status_code import AppStatusCode
-from shared.helpers.json_response_helper import error_response
+from shared.helpers.json_response_helper import error_response, success_response
 from shared.utils.enums import UserAccountType
 
 from ...models.leasing_tenants.lease_charges import LeaseCharge
@@ -29,13 +30,14 @@ from ...models.space_sites.spaces import Space
 from ...models.space_sites.buildings import Building
 
 from ...schemas.leases_schemas import LeaseOut
-from ...enum.leasing_tenants_enum import TenantStatus, TenantType
+from ...enum.leasing_tenants_enum import TenantSpaceStatus, TenantStatus, TenantType
 from shared.core.schemas import Lookup, UserToken
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
 from ...models.leasing_tenants.leases import Lease
 from ...models.leasing_tenants.tenants import Tenant
 from ...schemas.leasing_tenants.tenants_schemas import (
+    TenantApprovalOut,
     TenantSpaceBase,
     TenantCreate,
     TenantUpdate,
@@ -752,7 +754,7 @@ def validate_active_tenants_for_spaces(
             .filter(
                 TenantSpace.space_id == ts.space_id,
                 TenantSpace.is_deleted.is_(False),
-                TenantSpace.status == "occupied",
+                TenantSpace.status == "leased",
                 Tenant.is_deleted.is_(False),
             )
         )
@@ -762,7 +764,7 @@ def validate_active_tenants_for_spaces(
 
         if query.first():
             return error_response(
-                message="One or more spaces are already occupied"
+                message="Selected space(s) are already leased"
             )
 
 
@@ -1058,3 +1060,200 @@ def upsert_user_sites_preserve_primary(
 
 def get_site_ids_from_tenant_spaces(tenant_spaces):
     return list({ts.site_id for ts in tenant_spaces})
+
+
+def get_space_tenants(
+    space_id: UUID,
+    db: Session,
+):
+    rows = (
+        db.query(
+            TenantSpace.tenant_id,
+            Tenant.user_id,
+            Tenant.name.label("full_name"),
+            Tenant.email,
+            TenantSpace.status,
+            Lease.id.label("lease_id"),
+            Lease.lease_number,
+            Lease.start_date,
+            Lease.end_date,
+            TenantSpace.created_at
+        )
+        # 🔑 explicitly set the FROM table
+        .select_from(TenantSpace)
+        .join(
+            Tenant,
+            Tenant.id == TenantSpace.tenant_id
+        )
+        .outerjoin(
+            Lease,
+            and_(
+                Lease.space_id == TenantSpace.space_id,
+                Lease.tenant_id == TenantSpace.tenant_id,
+                Lease.is_deleted == False,
+                Lease.status == "active",
+            )
+        )
+        .filter(
+            TenantSpace.space_id == space_id,
+            TenantSpace.is_deleted == False
+        )
+        .order_by(TenantSpace.created_at.desc())
+        .all()
+    )
+
+    pending = []
+    active = []
+
+    for r in rows:
+        base = {
+            "tenant_id": r.tenant_id,
+            "user_id": r.user_id,
+            "full_name": r.full_name,
+            "email": r.email,
+            "created_at": r.created_at,
+        }
+
+        if r.status == "pending":
+            pending.append({
+                **base,
+                "status": "pending"
+            })
+
+        elif r.status == "leased":
+            active.append({
+                **base,
+                "status": "leased",
+                "lease_id": r.lease_id,
+                "lease_no": r.lease_number,
+                "start_date": r.start_date,
+                "end_date": r.end_date,
+            })
+
+    return {
+        "pending": pending,
+        "active": active
+    }
+
+
+def approve_tenant(
+    space_id: UUID,
+    tenant_id: UUID,
+    db: Session,
+    current_user: UserToken
+):
+    tenant_space = (
+        db.query(TenantSpace)
+        .filter(
+            TenantSpace.space_id == space_id,
+            TenantSpace.tenant_id == tenant_id,
+            TenantSpace.status == TenantSpaceStatus.pending
+        )
+        .first()
+    )
+
+    if not tenant_space:
+        raise HTTPException(
+            status_code=404, detail="Pending tenant request not found")
+
+    tenant_space.status = TenantSpaceStatus.approved
+    tenant_space.approved_at = func.now()
+    tenant_space.approved_by = current_user.user_id
+
+    db.commit()
+
+    return success_response(message="Tenant approved successfully")
+
+
+def reject_tenant(
+    space_id: UUID,
+    tenant_id: UUID,
+    db: Session,
+    current_user: Users,
+):
+    tenant_space = (
+        db.query(TenantSpace)
+        .filter(
+            TenantSpace.space_id == space_id,
+            TenantSpace.tenant_id == tenant_id,
+            TenantSpace.status == TenantSpaceStatus.pending
+        )
+        .first()
+    )
+
+    if not tenant_space:
+        raise HTTPException(
+            status_code=404, detail="Pending tenant request not found")
+
+    tenant_space.status = TenantSpaceStatus.rejected
+    tenant_space.rejected_at = func.now()
+
+    db.commit()
+
+    return success_response(message="Tenant rejected successfully")
+
+
+def get_tenant_approvals(
+    db: Session,
+    status: str | None = None,
+    search: str | None = None
+):
+    query = (
+        db.query(
+            TenantSpace.id.label("tenant_space_id"),
+            Tenant.user_id.label("tenant_user_id"),
+            Tenant.name.label("tenant_name"),
+            Tenant.email.label("tenant_email"),
+            Space.id.label("space_id"),
+            Space.name.label("space_name"),
+            Site.name.label("site_name"),
+            Tenant.kind.label("tenant_type"),
+            TenantSpace.status,
+            TenantSpace.created_at.label("requested_at")
+        )
+        .select_from(TenantSpace)
+        .join(Tenant, Tenant.id == TenantSpace.tenant_id)
+        .join(Space, Space.id == TenantSpace.space_id)
+        .join(Site, Site.id == Space.site_id)
+        .filter(TenantSpace.is_deleted == False)
+    )
+
+    # Status filter
+    if status:
+        query = query.filter(TenantSpace.status == status)
+
+    # Search filter
+    if search:
+        term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Tenant.name.ilike(term),
+                Tenant.email.ilike(term),
+                Space.name.ilike(term)
+            )
+        )
+
+    total = query.count()
+
+    rows = query.order_by(TenantSpace.created_at.desc()).all()
+
+    items = [
+        TenantApprovalOut(
+            tenant_space_id=r.tenant_space_id,
+            tenant_user_id=r.tenant_user_id,
+            tenant_name=r.tenant_name,
+            tenant_email=r.tenant_email,
+            space_id=r.space_id,
+            space_name=r.space_name,
+            site_name=r.site_name,
+            tenant_type=r.tenant_type,
+            status=r.status,
+            requested_at=r.requested_at,
+        )
+        for r in rows
+    ]
+
+    return {
+        "items": items,
+        "total": total
+    }

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from uuid import UUID
 
+from ...schemas.space_sites.space_occupany_schemas import MoveInRequest
 from shared.models.users import Users
 
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
@@ -17,7 +18,7 @@ def get_current_occupancy(db: Session, auth_db: Session, space_id: UUID):
         db.query(SpaceOccupancy)
         .filter(
             SpaceOccupancy.space_id == space_id,
-            SpaceOccupancy.is_active == True
+            SpaceOccupancy.status == "active"
         )
         .first()
     )
@@ -25,43 +26,78 @@ def get_current_occupancy(db: Session, auth_db: Session, space_id: UUID):
     if not occ:
         return {"status": "vacant"}
 
-    return {
+    current_occupany = {
         "status": "occupied",
         "occupant_type": occ.occupant_type,
         "occupant_name": get_user_name(auth_db, occ.occupant_user_id),
-        "move_in_at": occ.move_in_at,
-        "reference_no": str(occ.reference_id) if occ.reference_id else None,
+        "move_in_date": occ.move_in_date,
+        "reference_no": str(occ.source_id) if occ.source_id else None,
+    }
+
+    return {
+        "current": current_occupany,
+        "history": get_occupancy_history(db, space_id)
     }
 
 
-def move_in(db: Session, space_id: UUID, occupant_type: str):
-    active = db.query(SpaceOccupancy).filter(
-        SpaceOccupancy.space_id == space_id,
-        SpaceOccupancy.is_active == True
-    ).first()
+def move_in(
+    db: Session,
+    params: MoveInRequest
+):
+    # 1️⃣ Check if space already occupied
+    active = (
+        db.query(SpaceOccupancy)
+        .filter(
+            SpaceOccupancy.space_id == params.space_id,
+            SpaceOccupancy.status == "active"
+        )
+        .first()
+    )
 
     if active:
-        raise HTTPException(400, "Space already occupied")
+        raise HTTPException(
+            status_code=400,
+            detail="Space is already occupied"
+        )
 
+    # 2️⃣ Create occupancy
     occ = SpaceOccupancy(
-        space_id=space_id,
-        occupant_type=occupant_type,
-        is_active=True
+        space_id=params.space_id,
+        occupant_type=params.occupant_type,
+        occupant_user_id=params.occupant_user_id,
+        lease_id=params.lease_id,
+        source_id=params.tenant_id,
+        move_in_date=func.now(),
+        status="active"
     )
+
     db.add(occ)
+
+    # 3️⃣ Optional: sync related tables
+    if params.occupant_type == "tenant" and params.tenant_id:
+        db.query(TenantSpace).filter(
+            TenantSpace.tenant_id == params.tenant_id,
+            TenantSpace.space_id == params.space_id,
+        ).update({
+            "status": "occupied"
+        })
+
     db.commit()
+    db.refresh(occ)
+
+    return occ
 
 
 def move_out(db: Session, space_id: UUID):
     occ = db.query(SpaceOccupancy).filter(
         SpaceOccupancy.space_id == space_id,
-        SpaceOccupancy.is_active == True
+        SpaceOccupancy.status == "active"
     ).first()
 
     if not occ:
         raise HTTPException(400, "Space already vacant")
 
-    occ.is_active = False
+    occ.status = "moved_out"
     occ.move_out_at = func.now()
     db.commit()
 
@@ -70,7 +106,7 @@ def get_occupancy_history(db: Session, space_id: UUID):
     return (
         db.query(SpaceOccupancy)
         .filter(SpaceOccupancy.space_id == space_id)
-        .order_by(SpaceOccupancy.move_in_at.desc())
+        .order_by(SpaceOccupancy.move_in_date.desc())
         .all()
     )
 

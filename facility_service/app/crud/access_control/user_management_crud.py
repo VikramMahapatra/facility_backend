@@ -1112,7 +1112,7 @@ def handle_account_type_update(
         existing_assignments = facility_db.query(TenantSpace).filter(
             TenantSpace.space_id.in_(incoming_space_ids),
             TenantSpace.is_deleted == False,
-            TenantSpace.status == "occupied"
+            TenantSpace.status == "leased"
         ).all()
 
         for ts in existing_assignments:

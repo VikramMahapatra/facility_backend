@@ -285,14 +285,14 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             ).first()
 
             if tenant_space:
-                tenant_space.status = "occupied"
+                tenant_space.status = "leased"
             else:
                 db.add(
                     TenantSpace(
                         site_id=payload.site_id,
                         space_id=payload.space_id,
                         tenant_id=payload.tenant_id,
-                        status="occupied"
+                        status="leased"
                     )
                 )
 
@@ -380,13 +380,13 @@ def update(db: Session, payload: LeaseUpdate):
             ).first()
 
             if tenant_space:
-                tenant_space.status = "occupied"
+                tenant_space.status = "leased"
             else:
                 db.add(TenantSpace(
                     site_id=obj.site_id,
                     space_id=target_space_id,
                     tenant_id=tenant_id,
-                    status="occupied"
+                    status="leased"
                 ))
 
         # ---------- SPACE STATUS (DERIVED) ----------
@@ -661,10 +661,10 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         )
         .first()
     )
-    
+
     if not lease:
         return error_response(status_code=404, detail="Lease not found")
-    
+
     # Get building details
     building_name = None
     building_id = None
@@ -676,8 +676,8 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         if building:
             building_name = building.name
             building_id = building.id
-    
-    # Get ALL lease charges 
+
+    # Get ALL lease charges
     charges = (
         db.query(LeaseCharge)
         .options(
@@ -691,36 +691,36 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         .order_by(LeaseCharge.period_start.desc())
         .all()
     )
-    
+
     # Format charges (EXACTLY like lease_charges_crud)
     charges_list = []
     for lc in charges:
         lease_related = lc.lease
-        
+
         # Calculate tax
         tax_rate = lc.tax_code.rate if lc.tax_code else Decimal("0")
         tax_amount = (lc.amount * tax_rate) / Decimal("100")
-        
+
         # Calculate period days
         period_days = None
         if lc.period_start and lc.period_end:
             period_days = (lc.period_end - lc.period_start).days
-        
+
         # Get tenant name
         tenant_name = None
         if lease_related.tenant:
             tenant_name = lease_related.tenant.legal_name or lease_related.tenant.name
-        
+
         # Get invoice status
-       
+
         invoice = db.query(Invoice).filter(
             Invoice.billable_item_type == "lease charge",
             Invoice.billable_item_id == lc.id,
             Invoice.is_deleted == False
         ).first()
-        
+
         invoice_status = invoice.status if invoice else None
-        
+
         # Build charge object
         charges_list.append({
             "id": lc.id,
@@ -744,13 +744,13 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
             "created_at": lc.created_at,
             "payer_type": lc.payer_type,
             "invoice_status": invoice_status
-            
+
         })
-    
+
     # Parse utilities from lease.utilities field (NOT meta)
     electricity = None
     water = None
-    
+
     if lease.utilities:
         try:
             # If utilities is a JSON/dict
@@ -766,15 +766,14 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         except:
             # If parsing fails, set to None
             pass
-    
+
     # Get tenant details
     tenant_name = None
     tenant_legal_name = None
     tenant_email = None
     tenant_phone = None
     tenant_kind = None
-    
-    
+
     if lease.tenant:
         tenant_name = lease.tenant.name
         tenant_legal_name = lease.tenant.legal_name
@@ -786,10 +785,9 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
     space_kind = None
     if lease.space:
         space_kind = lease.space.kind
-    
-   
+
     return {
-       
+
         "id": lease.id,
         "lease_number": lease.lease_number or "",
         "status": lease.status,
@@ -798,11 +796,11 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         "rent_amount": lease.rent_amount,
         "deposit_amount": lease.deposit_amount,
         "cam_rate": lease.cam_rate,
-        
+
         # Utilities - parsed from lease.utilities
         "electricity": electricity,
         "water": water,
-        
+
         # Tenant info
         "tenant_id": lease.tenant_id,
         "tenant_name": tenant_name,
@@ -810,7 +808,7 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         "tenant_email": tenant_email,
         "tenant_phone": tenant_phone,
         "tenant_kind": tenant_kind,
-        
+
         # Space/Site info
         "space_id": lease.space_id,
         "space_name": lease.space.name if lease.space else None,
@@ -820,13 +818,12 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         "site_name": lease.site.name if lease.site else None,
         "building_name": building_name,
         "building_id": building_id,
-        
-       
+
+
         "charges": charges_list
     }
-    
-    
-    
+
+
 def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID) -> dict:
     # Get tenant
     # -----------------------------

@@ -22,7 +22,6 @@ class OwnerMaintenanceCreate(OwnerMaintenanceBase):
 
 class OwnerMaintenanceUpdate(OwnerMaintenanceBase):
     id: UUID
-    
 
 
 class OwnerMaintenanceOut(OwnerMaintenanceBase):
@@ -31,15 +30,15 @@ class OwnerMaintenanceOut(OwnerMaintenanceBase):
     created_at: datetime
     updated_at: datetime
     is_deleted: bool
-    due_date: date
+    due_date: Optional[date] = None
     # Additional fields for display
-    space_name: Optional[str]= None
-    owner_name: Optional[str]= None
-    site_name: Optional[str]= None
-    building_name: Optional[str]= None
-    invoice_id: Optional[UUID]= None
-    owner_user_id: Optional[UUID]= None
-    
+    space_name: Optional[str] = None
+    owner_name: Optional[str] = None
+    site_name: Optional[str] = None
+    building_name: Optional[str] = None
+    invoice_id: Optional[UUID] = None
+    owner_user_id: Optional[UUID] = None
+
     model_config = {"from_attributes": True}
 
 
@@ -59,14 +58,12 @@ class OwnerMaintenanceListResponse(BaseModel):
 class OwnerMaintenanceDetailResponse(BaseModel):
     """Response for single maintenance record"""
     maintenance: OwnerMaintenanceOut
-    
-    
+
 
 class OwnerMaintenanceBySpaceRequest(CommonQueryParams):
-    space_id: str  
+    space_id: str
     status: Optional[str] = None
     search: Optional[str] = None
-    
 
 
 class OwnerMaintenanceBySpaceResponse(BaseModel):

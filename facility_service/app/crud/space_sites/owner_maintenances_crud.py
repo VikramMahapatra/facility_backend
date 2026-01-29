@@ -45,6 +45,22 @@ def build_owner_maintenance_filters(org_id: UUID, params: OwnerMaintenanceReques
     
     return filters
 
+def get_owner_maintenance_amount(db: Session, space_id: UUID):
+    """
+    CAM = rate_per_sqft × space.area_sqft
+    """
+    CAM_RATE_PER_SQFT = Decimal("150.00")
+
+    space = db.query(Space).filter(
+        Space.id == space_id,
+        Space.is_deleted == False
+    ).first()
+
+    if not space or not space.area_sqft:
+        return Decimal("0.00")
+
+    return (CAM_RATE_PER_SQFT * space.area_sqft).quantize(Decimal("0.01"))
+    
 
 def get_owner_maintenance_query(db: Session, org_id: UUID, params: OwnerMaintenanceRequest):
     """Base query WITHOUT joins - use filters differently"""
@@ -263,15 +279,21 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
         )
     
     # Validate amount
-    if maintenance.amount <= 0:
+    # ✅ CALCULATE AMOUNT USING HELPER
+    amount = get_owner_maintenance_amount(db, maintenance.space_id)
+
+    if amount <= 0:
         raise HTTPException(
             status_code=400,
-            detail="Amount must be greater than 0"
+            detail="Maintenance amount could not be calculated"
         )
+
+
     
     # Create maintenance record with space_owner_id
-    maintenance_data = maintenance.model_dump()
+    maintenance_data = maintenance.model_dump(exclude={"amount"})
     maintenance_data["space_owner_id"] = space_owner.id
+    maintenance_data["amount"] = amount 
     
     db_maintenance = OwnerMaintenanceCharge(**maintenance_data)
     
@@ -328,13 +350,6 @@ def update_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
                 detail="Period start date must be before period end date"
             )
     
-    # Validate amount if being updated
-    if "amount" in update_data and update_data["amount"] <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Amount must be greater than 0"
-        )
-    
     # If space_id is being updated, find the new space owner
     new_space_owner_id = None
     if "space_id" in update_data:
@@ -352,7 +367,24 @@ def update_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
         
         new_space_owner_id = new_space_owner.id
         update_data["space_owner_id"] = new_space_owner_id
-    
+        
+    # 🔹 Recalculate amount if user provides `amount` or space_id changed
+    if "amount" in update_data or new_space_owner_id:
+        # Determine which space to use for calculation
+        space_id = update_data.get("space_id", db_maintenance.space_id)
+        
+        # Calculate the amount using your helper
+        amount = get_owner_maintenance_amount(db, space_id)
+        
+        if amount <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Maintenance amount could not be calculated"
+            )
+
+        # Replace existing value with recalculated amount
+        update_data["amount"] = amount  
+        
     # Check for duplicate maintenance period if space owner or period is changing
     space_owner_id = new_space_owner_id if new_space_owner_id else db_maintenance.space_owner_id
     period_start = update_data.get("period_start", db_maintenance.period_start)
@@ -689,7 +721,12 @@ def auto_generate_owner_maintenance(
                 continue
 
             # Pending + due date passed → allow creation
+            # ✅ CALCULATE AMOUNT USING HELPER
+        amount = get_owner_maintenance_amount(db, space.id)
 
+        # Optional safety check
+        if amount <= 0:
+            continue
         # ✅ Create maintenance
         maintenance = OwnerMaintenanceCharge(
             space_id=space.id,
@@ -697,7 +734,7 @@ def auto_generate_owner_maintenance(
             period_start=period_start,
             period_end=period_end,
             due_date=due_date,
-            amount=Decimal("1000.00"),
+            amount=amount,
             status="pending"
         )
 

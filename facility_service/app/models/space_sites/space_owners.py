@@ -48,7 +48,7 @@ class SpaceOwner(Base):
 
     status = Column(
         Enum(OwnershipStatus, name="ownership_status"),
-        default=OwnershipStatus.requested,
+        default=OwnershipStatus.pending,
         nullable=False
     )
 

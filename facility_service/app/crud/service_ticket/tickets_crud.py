@@ -476,13 +476,7 @@ async def create_ticket(
             .filter(Users.id == assigned_to)
             .scalar()
         )
-        # Check if assigned to ADMIN/ORGANIZATION (considered "unassigned" for workload)-----------CHANGED
-        # This doesn't change anything, just for understanding
-        if assigned_to_user and assigned_to_user.account_type.lower() in ["admin", "organization"]:
-            # Ticket will appear in "unassigned tickets" in workload management
-            pass
-
-        # Only create assignment log if this is different from initial value
+        
         if not hasattr(data, 'assigned_to') or not data.assigned_to:
             assignment_log = TicketAssignment(
                 ticket_id=new_ticket.id,

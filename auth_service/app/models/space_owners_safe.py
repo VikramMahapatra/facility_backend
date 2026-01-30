@@ -1,5 +1,4 @@
-from enum import Enum
-from sqlalchemy import Column, Date, String, DateTime, Boolean, ForeignKey, func
+from sqlalchemy import Column, Date, String, DateTime, Boolean, ForeignKey, func, Enum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from shared.core.database import Base
 import uuid
@@ -27,6 +26,10 @@ class SpaceOwnerSafe(Base):
         UUID(as_uuid=True),
         nullable=True
     )
-
+    status = Column(
+        Enum(OwnershipStatus, name="ownership_status"),
+        default=OwnershipStatus.pending,
+        nullable=False
+    )
     start_date = Column(Date, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)

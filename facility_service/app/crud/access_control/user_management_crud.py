@@ -14,7 +14,7 @@ from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.userroles import UserRoles
 from shared.utils.enums import OwnershipStatus
 from ...models.space_sites.user_sites import UserSite
-from ...crud.leasing_tenants.tenants_crud import active_lease_exists, compute_space_status, validate_active_tenants_for_spaces
+from ...crud.leasing_tenants.tenants_crud import active_lease_exists, validate_active_tenants_for_spaces
 from ...enum.leasing_tenants_enum import TenantStatus
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.lease_charges import LeaseCharge
@@ -1159,7 +1159,7 @@ def handle_account_type_update(
                     tenant_id=tenant.id,
                     site_id=space.site_id,
                     space_id=space.space_id,
-                    status="pending",
+                    status=OwnershipStatus.pending,
                     created_at=now,
                     updated_at=now
                 )
@@ -1253,7 +1253,7 @@ def handle_account_type_update(
                         space_id=space.space_id,
                         owner_org_id=org_id,
                         ownership_type="primary",
-                        status=OwnershipStatus.approved,
+                        status=OwnershipStatus.pending,
                         is_active=True,
                         start_date=now
                     )

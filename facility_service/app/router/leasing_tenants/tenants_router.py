@@ -154,6 +154,24 @@ def tenant_payment_history(
     )
 
 
+@router.get("/users-by-site-space")
+def get_tenants_by_site_and_space(
+    site_id: UUID = Query(..., description="Site ID"),
+    space_id: UUID = Query(..., description="Space ID"),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get tenants filtered by both site_id and space_id
+    """
+    tenants = crud.get_users_by_site_and_space(db, auth_db, site_id, space_id)
+
+    # If you're using success_response wrapper
+    return success_response(
+        data=tenants,  # This should be a list
+        message="Data retrieved successfully"
+    )
 @router.get("/{space_id:uuid}/spaces", response_model=SpaceTenantResponse)
 def get_space_tenants(
     space_id: UUID,

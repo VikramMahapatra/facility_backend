@@ -9,7 +9,9 @@ class UserAccountType(str, Enum):
 
 
 class OwnershipStatus(Enum):
-    requested = "requested"
+    pending = "pending"
     approved = "approved"
     rejected = "rejected"
     revoked = "revoked"
+    leased = "leased"
+    ended = "ended"

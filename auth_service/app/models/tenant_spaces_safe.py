@@ -1,8 +1,10 @@
 # auth_service/app/models/org.py
-from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Enum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from shared.core.database import Base
 import uuid
+
+from shared.utils.enums import OwnershipStatus
 
 
 class TenantSpaceSafe(Base):
@@ -16,7 +18,8 @@ class TenantSpaceSafe(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey(
         "tenants.id", ondelete="CASCADE"))
     status = Column(
-        String(16),
-        default="pending"  # pending | approved | rejected
+        Enum(OwnershipStatus, name="ownership_status"),
+        default=OwnershipStatus.pending,
+        nullable=False
     )
     is_deleted = Column(Boolean, default=False)

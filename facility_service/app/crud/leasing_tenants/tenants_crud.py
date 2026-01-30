@@ -1497,7 +1497,7 @@ def get_users_by_site_and_space(
         .filter(
             TenantSpace.site_id == site_id,
             TenantSpace.space_id == space_id,
-            TenantSpace.status == OwnershipStatus.leased,
+            TenantSpace.status == OwnershipStatus.leased,#ownwrship status leased
             TenantSpace.is_deleted == False,
             Tenant.is_deleted == False,
             Tenant.status == "active",

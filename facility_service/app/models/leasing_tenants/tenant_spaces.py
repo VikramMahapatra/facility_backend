@@ -21,7 +21,7 @@ class TenantSpace(Base):
         "tenants.id", ondelete="CASCADE"))
     status = Column(
         Enum(OwnershipStatus, name="ownership_status"),
-        default=OwnershipStatus.requested,
+        default=OwnershipStatus.pending,
         nullable=False
     )
     approved_at = Column(DateTime(timezone=True))

@@ -23,7 +23,7 @@ from shared.models.users import Users
 
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from shared.utils.enums import UserAccountType
+from shared.utils.enums import OwnershipStatus, UserAccountType
 
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.space_sites.spaces import Space
@@ -472,7 +472,7 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
                 tenant_id=db_tenant.id,
                 site_id=space.site_id,
                 space_id=space.space_id,
-                status="pending",
+                status=OwnershipStatus.pending,
                 created_at=now
             )
         )
@@ -551,7 +551,7 @@ def update_tenant(
                     tenant_id=tenant_id,
                     site_id=space["site_id"],
                     space_id=space["space_id"],
-                    status="pending",
+                    status=OwnershipStatus.pending,
                     is_deleted=False,
                     created_at=now
                 )
@@ -831,17 +831,6 @@ def active_lease_for_occupant_exists(db: Session, tenant_id: UUID, space_id: UUI
     ).first() is not None
 
 
-def compute_space_status(db, tenant_id, space_id, role):
-    if role != "owner":
-        return "pending"
-
-    return (
-        "past"
-        if active_lease_for_occupant_exists(db, tenant_id, space_id)
-        else "current"
-    )
-
-
 def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> List[Dict]:
     """
     Simple function to fetch all payment history for a specific tenant.
@@ -1114,16 +1103,16 @@ def get_space_tenants(
             "created_at": r.created_at,
         }
 
-        if r.status == "pending":
+        if r.status == OwnershipStatus.pending:
             pending.append({
                 **base,
-                "status": "pending"
+                "status":  OwnershipStatus.pending.value
             })
 
-        elif r.status == "leased":
+        elif r.status == OwnershipStatus.leased:
             active.append({
                 **base,
-                "status": "leased",
+                "status": OwnershipStatus.leased.value,
                 "lease_id": r.lease_id,
                 "lease_no": r.lease_number,
                 "start_date": r.start_date,
@@ -1147,7 +1136,7 @@ def approve_tenant(
         .filter(
             TenantSpace.space_id == space_id,
             TenantSpace.tenant_id == tenant_id,
-            TenantSpace.status == TenantSpaceStatus.pending
+            TenantSpace.status == OwnershipStatus.pending
         )
         .first()
     )
@@ -1156,7 +1145,7 @@ def approve_tenant(
         raise HTTPException(
             status_code=404, detail="Pending tenant request not found")
 
-    tenant_space.status = TenantSpaceStatus.approved
+    tenant_space.status = OwnershipStatus.approved
     tenant_space.approved_at = func.now()
     tenant_space.approved_by = current_user.user_id
 
@@ -1176,7 +1165,7 @@ def reject_tenant(
         .filter(
             TenantSpace.space_id == space_id,
             TenantSpace.tenant_id == tenant_id,
-            TenantSpace.status == TenantSpaceStatus.pending
+            TenantSpace.status == OwnershipStatus.pending
         )
         .first()
     )
@@ -1185,7 +1174,7 @@ def reject_tenant(
         raise HTTPException(
             status_code=404, detail="Pending tenant request not found")
 
-    tenant_space.status = TenantSpaceStatus.rejected
+    tenant_space.status = OwnershipStatus.rejected
     tenant_space.rejected_at = func.now()
 
     db.commit()

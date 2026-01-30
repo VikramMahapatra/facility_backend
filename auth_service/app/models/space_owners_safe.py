@@ -27,6 +27,10 @@ class SpaceOwnerSafe(Base):
         UUID(as_uuid=True),
         nullable=True
     )
-
+    status = Column(
+        Enum(OwnershipStatus, name="ownership_status"),
+        default=OwnershipStatus.pending,
+        nullable=False
+    )
     start_date = Column(Date, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)

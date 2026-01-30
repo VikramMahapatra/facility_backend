@@ -1159,7 +1159,7 @@ def handle_account_type_update(
                     tenant_id=tenant.id,
                     site_id=space.site_id,
                     space_id=space.space_id,
-                    status="pending",
+                    status=OwnershipStatus.pending,
                     created_at=now,
                     updated_at=now
                 )
@@ -1253,7 +1253,7 @@ def handle_account_type_update(
                         space_id=space.space_id,
                         owner_org_id=org_id,
                         ownership_type="primary",
-                        status=OwnershipStatus.approved,
+                        status=OwnershipStatus.pending,
                         is_active=True,
                         start_date=now
                     )

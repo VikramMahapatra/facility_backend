@@ -147,7 +147,7 @@ def update_user_approval_status(
             facility_db.query(SpaceOwner)
             .filter(
                 SpaceOwner.user_id == user.id,
-                SpaceOwner.status == OwnershipStatus.requested)
+                SpaceOwner.status == OwnershipStatus.pending)
             .first()
         )
 

@@ -90,6 +90,13 @@ def lease_status_lookup(
     return crud.lease_status_lookup(current_user.org_id, db)
 
 
+@router.get("/lease-frequency",response_model=List[Lookup])
+def lease_frequency_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.lease_frequency_lookup(current_user.org_id, db)
+
 @router.get("/tenant-lookup", response_model=List[Lookup])
 def lease_tenant_lookup(
     site_id: Optional[str] = Query(None),

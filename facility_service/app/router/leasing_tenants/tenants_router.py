@@ -165,11 +165,11 @@ def get_space_tenants(
 
 @router.post("/approve")
 def approve_tenant(
-    params: SpaceTenantApprovalRequest = Depends(),
+    params: SpaceTenantApprovalRequest,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
-    return crud.approve_tenant(params.space_id, params.tenant_id, db)
+    return crud.approve_tenant(params, db ,current_user)
 
 
 @router.post("/reject")
@@ -185,10 +185,14 @@ def approve_tenant(
 def list_tenant_approvals(
     status: str | None = Query(None),
     search: str | None = Query(None),
+    skip: int = Query(0),
+    limit: int = Query(10),
     db: Session = Depends(get_db),
 ):
     return crud.get_tenant_approvals(
         db=db,
         status=status,
-        search=search
+        search=search,
+        skip=skip,
+        limit=limit
     )

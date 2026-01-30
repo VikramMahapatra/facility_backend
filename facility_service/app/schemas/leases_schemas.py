@@ -30,7 +30,7 @@ class LeaseCreate(LeaseBase):
     site_id: UUID
     space_id: UUID
     start_date: date
-
+    auto_move_in: Optional[bool] = False
 
 class LeaseUpdate(LeaseBase):
     id: UUID

@@ -37,6 +37,7 @@ from ...models.space_sites.sites import Site
 from ...models.leasing_tenants.leases import Lease
 from ...models.leasing_tenants.tenants import Tenant
 from ...schemas.leasing_tenants.tenants_schemas import (
+    SpaceTenantApprovalRequest,
     TenantApprovalOut,
     TenantSpaceBase,
     TenantCreate,
@@ -1137,8 +1138,7 @@ def get_space_tenants(
 
 
 def approve_tenant(
-    space_id: UUID,
-    tenant_id: UUID,
+    params :SpaceTenantApprovalRequest,
     db: Session,
     current_user: UserToken
 ):
@@ -1146,7 +1146,7 @@ def approve_tenant(
     active_lease = (
         db.query(Lease)
         .filter(
-            Lease.space_id == space_id,
+            Lease.space_id == params.space_id,
             Lease.status == LeaseStatus.active
         )
         .first()
@@ -1161,8 +1161,8 @@ def approve_tenant(
     tenant_space = (
         db.query(TenantSpace)
         .filter(
-            TenantSpace.space_id == space_id,
-            TenantSpace.tenant_id == tenant_id,
+            TenantSpace.space_id == params.space_id,
+            TenantSpace.tenant_id == params.tenant_id,
             TenantSpace.status == TenantSpaceStatus.pending
         )
         .first()
@@ -1177,9 +1177,9 @@ def approve_tenant(
     tenant_space.approved_by = current_user.user_id
 
     db.commit()
-
-    return success_response(message="Tenant approved successfully")
-
+    db.refresh(tenant_space) 
+    
+    return {"Tenant approved successfully"}
 
 def reject_tenant(
     space_id: UUID,
@@ -1212,7 +1212,9 @@ def reject_tenant(
 def get_tenant_approvals(
     db: Session,
     status: str | None = None,
-    search: str | None = None
+    search: str | None = None,
+    skip: int = 0,
+    limit: int = 10
 ):
     query = (
         db.query(
@@ -1251,7 +1253,7 @@ def get_tenant_approvals(
 
     total = query.count()
 
-    rows = query.order_by(TenantSpace.created_at.desc()).all()
+    rows = query.order_by(TenantSpace.created_at.desc()).offset(skip).limit(limit).all()
 
     items = [
         TenantApprovalOut(

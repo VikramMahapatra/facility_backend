@@ -2,6 +2,7 @@
 from datetime import datetime
 from typing import Dict, Optional, List
 import uuid
+from pyparsing import Any
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, desc, func, literal, or_, select, case, tuple_
@@ -19,6 +20,8 @@ from shared.helpers.email_helper import EmailHelper
 from shared.helpers.password_generator import generate_secure_password
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.models.users import Users
+from ...models.space_sites.space_owners import SpaceOwner
+
 
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
@@ -716,7 +719,7 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
             TenantSpace.space_id == space_id,
             Tenant.is_deleted == False,
             Tenant.status == "active",
-            TenantSpace.status == "current",
+            TenantSpace.status == "occupied",
             TenantSpace.is_deleted == False,
         )
         .all()
@@ -1058,3 +1061,100 @@ def upsert_user_sites_preserve_primary(
 
 def get_site_ids_from_tenant_spaces(tenant_spaces):
     return list({ts.site_id for ts in tenant_spaces})
+
+
+
+
+
+def get_users_by_site_and_space(
+    db: Session,
+    auth_db: Session,
+    site_id: UUID,
+    space_id: UUID
+) -> Dict[str, Any]:
+
+    users_list = []
+
+    # ===============================
+    # 1️⃣ SPACE OWNERS
+    # ===============================
+    owners = (
+        db.query(SpaceOwner)
+        .filter(
+            SpaceOwner.space_id == space_id,
+            SpaceOwner.is_active == True,
+            SpaceOwner.owner_user_id.isnot(None)
+        )
+        .all()
+    )
+
+    for owner in owners:
+        user = (
+            auth_db.query(Users)
+            .filter(
+                Users.id == owner.owner_user_id,
+                Users.is_deleted == False
+            )
+            .first()
+        )
+
+        if user:
+            users_list.append({
+                "id": owner.owner_user_id,
+                "name": f"{user.full_name} (owner)"
+            })
+
+    # ===============================
+    # 2️⃣ TENANTS
+    # ===============================
+    tenants = (
+        db.query(Tenant)
+        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+        .filter(
+            TenantSpace.site_id == site_id,
+            TenantSpace.space_id == space_id,
+            TenantSpace.status == "occupied",
+            TenantSpace.is_deleted == False,
+            Tenant.is_deleted == False,
+            Tenant.status == "active",
+            Tenant.user_id.isnot(None)
+        )
+        .all()
+    )
+
+    for tenant in tenants:
+        user = (
+            auth_db.query(Users)
+            .filter(
+                Users.id == tenant.user_id,
+                Users.is_deleted == False
+            )
+            .first()
+        )
+
+        if user:
+            users_list.append({
+                "id": tenant.user_id,
+                "name": f"{user.full_name} (tenant)"
+            })
+        else:
+            users_list.append({
+                "id": tenant.user_id,
+                "name": f"{tenant.name} (tenant)"
+            })
+
+    # ===============================
+    # 3️⃣ REMOVE DUPLICATES
+    # ===============================
+    seen = set()
+    unique_users = []
+
+    for u in users_list:
+        if u["id"] not in seen:
+            seen.add(u["id"])
+            unique_users.append(u)
+
+    # ===============================
+    # FINAL RESPONSE
+    # ===============================
+    return unique_users

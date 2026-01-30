@@ -370,25 +370,65 @@ async def create_ticket(
     category_name = session.query(
         TicketCategory.category_name).filter(TicketCategory.id == data.category_id).scalar()
 
+    # if account_type == UserAccountType.ORGANIZATION:
+    #     tenant_id = data.tenant_id
+    #     title = data.title
+    # else:
+    #     tenant_id = session.query(Tenant.id).filter(and_(
+    #         Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
+    #     # ✅ FIXED: Case-insensitive search with site check
+
+    #     title = f"{category_name} - {space.name}"
+
+    #     if not tenant_id:
+    #         return error_response(
+    #             message=f"Invalid tenant",
+    #             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+    #             http_status=400
+    #         )
+
+    # if not category_name:
+    #     # ✅ Better error message to debug
+    #     return error_response(
+    #         message=f"Invalid category",
+    #         status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+    #         http_status=400
+    #     )
     if account_type == UserAccountType.ORGANIZATION:
-        tenant_id = data.tenant_id
+        # Organization user: Get user_id from dropdown
+        ticket_user_id = data.user_id
+        
+        # If user is a tenant, find their tenant_id
+        if ticket_user_id:
+            tenant = session.query(Tenant).filter(
+                Tenant.user_id == ticket_user_id,
+                Tenant.is_deleted == False
+            ).first()
+            if tenant:
+                tenant_id = tenant.id
+        
         title = data.title
     else:
-        tenant_id = session.query(Tenant.id).filter(and_(
-            Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
-        # ✅ FIXED: Case-insensitive search with site check
-
-        title = f"{category_name} - {space.name}"
-
-        if not tenant_id:
+        # TENANT users - creating ticket for themselves
+        ticket_user_id = user.user_id
+        
+        # Find their tenant record
+        tenant = session.query(Tenant).filter(and_(
+            Tenant.user_id == user.user_id, 
+            Tenant.is_deleted == False
+        )).first()
+        
+        if tenant:
+            tenant_id = tenant.id
+        else:
             return error_response(
                 message=f"Invalid tenant",
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 http_status=400
             )
+        title = f"{category_name} - {space.name}"
 
     if not category_name:
-        # ✅ Better error message to debug
         return error_response(
             message=f"Invalid category",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
@@ -399,7 +439,8 @@ async def create_ticket(
         org_id=space.org_id,
         site_id=space.site_id if space.site_id else data.site_id,
         space_id=data.space_id,
-        tenant_id=tenant_id,
+        tenant_id=tenant_id,   # Will be NULL for owners
+        user_id=ticket_user_id,       # Always has value
         category_id=data.category_id,
         title=title,
         description=data.description,

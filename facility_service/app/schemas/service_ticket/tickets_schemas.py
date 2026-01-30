@@ -80,7 +80,8 @@ class TicketCreate(BaseModel):
     org_id: Optional[UUID] = None
     site_id: Optional[UUID] = None
     space_id: UUID
-    tenant_id: Optional[UUID] = None
+    #tenant_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None  # ✅ ONLY ADD THIS FIELD
     category: Optional[str] = None
     category_id: Optional[UUID] = None
     title: Optional[str] = None
@@ -100,7 +101,8 @@ class TicketCreate(BaseModel):
         org_id: Optional[UUID] = Form(None),
         site_id: Optional[UUID] = Form(None),
         space_id: UUID = Form(...),
-        tenant_id: Optional[UUID] = Form(None),
+        #tenant_id: Optional[UUID] = Form(None),
+        user_id: Optional[UUID] = Form(None),  # ✅ ONLY THIS NEW FIELD
         category: Optional[str] = Form(None),
         category_id: Optional[UUID] = Form(None),
         title: Optional[str] = Form(None),
@@ -117,7 +119,8 @@ class TicketCreate(BaseModel):
             org_id=org_id,
             site_id=site_id,
             space_id=space_id,
-            tenant_id=tenant_id,
+            #tenant_id=tenant_id,
+            user_id=user_id,  # ✅ ONLY THIS
             category=category,
             category_id=category_id,
             title=title,

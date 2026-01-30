@@ -30,7 +30,7 @@ from ...models.space_sites.spaces import Space
 from ...models.space_sites.buildings import Building
 
 from ...schemas.leases_schemas import LeaseOut
-from ...enum.leasing_tenants_enum import TenantSpaceStatus, TenantStatus, TenantType
+from ...enum.leasing_tenants_enum import LeaseStatus, TenantSpaceStatus, TenantStatus, TenantType
 from shared.core.schemas import Lookup, UserToken
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
@@ -1142,6 +1142,22 @@ def approve_tenant(
     db: Session,
     current_user: UserToken
 ):
+        #  Check if space already has an active lease 
+    active_lease = (
+        db.query(Lease)
+        .filter(
+            Lease.space_id == space_id,
+            Lease.status == LeaseStatus.active
+        )
+        .first()
+    )
+
+    if active_lease:
+        raise HTTPException(
+            status_code=400,
+            detail="Space is already occupied by an active tenant"
+        )
+        
     tenant_space = (
         db.query(TenantSpace)
         .filter(

@@ -1,6 +1,12 @@
 from enum import Enum
 
 
+class LeaseFrequency (str ,Enum):
+    monthly = "monthly"
+    quaterly = "quaterly"
+    yearly = "yearly"
+
+
 class LeaseDefaultPayer(str, Enum):
     owner = "owner"
     occupant = "occupant"

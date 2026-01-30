@@ -160,7 +160,7 @@ def get_my_spaces(db: Session, auth_db: Session, user: UserToken):
         ).join(Tenant, TenantSpace.tenant_id == Tenant.id).filter(
             TenantSpace.is_deleted == False,
             Tenant.user_id == user.user_id,
-            TenantSpace.status.in_(["occupied", "pending"])
+            TenantSpace.status.in_(["approved", "pending", "leased"])
         ).options(
             joinedload(Space.building),
             joinedload(Space.site)
@@ -232,8 +232,7 @@ def get_space_detail(
     # 1. CHECK IF USER IS SPACE OWNER
     space_owner = db.query(SpaceOwner).filter(
         SpaceOwner.space_id == space.id,
-        SpaceOwner.owner_user_id == user.user_id,
-        SpaceOwner.is_active == True
+        SpaceOwner.owner_user_id == user.user_id
     ).first()
 
     tenant = db.query(Tenant).filter(

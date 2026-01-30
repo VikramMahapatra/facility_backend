@@ -1,7 +1,8 @@
-from typing import List, Optional
+from datetime import date
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeListResponse, LeaseChargeRequest, LeaseChargeUpdate, LeaseChargesOverview, LeaseRentAmountResponse
+from ...schemas.leasing_tenants.lease_charges_schemas import AutoLeaseChargeResponse, LeaseChargeCreate, LeaseChargeListResponse, LeaseChargeRequest, LeaseChargeUpdate, LeaseChargesOverview, LeaseRentAmountResponse
 from ...crud.leasing_tenants import lease_charges_crud as crud
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import allow_admin, validate_current_token  # for dependicies
@@ -15,7 +16,19 @@ router = APIRouter(
 )
 
 # -----------------------------------------------------------------
-
+@router.post("/auto-generate", response_model=AutoLeaseChargeResponse)
+def auto_generate_lease_charges_endpoint(
+    target_date: date = Query(..., description="Any date in the month to generate lease charges for"),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.auto_generate_lease_rent_charges(
+        db=db,
+        auth_db=auth_db,
+        input_date=target_date,
+        current_user=current_user
+    )
 
 @router.get("/all", response_model=LeaseChargeListResponse)
 def get_lease_charges(

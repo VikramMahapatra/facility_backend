@@ -9,6 +9,9 @@ from shared.helpers.json_response_helper import success_response
 from shared.core.schemas import Lookup, UserToken
 
 from ...schemas.leasing_tenants.tenants_schemas import (
+    SpaceTenantApprovalRequest,
+    SpaceTenantOut,
+    SpaceTenantResponse,
     TenantListResponse,
     TenantOut,
     TenantCreate,
@@ -133,10 +136,9 @@ def get_tenants_by_site_and_space(
     )
 
 
-
-@router.get("/payment-history/{tenant_id}")
+@router.get("/payment-history/{tenant_id:uuid}")
 def tenant_payment_history(
-    tenant_id: UUID ,
+    tenant_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
@@ -169,4 +171,42 @@ def get_tenants_by_site_and_space(
     return success_response(
         data=tenants,  # This should be a list
         message="Data retrieved successfully"
+    )
+@router.get("/{space_id:uuid}/spaces", response_model=SpaceTenantResponse)
+def get_space_tenants(
+    space_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    return crud.get_space_tenants(space_id, db)
+
+
+@router.post("/approve")
+def approve_tenant(
+    params: SpaceTenantApprovalRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    return crud.approve_tenant(params.space_id, params.tenant_id, db)
+
+
+@router.post("/reject")
+def approve_tenant(
+    params: SpaceTenantApprovalRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    return crud.reject_tenant(params.space_id, params.tenant_id, db)
+
+
+@router.get("/approvals")
+def list_tenant_approvals(
+    status: str | None = Query(None),
+    search: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    return crud.get_tenant_approvals(
+        db=db,
+        status=status,
+        search=search
     )

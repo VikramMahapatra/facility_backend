@@ -224,7 +224,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             TenantSpace.site_id == params.site_id,
             TenantSpace.is_deleted == False,
             Tenant.user_id == user.user_id,
-            TenantSpace.status.in_(["occupied", "pending"])
+            TenantSpace.status.in_(["approved", "pending", "leased"])
         ).options(
             joinedload(Space.building),
             joinedload(Space.site)
@@ -407,7 +407,7 @@ def register_space(
         existing_tenant = facility_db.query(TenantSpace).filter(
             and_(
                 TenantSpace.space_id == params.space_id,
-                TenantSpace.status == "occupied",
+                TenantSpace.status == "leased",
                 TenantSpace.is_deleted == False)
         ).first()
 
@@ -442,8 +442,7 @@ def register_space(
     # 1. CHECK IF USER IS SPACE OWNER
     space_owner = facility_db.query(SpaceOwner).filter(
         SpaceOwner.space_id == space.id,
-        SpaceOwner.owner_user_id == user.user_id,
-        SpaceOwner.is_active == True
+        SpaceOwner.owner_user_id == user.user_id
     ).first()
 
     if space_owner:
@@ -626,15 +625,16 @@ def get_space_detail(
                             timedelta(days=1)
                         break
 
-            space_lease_contract_detail = LeaseContractDetail(
-                start_date=lease.start_date,
-                expiry_date=lease.end_date,
-                rent_amount=float(lease.rent_amount or 0),
-                total_rent_paid=float(total_rent_paid),
-                rent_frequency=lease.frequency,
-                last_paid_date=last_rent_paid,
-                next_due_date=next_rent_due
-            )
+            if space_lease_contract_exist:
+                space_lease_contract_detail = LeaseContractDetail(
+                    start_date=lease.start_date,
+                    expiry_date=lease.end_date,
+                    rent_amount=float(lease.rent_amount or 0),
+                    total_rent_paid=float(total_rent_paid),
+                    rent_frequency=lease.frequency,
+                    last_paid_date=last_rent_paid,
+                    next_due_date=next_rent_due
+                )
 
         # Add space to response
     return SpaceDetailsResponse(

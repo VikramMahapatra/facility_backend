@@ -17,6 +17,6 @@ class TenantSpaceSafe(Base):
         "tenants.id", ondelete="CASCADE"))
     status = Column(
         String(16),
-        default="pending"  # pending | occupied | vacant
+        default="pending"  # pending | approved | rejected
     )
     is_deleted = Column(Boolean, default=False)

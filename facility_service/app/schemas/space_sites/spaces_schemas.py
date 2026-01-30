@@ -47,8 +47,8 @@ class SpaceOut(SpaceBase):
 class ActiveOwnerResponse(BaseModel):
     id: UUID
     owner_type: str
-    owner_id: UUID
-    owner_name: str
+    user_id: UUID
+    full_name: str
     ownership_percentage: Decimal
     start_date: date
     end_date: Optional[date] = None

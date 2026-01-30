@@ -365,48 +365,16 @@ async def create_ticket(
         )
 
     tenant_id = None
+    ticket_user_id = None
     title = None
 
     category_name = session.query(
         TicketCategory.category_name).filter(TicketCategory.id == data.category_id).scalar()
-
-    # if account_type == UserAccountType.ORGANIZATION:
-    #     tenant_id = data.tenant_id
-    #     title = data.title
-    # else:
-    #     tenant_id = session.query(Tenant.id).filter(and_(
-    #         Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
-    #     # ✅ FIXED: Case-insensitive search with site check
-
-    #     title = f"{category_name} - {space.name}"
-
-    #     if not tenant_id:
-    #         return error_response(
-    #             message=f"Invalid tenant",
-    #             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
-    #             http_status=400
-    #         )
-
-    # if not category_name:
-    #     # ✅ Better error message to debug
-    #     return error_response(
-    #         message=f"Invalid category",
-    #         status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
-    #         http_status=400
-    #     )
+    
     if account_type == UserAccountType.ORGANIZATION:
         # Organization user: Get user_id from dropdown
         ticket_user_id = data.user_id
-        
-        # If user is a tenant, find their tenant_id
-        if ticket_user_id:
-            tenant = session.query(Tenant).filter(
-                Tenant.user_id == ticket_user_id,
-                Tenant.is_deleted == False
-            ).first()
-            if tenant:
-                tenant_id = tenant.id
-        
+        tenant_id = data.tenant_id
         title = data.title
     else:
         # TENANT users - creating ticket for themselves

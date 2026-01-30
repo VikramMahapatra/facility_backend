@@ -1,8 +1,9 @@
 import uuid
-from sqlalchemy import Boolean, Column, String, Date, Numeric, ForeignKey, DateTime
+from sqlalchemy import Boolean, Column, Enum, String, Date, Numeric, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from facility_service.app.enum.leasing_tenants_enum import TenantSpaceStatus
 from shared.core.database import Base
 
 
@@ -18,9 +19,13 @@ class TenantSpace(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey(
         "tenants.id", ondelete="CASCADE"))
     status = Column(
-        String(16),
-        default="pending"  # pending |  occupied | vacated
+        Enum(TenantSpaceStatus, name="tenant_space_status"),
+        default=TenantSpaceStatus.pending,
+        nullable=False
     )
+    approved_at = Column(DateTime(timezone=True))
+    rejected_at = Column(DateTime(timezone=True))
+    approved_by = Column(UUID(as_uuid=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now())

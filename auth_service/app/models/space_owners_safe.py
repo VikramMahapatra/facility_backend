@@ -1,5 +1,4 @@
-from enum import Enum
-from sqlalchemy import Column, Date, String, DateTime, Boolean, ForeignKey, func
+from sqlalchemy import Column, Date, String, DateTime, Boolean, ForeignKey, func, Enum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from shared.core.database import Base
 import uuid

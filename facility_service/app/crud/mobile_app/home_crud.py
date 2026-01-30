@@ -224,7 +224,13 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             TenantSpace.site_id == params.site_id,
             TenantSpace.is_deleted == False,
             Tenant.user_id == user.user_id,
-            TenantSpace.status.in_(["approved", "pending", "leased"])
+            TenantSpace.status.in_(
+                [
+                    OwnershipStatus.pending.value,
+                    OwnershipStatus.approved.value,
+                    OwnershipStatus.leased.value
+                ]
+            )
         ).options(
             joinedload(Space.building),
             joinedload(Space.site)
@@ -396,7 +402,7 @@ def register_space(
                 space_id=params.space_id,
                 owner_org_id=site.org_id,
                 ownership_type="primary",
-                status=OwnershipStatus.requested,
+                status=OwnershipStatus.pending,
                 is_active=False,
                 start_date=now
             )
@@ -428,7 +434,7 @@ def register_space(
             site_id=params.site_id,
             space_id=params.space_id,
             tenant_id=tenant_obj.id,
-            status="pending"
+            status=OwnershipStatus.pending,
         )
         facility_db.add(space_tenant_link)
 

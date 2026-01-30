@@ -3,6 +3,8 @@ import shutil
 from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func, and_
+
+from shared.utils.enums import OwnershipStatus
 from ..models.space_owners_safe import SpaceOwnerSafe
 from ..models.user_organizations import UserOrganization
 from shared.utils.app_status_code import AppStatusCode
@@ -159,7 +161,7 @@ def create_user(
                 site_id=user.site_id,
                 space_id=user.space_id,
                 tenant_id=tenant_obj.id,
-                status="pending"
+                status=OwnershipStatus.pending
             )
             facility_db.add(space_tenant_link)
 
@@ -190,7 +192,8 @@ def create_user(
                     space_id=user.space_id,
                     owner_org_id=org_id,
                     is_active=False,
-                    start_date=now
+                    start_date=now,
+                    status=OwnershipStatus.pending
                 )
             )
 

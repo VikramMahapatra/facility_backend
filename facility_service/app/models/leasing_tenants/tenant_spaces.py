@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from facility_service.app.enum.leasing_tenants_enum import TenantSpaceStatus
 from shared.core.database import Base
+from shared.utils.enums import OwnershipStatus
 
 
 class TenantSpace(Base):
@@ -19,8 +20,8 @@ class TenantSpace(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey(
         "tenants.id", ondelete="CASCADE"))
     status = Column(
-        Enum(TenantSpaceStatus, name="tenant_space_status"),
-        default=TenantSpaceStatus.pending,
+        Enum(OwnershipStatus, name="ownership_status"),
+        default=OwnershipStatus.requested,
         nullable=False
     )
     approved_at = Column(DateTime(timezone=True))

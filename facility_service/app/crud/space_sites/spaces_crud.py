@@ -521,54 +521,7 @@ def assign_space_owner(
     )
 
     if not space:
-        raise HTTPException(status_code=404, detail="Space not found")
-
-    #  Check existing ACTIVE owner for this space + ownership type
-    existing_owner = (
-        db.query(SpaceOwner)
-        .filter(
-            SpaceOwner.space_id == payload.space_id,
-            SpaceOwner.is_active == True
-        )
-        .first()
-    )
-
-    #  SAME OWNER → BLOCK
-    if existing_owner and existing_owner.owner_user_id == payload.owner_user_id:
-        raise HTTPException(
-            status_code=400,
-            detail="This owner is already assigned to the space"
-        )
-
-    #  DIFFERENT OWNER → CLOSE PREVIOUS ENTRY
-    if existing_owner:
-        existing_owner.is_active = False
-        existing_owner.end_date = date.today()
-        existing_owner.status = OwnershipStatus.revoked
-
-        other_spaces_count = (
-            db.query(SpaceOwner)
-            .filter(
-                SpaceOwner.space_id != payload.space_id,
-                SpaceOwner.owner_user_id == payload.owner_user_id,
-                SpaceOwner.owner_org_id == org_id,
-                SpaceOwner.is_active == True
-            )
-            .count()
-        )
-
-        #  SOFT DELETE OLD OWNER ACCOUNT ORG ENTRY
-        if other_spaces_count == 0:
-            old_user_org = auth_db.query(UserOrganization).filter(
-                UserOrganization.user_id == existing_owner.owner_user_id,
-                UserOrganization.org_id == org_id,
-                UserOrganization.account_type == "owner",
-                UserOrganization.is_deleted == False
-            ).first()
-
-            if old_user_org:
-                old_user_org.is_deleted = True,
-                old_user_org.status = "inactive"
+        raise error_response(message="Space not found")
 
     # CREATE NEW OWNER ENTRY
     new_owner = SpaceOwner(
@@ -577,9 +530,9 @@ def assign_space_owner(
         owner_org_id=org_id,  # FROM TOKEN
         ownership_type="primary",  # DEFAULT TO PRIMARY
         ownership_percentage=100,
-        status=OwnershipStatus.approved,
+        status=OwnershipStatus.pending,
         start_date=datetime.utcnow().date(),
-        is_active=True
+        is_active=False
     )
 
     # ADD THIS: CREATE / REVIVE USER_ORGANIZATION OWNER ENTRY
@@ -590,13 +543,14 @@ def assign_space_owner(
     ).first()
 
     if user_org:
+        user_org.status = "active"
         user_org.is_deleted = False
     else:
         auth_db.add(
             UserOrganization(
                 user_id=payload.owner_user_id,
                 org_id=org_id,
-                status="active",
+                status="inactive",
                 account_type="owner",
                 is_deleted=False
             )
@@ -683,7 +637,7 @@ def get_pending_space_owner_requests(
         .join(Space, SpaceOwner.space_id == Space.id)
         .filter(
             SpaceOwner.owner_org_id == org_id,
-            SpaceOwner.status == OwnershipStatus.requested
+            SpaceOwner.status == OwnershipStatus.pending
         )
     )
 
@@ -742,7 +696,8 @@ def update_space_owner_approval(
     db: Session,
     auth_db: Session,
     request_id: UUID,
-    action: OwnershipStatus
+    action: OwnershipStatus,
+    org_id: UUID
 ):
     owner = (
         db.query(SpaceOwner)
@@ -756,6 +711,7 @@ def update_space_owner_approval(
         return error_response(message="Ownership request not found")
 
     if action == OwnershipStatus.approved:
+
         # Ensure only one primary owner
         if owner.ownership_type == "primary":
             db.query(SpaceOwner).filter(
@@ -765,17 +721,27 @@ def update_space_owner_approval(
                 SpaceOwner.id != owner.id
             ).update({
                 SpaceOwner.is_active: False,
-                SpaceOwner.status: OwnershipStatus.rejected
+                SpaceOwner.status: OwnershipStatus.revoked
             })
 
         owner.status = OwnershipStatus.approved
         owner.is_active = True
+
+        auth_db.query(UserOrganization).filter(
+            UserOrganization.user_id == owner.owner_user_id,
+            UserOrganization.org_id == org_id,
+            UserOrganization.account_type == "owner",
+            UserOrganization.is_deleted == False
+        ).update({
+            UserOrganization.status: "active"
+        })
 
     else:
         owner.status = OwnershipStatus.rejected
         owner.is_active = False
         owner.end_date = date.today()
 
+    auth_db.commit()
     db.commit()
     db.refresh(owner)
 

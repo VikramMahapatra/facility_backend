@@ -3,7 +3,7 @@ from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpac
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
 from facility_service.app.models.space_sites.user_sites import UserSite
 from shared.models.users import Users
-from shared.utils.enums import UserAccountType
+from shared.utils.enums import OwnershipStatus, UserAccountType
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.space_sites.spaces import Space
 from ...models.space_sites.buildings import Building
@@ -160,16 +160,25 @@ def get_my_spaces(db: Session, auth_db: Session, user: UserToken):
         ).join(Tenant, TenantSpace.tenant_id == Tenant.id).filter(
             TenantSpace.is_deleted == False,
             Tenant.user_id == user.user_id,
-            TenantSpace.status.in_(["approved", "pending", "leased"])
+            TenantSpace.status.in_([
+                OwnershipStatus.pending.value,
+                OwnershipStatus.approved.value,
+                OwnershipStatus.leased.value
+            ])
         ).options(
             joinedload(Space.building),
             joinedload(Space.site)
         )
+
         owner_spaces_query = db.query(Space).join(
             SpaceOwner, SpaceOwner.space_id == Space.id
         ).filter(
             SpaceOwner.is_active == True,
-            SpaceOwner.owner_user_id == user.user_id
+            SpaceOwner.owner_user_id == user.user_id,
+            SpaceOwner.status.in_([
+                OwnershipStatus.pending.value,
+                OwnershipStatus.approved.value
+            ])
         ).options(
             joinedload(Space.building),
             joinedload(Space.site)

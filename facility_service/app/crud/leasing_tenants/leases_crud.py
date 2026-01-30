@@ -6,7 +6,9 @@ from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
 
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists
+from facility_service.app.crud.space_sites.space_occupancy_crud import move_in
 from facility_service.app.models.space_sites.space_occupancies import SpaceOccupancy
+from facility_service.app.schemas.space_sites.space_occupany_schemas import MoveInRequest
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from ...models.space_sites.buildings import Building
 from shared.helpers.property_helper import get_allowed_spaces
@@ -265,10 +267,11 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         tenant_space = db.query(TenantSpace).filter(
             TenantSpace.space_id == payload.space_id,
             TenantSpace.tenant_id == payload.tenant_id,
-            TenantSpace.is_deleted == False
+            TenantSpace.is_deleted == False,
+            TenantSpace.status == TenantSpaceStatus.approved.value
         ).first()
 
-        if not tenant_space or tenant_space.status != TenantSpaceStatus.approved:
+        if not tenant_space:
             return error_response(
                 message="Tenant must be approved before creating a lease"
             )
@@ -293,7 +296,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
         # Create the lease record (always)
 
-        lease_data = payload.model_dump(exclude={"reference", "space_name"})
+        lease_data = payload.model_dump(exclude={"reference", "space_name","auto_move_in"})
         lease_data.update({
             "status": lease_status,
             "default_payer": "tenant"
@@ -301,6 +304,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
         lease = Lease(**lease_data)
         db.add(lease)
+        db.flush() 
         if lease_status == "active":
             tenant.status = "active"  # Sync tenant status
             space.status = "occupied"  # Sync space status
@@ -310,13 +314,18 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             tenant_space.updated_at = func.now()
 
             #  Auto move-in (SAFE access)
-            if getattr(payload, "auto_move_in", False):
-                space_occupancy = db.query(SpaceOccupancy).filter(
-                    SpaceOccupancy.space_id == payload.space_id
-                ).first()
-
-                if space_occupancy:
-                    space_occupancy.status = "active"
+                # ✅ AUTO MOVE-IN
+            if payload.auto_move_in is True:
+                move_in(
+                    db=db,
+                    params=MoveInRequest(
+                        space_id=payload.space_id,
+                        occupant_type="tenant",
+                        occupant_user_id=payload.tenant_id,
+                        lease_id=lease.id,
+                        tenant_id=payload.tenant_id
+                    )
+                )
         # Commit and return
         db.commit()
         db.refresh(lease)
@@ -390,7 +399,7 @@ def update(db: Session, payload: LeaseUpdate):
             if not tenant_space:
                 return error_response("Tenant is not linked to this space")
 
-            if tenant_space.status != TenantSpaceStatus.approved:
+            if tenant_space.status != TenantSpaceStatus.approved.value:
                 return error_response(
                     message="Tenant must be approved before activating lease"
                 )

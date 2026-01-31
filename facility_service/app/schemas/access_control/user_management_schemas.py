@@ -18,7 +18,6 @@ class UserBase(EmptyStringModel):
     phone: Optional[str] = None
     picture_url: Optional[str] = None
     status: Optional[str] = "active"
-    password: Optional[str] = None
 
 
 class UserOrganizationOut(BaseModel):

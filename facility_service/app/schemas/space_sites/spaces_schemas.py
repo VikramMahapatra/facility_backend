@@ -88,6 +88,11 @@ class AssignSpaceOwnerIn(BaseModel):
     owner_user_id: UUID
 
 
+class AssignSpaceTenantIn(BaseModel):
+    space_id: UUID
+    tenant_user_id: UUID
+
+
 class OwnershipHistoryOut(BaseModel):
     id: UUID
     owner_user_id: Optional[UUID]

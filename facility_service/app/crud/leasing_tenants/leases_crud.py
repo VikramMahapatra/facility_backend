@@ -6,8 +6,9 @@ from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
 
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists
-from facility_service.app.crud.space_sites.space_occupancy_crud import move_in
-from facility_service.app.models.space_sites.space_occupancies import SpaceOccupancy
+from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event, move_in
+from facility_service.app.models.space_sites.space_occupancies import OccupantType, SpaceOccupancy
+from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
 from facility_service.app.schemas.space_sites.space_occupany_schemas import MoveInRequest
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from ...models.space_sites.buildings import Building
@@ -263,7 +264,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         if not space:
             return error_response(message="Invalid space")
 
-                # Validate tenant-space approval
+            # Validate tenant-space approval
         tenant_space = db.query(TenantSpace).filter(
             TenantSpace.space_id == payload.space_id,
             TenantSpace.tenant_id == payload.tenant_id,
@@ -292,11 +293,10 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                     message="This space already has an active lease"
                 )
 
-
-
         # Create the lease record (always)
 
-        lease_data = payload.model_dump(exclude={"reference", "space_name","auto_move_in"})
+        lease_data = payload.model_dump(
+            exclude={"reference", "space_name", "auto_move_in"})
         lease_data.update({
             "status": lease_status,
             "default_payer": "tenant"
@@ -304,17 +304,27 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
         lease = Lease(**lease_data)
         db.add(lease)
-        db.flush() 
+        db.flush()
+
+        log_occupancy_event(
+            db=db,
+            space_id=payload.space_id,
+            occupant_type=OccupantType.tenant,
+            occupant_user_id=tenant.user_id,
+            event_type=OccupancyEventType.lease_created,
+            source_id=lease.id,
+            notes=f"Lease created with status {lease_status}"
+        )
+
         if lease_status == "active":
             tenant.status = "active"  # Sync tenant status
-            space.status = "occupied"  # Sync space status
 
             #  Update TenantSpace → leased
             tenant_space.status = TenantSpaceStatus.leased
             tenant_space.updated_at = func.now()
 
             #  Auto move-in (SAFE access)
-                # ✅ AUTO MOVE-IN
+            # ✅ AUTO MOVE-IN
             if payload.auto_move_in is True:
                 move_in(
                     db=db,
@@ -326,6 +336,17 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                         tenant_id=payload.tenant_id
                     )
                 )
+
+            log_occupancy_event(
+                db=db,
+                space_id=payload.space_id,
+                occupant_type=OccupantType.tenant,
+                occupant_user_id=tenant.user_id,
+                event_type=OccupancyEventType.moved_in,
+                source_id=lease.id,
+                notes="Auto move-in during lease activation"
+            )
+
         # Commit and return
         db.commit()
         db.refresh(lease)
@@ -410,16 +431,8 @@ def update(db: Session, payload: LeaseUpdate):
         # Update fields
         for k, v in data.items():
             setattr(obj, k, v)
-            
+
         # ---------- SPACE STATUS (DERIVED) ----------
-        active_exists = db.query(Lease).filter(
-            Lease.space_id == target_space_id,
-            Lease.status == "active",
-            Lease.is_deleted == False
-        ).count() > 0
-
-        space.status = "occupied" if active_exists else "available"
-
         if old_space_id != target_space_id:
             old_space = db.query(Space).filter(
                 Space.id == old_space_id,
@@ -446,7 +459,7 @@ def update(db: Session, payload: LeaseUpdate):
 
                 if old_tenant_space:
                     old_tenant_space.status = TenantSpaceStatus.approved
-        
+
         db.flush()
 
         # ---------- TENANT STATUS ----------
@@ -952,8 +965,6 @@ def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID) -> dict:
     return {
         "tenant_data": results
     }
-
-
 
 
 def lease_frequency_lookup(org_id: UUID, db: Session):

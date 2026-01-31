@@ -1,15 +1,23 @@
 # services/space_occupancy_service.py
+from datetime import datetime, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from uuid import UUID
+
+from facility_service.app.models.leasing_tenants.leases import Lease
+from shared.utils.enums import OwnershipStatus
+
+from ...models.space_sites.space_occupancy_events import OccupancyEventType, SpaceOccupancyEvent
+from ...models.space_sites.spaces import Space
+from shared.helpers.json_response_helper import error_response
 
 from ...schemas.space_sites.space_occupany_schemas import MoveInRequest
 from shared.models.users import Users
 
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from ...models.leasing_tenants.tenants import Tenant
-from ...models.space_sites.space_occupancies import OccupancyStatus, SpaceOccupancy
+from ...models.space_sites.space_occupancies import OccupancyStatus, OccupantType, SpaceOccupancy
 from ...models.space_sites.space_owners import SpaceOwner
 
 
@@ -24,7 +32,10 @@ def get_current_occupancy(db: Session, auth_db: Session, space_id: UUID):
     )
 
     if not occ:
-        return {"status": "vacant"}
+        return {
+            "status": "vacant",
+            "history": get_occupancy_timeline(db, auth_db, space_id)
+        }
 
     current_occupany = {
         "status": "occupied",
@@ -36,7 +47,7 @@ def get_current_occupancy(db: Session, auth_db: Session, space_id: UUID):
 
     return {
         "current": current_occupany,
-        "history": get_occupancy_history(db, space_id)
+        "history": get_occupancy_timeline(db, auth_db, space_id)
     }
 
 
@@ -55,10 +66,7 @@ def move_in(
     )
 
     if active:
-        raise HTTPException(
-            status_code=400,
-            detail="Space is already occupied"
-        )
+        return error_response(message="Space is already occupied")
 
     # 2️⃣ Create occupancy
     occ = SpaceOccupancy(
@@ -74,13 +82,21 @@ def move_in(
     db.add(occ)
 
     # 3️⃣ Optional: sync related tables
-    if params.occupant_type == "tenant" and params.tenant_id:
-        db.query(TenantSpace).filter(
-            TenantSpace.tenant_id == params.tenant_id,
-            TenantSpace.space_id == params.space_id,
-        ).update({
-            "status": "occupied"
-        })
+    db.query(Space).filter(
+        Space.id == params.space_id,
+    ).update({
+        "status": "occupied"
+    })
+
+    log_occupancy_event(
+        db,
+        space_id=params.space_id,
+        event_type=OccupancyEventType.moved_in,
+        occupant_type=params.occupant_type,
+        occupant_user_id=params.occupant_user_id,
+        source_id=params.tenant_id,
+        lease_id=params.lease_id
+    )
 
     db.commit()
     db.refresh(occ)
@@ -89,16 +105,57 @@ def move_in(
 
 
 def move_out(db: Session, space_id: UUID):
+    now = datetime.now(timezone.utc)
     occ = db.query(SpaceOccupancy).filter(
         SpaceOccupancy.space_id == space_id,
         SpaceOccupancy.status == "active"
     ).first()
 
     if not occ:
-        raise HTTPException(400, "Space already vacant")
+        return error_response(message="Space already vacant")
 
     occ.status = "moved_out"
-    occ.move_out_at = func.now()
+    occ.move_out_date = func.now()
+
+    db.query(Space).filter(
+        Space.id == space_id,
+    ).update({
+        "status": "available"
+    })
+
+    if occ.occupant_type == OccupantType.tenant:
+        # End active lease
+        lease = db.query(Lease).filter(
+            Lease.id == occ.lease_id,
+            Lease.is_deleted == False,
+            Lease.status == "active"
+        ).first()
+
+        if lease:
+            lease.status = "terminated"   # or "terminated"
+            lease.end_date = now
+
+        # End tenant-space mapping
+        db.query(TenantSpace).filter(
+            TenantSpace.space_id == space_id,
+            TenantSpace.tenant_id == occ.occupant_user_id,
+            TenantSpace.is_deleted == False,
+            TenantSpace.status == OwnershipStatus.leased
+        ).update({
+            "status": OwnershipStatus.ended,
+            "updated_at": now
+        })
+
+    log_occupancy_event(
+        db,
+        space_id=space_id,
+        event_type=OccupancyEventType.moved_out,
+        occupant_type=occ.occupant_type,
+        occupant_user_id=occ.occupant_user_id,
+        source_id=occ.source_id,
+        lease_id=occ.lease_id
+    )
+
     db.commit()
 
 
@@ -111,10 +168,65 @@ def get_occupancy_history(db: Session, space_id: UUID):
     )
 
 
+def get_occupancy_timeline(
+    db: Session,
+    auth_db: Session,
+    space_id: UUID
+):
+    events = (
+        db.query(SpaceOccupancyEvent)
+        .filter(SpaceOccupancyEvent.space_id == space_id)
+        .order_by(SpaceOccupancyEvent.event_date.asc())
+        .all()
+    )
+
+    timeline = []
+
+    for e in events:
+        occupant_name = get_user_name(
+            auth_db,
+            e.occupant_user_id
+        )
+
+        timeline.append({
+            "event": e.event_type,
+            "occupant_type": e.occupant_type,
+            "occupant_user_id": e.occupant_user_id,
+            "occupant_name": occupant_name,
+            "date": e.event_date,
+            "notes": e.notes,
+        })
+
+    return timeline
+
+
 def get_user_name(auth_db: Session, user_id: UUID) -> str:
     if not user_id:
-        return "Unknown User"
+        return None
 
     user = auth_db.query(Users.full_name).filter(
         Users.id == user_id, Users.is_deleted == False).first()
-    return user.full_name if user else "Unknown User"
+    return user.full_name if user else None
+
+
+def log_occupancy_event(
+    db: Session,
+    space_id: UUID,
+    event_type: OccupancyEventType,
+    occupant_type: OccupantType | None = None,
+    occupant_user_id: UUID | None = None,
+    source_id: UUID | None = None,
+    lease_id: UUID | None = None,
+    notes: str | None = None
+):
+    event = SpaceOccupancyEvent(
+        space_id=space_id,
+        event_type=event_type,
+        occupant_type=occupant_type,
+        occupant_user_id=occupant_user_id,
+        source_id=source_id,
+        lease_id=lease_id,
+        notes=notes
+    )
+    db.add(event)
+    db.commit()

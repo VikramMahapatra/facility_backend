@@ -8,6 +8,8 @@ from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
 from auth_service.app.models.user_organizations import UserOrganization
+from ...crud.access_control.user_management_crud import handle_account_type_update, upsert_user_sites_preserve_primary
+from ...schemas.access_control.user_management_schemas import UserAccountCreate, UserTenantSpace
 from ...models.space_sites.space_owners import OwnershipStatus, SpaceOwner
 from shared.models.users import Users
 
@@ -15,7 +17,7 @@ from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from shared.core.schemas import CommonQueryParams, UserToken
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.utils.app_status_code import AppStatusCode
-from shared.helpers.json_response_helper import error_response
+from shared.helpers.json_response_helper import error_response, success_response
 from shared.utils.enums import UserAccountType
 
 from ...models.leasing_tenants.tenants import Tenant
@@ -23,7 +25,7 @@ from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.leases import Lease
-from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, OwnershipHistoryOut, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipHistoryOut, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
@@ -523,51 +525,161 @@ def assign_space_owner(
     if not space:
         raise error_response(message="Space not found")
 
-    # CREATE NEW OWNER ENTRY
-    new_owner = SpaceOwner(
-        space_id=payload.space_id,
-        owner_user_id=payload.owner_user_id,
-        owner_org_id=org_id,  # FROM TOKEN
-        ownership_type="primary",  # DEFAULT TO PRIMARY
-        ownership_percentage=100,
-        status=OwnershipStatus.pending,
-        start_date=datetime.utcnow().date(),
-        is_active=False
-    )
+    user = auth_db.query(Users).filter(
+        Users.id == payload.owner_user_id,
+        Users.is_deleted == False
+    ).first()
+
+    if not user:
+        raise error_response(message="User not found")
 
     # ADD THIS: CREATE / REVIVE USER_ORGANIZATION OWNER ENTRY
     user_org = auth_db.query(UserOrganization).filter(
         UserOrganization.user_id == payload.owner_user_id,
         UserOrganization.org_id == org_id,
-        UserOrganization.account_type == "owner"
+        UserOrganization.account_type == UserAccountType.FLAT_OWNER.value
     ).first()
 
     if user_org:
         user_org.status = "active"
         user_org.is_deleted = False
     else:
-        auth_db.add(
-            UserOrganization(
-                user_id=payload.owner_user_id,
-                org_id=org_id,
-                status="inactive",
-                account_type="owner",
-                is_deleted=False
-            )
+        user_org = UserOrganization(
+            user_id=payload.owner_user_id,
+            org_id=org_id,
+            status="inactive",
+            account_type=UserAccountType.FLAT_OWNER.value,
+            is_deleted=False
         )
 
-    db.add(new_owner)
+    owner_spaces = []
+    owner_spaces.append(
+        UserTenantSpace(
+            site_id=space.site_id,
+            space_id=payload.space_id
+        )
+    )
+
+    user_account = UserAccountCreate(
+        user_id=payload.owner_user_id,
+        status="active",
+        account_type=UserAccountType.FLAT_OWNER.value,
+        owner_spaces=owner_spaces
+    )
+
+    error = handle_account_type_update(
+        db=auth_db,
+        facility_db=db,
+        db_user=user,
+        db_user_org=user_org,
+        user_account=user_account,
+        org_id=org_id
+    )
+
+    if error:
+        return error
+
     db.commit()
+    auth_db.add(user_org)
     auth_db.commit()
-    db.refresh(new_owner)
 
-    # RETURN ACTIVE OWNERS
-    active_owners = get_active_owners(
-        db=db, auth_db=auth_db, space_id=payload.space_id)
+    return success_response(data=None, message="request submitted successfully")
 
-    return AssignSpaceOwnerOut(
-        space_id=payload.space_id,
-        owners=active_owners)
+
+def assign_space_tenant(
+    db: Session,
+    auth_db: Session,
+    org_id: UUID,
+    payload: AssignSpaceTenantIn
+):
+    now = datetime.utcnow()
+    #  Validate space
+    space = (
+        db.query(Space)
+        .filter(
+            Space.id == payload.space_id,
+            Space.org_id == org_id,
+            Space.is_deleted == False
+        )
+        .first()
+    )
+
+    if not space:
+        raise error_response(message="Space not found")
+
+    tenant_space_owner = (
+        db.query(SpaceOwner)
+        .filter(
+            SpaceOwner.space_id == payload.space_id,
+            SpaceOwner.owner_user_id == payload.tenant_user_id,
+            SpaceOwner.status == OwnershipStatus.approved
+        )
+        .first()
+    )
+
+    if tenant_space_owner:
+        raise error_response(
+            message="Space owner cannot be assigned as tenant.")
+
+    user = auth_db.query(Users).filter(
+        Users.id == payload.tenant_user_id,
+        Users.is_deleted == False
+    ).first()
+
+    if not user:
+        raise error_response(message="User not found")
+
+    # ADD THIS: CREATE / REVIVE USER_ORGANIZATION OWNER ENTRY
+    user_org = auth_db.query(UserOrganization).filter(
+        UserOrganization.user_id == payload.tenant_user_id,
+        UserOrganization.org_id == org_id,
+        UserOrganization.account_type == UserAccountType.TENANT.value
+    ).first()
+
+    if user_org:
+        user_org.status = "active"
+        user_org.is_deleted = False
+    else:
+        user_org = UserOrganization(
+            user_id=payload.owner_user_id,
+            org_id=org_id,
+            status="inactive",
+            account_type=UserAccountType.TENANT.value,
+            is_deleted=False
+        )
+
+    tenant_spaces = []
+    tenant_spaces.append(
+        UserTenantSpace(
+            site_id=space.site_id,
+            space_id=payload.space_id
+        )
+    )
+
+    user_account = UserAccountCreate(
+        user_id=payload.tenant_user_id,
+        status="active",
+        account_type=UserAccountType.TENANT.value,
+        tenant_spaces=tenant_spaces
+    )
+
+    error = handle_account_type_update(
+        db=auth_db,
+        facility_db=db,
+        db_user=user,
+        db_user_org=user_org,
+        user_account=user_account,
+        org_id=org_id
+    )
+
+    if error:
+        return error
+
+    db.commit()
+    auth_db.add(user_org)
+    auth_db.commit()
+
+    return success_response(data=None, message="request submitted successfully")
 
 
 def get_space_ownership_history(
@@ -710,7 +822,46 @@ def update_space_owner_approval(
     if not owner:
         return error_response(message="Ownership request not found")
 
+    space = db.query(Space).filter(
+        Space.id == owner.space_id,
+        Space.is_deleted == False
+    ).first()
+
     if action == OwnershipStatus.approved:
+        existing_assignments = db.query(SpaceOwner).filter(
+            SpaceOwner.space_id == owner.space_id,
+            SpaceOwner.is_active == True
+        ).all()
+
+        #  DIFFERENT OWNER → CLOSE PREVIOUS ENTRY
+        for ts in existing_assignments:
+            if ts.owner_user_id != owner.owner_user_id:
+                ts.is_active = False
+                ts.end_date = date.today()
+
+                other_spaces_count = (
+                    db.query(SpaceOwner)
+                    .filter(
+                        SpaceOwner.space_id != ts.space_id,
+                        SpaceOwner.owner_user_id == ts.owner_user_id,
+                        SpaceOwner.owner_org_id == org_id,
+                        SpaceOwner.is_active == True
+                    )
+                    .count()
+                )
+
+                #  SOFT DELETE OLD OWNER ACCOUNT ORG ENTRY
+                if other_spaces_count == 0:
+                    old_user_org = db.query(UserOrganization).filter(
+                        UserOrganization.user_id == ts.owner_user_id,
+                        UserOrganization.org_id == org_id,
+                        UserOrganization.account_type == "owner",
+                        UserOrganization.is_deleted == False
+                    ).first()
+
+                    if old_user_org:
+                        old_user_org.is_deleted = True,
+                        old_user_org.status = "inactive"
 
         # Ensure only one primary owner
         if owner.ownership_type == "primary":
@@ -735,6 +886,14 @@ def update_space_owner_approval(
         ).update({
             UserOrganization.status: "active"
         })
+
+        site_ids = [space.site_id]
+
+        upsert_user_sites_preserve_primary(
+            db=db,
+            user_id=owner.owner_user_id,
+            site_ids=site_ids
+        )
 
     else:
         owner.status = OwnershipStatus.rejected

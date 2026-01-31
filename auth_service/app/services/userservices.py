@@ -89,6 +89,16 @@ def create_user(
         db.add(user_instance)
         db.flush()
 
+        # ✅ Commit All OR Rollback All
+        user_org = UserOrganization(
+            user_id=user_instance.id,
+            org_id=org_id,
+            account_type=user.account_type.lower(),
+            status="pending",
+            is_default=True
+        )
+        db.add(user_org)
+
         # ✅ ACCOUNT TYPE: ORGANIZATION
         if user.account_type.lower() == "organization":
             if not user.organizationName:
@@ -197,29 +207,19 @@ def create_user(
                 )
             )
 
-        # ✅ Commit All OR Rollback All
-        user_org = UserOrganization(
-            user_id=user_instance.id,
-            org_id=org_id,
-            account_type=user.account_type.lower(),
-            status="pending",
-            is_default=True
-        )
-        db.add(user_org)
-
         db.commit()
         facility_db.commit()
 
     except HTTPException:
         db.rollback()
         facility_db.rollback()
-        raise
+        return error_response(message="Something went wrong")
 
     except SQLAlchemyError as e:
         db.rollback()
         facility_db.rollback()
         print("DB Error:", e)
-        raise HTTPException(500, "Internal server error while creating user")
+        return error_response(message="Internal server error while creating user")
 
     return get_user_token(request, db, facility_db, user_instance)
 

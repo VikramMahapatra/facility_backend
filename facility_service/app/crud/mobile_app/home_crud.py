@@ -6,11 +6,12 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from auth_service.app.models.user_organizations import UserOrganization
+from facility_service.app.crud.access_control.user_management_crud import handle_account_type_update
 from facility_service.app.models.space_sites.user_sites import UserSite
 from facility_service.app.schemas.mobile_app.user_profile_schemas import MySpacesResponse
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
-from ...schemas.access_control.user_management_schemas import UserOrganizationOut
+from ...schemas.access_control.user_management_schemas import UserAccountCreate, UserOrganizationOut, UserTenantSpace
 from shared.models.users import Users
 from ...enum.space_sites_enum import OwnershipType
 from ...models.space_sites.owner_maintenances import OwnerMaintenanceCharge
@@ -365,6 +366,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
 def register_space(
         params: AddSpaceRequest,
         facility_db: Session,
+        auth_db: Session,
         user: UserToken):
 
     now = datetime.utcnow()
@@ -374,6 +376,10 @@ def register_space(
     # ✅ Find site
     site = facility_db.query(Site).filter(
         Site.id == params.site_id).first()
+
+    db_user = auth_db.query(Users).filter(
+        Users.id == user.user_id, Users.is_deleted == False).first()
+
     if not site:
         return error_response(
             message="Invalid site selected",
@@ -394,50 +400,82 @@ def register_space(
         joinedload(Space.site)
     ).first()
 
-    if params.account_type.lower() == "owner":
-        # ➕ Insert new
-        facility_db.add(
-            SpaceOwner(
-                owner_user_id=user.user_id,
-                space_id=params.space_id,
-                owner_org_id=site.org_id,
-                ownership_type="primary",
-                status=OwnershipStatus.pending,
-                is_active=False,
-                start_date=now
+    user_org = auth_db.query(UserOrganization).filter(
+        UserOrganization.user_id == user.user_id,
+        UserOrganization.org_id == site.org_id,
+        UserOrganization.account_type == params.account_type.lower()
+    ).first()
+
+    if user_org:
+        user_org.status = "active"
+        user_org.is_deleted = False
+    else:
+        user_org = UserOrganization(
+            user_id=user.user_id,
+            org_id=site.org_id,
+            status="pending",
+            account_type=params.account_type.lower(),
+            is_deleted=False
+        )
+        auth_db.add(user_org)
+
+    if params.account_type.lower() == UserAccountType.FLAT_OWNER.value:
+        owner_spaces = []
+        owner_spaces.append(
+            UserTenantSpace(
+                site_id=space.site_id,
+                space_id=params.space_id
             )
         )
 
-    elif params.account_type.lower() == "tenant":
+        user_account = UserAccountCreate(
+            user_id=user.user_id,
+            status="active",
+            account_type=UserAccountType.FLAT_OWNER.value,
+            owner_spaces=owner_spaces
+        )
 
-        existing_tenant = facility_db.query(TenantSpace).filter(
-            and_(
-                TenantSpace.space_id == params.space_id,
-                TenantSpace.status == "leased",
-                TenantSpace.is_deleted == False)
-        ).first()
+        error = handle_account_type_update(
+            db=auth_db,
+            facility_db=facility_db,
+            db_user=db_user,
+            db_user_org=user_org,
+            user_account=user_account,
+            org_id=site.org_id
+        )
 
-        if existing_tenant:
-            return error_response(
-                message="Tenant already registered for selected space",
-                status_code=str(AppStatusCode.USER_ALREADY_REGISTERED),
+        if error:
+            return error
+
+    elif params.account_type.lower() == UserAccountType.TENANT.value:
+        tenant_spaces = []
+        tenant_spaces.append(
+            UserTenantSpace(
+                site_id=space.site_id,
+                space_id=params.space_id
             )
-
-        tenant_obj = (
-            facility_db.query(Tenant)
-            .filter(Tenant.user_id == user.user_id, Tenant.is_deleted == False)
-            .first()
         )
 
-        # ✅ Create space tenant link
-        space_tenant_link = TenantSpace(
-            site_id=params.site_id,
-            space_id=params.space_id,
-            tenant_id=tenant_obj.id,
-            status=OwnershipStatus.pending,
+        user_account = UserAccountCreate(
+            user_id=user.user_id,
+            status="active",
+            account_type=UserAccountType.TENANT.value,
+            tenant_spaces=tenant_spaces
         )
-        facility_db.add(space_tenant_link)
 
+        error = handle_account_type_update(
+            db=auth_db,
+            facility_db=facility_db,
+            db_user=db_user,
+            db_user_org=user_org,
+            user_account=user_account,
+            org_id=site.org_id
+        )
+
+        if error:
+            return error
+
+    auth_db.commit()
     facility_db.commit()
 
     # RESPONSE

@@ -8,13 +8,14 @@ from sqlalchemy import func, or_
 from typing import Dict, List, Optional
 
 from auth_service.app.models.orgs_safe import OrgSafe
-from auth_service.app.models.tenant_spaces_safe import TenantSpaceSafe
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.userroles import UserRoles
+from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event
+from facility_service.app.models.space_sites.space_occupancies import OccupantType
+from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
 from shared.utils.enums import OwnershipStatus
 from ...models.space_sites.user_sites import UserSite
-from ...crud.leasing_tenants.tenants_crud import active_lease_exists, validate_active_tenants_for_spaces
 from ...enum.leasing_tenants_enum import TenantStatus
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.lease_charges import LeaseCharge
@@ -146,8 +147,7 @@ def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
         db.query(UserOrganization)
         .filter(
             UserOrganization.user_id == user.id,
-            UserOrganization.org_id == org_id,
-            UserOrganization.status == "active"
+            UserOrganization.org_id == org_id
         )
         .first()
     )
@@ -279,7 +279,12 @@ def send_user_credentials_email(background_tasks, db, email, username, password,
     )
 
 
-def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Session, user: UserCreate):
+def create_user(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    facility_db: Session,
+    user: UserCreate
+):
     try:
         # Check if email already exists
         if user.email:
@@ -302,8 +307,6 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
                 raise ValueError("User with this phone number already exists")
 
                 # ✅ ADD VALIDATION FOR PASSWORD
-        if not user.password:
-            raise ValueError("Password is required for user creation")
 
         user_data = user.model_dump(exclude={'org_id'})
 
@@ -312,13 +315,8 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             user_data['username'] = user.email
 
         db_user = Users(**user_data)
-
-        # ✅ SET PASSWORD USING YOUR EXISTING METHOD (Requirement 2 & 3)
-        db_user.set_password(user.password)
-
         db.add(db_user)
-        db.commit()
-        db.flush(db_user)
+        db.flush()
 
         # CREATE USER_ORG ENTRY
         user_org = UserOrganization(
@@ -330,18 +328,18 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
 
         )
         db.add(user_org)
-        db.flush()
+        db.commit()
 
         # ✅ SEND EMAIL IF STATUS IS ACTIVE (following your pattern)
-        if user.status and user.status.lower() == "active" and user.email:
-            send_user_credentials_email(
-                background_tasks=background_tasks,
-                db=facility_db,
-                email=user.email,
-                username=user.email,
-                password=user.password,  # Plain password for email only
-                full_name=user.full_name
-            )
+        # if user.status and user.status.lower() == "active" and user.email:
+        #     send_user_credentials_email(
+        #         background_tasks=background_tasks,
+        #         db=facility_db,
+        #         email=user.email,
+        #         username=user.email,
+        #         password=user.password,  # Plain password for email only
+        #         full_name=user.full_name
+        #     )
 
         return get_user_by_id(db, db_user.id, user_org.org_id)
 
@@ -349,6 +347,7 @@ def create_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
         # ✅ ROLLBACK everything if any error occurs
         db.rollback()
         facility_db.rollback()
+        print(str(e))
         return error_response(
             message=str(e),
             status_code=str(AppStatusCode.OPERATION_ERROR),
@@ -392,18 +391,6 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
     password_updated = False
     new_password = None
 
-    # -----------------------
-    # ✅ ADDED: PASSWORD UPDATE HANDLING
-    # -----------------------
-    if user.password:
-        # Password is being updated
-        password_updated = True
-        new_password = user.password
-        # Set the new hashed password
-        db_user.set_password(user.password)
-        # Remove password from update_data to avoid trying to set it directly
-        if 'password' in user.__dict__:
-            delattr(user, 'password')
     # -----------------------
     # ✅ ADDED: VALIDATE EMAIL & PHONE DUPLICATES
     # -----------------------
@@ -1127,25 +1114,28 @@ def handle_account_type_update(
             Tenant.is_deleted == False
         ).first()
 
-        if not tenant:
+        if tenant:
+            has_active_lease = facility_db.query(Lease).filter(
+                Lease.tenant_id == tenant.id,
+                Lease.is_deleted == False,
+                func.lower(Lease.status) == "active"
+            ).first()
+
+            if has_active_lease:
+                return error_response(
+                    message="Cannot update tenant spaces while active leases exist"
+                )
+        else:
             tenant = Tenant(
                 user_id=db_user_org.user_id,
-                org_id=org_id,
-                status="active"
+                status="inactive",
+                name=db_user.full_name,
+                email=db_user.email,
+                phone=db_user.phone,
+                kind="residential"
             )
             facility_db.add(tenant)
             facility_db.flush()
-
-        has_active_lease = facility_db.query(Lease).filter(
-            Lease.tenant_id == tenant.id,
-            Lease.is_deleted == False,
-            func.lower(Lease.status) == "active"
-        ).first()
-
-        if has_active_lease:
-            return error_response(
-                message="Cannot update tenant spaces while active leases exist"
-            )
 
         facility_db.query(TenantSpace).filter(
             TenantSpace.tenant_id == tenant.id,
@@ -1154,15 +1144,25 @@ def handle_account_type_update(
 
         now = datetime.utcnow()
         for space in user_account.tenant_spaces:
-            facility_db.add(
-                TenantSpace(
-                    tenant_id=tenant.id,
-                    site_id=space.site_id,
-                    space_id=space.space_id,
-                    status=OwnershipStatus.pending,
-                    created_at=now,
-                    updated_at=now
-                )
+            t_space = TenantSpace(
+                tenant_id=tenant.id,
+                site_id=space.site_id,
+                space_id=space.space_id,
+                status=OwnershipStatus.pending,
+                created_at=now,
+                updated_at=now
+            )
+            facility_db.add(t_space)
+            facility_db.flush()
+
+            log_occupancy_event(
+                db=facility_db,
+                space_id=space.space_id,
+                occupant_type=OccupantType.tenant,
+                occupant_user_id=db_user_org.user_id,
+                event_type=OccupancyEventType.tenant_requested,
+                source_id=t_space.id,
+                notes="Tenant requested space during account update"
             )
 
         tenant.name = db_user.full_name
@@ -1199,46 +1199,10 @@ def handle_account_type_update(
             SpaceOwner.is_active == True
         ).all()
 
-        #  DIFFERENT OWNER → CLOSE PREVIOUS ENTRY
-        for ts in existing_assignments:
-            if ts.owner_user_id != db_user_org.user_id:
-                ts.is_active = False
-                ts.end_date = date.today()
-
-                other_spaces_count = (
-                    db.query(SpaceOwner)
-                    .filter(
-                        SpaceOwner.space_id != ts.space_id,
-                        SpaceOwner.owner_user_id == ts.owner_user_id,
-                        SpaceOwner.owner_org_id == org_id,
-                        SpaceOwner.is_active == True
-                    )
-                    .count()
-                )
-
-                #  SOFT DELETE OLD OWNER ACCOUNT ORG ENTRY
-                if other_spaces_count == 0:
-                    old_user_org = db.query(UserOrganization).filter(
-                        UserOrganization.user_id == ts.owner_user_id,
-                        UserOrganization.org_id == org_id,
-                        UserOrganization.account_type == "owner",
-                        UserOrganization.is_deleted == False
-                    ).first()
-
-                    if old_user_org:
-                        old_user_org.is_deleted = True,
-                        old_user_org.status = "inactive"
-
         existing_by_space = {
             sa.space_id: sa
             for sa in existing_assignments
         }
-
-        facility_db.query(SpaceOwner).filter(
-            SpaceOwner.owner_user_id == db_user_org.user_id,
-            SpaceOwner.owner_org_id == org_id,
-            SpaceOwner.is_deleted == False
-        ).update({"is_deleted": True})
 
         now = datetime.utcnow()
 
@@ -1247,16 +1211,26 @@ def handle_account_type_update(
 
             if not existing:
                 # ➕ Insert new
-                facility_db.add(
-                    SpaceOwner(
-                        owner_user_id=db_user_org.user_id,
-                        space_id=space.space_id,
-                        owner_org_id=org_id,
-                        ownership_type="primary",
-                        status=OwnershipStatus.pending,
-                        is_active=True,
-                        start_date=now
-                    )
+                so = SpaceOwner(
+                    owner_user_id=db_user_org.user_id,
+                    space_id=space.space_id,
+                    owner_org_id=org_id,
+                    ownership_type="primary",
+                    status=OwnershipStatus.pending,
+                    is_active=True,
+                    start_date=now
+                )
+                facility_db.add(so)
+                facility_db.flush()
+
+                log_occupancy_event(
+                    db=facility_db,
+                    space_id=space.space_id,
+                    occupant_type=OccupantType.owner,
+                    occupant_user_id=db_user_org.user_id,
+                    event_type=OccupancyEventType.owner_requested,
+                    source_id=so.id,
+                    notes="Ownership requested during account update"
                 )
 
         owner_site_ids = (
@@ -1419,8 +1393,7 @@ def upsert_user_sites_preserve_primary(
     *,
     db: Session,
     user_id: UUID,
-    site_ids: list[UUID],
-    role: str
+    site_ids: list[UUID]
 ):
     if not site_ids:
         return

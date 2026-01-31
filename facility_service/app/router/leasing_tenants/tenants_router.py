@@ -172,6 +172,8 @@ def get_tenants_by_site_and_space(
         data=tenants,  # This should be a list
         message="Data retrieved successfully"
     )
+
+
 @router.get("/{space_id:uuid}/spaces", response_model=SpaceTenantResponse)
 def get_space_tenants(
     space_id: UUID,
@@ -185,9 +187,10 @@ def get_space_tenants(
 def approve_tenant(
     params: SpaceTenantApprovalRequest,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
-    return crud.approve_tenant(params, db ,current_user)
+    return crud.approve_tenant(params, db, auth_db, current_user)
 
 
 @router.post("/reject")

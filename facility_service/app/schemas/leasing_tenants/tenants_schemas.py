@@ -126,6 +126,7 @@ class SpaceTenantResponse(BaseModel):
 class TenantApprovalOut(BaseModel):
     tenant_space_id: UUID
     tenant_user_id: UUID
+    tenant_id: UUID
     tenant_name: str
     tenant_email: Optional[str]
     space_id: UUID

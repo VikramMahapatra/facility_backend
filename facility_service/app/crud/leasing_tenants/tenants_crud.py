@@ -1205,7 +1205,7 @@ def reject_tenant(
 
     db.commit()
 
-    return success_response(message="Tenant rejected successfully")
+    return success_response(data=None, message="Tenant rejected successfully")
 
 
 def get_tenant_approvals(

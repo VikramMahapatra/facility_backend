@@ -194,8 +194,8 @@ def approve_tenant(
 
 
 @router.post("/reject")
-def approve_tenant(
-    params: SpaceTenantApprovalRequest = Depends(),
+def reject_tenant(
+    params: SpaceTenantApprovalRequest,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):

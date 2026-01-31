@@ -752,9 +752,6 @@ def get_pending_space_owner_requests(
             SpaceOwner.status == OwnershipStatus.pending
         )
     )
-
-    print(org_id)
-
     if params.search:
         search_term = f"%{params.search}%"
         base_query.filter(or_(Space.name.ilike(search_term),

@@ -1210,10 +1210,11 @@ def reject_tenant(
 
 def get_tenant_approvals(
     db: Session,
+    org_id: UUID,
     status: str | None = None,
     search: str | None = None,
     skip: int = 0,
-    limit: int = 10
+    limit: int = 10,
 ):
     query = (
         db.query(
@@ -1233,7 +1234,10 @@ def get_tenant_approvals(
         .join(Tenant, Tenant.id == TenantSpace.tenant_id)
         .join(Space, Space.id == TenantSpace.space_id)
         .join(Site, Site.id == Space.site_id)
-        .filter(TenantSpace.is_deleted == False)
+        .filter(
+            TenantSpace.is_deleted == False,
+            Site.org_id == org_id
+        )
     )
 
     # Status filter

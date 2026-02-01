@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists
 from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event, move_in
+from facility_service.app.models.leasing_tenants.lease_payment_term import LeasePaymentTerm
 from facility_service.app.models.space_sites.space_occupancies import OccupantType, SpaceOccupancy
 from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
 from facility_service.app.schemas.space_sites.space_occupany_schemas import MoveInRequest
@@ -28,7 +29,7 @@ from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...schemas.leases_schemas import (
-    LeaseCreate, LeaseListResponse, LeaseOut, LeaseRequest, LeaseUpdate
+    LeaseCreate, LeaseListResponse, LeaseOut, LeasePaymentTermCreate, LeaseRequest, LeaseUpdate
 )
 from uuid import UUID
 
@@ -962,3 +963,46 @@ def lease_frequency_lookup(org_id: UUID, db: Session):
         Lookup(id=frequency.value, name=frequency.name.capitalize())
         for frequency in LeaseFrequency
     ]
+
+
+
+def create(db: Session, lease_id: UUID, payload: LeasePaymentTermCreate):
+    try:
+        # 0 Validate lease_id
+        if not lease_id:
+            return error_response(message="lease_id is required")
+
+        # 1 Fetch & validate lease
+        lease = db.query(Lease).filter(
+            Lease.id == lease_id,
+            Lease.is_deleted == False
+        ).first()
+
+        if not lease:
+            return error_response(message="Invalid lease")
+
+        # 2 Allow only valid lease states
+        if lease.status not in ("active", "draft"):
+            return error_response(
+                message="Payment terms can only be added to active or draft leases"
+            )
+
+        # 3 Create payment term
+        data = payload.model_dump()
+        data["lease_id"] = lease_id
+
+        payment_term = LeasePaymentTerm(**data)
+        db.add(payment_term)
+        db.flush()
+
+        # 4 Auto-set paid_at
+        if payment_term.status == "paid":
+            payment_term.paid_at = payload.paid_at or func.now()
+
+        db.commit()
+        db.refresh(payment_term)
+        return payment_term
+
+    except Exception as e:
+        db.rollback()
+        raise e

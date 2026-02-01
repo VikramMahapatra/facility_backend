@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
 from ...schemas.leases_schemas import (
-    LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut,
+    LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeasePaymentTermCreate, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut,
 )
 from ...crud.leasing_tenants import leases_crud as crud
 from shared.core.auth import allow_admin, validate_current_token
@@ -131,3 +131,13 @@ def tenant_space_detail(
         org_id=current_user.org_id,
         tenant_id=tenant_id
     )
+    
+    
+@router.post("/create-lease-payment-term")
+def create_lease_payment_term(
+    lease_id: UUID = Query(..., description="Lease ID"),
+    payload: LeasePaymentTermCreate = Body(...),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.create(db, lease_id, payload)

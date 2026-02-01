@@ -29,9 +29,10 @@ from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...schemas.leases_schemas import (
-    LeaseCreate, LeaseListResponse, LeaseOut, LeasePaymentTermCreate, LeaseRequest, LeaseUpdate
+    LeaseCreate, LeaseListResponse, LeaseOut, LeasePaymentTermCreate, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate
 )
 from uuid import UUID
+from dateutil.relativedelta import relativedelta
 
 
 # ----------------------------------------------------
@@ -294,13 +295,37 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                     message="This space already has an active lease"
                 )
 
-        # Create the lease record (always)
+        # =========================
+        # CALCULATE END DATE
+        # =========================
+        end_date = payload.end_date  # default (if already provided)
 
+        if payload.frequency == "monthly":
+            if not payload.lease_term_months:
+                return error_response(
+                    message="lease_term_months is required for monthly leases"
+                )
+
+            end_date = (
+                payload.start_date
+                + relativedelta(months=payload.lease_term_months)
+                - relativedelta(days=1)
+            )
+        else:
+            # 🔥 Annual lease (default)
+            end_date = (
+                payload.start_date
+                + relativedelta(years=1)
+                - relativedelta(days=1)
+            )
+
+         # Create the lease record (always)
         lease_data = payload.model_dump(
-            exclude={"reference", "space_name", "auto_move_in"})
+            exclude={"reference", "space_name", "auto_move_in", "lease_term_months"})
         lease_data.update({
             "status": lease_status,
-            "default_payer": "tenant"
+            "default_payer": "tenant",
+            "end_date": end_date
         })
 
         lease = Lease(**lease_data)
@@ -356,7 +381,10 @@ def update(db: Session, payload: LeaseUpdate):
             return None
 
         old_space_id = obj.space_id
-        data = payload.model_dump(exclude_unset=True)
+        data = payload.model_dump(
+            exclude_unset=True,
+            exclude={"lease_term_months"}
+        )
         tenant_id = data.get("tenant_id", obj.tenant_id)
         target_space_id = data.get("space_id", obj.space_id)
 
@@ -418,6 +446,32 @@ def update(db: Session, payload: LeaseUpdate):
 
             tenant_space.status = TenantSpaceStatus.leased
             tenant_space.updated_at = func.now()
+
+        # =========================
+        # CALCULATE END DATE
+        # =========================
+        end_date = payload.end_date  # default (if already provided)
+
+        if payload.frequency == "monthly":
+            if not payload.lease_term_months:
+                return error_response(
+                    message="lease_term_months is required for monthly leases"
+                )
+
+            end_date = (
+                payload.start_date
+                + relativedelta(months=payload.lease_term_months)
+                - relativedelta(days=1)
+            )
+        else:
+            # 🔥 Annual lease (default)
+            end_date = (
+                payload.start_date
+                + relativedelta(years=1)
+                - relativedelta(days=1)
+            )
+
+        data["end_date"] = end_date
 
         # Update fields
         for k, v in data.items():
@@ -965,16 +1019,15 @@ def lease_frequency_lookup(org_id: UUID, db: Session):
     ]
 
 
-
-def create(db: Session, lease_id: UUID, payload: LeasePaymentTermCreate):
+def create_payment_term(db: Session, payload: LeasePaymentTermCreate):
     try:
         # 0 Validate lease_id
-        if not lease_id:
+        if not payload.lease_id:
             return error_response(message="lease_id is required")
 
         # 1 Fetch & validate lease
         lease = db.query(Lease).filter(
-            Lease.id == lease_id,
+            Lease.id == payload.lease_id,
             Lease.is_deleted == False
         ).first()
 
@@ -987,17 +1040,48 @@ def create(db: Session, lease_id: UUID, payload: LeasePaymentTermCreate):
                 message="Payment terms can only be added to active or draft leases"
             )
 
-        # 3 Create payment term
-        data = payload.model_dump()
-        data["lease_id"] = lease_id
+        if payload.id:
+            payment_term = db.query(LeasePaymentTerm).filter(
+                LeasePaymentTerm.id == payload.id,
+                LeasePaymentTerm.lease_id == payload.lease_id
+            ).first()
 
-        payment_term = LeasePaymentTerm(**data)
-        db.add(payment_term)
-        db.flush()
+            if not payment_term:
+                return error_response(message="Payment term not found")
 
-        # 4 Auto-set paid_at
-        if payment_term.status == "paid":
-            payment_term.paid_at = payload.paid_at or func.now()
+            if payment_term.status == "paid":
+                return error_response(
+                    message="Paid payment terms cannot be edited"
+                )
+
+            update_data = payload.model_dump(
+                exclude_unset=True,
+                exclude={"id", "lease_id"}
+            )
+
+            if payment_term.status == "paid" and not payment_term.paid_at:
+                payment_term.paid_at = func.now()
+
+            if payment_term.status != "paid":
+                payment_term.paid_at = None
+
+            for k, v in update_data.items():
+                setattr(payment_term, k, v)
+
+        # =========================
+        # CREATE FLOW
+        # =========================
+        else:
+            data = payload.model_dump(exclude={"id"})
+            payment_term = LeasePaymentTerm(**data)
+            db.add(payment_term)
+            db.flush()
+
+        # =========================
+        # AUTO PAID TIMESTAMP
+        # =========================
+        if payment_term.status == "paid" and not payment_term.paid_at:
+            payment_term.paid_at = func.now()
 
         db.commit()
         db.refresh(payment_term)
@@ -1006,3 +1090,36 @@ def create(db: Session, lease_id: UUID, payload: LeasePaymentTermCreate):
     except Exception as e:
         db.rollback()
         raise e
+
+
+def get_lease_payment_terms(
+    *,
+    db: Session,
+    params: LeasePaymentTermRequest
+):
+    lease = db.query(Lease).filter(
+        Lease.id == params.lease_id,
+        Lease.is_deleted == False
+    ).first()
+
+    if not lease:
+        return error_response(message="Lease not found")
+
+    query = db.query(LeasePaymentTerm).filter(
+        LeasePaymentTerm.lease_id == params.lease_id
+    )
+
+    total = query.count()
+
+    terms = (
+        query
+        .order_by(LeasePaymentTerm.due_date.asc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+
+    return {
+        "items": terms,
+        "total": total
+    }

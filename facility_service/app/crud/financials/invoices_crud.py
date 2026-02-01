@@ -121,20 +121,20 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
                     else:
                         billable_item_name = ticket_work_order.wo_no
                 
-            elif invoice.billable_item_type == "lease charge":
-                lease_charge = db.query(LeaseCharge).filter(
-                    LeaseCharge.id == invoice.billable_item_id,
-                    LeaseCharge.is_deleted == False
+            elif invoice.billable_item_type == "rent":
+                lease = db.query(Lease).filter(
+                    Lease.id == invoice.billable_item_id,
+                    Lease.is_deleted == False
                 ).first()
-                if lease_charge:
-                    charge_code = lease_charge.charge_code.code  
-                    if lease_charge.period_start and lease_charge.period_end:
-                        start_str = lease_charge.period_start.strftime("%d %b %Y")
-                        end_str = lease_charge.period_end.strftime("%d %b %Y")
-                        month_year = lease_charge.period_start.strftime("%b %Y")
-                        billable_item_name = f"{charge_code} | {start_str} - {end_str}"
+                if lease:
+                    lease_no = lease.lease_number
+                    if lease.start_date and lease.end_date:
+                        start_str = lease.start_date.strftime("%d %b %Y")
+                        end_str = lease.end_date.strftime("%d %b %Y")
+                        month_year = lease.start_date.strftime("%b %Y")
+                        billable_item_name = f"Rent | Lease {lease_no} | {start_str} - {end_str}"
                     else:
-                        billable_item_name = charge_code
+                        billable_item_name =  f"Rent | Lease {lease_no}"
                         
             elif invoice.billable_item_type == "parking pass":
                 parking_pass = db.query(ParkingPass).filter(
@@ -282,27 +282,26 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
                         space_tenant = ticket.space.tenant
                         customer_name = f"{space_tenant.name} {space_tenant.name}"
                 
-            elif invoice.billable_item_type == "lease charge":
-                lease_charge = db.query(LeaseCharge).filter(
-                    LeaseCharge.id == invoice.billable_item_id,
-                    LeaseCharge.is_deleted == False
+            elif invoice.billable_item_type == "rent":
+                lease = db.query(Lease).filter(
+                    Lease.id == invoice.billable_item_id,
+                    Lease.is_deleted == False
                 ).first()
-                if lease_charge:
-                    charge_code = lease_charge.charge_code.code
-                    if lease_charge.period_start and lease_charge.period_end:
-                        start_str = lease_charge.period_start.strftime("%d %b %Y")
-                        end_str = lease_charge.period_end.strftime("%d %b %Y")
-                        month_year = lease_charge.period_start.strftime("%b %Y")
-                        billable_item_name = f"{charge_code} | {start_str} - {end_str}"
+                if lease:
+                    lease_no = lease.lease_number
+                    if lease.start_date and lease.end_date:
+                        start_str = lease.start_date.strftime("%d %b %Y")
+                        end_str = lease.end_date.strftime("%d %b %Y")
+                        month_year = lease.start_date.strftime("%b %Y")
+                        billable_item_name = f"Rent | Lease {lease_no} | {start_str} - {end_str}"
                     else:
-                        billable_item_name = charge_code
+                        billable_item_name = f"Rent | Lease {lease_no}"
                     
                     # Get customer name from lease
-                    if lease_charge.lease:
-                        lease = lease_charge.lease
-                        if lease.tenant:
-                            customer_name = lease.tenant.name or lease.tenant.legal_name
-             
+                    if lease.tenant:
+                        tenant = lease.tenant
+                        customer_name = tenant.name or tenant.legal_name
+                
                         
                         
             elif invoice.billable_item_type == "parking pass":
@@ -455,25 +454,28 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         else:
             billable_item_name = ticket_work_order.wo_no
         
-    elif request.billable_item_type == "lease charge":
-        lease_charge = db.query(LeaseCharge).filter(
-            LeaseCharge.id == request.billable_item_id,
-            LeaseCharge.is_deleted == False
+    elif request.billable_item_type == "rent":
+        lease = db.query(Lease).filter(
+            Lease.id == request.billable_item_id,
+            Lease.is_deleted == False
         ).first()
-        if not lease_charge:
-            raise HTTPException(status_code=404, detail="Lease charge not found")
-        
-            # ADD THIS LINE: Get lease for notification
-        lease = db.query(Lease).filter(Lease.id == lease_charge.lease_id).first()
 
-        if lease_charge.period_start and lease_charge.period_end:
-            charge_code = lease_charge.charge_code.code
-            start_str = lease_charge.period_start.strftime("%d %b %Y")
-            end_str = lease_charge.period_end.strftime("%d %b %Y")
-            month_year = lease_charge.period_start.strftime("%b %Y")
-            billable_item_name = f"{charge_code} | {start_str} - {end_str}"
+        if not lease:
+            raise HTTPException(status_code=404, detail="Lease not found")
+
+        # Keep same behaviour: formatted billable item name
+        if lease.start_date and lease.end_date:
+            lease_no = lease.lease_number
+            start_str = lease.start_date.strftime("%d %b %Y")
+            end_str = lease.end_date.strftime("%d %b %Y")
+            month_year = lease.start_date.strftime("%b %Y")
+
+            billable_item_name = (
+                f"RENT | Lease {lease_no} | {start_str} - {end_str}"
+            )
         else:
-            billable_item_name = charge_code
+            billable_item_name = f" RENT | Lease {lease.lease_number} "
+
 
     elif request.billable_item_type == "parking pass":
         parking_pass = db.query(ParkingPass).filter(
@@ -526,7 +528,7 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
     else:
         raise HTTPException(
             status_code=400,
-              detail="Invalid module_type. Must be 'work order', 'lease charge', 'parking pass', or 'owner maintenance'"
+              detail="Invalid module_type. Must be 'work order', 'rent', 'parking pass', or 'owner maintenance'"
         )
         
         
@@ -623,12 +625,12 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
         
                 
         # ADD THIS: Notification for invoice creation (lease charge only)
-        if request.billable_item_type == "lease charge" and lease:
+        if request.billable_item_type == "rent" and lease:
             # 1. Notification for invoice creation against admin
             invoice_notification = Notification(
                 user_id=current_user.user_id,
                 type=NotificationType.alert,
-                title="Lease Invoice Created",
+                title="Rent Invoice Created",
                 message=f"Invoice {db_invoice.invoice_no} created for {billable_item_name}. Amount: {invoice_amount}",
                 posted_date=datetime.utcnow(),
                 priority=PriorityType.medium,
@@ -644,7 +646,7 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
                     payment_notification = Notification(
                         user_id=current_user.user_id,
                         type=NotificationType.alert,
-                        title="Lease Payment Recorded",
+                        title="Rent Payment Recorded",
                         message=f"Payment of {payment.amount} recorded for invoice {db_invoice.invoice_no}",
                         posted_date=datetime.utcnow(),
                         priority=PriorityType.medium,
@@ -659,7 +661,7 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
                 full_payment_notification = Notification(
                     user_id=current_user.user_id,
                     type=NotificationType.alert,
-                    title="Lease Invoice Fully Paid",
+                    title="Rent Invoice Fully Paid",
                     message=f"Invoice {db_invoice.invoice_no} has been fully paid. Total: {invoice_amount}",
                     posted_date=datetime.utcnow(),
                     priority=PriorityType.medium,
@@ -921,13 +923,13 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     db_invoice.is_paid = (new_status == "paid")
 
     #  Notifications (lease charge only)
-    if db_invoice.billable_item_type == "lease charge":
+    if db_invoice.billable_item_type == "rent":
         #  Notification for each new payment
         for payment in payments_created:
             db.add(Notification(
                 user_id=current_user.user_id,
                 type=NotificationType.alert,
-                title="Lease Payment Added",
+                title="Rent Payment Added",
                 message=f"Payment of {payment.amount} added to invoice {db_invoice.invoice_no}",
                 posted_date=datetime.utcnow(),
                 priority=PriorityType.medium,
@@ -940,7 +942,7 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
             db.add(Notification(
                 user_id=current_user.user_id,
                 type=NotificationType.alert,
-                title="Lease Invoice Fully Paid",
+                title="Rent Invoice Fully Paid",
                 message=f"Invoice {db_invoice.invoice_no} has been fully paid",
                 posted_date=datetime.utcnow(),
                 priority=PriorityType.medium,
@@ -978,20 +980,27 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
                 else:
                     billable_item_name = ticket_work_order.wo_no
                 
-        elif db_invoice.billable_item_type == "lease charge":
-            lease_charge = db.query(LeaseCharge).filter(
-                LeaseCharge.id == db_invoice.billable_item_id,
-                LeaseCharge.is_deleted == False
+        elif db_invoice.billable_item_type == "rent":
+            lease = db.query(Lease).filter(
+                Lease.id == db_invoice.billable_item_id,
+                Lease.is_deleted == False
             ).first()
-            if lease_charge:
-                charge_code = lease_charge.charge_code.code
-                if lease_charge.period_start and lease_charge.period_end:
-                    start_str = lease_charge.period_start.strftime("%d %b %Y")
-                    end_str = lease_charge.period_end.strftime("%d %b %Y")
-                    month_year = lease_charge.period_start.strftime("%b %Y")
-                    billable_item_name = f"{charge_code} | {start_str} - {end_str}"
-                else:
-                    billable_item_name = charge_code
+
+            if not lease:
+                raise HTTPException(status_code=404, detail="Lease not found")
+
+            # Keep same behaviour: formatted billable item name
+            if lease.start_date and lease.end_date:
+                lease_no = lease.lease_number
+                start_str = lease.start_date.strftime("%d %b %Y")
+                end_str = lease.end_date.strftime("%d %b %Y")
+                month_year = lease.start_date.strftime("%b %Y")
+
+                billable_item_name = (
+                    f"RENT | Lease {lease_no} | {start_str} - {end_str}"
+                )
+            else:
+                billable_item_name = f" RENT | Lease {lease.lease_number} "
                     
         elif db_invoice.billable_item_type == "parking pass":
             parking_pass = db.query(ParkingPass).filter(
@@ -1123,37 +1132,41 @@ def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, billab
                 id=str(wo.id),
                 name=formatted_name  
             ))
-            
-    elif billable_item_type == "lease charge":
-        lease_charges = db.query(LeaseCharge).filter(
-            LeaseCharge.is_deleted == False,
-            ~LeaseCharge.id.in_(
-                db.query(Invoice.billable_item_id)
-                .filter(
+                
+    elif billable_item_type == "rent":
+        leases = db.query(Lease).filter(
+            Lease.is_deleted == False,
+
+            # Exclude leases already invoiced for rent
+            ~Lease.id.in_(
+                db.query(Invoice.billable_item_id).filter(
                     Invoice.org_id == org_id,
-                    Invoice.billable_item_type == "lease charge",
+                    Invoice.billable_item_type == "rent charge",
                     Invoice.is_deleted == False,
                     Invoice.status != "void"
                 )
             ),
-            LeaseCharge.lease.has(site_id=site_id),
-            LeaseCharge.lease.has(org_id=org_id)
+
+            Lease.site_id == site_id,
+            Lease.org_id == org_id
         ).all()
-        
-        for lc in lease_charges:
-            if lc.charge_code:
-                charge_code = lc.charge_code.code  
-                if lc.period_start and lc.period_end:
-                    start_str = lc.period_start.strftime("%d %b %Y")
-                    end_str = lc.period_end.strftime("%d %b %Y")
-                    formatted_name = f"{charge_code} | {start_str} - {end_str}"
-                else:
-                    formatted_name = charge_code
-                    
-                entities.append(Lookup(
-                    id=str(lc.id),
-                    name=formatted_name  
-                ))
+
+        for lease in leases:
+            if lease.start_date and lease.end_date:
+                formatted_name = (
+                    f"RENT | Lease {lease.lease_number} | "
+                    f"{lease.start_date:%d %b %Y} - {lease.end_date:%d %b %Y}"
+                )
+            else:
+                formatted_name = f"RENT | Lease {lease.lease_number}"
+
+            entities.append(
+                Lookup(
+                    id=str(lease.id),
+                    name=formatted_name
+                )
+            )
+
                 
     elif billable_item_type == "parking pass":
         parking_passes = db.query(ParkingPass).filter(
@@ -1421,27 +1434,20 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
             tax = Decimal('0.00')
             grand_total = subtotal + tax
             
-        elif item_type == "lease charge":
-            # Get lease charge
-            lease_charge = db.query(LeaseCharge).filter(
-                LeaseCharge.id == billable_item_id,
-                LeaseCharge.is_deleted == False
+        elif item_type == "rent":
+            # Get lease
+            lease = db.query(Lease).filter(
+                Lease.id == billable_item_id,
+                Lease.is_deleted == False
             ).first()
             
-            if not lease_charge:
-                raise HTTPException(status_code=404, detail="Lease charge not found")
+            if not lease:
+                raise HTTPException(status_code=404, detail="Lease not found")
             
-            # Calculate totals
-            subtotal = lease_charge.amount
-            tax_rate = (
-                lease_charge.tax_code.rate
-                if lease_charge.tax_code and lease_charge.tax_code.rate
-                else Decimal('0')
-            )
-
-            tax = (subtotal * tax_rate) / Decimal('100')
-                    
-            grand_total = subtotal + tax
+            # Calculate totals using rent_amount
+            subtotal = lease.rent_amount
+            tax = Decimal('0')
+            grand_total = subtotal
                 
         elif item_type == "owner maintenance":
             maintenance = db.query(OwnerMaintenanceCharge).filter(
@@ -1482,16 +1488,23 @@ def invoice_payement_method_lookup(db: Session, org_id: UUID):
     
     
 def build_invoice_billable_item_name(db, item_type, item_id):
-    if item_type == "lease charge":
-        charge = db.query(LeaseCharge).filter(
-            LeaseCharge.id == item_id,
-            LeaseCharge.is_deleted == False
+    #  RENT (instead of lease charge)
+    if item_type == "rent":
+        lease = db.query(Lease).filter(
+            Lease.id == item_id,
+            Lease.is_deleted == False
         ).first()
-        if charge:
-            code = charge.charge_code.code
-            if charge.period_start and charge.period_end:
-                return f"{code} | {charge.period_start:%d %b %Y} - {charge.period_end:%d %b %Y}"
-            return code
+
+        if lease:
+            lease_no = lease.lease_number
+
+            if lease.start_date and lease.end_date:
+                return (
+                    f"RENT | Lease {lease_no} | "
+                    f"{lease.start_date:%d %b %Y} - {lease.end_date:%d %b %Y}"
+                )
+
+            return f"RENT | Lease {lease_no}"
 
     elif item_type == "work order":
         wo = db.query(TicketWorkOrder).filter(
@@ -1580,25 +1593,25 @@ def get_invoice_detail(db: Session, auth_db: Session, org_id: UUID, invoice_id: 
                         customer_name = ticket.space.tenant.name or ticket.space.tenant.legal_name
 
         # ---------- LEASE CHARGE ----------
-        elif invoice.billable_item_type == "lease charge":
-            lease_charge = db.query(LeaseCharge).filter(
-                LeaseCharge.id == invoice.billable_item_id,
-                LeaseCharge.is_deleted == False
+        elif invoice.billable_item_type == "rent":
+            lease = db.query(Lease).filter(
+                Lease.id == invoice.billable_item_id,
+                Lease.is_deleted == False
             ).first()
 
-            if lease_charge:
-                charge_code = lease_charge.charge_code.code
-
-                if lease_charge.period_start and lease_charge.period_end:
-                    start_str = lease_charge.period_start.strftime("%d %b %Y")
-                    end_str = lease_charge.period_end.strftime("%d %b %Y")
-                    billable_item_name = f"{charge_code} | {start_str} - {end_str}"
+            if lease:
+                lease_no = lease.lease_number
+                if lease.start_date and lease.end_date:
+                    start_str = lease.start_date.strftime("%d %b %Y")
+                    end_str = lease.end_date.strftime("%d %b %Y")
+                    month_year = lease.start_date.strftime("%b %Y")
+                    billable_item_name = f"Rent | Lease {lease_no} | {start_str} - {end_str}"
                 else:
-                    billable_item_name = charge_code
+                    billable_item_name = f"Rent |Lease {lease_no}"
 
                 # ✅ CUSTOMER (ALWAYS RUNS)
-                if lease_charge.lease and lease_charge.lease.tenant:
-                    tenant = lease_charge.lease.tenant
+                if lease.tenant:
+                    tenant = lease.tenant
                     customer_name = tenant.name or tenant.legal_name
 
         # ---------- PARKING PASS ----------
@@ -1771,13 +1784,13 @@ def get_invoice_payment_history(
             customer_name = f"{space_tenant.name} {space_tenant.name}"
             
             
-    elif invoice.billable_item_type == "lease charge":
-        lc = db.query(LeaseCharge).filter(
-            LeaseCharge.id == invoice.billable_item_id,
-            LeaseCharge.is_deleted == False
+    elif invoice.billable_item_type == "rent":
+        lc = db.query(Lease).filter(
+            Lease.id == invoice.billable_item_id,
+            Lease.is_deleted == False
         ).first()
         if lc:
-            billable_item_name = lc.charge_code.code
+            billable_item_name = f"Rent | Lease {lc.lease_number}"
 
                             # Get customer name from lease
         if lc.lease:

@@ -9,6 +9,7 @@ from shared.helpers.json_response_helper import success_response
 from shared.core.schemas import Lookup, UserToken
 
 from ...schemas.leasing_tenants.tenants_schemas import (
+    ManageTenantSpaceRequest,
     SpaceTenantApprovalRequest,
     SpaceTenantOut,
     SpaceTenantResponse,
@@ -93,6 +94,16 @@ def delete_tenant_route(
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ): return crud.delete_tenant(db, auth_db, tenant_id)
+
+
+@router.post("/manage-spaces", response_model=None)
+def manage_tenant_space(
+    payload: ManageTenantSpaceRequest,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.manage_tenant_space(db, auth_db, current_user.org_id, payload)
 
 # ----------------  Type Lookup ----------------
 

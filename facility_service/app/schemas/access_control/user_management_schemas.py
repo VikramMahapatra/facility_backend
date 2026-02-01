@@ -157,3 +157,20 @@ class UserDetailRequest(CommonQueryParams):
 
 class AccountRequest(BaseModel):
     user_org_id: str
+
+
+class CheckGlobalUserRequest(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class UserInfo(BaseModel):
+    id: UUID
+    full_name: str
+    email: Optional[EmailStr]
+    phone: Optional[str]
+
+
+class CheckGlobalUserResponse(BaseModel):
+    exists: bool
+    user: Optional[UserInfo] = None

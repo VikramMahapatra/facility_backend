@@ -8,18 +8,17 @@ from shared.core.schemas import CommonQueryParams
 
 
 class TenantSpaceBase(BaseModel):
-    site_id: UUID
+    site_id: Optional[UUID] = None
     building_block_id: Optional[UUID] = None
-    space_id: UUID
-    is_primary: bool = False
+    space_id: Optional[UUID] = None
 
 
 class TenantSpaceOut(TenantSpaceBase):
-    site_name: str = None
-    space_name: str = None
+    id: Optional[UUID] = None
+    site_name:  Optional[str] = None
+    space_name:  Optional[str] = None
     building_block_name: Optional[str] = None
-    status: str = None
-    is_primary: bool = False
+    status:  Optional[str] = None
 
 
 class TenantBase(BaseModel):
@@ -97,6 +96,11 @@ class TenantDropdownResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ManageTenantSpaceRequest(BaseModel):
+    tenant_id: UUID
+    tenant_spaces: List[TenantSpaceBase]
 
 
 class SpaceTenantApprovalRequest(BaseModel):

@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from uuid import UUID
 
 from facility_service.app.models.leasing_tenants.leases import Lease
+from shared.utils.app_status_code import AppStatusCode
 from shared.utils.enums import OwnershipStatus
 
 from ...models.space_sites.space_occupancy_events import OccupancyEventType, SpaceOccupancyEvent
@@ -55,108 +56,128 @@ def move_in(
     db: Session,
     params: MoveInRequest
 ):
-    # 1️⃣ Check if space already occupied
-    active = (
-        db.query(SpaceOccupancy)
-        .filter(
-            SpaceOccupancy.space_id == params.space_id,
-            SpaceOccupancy.status == "active"
+    try:
+        # 1️⃣ Check if space already occupied
+        active = (
+            db.query(SpaceOccupancy)
+            .filter(
+                SpaceOccupancy.space_id == params.space_id,
+                SpaceOccupancy.status == "active"
+            )
+            .first()
         )
-        .first()
-    )
 
-    if active:
-        return error_response(message="Space is already occupied")
+        if active:
+            return error_response(message="Space is already occupied")
 
-    # 2️⃣ Create occupancy
-    occ = SpaceOccupancy(
-        space_id=params.space_id,
-        occupant_type=params.occupant_type,
-        occupant_user_id=params.occupant_user_id,
-        lease_id=params.lease_id,
-        source_id=params.tenant_id,
-        move_in_date=func.now(),
-        status="active"
-    )
+        # 2️⃣ Create occupancy
+        occ = SpaceOccupancy(
+            space_id=params.space_id,
+            occupant_type=params.occupant_type,
+            occupant_user_id=params.occupant_user_id,
+            lease_id=params.lease_id,
+            source_id=params.tenant_id,
+            move_in_date=func.now(),
+            status="active"
+        )
 
-    db.add(occ)
+        db.add(occ)
 
-    # 3️⃣ Optional: sync related tables
-    db.query(Space).filter(
-        Space.id == params.space_id,
-    ).update({
-        "status": "occupied"
-    })
+        # 3️⃣ Optional: sync related tables
+        db.query(Space).filter(
+            Space.id == params.space_id,
+        ).update({
+            "status": "occupied"
+        })
 
-    log_occupancy_event(
-        db,
-        space_id=params.space_id,
-        event_type=OccupancyEventType.moved_in,
-        occupant_type=params.occupant_type,
-        occupant_user_id=params.occupant_user_id,
-        source_id=params.tenant_id,
-        lease_id=params.lease_id
-    )
+        log_occupancy_event(
+            db,
+            space_id=params.space_id,
+            event_type=OccupancyEventType.moved_in,
+            occupant_type=params.occupant_type,
+            occupant_user_id=params.occupant_user_id,
+            source_id=params.tenant_id,
+            lease_id=params.lease_id
+        )
 
-    db.commit()
-    db.refresh(occ)
+        db.commit()
+        db.refresh(occ)
 
-    return occ
+        return occ
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def move_out(db: Session, space_id: UUID):
-    now = datetime.now(timezone.utc)
-    occ = db.query(SpaceOccupancy).filter(
-        SpaceOccupancy.space_id == space_id,
-        SpaceOccupancy.status == "active"
-    ).first()
-
-    if not occ:
-        return error_response(message="Space already vacant")
-
-    occ.status = "moved_out"
-    occ.move_out_date = func.now()
-
-    db.query(Space).filter(
-        Space.id == space_id,
-    ).update({
-        "status": "available"
-    })
-
-    if occ.occupant_type == OccupantType.tenant:
-        # End active lease
-        lease = db.query(Lease).filter(
-            Lease.id == occ.lease_id,
-            Lease.is_deleted == False,
-            Lease.status == "active"
+    try:
+        now = datetime.now(timezone.utc)
+        occ = db.query(SpaceOccupancy).filter(
+            SpaceOccupancy.space_id == space_id,
+            SpaceOccupancy.status == "active"
         ).first()
 
-        if lease:
-            lease.status = "terminated"   # or "terminated"
-            lease.end_date = now
+        if not occ:
+            return error_response(message="Space already vacant")
 
-        # End tenant-space mapping
-        db.query(TenantSpace).filter(
-            TenantSpace.space_id == space_id,
-            TenantSpace.tenant_id == occ.occupant_user_id,
-            TenantSpace.is_deleted == False,
-            TenantSpace.status == OwnershipStatus.leased
+        occ.status = "moved_out"
+        occ.move_out_date = func.now()
+
+        db.query(Space).filter(
+            Space.id == space_id,
         ).update({
-            "status": OwnershipStatus.ended,
-            "updated_at": now
+            "status": "available"
         })
 
-    log_occupancy_event(
-        db,
-        space_id=space_id,
-        event_type=OccupancyEventType.moved_out,
-        occupant_type=occ.occupant_type,
-        occupant_user_id=occ.occupant_user_id,
-        source_id=occ.source_id,
-        lease_id=occ.lease_id
-    )
+        if occ.occupant_type == OccupantType.tenant:
+            # End active lease
+            lease = db.query(Lease).filter(
+                Lease.id == occ.lease_id,
+                Lease.is_deleted == False,
+                Lease.status == "active"
+            ).first()
 
-    db.commit()
+            if lease:
+                lease.status = "terminated"   # or "terminated"
+                lease.end_date = now
+
+            # End tenant-space mapping
+            db.query(TenantSpace).join(
+                Tenant, Tenant.id == TenantSpace.tenant_id, Tenant.is_deleted == False
+            ).filter(
+                TenantSpace.space_id == space_id,
+                Tenant.user_id == occ.occupant_user_id,
+                TenantSpace.is_deleted == False,
+                TenantSpace.status == OwnershipStatus.leased
+            ).update({
+                "status": OwnershipStatus.ended,
+                "updated_at": now
+            })
+
+        log_occupancy_event(
+            db,
+            space_id=space_id,
+            event_type=OccupancyEventType.moved_out,
+            occupant_type=occ.occupant_type,
+            occupant_user_id=occ.occupant_user_id,
+            source_id=occ.source_id,
+            lease_id=occ.lease_id
+        )
+
+        db.commit()
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def get_occupancy_history(db: Session, space_id: UUID):

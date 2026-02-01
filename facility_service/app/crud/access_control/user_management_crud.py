@@ -44,8 +44,8 @@ from fastapi import HTTPException
 from uuid import UUID
 
 from ...schemas.access_control.user_management_schemas import (
-    AccountRequest, StaffSiteOut, UserAccountCreate, UserAccountOut, UserAccountUpdate, UserCreate,
-    UserDetailOut, UserOrganizationOut, UserOut, UserRequest, UserUpdate
+    AccountRequest, CheckGlobalUserRequest, CheckGlobalUserResponse, CheckGlobalUserResponse, StaffSiteOut, UserAccountCreate, UserAccountOut, UserAccountUpdate, UserCreate,
+    UserDetailOut, UserInfo, UserOrganizationOut, UserOut, UserRequest, UserUpdate
 )
 from shared.helpers.email_helper import EmailHelper
 
@@ -378,71 +378,122 @@ def send_password_update_email(background_tasks, db, email, username, password, 
 
 
 def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Session, user: UserUpdate):
-    # Fetch existing user
-    db_user = db.query(Users).filter(
-        Users.id == user.id,
-        Users.is_deleted == False
-    ).first()
+    try:
+        # Fetch existing user
+        db_user = db.query(Users).filter(
+            Users.id == user.id,
+            Users.is_deleted == False
+        ).first()
 
-    if not db_user:
-        return None
+        if not db_user:
+            return None
 
         # Track if password is being updated
-    password_updated = False
-    new_password = None
-
-    # -----------------------
-    # ✅ ADDED: VALIDATE EMAIL & PHONE DUPLICATES
-    # -----------------------
-    update_data = user.model_dump(
-        exclude_unset=True
-
-    )
-    #  ADD THIS: PREVENT EMAIL AND PHONE UPDATES
-    # Check if email is being updated
-    if 'email' in update_data and update_data['email'] != db_user.email:
-        # Option 1: Block email update completely
-        return error_response(
-            message="Email cannot be updated. Please contact administrator."
-        )
-
-
-#            )
-    if 'phone' in update_data and update_data['phone'] != db_user.phone:
-        return error_response(
-            message="phone cannot be updated. Please contact administrator."
-        )
-
-    # -----------------------
-    # UPDATE BASE USER FIELDS
-    # -----------------------
-    for key, value in update_data.items():
-        # ADD: Skip email and phone if you want to block updates
-        if key in ['email', 'phone'] and value != getattr(db_user, key):
-            continue  # Skip updating email/phone
-        setattr(db_user, key, value)
+        password_updated = False
+        new_password = None
 
         # -----------------------
-    # ✅ ADDED: SEND PASSWORD UPDATE EMAIL
-    # -----------------------
-    if password_updated and new_password and db_user.email:
-        try:
-            send_password_update_email(
-                background_tasks=background_tasks,
-                db=facility_db,
-                email=db_user.email,
-                username=db_user.email,
-                password=new_password,  # Plain password for email
-                full_name=db_user.full_name
+        # ✅ ADDED: VALIDATE EMAIL & PHONE DUPLICATES
+        # -----------------------
+        update_data = user.model_dump(
+            exclude_unset=True
+        )
+        #  ADD THIS: PREVENT EMAIL AND PHONE UPDATES
+        # Check if email is being updated
+        if 'email' in update_data and update_data['email'] != db_user.email:
+            # Option 1: Block email update completely
+            return error_response(
+                message="Email cannot be updated. Please contact administrator."
             )
-        except Exception as email_error:
-            # Don't fail user update if email fails
-            print(f"Password update email failed: {email_error}")
 
+        if 'phone' in update_data and update_data['phone'] != db_user.phone:
+            return error_response(
+                message="phone cannot be updated. Please contact administrator."
+            )
+
+        # -----------------------
+        # UPDATE BASE USER FIELDS
+        # -----------------------
+        for key, value in update_data.items():
+            # ADD: Skip email and phone if you want to block updates
+            if key in ['email', 'phone'] and value != getattr(db_user, key):
+                continue  # Skip updating email/phone
+            setattr(db_user, key, value)
+
+            # -----------------------
+        # ✅ ADDED: SEND PASSWORD UPDATE EMAIL
+        # -----------------------
+        if password_updated and new_password and db_user.email:
+            try:
+                send_password_update_email(
+                    background_tasks=background_tasks,
+                    db=facility_db,
+                    email=db_user.email,
+                    username=db_user.email,
+                    password=new_password,  # Plain password for email
+                    full_name=db_user.full_name
+                )
+            except Exception as email_error:
+                # Don't fail user update if email fails
+                print(f"Password update email failed: {email_error}")
+
+        db.commit()
+        db.refresh(db_user)
+
+        return get_user_by_id(db, db_user.id)
+
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        facility_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
+
+def map_user_to_org(
+        payload: CheckGlobalUserRequest,
+        org_id: UUID,
+        db: Session
+):
+    if not payload.email and not payload.phone:
+        raise error_response(message="Provide email or phone.")
+
+    query = db.query(Users).filter(Users.is_deleted == False)
+
+    if payload.email:
+        query = query.filter(Users.email == payload.email)
+    if payload.phone:
+        query = query.filter(Users.phone == payload.phone)
+
+    user = query.first()
+
+    if not user:
+        raise error_response(message="User does not exist.")
+
+    existing = db.query(UserOrganization).filter(
+        UserOrganization.user_id == user.id,
+        UserOrganization.org_id == org_id
+    ).first()
+
+    if existing:
+        raise error_response(message="User already exist in this organization")
+
+    new_mapping = UserOrganization(
+        user_id=user.id,
+        org_id=org_id,
+        account_type="pending",
+        status="inactive",
+        is_default=True,
+
+    )
+    db.add(new_mapping)
     db.commit()
-    db.refresh(db_user)
+    db.refresh(new_mapping)
 
-    return get_user_by_id(db, db_user.id)
+    return existing or new_mapping
 
 
 def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
@@ -700,6 +751,7 @@ def get_user_detail(
                     func.coalesce(
                         func.jsonb_agg(
                             func.jsonb_build_object(
+                                "id", TenantSpace.id,
                                 "site_id", Site.id,
                                 "site_name", Site.name,
                                 "space_id", Space.id,
@@ -739,13 +791,14 @@ def get_user_detail(
                     func.coalesce(
                         func.jsonb_agg(
                             func.jsonb_build_object(
+                                "id", SpaceOwner.id,
                                 "site_id", Site.id,
                                 "site_name", Site.name,
                                 "space_id", Space.id,
                                 "space_name", Space.name,
                                 "building_block_id", Building.id,
                                 "building_block_name", Building.name,
-                                "status", "active" if SpaceOwner.is_active else "inactive",
+                                "status", SpaceOwner.status,
                                 "is_primary", False
                             )
                         ),
@@ -759,6 +812,7 @@ def get_user_detail(
                 .filter(
                     SpaceOwner.owner_user_id == user_id,
                     SpaceOwner.owner_org_id == uo.org_id,
+                    SpaceOwner.is_active == True
                 )
                 .first()
             )
@@ -865,6 +919,36 @@ def search_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -
     ]
 
 
+def check_global_user(
+    payload: CheckGlobalUserRequest,
+    db: Session
+):
+    if not payload.email and not payload.phone:
+        raise error_response(message="Provide email or phone.")
+
+    query = db.query(Users).filter(Users.is_deleted == False)
+
+    if payload.email:
+        query = query.filter(Users.email == payload.email)
+    if payload.phone:
+        query = query.filter(Users.phone == payload.phone)
+
+    user = query.first()
+
+    if user:
+        return CheckGlobalUserResponse(
+            exists=True,
+            user=UserInfo(
+                id=user.id,
+                full_name=user.full_name,
+                email=user.email,
+                phone=user.phone
+            )
+        )
+
+    return CheckGlobalUserResponse(exists=False, user=None)
+
+
 def create_user_account(
     db: Session,
     facility_db: Session,
@@ -901,49 +985,66 @@ def create_user_account(
     if error:
         return error
 
-    # =========================
-    # CREATE USER-ORG MAPPING
-    # =========================
-    db_user_org = UserOrganization(
-        user_id=db_user.id,
-        org_id=org_id,
-        account_type=user_account.account_type,
-        status=db_user.status,
-    )
-    db.add(db_user_org)
-    db.flush()  # get user_org.id
+    existing_org_count = db.query(UserOrganization).filter(
+        UserOrganization.user_id == db_user.id,
+        UserOrganization.is_deleted == False
+    ).count()
 
-    # =========================
-    # ASSIGN ROLES
-    # =========================
-    if user_account.role_ids:
-        roles = db.query(Roles).filter(
-            Roles.id.in_(user_account.role_ids)
-        ).all()
-        db_user_org.roles.extend(roles)
+    is_default_org = existing_org_count == 0
 
-    db.commit()
-    db.refresh(db_user_org)
+    try:
+        # =========================
+        # CREATE USER-ORG MAPPING
+        # =========================
+        db_user_org = UserOrganization(
+            user_id=db_user.id,
+            org_id=org_id,
+            account_type=user_account.account_type,
+            status=db_user.status,
+            is_default=is_default_org
+        )
+        db.add(db_user_org)
+        db.flush()  # get user_org.id
 
-    # =========================
-    # ACCOUNT-TYPE HANDLING
-    # =========================
-    error = handle_account_type_update(
-        db=db,
-        facility_db=facility_db,
-        db_user=db_user,
-        db_user_org=db_user_org,
-        user_account=user_account,
-        org_id=org_id,
-    )
+        # =========================
+        # ASSIGN ROLES
+        # =========================
+        if user_account.role_ids:
+            roles = db.query(Roles).filter(
+                Roles.id.in_(user_account.role_ids)
+            ).all()
+            db_user_org.roles.extend(roles)
 
-    if error:
-        return error
+        db.commit()
+        db.refresh(db_user_org)
 
-    # =========================
-    # RESPONSE
-    # =========================
-    return get_user_detail(db, facility_db, org_id, db_user.id)
+        # =========================
+        # ACCOUNT-TYPE HANDLING
+        # =========================
+        error = handle_account_type_update(
+            facility_db=facility_db,
+            db_user=db_user,
+            user_account=user_account,
+            org_id=org_id,
+        )
+
+        if error:
+            return error
+
+        # =========================
+        # RESPONSE
+        # =========================
+        return get_user_detail(db, facility_db, org_id, db_user.id)
+
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        facility_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def update_user_account(
@@ -951,73 +1052,86 @@ def update_user_account(
         facility_db: Session,
         user_account: UserAccountUpdate,
         org_id: str):
-
-    # Fetch existing user
-    db_user_org = (
-        db.query(UserOrganization)
-        .filter(
-            UserOrganization.user_id == user_account.user_id,
-            UserOrganization.org_id == org_id,
-            UserOrganization.id == user_account.user_org_id,
-            UserOrganization.is_deleted == False
+    try:
+        # Fetch existing user
+        db_user_org = (
+            db.query(UserOrganization)
+            .filter(
+                UserOrganization.user_id == user_account.user_id,
+                UserOrganization.org_id == org_id,
+                UserOrganization.id == user_account.user_org_id,
+                UserOrganization.is_deleted == False
+            )
+            .first()
         )
-        .first()
-    )
-    if not db_user_org:
-        return error_response(message="User not found")
+        if not db_user_org:
+            return error_response(message="User not found")
 
-    db_user = (
-        db.query(Users)
-        .filter(
-            Users.id == user_account.user_id,
-            Users.is_deleted == False
+        db_user = (
+            db.query(Users)
+            .filter(
+                Users.id == user_account.user_id,
+                Users.is_deleted == False
+            )
+            .first()
         )
-        .first()
-    )
 
-    update_data = user_account.model_dump(
-        exclude_unset=True,
-        exclude={'user_org_id', 'role_ids', 'tenant_spaces',
-                 'site_ids', 'tenant_type', 'staff_role'}
-    )
+        update_data = user_account.model_dump(
+            exclude_unset=True,
+            exclude={'user_org_id', 'role_ids', 'tenant_spaces',
+                     'site_ids', 'tenant_type', 'staff_role'}
+        )
 
-    # -----------------------
-    # UPDATE BASE USER FIELDS
-    # -----------------------
-    for key, value in update_data.items():
-        # ADD: Skip email and phone if you want to block updates
-        if key in ['account_type', 'org_id'] and value != getattr(db_user_org, key):
-            continue  # Skip updating email/phone
-        setattr(db_user_org, key, value)
+        # -----------------------
+        # UPDATE BASE USER FIELDS
+        # -----------------------
+        for key, value in update_data.items():
+            # ADD: Skip email and phone if you want to block updates
+            if key in ['account_type', 'org_id'] and value != getattr(db_user_org, key):
+                continue  # Skip updating email/phone
+            setattr(db_user_org, key, value)
 
-    # UPDATE ROLES (ORG BASED)
+        # UPDATE ROLES (ORG BASED)
 
-    if user_account.role_ids is not None:
-        # fetch new roles
-        roles = db.query(Roles).filter(
-            Roles.id.in_(user_account.role_ids)
-        ).all()
+        if user_account.role_ids is not None:
+            # get IDs of roles already assigned
+            existing_role_ids = {role.id for role in db_user_org.roles}
 
-        # attach new roles
-        db_user_org.roles.extend(roles)
+            # fetch only roles that aren't already assigned
+            roles_to_add = db.query(Roles).filter(
+                Roles.id.in_(user_account.role_ids),
+                ~Roles.id.in_(existing_role_ids)
+            ).all()
 
-    db.commit()
-    db.refresh(db_user_org)
+            # attach only new roles
+            db_user_org.roles.extend(roles_to_add)
+            db.refresh(db_user_org)
 
-    error = handle_account_type_update(
-        db=db,
-        facility_db=facility_db,
-        db_user=db_user,
-        db_user_org=db_user_org,
-        user_account=user_account,
-        org_id=org_id
-    )
+        error = handle_account_type_update(
+            facility_db=facility_db,
+            db_user=db_user,
+            user_account=user_account,
+            org_id=org_id
+        )
 
-    if error:
-        return error
+        if error:
+            db.rollback()
+            facility_db.rollback()
+            return error
 
-    # FIX: Pass both db and facility_db to get_user
-    return get_user_detail(db, facility_db, org_id, db_user.id)
+        db.commit()
+
+        # FIX: Pass both db and facility_db to get_user
+        return get_user_detail(db, facility_db, org_id, db_user.id)
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        facility_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def delete_pending_org_mapping(
@@ -1026,28 +1140,24 @@ def delete_pending_org_mapping(
     user_id: str,
     org_id: str,
 ):
-    pending = db.query(UserOrganization).filter(
+    db.query(UserOrganization).filter(
         UserOrganization.user_id == user_id,
         UserOrganization.org_id == org_id,
         UserOrganization.account_type == "pending",
-        UserOrganization.is_deleted == False,
-    ).all()
+    ).delete(synchronize_session=False)
 
-    for record in pending:
-        record.is_deleted = True
-        record.updated_at = datetime.utcnow()
+    db.commit()
 
 
 def handle_account_type_update(
     *,
-    db: Session,
     facility_db: Session,
     db_user: Users,
-    db_user_org: UserOrganization,
     user_account,
     org_id: str,
 ):
-    account_type = db_user_org.account_type.lower()
+
+    account_type = user_account.account_type.lower()
 
     # ================= STAFF =================
     if account_type == "staff":
@@ -1060,7 +1170,7 @@ def handle_account_type_update(
 
         if user_account.site_ids is not None:
             facility_db.query(StaffSite).filter(
-                StaffSite.user_id == db_user_org.user_id
+                StaffSite.user_id == db_user.id
             ).delete()
 
             for site_id in user_account.site_ids:
@@ -1070,7 +1180,7 @@ def handle_account_type_update(
                 if site:
                     facility_db.add(
                         StaffSite(
-                            user_id=db_user_org.user_id,
+                            user_id=db_user.id,
                             site_id=site.id,
                             org_id=org_id,
                             staff_role=user_account.staff_role
@@ -1079,7 +1189,7 @@ def handle_account_type_update(
 
             upsert_user_sites_preserve_primary(
                 db=facility_db,
-                user_id=db_user_org.user_id,
+                user_id=db_user.id,
                 site_ids=user_account.site_ids
             )
 
@@ -1094,7 +1204,8 @@ def handle_account_type_update(
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
             )
 
-        incoming_space_ids = [ts.space_id for ts in user_account.tenant_spaces]
+        incoming_space_ids = [
+            ts.space_id for ts in user_account.tenant_spaces]
 
         existing_assignments = facility_db.query(TenantSpace).filter(
             TenantSpace.space_id.in_(incoming_space_ids),
@@ -1103,14 +1214,14 @@ def handle_account_type_update(
         ).all()
 
         for ts in existing_assignments:
-            if ts.tenant_id != db_user_org.user_id:
+            if ts.tenant.user_id != db_user.id:
                 return error_response(
                     message="One of the selected spaces is already occupied",
                     status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR)
                 )
 
         tenant = facility_db.query(Tenant).filter(
-            Tenant.user_id == db_user_org.user_id,
+            Tenant.user_id == db_user.id,
             Tenant.is_deleted == False
         ).first()
 
@@ -1127,7 +1238,7 @@ def handle_account_type_update(
                 )
         else:
             tenant = Tenant(
-                user_id=db_user_org.user_id,
+                user_id=db_user.id,
                 status="inactive",
                 name=db_user.full_name,
                 email=db_user.email,
@@ -1137,33 +1248,50 @@ def handle_account_type_update(
             facility_db.add(tenant)
             facility_db.flush()
 
-        facility_db.query(TenantSpace).filter(
+        now = datetime.utcnow()
+
+        existing_spaces = facility_db.query(TenantSpace).filter(
             TenantSpace.tenant_id == tenant.id,
             TenantSpace.is_deleted == False
-        ).update({"is_deleted": True})
+        ).all()
 
-        now = datetime.utcnow()
+        existing_space_ids = {ts.space_id for ts in existing_spaces}
+
+        for existing in existing_spaces:
+            # space removed from frontend
+            if existing.space_id not in incoming_space_ids:
+                # allow deletion only for pending / ended
+                if existing.status in [OwnershipStatus.ended, OwnershipStatus.pending, OwnershipStatus.rejected]:
+                    existing.is_deleted = True
+                    existing.updated_at = now
+                else:
+                    return error_response(
+                        message="Cannot remove space with active or leased status",
+                        status_code=str(AppStatusCode.OPERATION_FAILED)
+                    )
+
         for space in user_account.tenant_spaces:
-            t_space = TenantSpace(
-                tenant_id=tenant.id,
-                site_id=space.site_id,
-                space_id=space.space_id,
-                status=OwnershipStatus.pending,
-                created_at=now,
-                updated_at=now
-            )
-            facility_db.add(t_space)
-            facility_db.flush()
+            if space.space_id not in existing_space_ids:
+                t_space = TenantSpace(
+                    tenant_id=tenant.id,
+                    site_id=space.site_id,
+                    space_id=space.space_id,
+                    status=OwnershipStatus.pending,
+                    created_at=now,
+                    updated_at=now
+                )
+                facility_db.add(t_space)
+                facility_db.flush()
 
-            log_occupancy_event(
-                db=facility_db,
-                space_id=space.space_id,
-                occupant_type=OccupantType.tenant,
-                occupant_user_id=db_user_org.user_id,
-                event_type=OccupancyEventType.tenant_requested,
-                source_id=t_space.id,
-                notes="Tenant requested space during account update"
-            )
+                log_occupancy_event(
+                    db=facility_db,
+                    space_id=space.space_id,
+                    occupant_type=OccupantType.tenant,
+                    occupant_user_id=db_user.id,
+                    event_type=OccupancyEventType.tenant_requested,
+                    source_id=t_space.id,
+                    notes="Tenant requested space during account update"
+                )
 
         tenant.name = db_user.full_name
         tenant.phone = db_user.phone
@@ -1176,11 +1304,10 @@ def handle_account_type_update(
 
         upsert_user_sites_preserve_primary(
             db=facility_db,
-            user_id=db_user_org.user_id,
+            user_id=db_user.id,
             site_ids=tenant_site_ids
         )
 
-        facility_db.add(tenant)
         facility_db.commit()
 
     # ================= SPACE OWNER =================
@@ -1192,11 +1319,13 @@ def handle_account_type_update(
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
             )
 
-        incoming_space_ids = [ts.space_id for ts in user_account.owner_spaces]
+        incoming_space_ids = [
+            ts.space_id for ts in user_account.owner_spaces]
 
         existing_assignments = facility_db.query(SpaceOwner).filter(
             SpaceOwner.space_id.in_(incoming_space_ids),
-            SpaceOwner.is_active == True
+            SpaceOwner.is_active == True,
+            SpaceOwner.owner_user_id == db_user.id
         ).all()
 
         existing_by_space = {
@@ -1206,13 +1335,30 @@ def handle_account_type_update(
 
         now = datetime.utcnow()
 
+        existing_spaces = facility_db.query(SpaceOwner).filter(
+            SpaceOwner.owner_user_id == db_user.id,
+            SpaceOwner.is_active == True
+        ).all()
+
+        for existing in existing_spaces:
+            # space removed from frontend
+            if existing.space_id not in incoming_space_ids:
+                # allow deletion only for pending / ended
+                if existing.status in [OwnershipStatus.revoked, OwnershipStatus.pending, OwnershipStatus.rejected]:
+                    existing.is_active = False
+                else:
+                    return error_response(
+                        message="Cannot remove space with active or approved status",
+                        status_code=str(AppStatusCode.INVALID_OPERATION)
+                    )
+
         for space in user_account.owner_spaces:
             existing = existing_by_space.get(space.space_id)
 
             if not existing:
                 # ➕ Insert new
                 so = SpaceOwner(
-                    owner_user_id=db_user_org.user_id,
+                    owner_user_id=db_user.id,
                     space_id=space.space_id,
                     owner_org_id=org_id,
                     ownership_type="primary",
@@ -1227,7 +1373,7 @@ def handle_account_type_update(
                     db=facility_db,
                     space_id=space.space_id,
                     occupant_type=OccupantType.owner,
-                    occupant_user_id=db_user_org.user_id,
+                    occupant_user_id=db_user.id,
                     event_type=OccupancyEventType.owner_requested,
                     source_id=so.id,
                     notes="Ownership requested during account update"
@@ -1244,7 +1390,7 @@ def handle_account_type_update(
 
         upsert_user_sites_preserve_primary(
             db=facility_db,
-            user_id=db_user_org.user_id,
+            user_id=db_user.id,
             site_ids=owner_site_ids
         )
 
@@ -1304,36 +1450,42 @@ def validate_unique_account(
 
 def mark_account_default(
     data: AccountRequest,
-    auth_db: Session,
-    user_id: str,
-    org_id: str
+    auth_db: Session
 ):
-    # Fetch the account
-    account = auth_db.query(UserOrganization).filter(
-        UserOrganization.id == data.user_org_id,
-        UserOrganization.user_id == user_id,
-        UserOrganization.is_deleted == False
-    ).first()
+    try:
+        # Fetch the account
+        account = auth_db.query(UserOrganization).filter(
+            UserOrganization.id == data.user_org_id,
+            UserOrganization.is_deleted == False
+        ).first()
 
-    if not account:
-        return error_response(message="Account not found")
+        if not account:
+            return error_response(message="Account not found")
 
-    if account.status != "active":
-        return error_response(message="Cannot mark inactive account as default")
+        if account.status != "active":
+            return error_response(message="Cannot mark inactive account as default")
 
-    # Unset previous default
-    auth_db.query(UserOrganization).filter(
-        UserOrganization.user_id == user_id,
-        UserOrganization.is_default == True,
-        UserOrganization.org_id == org_id
-    ).update({"is_default": False})
+        # Unset previous default
+        auth_db.query(UserOrganization).filter(
+            UserOrganization.user_id == account.user_id,
+            UserOrganization.is_default == True,
+            UserOrganization.org_id == account.org_id
+        ).update({"is_default": False})
 
-    # Set new default
-    account.is_default = True
+        # Set new default
+        account.is_default = True
 
-    auth_db.commit()
-    auth_db.refresh(account)
-    return {"message": "Account marked as default", "account_id": account.id}
+        auth_db.commit()
+        auth_db.refresh(account)
+        return {"message": "Account marked as default", "account_id": account.id}
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        auth_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def deactivate_account(
@@ -1342,51 +1494,57 @@ def deactivate_account(
     user_id: str,
     org_id: str
 ):
-    # 1️⃣ Fetch the account
-    account = db.query(UserOrganization).filter(
-        UserOrganization.id == data.user_org_id,
-        UserOrganization.user_id == user_id,
-        UserOrganization.is_deleted == False
-    ).first()
+    try:
+        # 1️⃣ Fetch the account
+        account = db.query(UserOrganization).filter(
+            UserOrganization.id == data.user_org_id,
+            UserOrganization.is_deleted == False
+        ).first()
 
-    if not account:
-        return error_response(message="Account not found")
+        if not account:
+            return error_response(message="Account not found")
 
-    # 2️⃣ Prevent deactivating default account
-    if account.is_default:
-        return error_response(message="Cannot deactivate default account")
+        # 2️⃣ Prevent deactivating default account
+        if account.is_default:
+            return error_response(message="Cannot deactivate default account")
 
-    # 3️⃣ Already inactive
-    if account.status == "inactive":
-        return error_response(message="Account is already inactive")
+        # 3️⃣ Already inactive
+        if account.status == "inactive":
+            return error_response(message="Account is already inactive")
 
-    # 4️⃣ Deactivate the account
-    account.status = "inactive"
-    db.commit()
-    db.refresh(account)
+        # 4️⃣ Deactivate the account
+        account.status = "inactive"
 
-    # 5Check if it's the only active organization account
-    active_org_accounts = db.query(UserOrganization).filter(
-        UserOrganization.user_id == user_id,
-        UserOrganization.id != data.user_org_id,
-        UserOrganization.is_deleted == False,
-        UserOrganization.status == "active"
-    ).count()
+        # 5Check if it's the only active organization account
+        active_org_accounts = db.query(UserOrganization).filter(
+            UserOrganization.user_id == account.user_id,
+            UserOrganization.id != account.user_org_id,
+            UserOrganization.is_deleted == False,
+            UserOrganization.status == "active"
+        ).count()
 
-    if active_org_accounts == 0:
-        # Deactivate the user as well
-        user = db.query(Users).filter(Users.id == user_id,
-                                      Users.is_deleted == False).first()
+        if active_org_accounts == 0:
+            # Deactivate the user as well
+            user = db.query(Users).filter(Users.id == account.user_id,
+                                          Users.is_deleted == False).first()
 
-        if user:
-            user.status = "inactive"
-            db.commit()
-            db.refresh(user)
+            if user:
+                user.status = "inactive"
 
-    return {
-        "message": "Account deactivated successfully",
-        "account_id": account.id
-    }
+        db.commit()
+
+        return {
+            "message": "Account deactivated successfully",
+            "account_id": account.id
+        }
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def upsert_user_sites_preserve_primary(

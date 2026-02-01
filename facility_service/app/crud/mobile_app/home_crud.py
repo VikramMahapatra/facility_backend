@@ -367,179 +367,185 @@ def register_space(
         params: AddSpaceRequest,
         facility_db: Session,
         auth_db: Session,
-        user: UserToken):
+        user: UserToken
+):
+    try:
+        now = datetime.utcnow()
+        tenant_obj = None
+        tenant_space = None
 
-    now = datetime.utcnow()
-    tenant_obj = None
-    tenant_space = None
+        # ✅ Find site
+        site = facility_db.query(Site).filter(
+            Site.id == params.site_id).first()
 
-    # ✅ Find site
-    site = facility_db.query(Site).filter(
-        Site.id == params.site_id).first()
+        db_user = auth_db.query(Users).filter(
+            Users.id == user.user_id, Users.is_deleted == False).first()
 
-    db_user = auth_db.query(Users).filter(
-        Users.id == user.user_id, Users.is_deleted == False).first()
-
-    if not site:
-        return error_response(
-            message="Invalid site selected",
-            status_code=str(AppStatusCode.INVALID_INPUT),
-        )
-
-    if not params.space_id:
-        return error_response(
-            message="Space required for tenant",
-            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
-        )
-
-    space = facility_db.query(Space).filter(
-        Space.id == params.space_id,
-        Space.is_deleted == False
-    ).options(
-        joinedload(Space.building),
-        joinedload(Space.site)
-    ).first()
-
-    user_org = auth_db.query(UserOrganization).filter(
-        UserOrganization.user_id == user.user_id,
-        UserOrganization.org_id == site.org_id,
-        UserOrganization.account_type == params.account_type.lower()
-    ).first()
-
-    if user_org:
-        user_org.status = "active"
-        user_org.is_deleted = False
-    else:
-        user_org = UserOrganization(
-            user_id=user.user_id,
-            org_id=site.org_id,
-            status="pending",
-            account_type=params.account_type.lower(),
-            is_deleted=False
-        )
-        auth_db.add(user_org)
-
-    if params.account_type.lower() == UserAccountType.FLAT_OWNER.value:
-        owner_spaces = []
-        owner_spaces.append(
-            UserTenantSpace(
-                site_id=space.site_id,
-                space_id=params.space_id
+        if not site:
+            return error_response(
+                message="Invalid site selected",
+                status_code=str(AppStatusCode.INVALID_INPUT),
             )
-        )
 
-        user_account = UserAccountCreate(
-            user_id=user.user_id,
-            status="active",
-            account_type=UserAccountType.FLAT_OWNER.value,
-            owner_spaces=owner_spaces
-        )
-
-        error = handle_account_type_update(
-            db=auth_db,
-            facility_db=facility_db,
-            db_user=db_user,
-            db_user_org=user_org,
-            user_account=user_account,
-            org_id=site.org_id
-        )
-
-        if error:
-            return error
-
-    elif params.account_type.lower() == UserAccountType.TENANT.value:
-        tenant_spaces = []
-        tenant_spaces.append(
-            UserTenantSpace(
-                site_id=space.site_id,
-                space_id=params.space_id
+        if not params.space_id:
+            return error_response(
+                message="Space required for tenant",
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             )
-        )
 
-        user_account = UserAccountCreate(
-            user_id=user.user_id,
-            status="active",
-            account_type=UserAccountType.TENANT.value,
-            tenant_spaces=tenant_spaces
-        )
-
-        error = handle_account_type_update(
-            db=auth_db,
-            facility_db=facility_db,
-            db_user=db_user,
-            db_user_org=user_org,
-            user_account=user_account,
-            org_id=site.org_id
-        )
-
-        if error:
-            return error
-
-    auth_db.commit()
-    facility_db.commit()
-
-    # RESPONSE
-    space_is_owner = False
-    space_lease_contract_exist = False
-    space_status = ""
-
-    # 1. CHECK IF USER IS SPACE OWNER
-    space_owner = facility_db.query(SpaceOwner).filter(
-        SpaceOwner.space_id == space.id,
-        SpaceOwner.owner_user_id == user.user_id
-    ).first()
-
-    if space_owner:
-        space_is_owner = True
-        space_status = space_owner.status
-
-        # 2. CHECK IF USER IS TENANT (for lease contract)
-    if tenant_obj and not space_is_owner:
-        # Check if tenant has access to this space
-        tenant_space = facility_db.query(TenantSpace).filter(
-            TenantSpace.tenant_id == tenant_obj.id,
-            TenantSpace.space_id == space.id,
-            TenantSpace.is_deleted == False
+        space = facility_db.query(Space).filter(
+            Space.id == params.space_id,
+            Space.is_deleted == False
+        ).options(
+            joinedload(Space.building),
+            joinedload(Space.site)
         ).first()
 
-        if tenant_space:
-            space_status = tenant_space.status
+        user_org = auth_db.query(UserOrganization).filter(
+            UserOrganization.user_id == user.user_id,
+            UserOrganization.org_id == site.org_id,
+            UserOrganization.account_type == params.account_type.lower()
+        ).first()
 
-            # Get lease for this space
-            lease_query = facility_db.query(Lease).filter(
-                Lease.space_id == space.id,
-                Lease.tenant_id == tenant_obj.id,
-                Lease.is_deleted == False,
-                Lease.end_date >= date.today()
+        if user_org:
+            user_org.status = "active"
+            user_org.is_deleted = False
+        else:
+            user_org = UserOrganization(
+                user_id=user.user_id,
+                org_id=site.org_id,
+                status="pending",
+                account_type=params.account_type.lower(),
+                is_deleted=False
+            )
+            auth_db.add(user_org)
+
+        if params.account_type.lower() == UserAccountType.FLAT_OWNER.value:
+            owner_spaces = []
+            owner_spaces.append(
+                UserTenantSpace(
+                    site_id=space.site_id,
+                    space_id=params.space_id
+                )
             )
 
-            lease = lease_query.order_by(Lease.end_date.desc()).first()
+            user_account = UserAccountCreate(
+                user_id=user.user_id,
+                status="active",
+                account_type=UserAccountType.FLAT_OWNER.value,
+                owner_spaces=owner_spaces
+            )
 
-            # Fallback to most recent if no active lease
-            if not lease:
+            error = handle_account_type_update(
+                facility_db=facility_db,
+                db_user=db_user,
+                user_account=user_account,
+                org_id=site.org_id
+            )
+
+            if error:
+                return error
+
+        elif params.account_type.lower() == UserAccountType.TENANT.value:
+            tenant_spaces = []
+            tenant_spaces.append(
+                UserTenantSpace(
+                    site_id=space.site_id,
+                    space_id=params.space_id
+                )
+            )
+
+            user_account = UserAccountCreate(
+                user_id=user.user_id,
+                status="active",
+                account_type=UserAccountType.TENANT.value,
+                tenant_spaces=tenant_spaces
+            )
+
+            error = handle_account_type_update(
+                facility_db=facility_db,
+                db_user=db_user,
+                user_account=user_account,
+                org_id=site.org_id
+            )
+
+            if error:
+                return error
+
+        auth_db.commit()
+        facility_db.commit()
+
+        # RESPONSE
+        space_is_owner = False
+        space_lease_contract_exist = False
+        space_status = ""
+
+        # 1. CHECK IF USER IS SPACE OWNER
+        space_owner = facility_db.query(SpaceOwner).filter(
+            SpaceOwner.space_id == space.id,
+            SpaceOwner.owner_user_id == user.user_id
+        ).first()
+
+        if space_owner:
+            space_is_owner = True
+            space_status = space_owner.status
+
+            # 2. CHECK IF USER IS TENANT (for lease contract)
+        if tenant_obj and not space_is_owner:
+            # Check if tenant has access to this space
+            tenant_space = facility_db.query(TenantSpace).filter(
+                TenantSpace.tenant_id == tenant_obj.id,
+                TenantSpace.space_id == space.id,
+                TenantSpace.is_deleted == False
+            ).first()
+
+            if tenant_space:
+                space_status = tenant_space.status
+
+                # Get lease for this space
                 lease_query = facility_db.query(Lease).filter(
                     Lease.space_id == space.id,
                     Lease.tenant_id == tenant_obj.id,
-                    Lease.is_deleted == False
+                    Lease.is_deleted == False,
+                    Lease.end_date >= date.today()
                 )
-                lease = lease_query.order_by(
-                    Lease.end_date.desc()).first()
 
-            if lease:
-                space_lease_contract_exist = True
+                lease = lease_query.order_by(Lease.end_date.desc()).first()
 
-        # Add space to response
-    return MySpacesResponse(
-        space_id=space.id,
-        space_name=space.name,
-        site_id=space.site.id,
-        site_name=space.site.name,
-        building_id=space.building_block_id,
-        status=space_status,
-        building_name=space.building.name if space.building else None,
-        is_owner=space_is_owner,
-        lease_contract_exist=space_lease_contract_exist,
-    )
+                # Fallback to most recent if no active lease
+                if not lease:
+                    lease_query = facility_db.query(Lease).filter(
+                        Lease.space_id == space.id,
+                        Lease.tenant_id == tenant_obj.id,
+                        Lease.is_deleted == False
+                    )
+                    lease = lease_query.order_by(
+                        Lease.end_date.desc()).first()
+
+                if lease:
+                    space_lease_contract_exist = True
+
+            # Add space to response
+        return MySpacesResponse(
+            space_id=space.id,
+            space_name=space.name,
+            site_id=space.site.id,
+            site_name=space.site.name,
+            building_id=space.building_block_id,
+            status=space_status,
+            building_name=space.building.name if space.building else None,
+            is_owner=space_is_owner,
+            lease_contract_exist=space_lease_contract_exist,
+        )
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        auth_db.rollback()
+        facility_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def get_space_detail(

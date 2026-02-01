@@ -201,7 +201,7 @@ def create_user(
                     owner_user_id=user_instance.id,
                     space_id=user.space_id,
                     owner_org_id=org_id,
-                    is_active=False,
+                    is_active=True,
                     start_date=now,
                     status=OwnershipStatus.pending
                 )

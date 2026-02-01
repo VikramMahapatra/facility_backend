@@ -8,6 +8,9 @@ from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
 from auth_service.app.models.user_organizations import UserOrganization
+from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event
+from facility_service.app.models.space_sites.space_occupancies import OccupantType
+from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
 from ...crud.access_control.user_management_crud import handle_account_type_update, upsert_user_sites_preserve_primary
 from ...schemas.access_control.user_management_schemas import UserAccountCreate, UserTenantSpace
 from ...models.space_sites.space_owners import OwnershipStatus, SpaceOwner
@@ -25,7 +28,7 @@ from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.leases import Lease
-from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipHistoryOut, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipHistoryOut, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate, TenantHistoryOut
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
@@ -152,38 +155,47 @@ def get_space_by_id(db: Session, space_id: str) -> Optional[Space]:
 
 
 def create_space(db: Session, space: SpaceCreate):
-    # Check for duplicate space code within the same building (case-insensitive)
-    if space.building_block_id:
-        existing_space = db.query(Space).filter(
-            and_(Space.building_block_id == space.building_block_id,
-                 Space.is_deleted == False,
-                 # Case-insensitive code within same building
-                 or_(func.lower(Space.code) == func.lower(space.code),
-                     func.lower(Space.name) == func.lower(space.name))
-                 )).first()
+    try:
+        # Check for duplicate space code within the same building (case-insensitive)
+        if space.building_block_id:
+            existing_space = db.query(Space).filter(
+                and_(Space.building_block_id == space.building_block_id,
+                     Space.is_deleted == False,
+                     # Case-insensitive code within same building
+                     or_(func.lower(Space.code) == func.lower(space.code),
+                         func.lower(Space.name) == func.lower(space.name))
+                     )).first()
 
-    else:
-        existing_space = db.query(Space).filter(
-            and_(or_(func.lower(Space.name) == func.lower(space.name),
-                 func.lower(Space.code) == func.lower(space.code)),
-                 Space.is_deleted == False,
-                 )).first()
+        else:
+            existing_space = db.query(Space).filter(
+                and_(or_(func.lower(Space.name) == func.lower(space.name),
+                         func.lower(Space.code) == func.lower(space.code)),
+                     Space.is_deleted == False,
+                     )).first()
 
-    if existing_space:
+        if existing_space:
+            return error_response(
+                message=f"Space with code/name already exists ",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                http_status=400
+            )
+
+        # Create space - exclude building_block
+        space.building_block_id = space.building_block_id if space.building_block_id else None
+        space_data = space.model_dump(exclude={"building_block"})
+        db_space = Space(**space_data)
+        db.add(db_space)
+        db.commit()
+        db.refresh(db_space)
+        return db_space
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
         return error_response(
-            message=f"Space with code/name already exists ",
-            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )
-
-    # Create space - exclude building_block
-    space.building_block_id = space.building_block_id if space.building_block_id else None
-    space_data = space.model_dump(exclude={"building_block"})
-    db_space = Space(**space_data)
-    db.add(db_space)
-    db.commit()
-    db.refresh(db_space)
-    return db_space
 
 
 def update_space(db: Session, space: SpaceUpdate):
@@ -327,43 +339,52 @@ def get_space_details_by_id(
 
 
 def delete_space(db: Session, space_id: str) -> Optional[Space]:
-    db_space = get_space_by_id(db, space_id)
-    if not db_space:
-        return None
+    try:
+        db_space = get_space_by_id(db, space_id)
+        if not db_space:
+            return None
 
-    # Check if there are any ACTIVE tenants associated with this space
-    active_tenants = (
-        db.query(TenantSpace)
-        .filter(
-            TenantSpace.space_id == space_id,
-            TenantSpace.is_deleted == False,
-            TenantSpace.status == "current"  # Active status tenants
-        )
-        .first()
-    )
-
-    # Check if there are any ACTIVE leases associated with this space
-    active_leases = (
-        db.query(Lease)
-        .filter(
-            Lease.space_id == space_id,
-            Lease.is_deleted == False,
-            Lease.status.in_(["active", "pending"])  # Active status leases
-        )
-        .first()
-    )
-
-    if active_tenants or active_leases:
-        raise error_response(
-            message="Cannot delete space that has active tenants or leases associated with it."
+        # Check if there are any ACTIVE tenants associated with this space
+        active_tenants = (
+            db.query(TenantSpace)
+            .filter(
+                TenantSpace.space_id == space_id,
+                TenantSpace.is_deleted == False,
+                TenantSpace.status == "current"  # Active status tenants
+            )
+            .first()
         )
 
-    # Soft delete - set is_deleted to True instead of actually deleting
-    db_space.is_deleted = True
-    db_space.updated_at = func.now()
-    db.commit()
-    db.refresh(db_space)
-    return db_space
+        # Check if there are any ACTIVE leases associated with this space
+        active_leases = (
+            db.query(Lease)
+            .filter(
+                Lease.space_id == space_id,
+                Lease.is_deleted == False,
+                Lease.status.in_(["active", "pending"])  # Active status leases
+            )
+            .first()
+        )
+
+        if active_tenants or active_leases:
+            raise error_response(
+                message="Cannot delete space that has active tenants or leases associated with it."
+            )
+
+        # Soft delete - set is_deleted to True instead of actually deleting
+        db_space.is_deleted = True
+        db_space.updated_at = func.now()
+        db.commit()
+        db.refresh(db_space)
+        return db_space
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def get_space_lookup(db: Session, site_id: str, building_id: str, user: UserToken):
@@ -464,7 +485,8 @@ def get_active_owners(
         db.query(SpaceOwner)
         .filter(
             SpaceOwner.space_id == space_id,
-            SpaceOwner.is_active == True
+            SpaceOwner.is_active == True,
+            SpaceOwner.status == OwnershipStatus.approved
         )
         .all()
     )
@@ -511,79 +533,87 @@ def assign_space_owner(
     org_id: UUID,
     payload: AssignSpaceOwnerIn
 ):
-    #  Validate space
-    space = (
-        db.query(Space)
-        .filter(
-            Space.id == payload.space_id,
-            Space.org_id == org_id,
-            Space.is_deleted == False
+    try:
+        #  Validate space
+        space = (
+            db.query(Space)
+            .filter(
+                Space.id == payload.space_id,
+                Space.org_id == org_id,
+                Space.is_deleted == False
+            )
+            .first()
         )
-        .first()
-    )
 
-    if not space:
-        raise error_response(message="Space not found")
+        if not space:
+            raise error_response(message="Space not found")
 
-    user = auth_db.query(Users).filter(
-        Users.id == payload.owner_user_id,
-        Users.is_deleted == False
-    ).first()
+        user = auth_db.query(Users).filter(
+            Users.id == payload.owner_user_id,
+            Users.is_deleted == False
+        ).first()
 
-    if not user:
-        raise error_response(message="User not found")
+        if not user:
+            raise error_response(message="User not found")
 
-    # ADD THIS: CREATE / REVIVE USER_ORGANIZATION OWNER ENTRY
-    user_org = auth_db.query(UserOrganization).filter(
-        UserOrganization.user_id == payload.owner_user_id,
-        UserOrganization.org_id == org_id,
-        UserOrganization.account_type == UserAccountType.FLAT_OWNER.value
-    ).first()
+        # ADD THIS: CREATE / REVIVE USER_ORGANIZATION OWNER ENTRY
+        user_org = auth_db.query(UserOrganization).filter(
+            UserOrganization.user_id == payload.owner_user_id,
+            UserOrganization.org_id == org_id,
+            UserOrganization.account_type == UserAccountType.FLAT_OWNER.value
+        ).first()
 
-    if user_org:
-        user_org.status = "active"
-        user_org.is_deleted = False
-    else:
-        user_org = UserOrganization(
+        if user_org:
+            user_org.status = "active"
+            user_org.is_deleted = False
+        else:
+            user_org = UserOrganization(
+                user_id=payload.owner_user_id,
+                org_id=org_id,
+                status="inactive",
+                account_type=UserAccountType.FLAT_OWNER.value,
+                is_deleted=False
+            )
+
+        owner_spaces = []
+        owner_spaces.append(
+            UserTenantSpace(
+                site_id=space.site_id,
+                space_id=payload.space_id
+            )
+        )
+
+        user_account = UserAccountCreate(
             user_id=payload.owner_user_id,
-            org_id=org_id,
-            status="inactive",
+            status="active",
             account_type=UserAccountType.FLAT_OWNER.value,
-            is_deleted=False
+            owner_spaces=owner_spaces
         )
 
-    owner_spaces = []
-    owner_spaces.append(
-        UserTenantSpace(
-            site_id=space.site_id,
-            space_id=payload.space_id
+        error = handle_account_type_update(
+            facility_db=db,
+            db_user=user,
+            user_account=user_account,
+            org_id=org_id
         )
-    )
 
-    user_account = UserAccountCreate(
-        user_id=payload.owner_user_id,
-        status="active",
-        account_type=UserAccountType.FLAT_OWNER.value,
-        owner_spaces=owner_spaces
-    )
+        if error:
+            return error
 
-    error = handle_account_type_update(
-        db=auth_db,
-        facility_db=db,
-        db_user=user,
-        db_user_org=user_org,
-        user_account=user_account,
-        org_id=org_id
-    )
+        db.commit()
+        auth_db.add(user_org)
+        auth_db.commit()
 
-    if error:
-        return error
-
-    db.commit()
-    auth_db.add(user_org)
-    auth_db.commit()
-
-    return success_response(data=None, message="request submitted successfully")
+        return success_response(data=None, message="request submitted successfully")
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        auth_db.rollback
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def assign_space_tenant(
@@ -592,94 +622,102 @@ def assign_space_tenant(
     org_id: UUID,
     payload: AssignSpaceTenantIn
 ):
-    now = datetime.utcnow()
-    #  Validate space
-    space = (
-        db.query(Space)
-        .filter(
-            Space.id == payload.space_id,
-            Space.org_id == org_id,
-            Space.is_deleted == False
+    try:
+        now = datetime.utcnow()
+        #  Validate space
+        space = (
+            db.query(Space)
+            .filter(
+                Space.id == payload.space_id,
+                Space.org_id == org_id,
+                Space.is_deleted == False
+            )
+            .first()
         )
-        .first()
-    )
 
-    if not space:
-        raise error_response(message="Space not found")
+        if not space:
+            raise error_response(message="Space not found")
 
-    tenant_space_owner = (
-        db.query(SpaceOwner)
-        .filter(
-            SpaceOwner.space_id == payload.space_id,
-            SpaceOwner.owner_user_id == payload.tenant_user_id,
-            SpaceOwner.status == OwnershipStatus.approved
+        tenant_space_owner = (
+            db.query(SpaceOwner)
+            .filter(
+                SpaceOwner.space_id == payload.space_id,
+                SpaceOwner.owner_user_id == payload.tenant_user_id,
+                SpaceOwner.status == OwnershipStatus.approved
+            )
+            .first()
         )
-        .first()
-    )
 
-    if tenant_space_owner:
-        raise error_response(
-            message="Space owner cannot be assigned as tenant.")
+        if tenant_space_owner:
+            raise error_response(
+                message="Space owner cannot be assigned as tenant.")
 
-    user = auth_db.query(Users).filter(
-        Users.id == payload.tenant_user_id,
-        Users.is_deleted == False
-    ).first()
+        user = auth_db.query(Users).filter(
+            Users.id == payload.tenant_user_id,
+            Users.is_deleted == False
+        ).first()
 
-    if not user:
-        raise error_response(message="User not found")
+        if not user:
+            raise error_response(message="User not found")
 
-    # ADD THIS: CREATE / REVIVE USER_ORGANIZATION OWNER ENTRY
-    user_org = auth_db.query(UserOrganization).filter(
-        UserOrganization.user_id == payload.tenant_user_id,
-        UserOrganization.org_id == org_id,
-        UserOrganization.account_type == UserAccountType.TENANT.value
-    ).first()
+        # ADD THIS: CREATE / REVIVE USER_ORGANIZATION OWNER ENTRY
+        user_org = auth_db.query(UserOrganization).filter(
+            UserOrganization.user_id == payload.tenant_user_id,
+            UserOrganization.org_id == org_id,
+            UserOrganization.account_type == UserAccountType.TENANT.value
+        ).first()
 
-    if user_org:
-        user_org.status = "active"
-        user_org.is_deleted = False
-    else:
-        user_org = UserOrganization(
-            user_id=payload.owner_user_id,
-            org_id=org_id,
-            status="inactive",
+        if user_org:
+            user_org.status = "active"
+            user_org.is_deleted = False
+        else:
+            user_org = UserOrganization(
+                user_id=payload.owner_user_id,
+                org_id=org_id,
+                status="inactive",
+                account_type=UserAccountType.TENANT.value,
+                is_deleted=False
+            )
+
+        tenant_spaces = []
+        tenant_spaces.append(
+            UserTenantSpace(
+                site_id=space.site_id,
+                space_id=payload.space_id
+            )
+        )
+
+        user_account = UserAccountCreate(
+            user_id=payload.tenant_user_id,
+            status="active",
             account_type=UserAccountType.TENANT.value,
-            is_deleted=False
+            tenant_spaces=tenant_spaces
         )
 
-    tenant_spaces = []
-    tenant_spaces.append(
-        UserTenantSpace(
-            site_id=space.site_id,
-            space_id=payload.space_id
+        error = handle_account_type_update(
+            facility_db=db,
+            db_user=user,
+            user_account=user_account,
+            org_id=org_id
         )
-    )
 
-    user_account = UserAccountCreate(
-        user_id=payload.tenant_user_id,
-        status="active",
-        account_type=UserAccountType.TENANT.value,
-        tenant_spaces=tenant_spaces
-    )
+        if error:
+            return error
 
-    error = handle_account_type_update(
-        db=auth_db,
-        facility_db=db,
-        db_user=user,
-        db_user_org=user_org,
-        user_account=user_account,
-        org_id=org_id
-    )
+        db.commit()
+        auth_db.add(user_org)
+        auth_db.commit()
 
-    if error:
-        return error
-
-    db.commit()
-    auth_db.add(user_org)
-    auth_db.commit()
-
-    return success_response(data=None, message="request submitted successfully")
+        return success_response(data=None, message="request submitted successfully")
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        auth_db.rollback
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def get_space_ownership_history(
@@ -731,7 +769,67 @@ def get_space_ownership_history(
                 ownership_percentage=owner.ownership_percentage,
                 start_date=owner.start_date,
                 end_date=owner.end_date,
-                is_active=owner.is_active
+                is_active=owner.is_active,
+                status=owner.status
+            )
+        )
+
+    return response
+
+
+def get_space_tenant_history(
+    db: Session,
+    auth_db: Session,
+    space_id: UUID,
+    org_id: UUID
+):
+    # Validate space
+    space = (
+        db.query(Space)
+        .filter(
+            Space.id == space_id,
+            Space.org_id == org_id,
+            Space.is_deleted == False
+        )
+        .first()
+    )
+
+    if not space:
+        return error_response(message="Space not found")
+
+    space_tenants = (
+        db.query(
+            TenantSpace,
+            Lease.lease_number
+        )
+        .outerjoin(
+            Lease,
+            and_(
+                Lease.space_id == TenantSpace.space_id,
+                Lease.tenant_id == TenantSpace.tenant_id,
+                Lease.is_deleted == False
+            )
+        )
+        .filter(
+            TenantSpace.space_id == space_id
+        )
+        .order_by(TenantSpace.created_at.desc())
+        .all()
+    )
+
+    response = []
+
+    for tenant_space, lease_no in space_tenants:
+
+        response.append(
+            TenantHistoryOut(
+                id=tenant_space.id,
+                tenant_user_id=tenant_space.tenant.user_id,
+                tenant_name=tenant_space.tenant.name,
+                start_date=tenant_space.created_at.date() if tenant_space.created_at else None,
+                lease_no=lease_no,
+                is_active=True if tenant_space.tenant.status == "active" else False,
+                status=tenant_space.status
             )
         )
 
@@ -791,7 +889,8 @@ def get_pending_space_owner_requests(
                 end_date=owner.end_date,
                 is_active=owner.is_active,
                 space_id=owner.space.id,
-                space_name=owner.space.name
+                space_name=owner.space.name,
+                status=owner.status
             )
         )
 
@@ -808,113 +907,134 @@ def update_space_owner_approval(
     action: OwnershipStatus,
     org_id: UUID
 ):
-    owner = (
-        db.query(SpaceOwner)
-        .filter(
-            SpaceOwner.id == request_id
+    try:
+        owner = (
+            db.query(SpaceOwner)
+            .filter(
+                SpaceOwner.id == request_id
+            )
+            .first()
         )
-        .first()
-    )
 
-    if not owner:
-        return error_response(message="Ownership request not found")
+        if not owner:
+            return error_response(message="Ownership request not found")
 
-    space = db.query(Space).filter(
-        Space.id == owner.space_id,
-        Space.is_deleted == False
-    ).first()
+        space = db.query(Space).filter(
+            Space.id == owner.space_id,
+            Space.is_deleted == False
+        ).first()
 
-    if action == OwnershipStatus.approved:
-        existing_assignments = db.query(SpaceOwner).filter(
-            SpaceOwner.space_id == owner.space_id,
-            SpaceOwner.is_active == True
-        ).all()
-
-        #  DIFFERENT OWNER → CLOSE PREVIOUS ENTRY
-        for ts in existing_assignments:
-            if ts.owner_user_id != owner.owner_user_id:
-                ts.is_active = False
-                ts.end_date = date.today()
-
-                other_spaces_count = (
-                    db.query(SpaceOwner)
-                    .filter(
-                        SpaceOwner.space_id != ts.space_id,
-                        SpaceOwner.owner_user_id == ts.owner_user_id,
-                        SpaceOwner.owner_org_id == org_id,
-                        SpaceOwner.is_active == True
-                    )
-                    .count()
-                )
-
-                #  SOFT DELETE OLD OWNER ACCOUNT ORG ENTRY
-                if other_spaces_count == 0:
-                    old_user_org = db.query(UserOrganization).filter(
-                        UserOrganization.user_id == ts.owner_user_id,
-                        UserOrganization.org_id == org_id,
-                        UserOrganization.account_type == "owner",
-                        UserOrganization.is_deleted == False
-                    ).first()
-
-                    if old_user_org:
-                        old_user_org.is_deleted = True,
-                        old_user_org.status = "inactive"
-
-        # Ensure only one primary owner
-        if owner.ownership_type == "primary":
-            db.query(SpaceOwner).filter(
+        if action == OwnershipStatus.approved:
+            existing_assignments = db.query(SpaceOwner).filter(
                 SpaceOwner.space_id == owner.space_id,
-                SpaceOwner.ownership_type == "primary",
-                SpaceOwner.is_active == True,
-                SpaceOwner.id != owner.id
+                SpaceOwner.is_active == True
+            ).all()
+
+            #  DIFFERENT OWNER → CLOSE PREVIOUS ENTRY
+            for ts in existing_assignments:
+                if ts.owner_user_id != owner.owner_user_id:
+                    ts.is_active = False
+                    ts.end_date = date.today()
+
+                    other_spaces_count = (
+                        db.query(SpaceOwner)
+                        .filter(
+                            SpaceOwner.space_id != ts.space_id,
+                            SpaceOwner.owner_user_id == ts.owner_user_id,
+                            SpaceOwner.owner_org_id == org_id,
+                            SpaceOwner.is_active == True
+                        )
+                        .count()
+                    )
+
+                    #  SOFT DELETE OLD OWNER ACCOUNT ORG ENTRY
+                    if other_spaces_count == 0:
+                        old_user_org = auth_db.query(UserOrganization).filter(
+                            UserOrganization.user_id == ts.owner_user_id,
+                            UserOrganization.org_id == org_id,
+                            UserOrganization.account_type == "owner",
+                            UserOrganization.is_deleted == False
+                        ).first()
+
+                        if old_user_org:
+                            old_user_org.is_deleted = True
+                            old_user_org.status = "inactive"
+
+            # Ensure only one primary owner
+            if owner.ownership_type == "primary":
+                db.query(SpaceOwner).filter(
+                    SpaceOwner.space_id == owner.space_id,
+                    SpaceOwner.ownership_type == "primary",
+                    SpaceOwner.is_active == True,
+                    SpaceOwner.id != owner.id
+                ).update({
+                    SpaceOwner.is_active: False,
+                    SpaceOwner.status: OwnershipStatus.revoked
+                })
+
+            owner.status = OwnershipStatus.approved
+            owner.is_active = True
+
+            auth_db.query(UserOrganization).filter(
+                UserOrganization.user_id == owner.owner_user_id,
+                UserOrganization.org_id == org_id,
+                UserOrganization.account_type == "owner",
+                UserOrganization.is_deleted == False
             ).update({
-                SpaceOwner.is_active: False,
-                SpaceOwner.status: OwnershipStatus.revoked
+                UserOrganization.status: "active"
             })
 
-        owner.status = OwnershipStatus.approved
-        owner.is_active = True
+            site_ids = [space.site_id]
 
-        auth_db.query(UserOrganization).filter(
-            UserOrganization.user_id == owner.owner_user_id,
-            UserOrganization.org_id == org_id,
-            UserOrganization.account_type == "owner",
-            UserOrganization.is_deleted == False
-        ).update({
-            UserOrganization.status: "active"
-        })
+            log_occupancy_event(
+                db=db,
+                space_id=owner.space_id,
+                occupant_type=OccupantType.owner,
+                occupant_user_id=owner.owner_user_id,
+                event_type=OccupancyEventType.owner_approved,
+                source_id=owner.owner_user_id,
+                notes="Owner request for the space was approved"
+            )
 
-        site_ids = [space.site_id]
+            upsert_user_sites_preserve_primary(
+                db=db,
+                user_id=owner.owner_user_id,
+                site_ids=site_ids
+            )
 
-        upsert_user_sites_preserve_primary(
-            db=db,
-            user_id=owner.owner_user_id,
-            site_ids=site_ids
+        else:
+            owner.status = OwnershipStatus.rejected
+            owner.is_active = False
+            owner.end_date = date.today()
+
+        auth_db.commit()
+        db.commit()
+        db.refresh(owner)
+
+        user = (
+            auth_db.query(Users)
+            .filter(Users.id == owner.owner_user_id)
+            .first()
         )
+        owner_name = user.full_name if user else None
 
-    else:
-        owner.status = OwnershipStatus.rejected
-        owner.is_active = False
-        owner.end_date = date.today()
-
-    auth_db.commit()
-    db.commit()
-    db.refresh(owner)
-
-    user = (
-        auth_db.query(Users)
-        .filter(Users.id == owner.owner_user_id)
-        .first()
-    )
-    owner_name = user.full_name if user else None
-
-    return OwnershipHistoryOut(
-        id=owner.id,
-        owner_user_id=owner.owner_user_id,
-        owner_name=owner_name,
-        ownership_type=owner.ownership_type,
-        ownership_percentage=owner.ownership_percentage,
-        start_date=owner.start_date,
-        end_date=owner.end_date,
-        is_active=owner.is_active
-    )
+        return OwnershipHistoryOut(
+            id=owner.id,
+            owner_user_id=owner.owner_user_id,
+            owner_name=owner_name,
+            ownership_type=owner.ownership_type,
+            ownership_percentage=owner.ownership_percentage,
+            start_date=owner.start_date,
+            end_date=owner.end_date,
+            is_active=owner.is_active,
+            status=owner.status
+        )
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        auth_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )

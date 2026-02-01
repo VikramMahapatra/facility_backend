@@ -337,16 +337,6 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                     )
                 )
 
-            log_occupancy_event(
-                db=db,
-                space_id=payload.space_id,
-                occupant_type=OccupantType.tenant,
-                occupant_user_id=tenant.user_id,
-                event_type=OccupancyEventType.moved_in,
-                source_id=lease.id,
-                notes="Auto move-in during lease activation"
-            )
-
         # Commit and return
         db.commit()
         db.refresh(lease)

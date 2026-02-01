@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, desc, func, literal, or_, select, case, tuple_
 from uuid import UUID
 from auth_service.app.models.user_organizations import UserOrganization
-from ...crud.access_control.user_management_crud import upsert_user_sites_preserve_primary
+from facility_service.app.schemas.access_control.user_management_schemas import UserAccountCreate, UserTenantSpace
+from ...crud.access_control.user_management_crud import handle_account_type_update, upsert_user_sites_preserve_primary
 from ...models.space_sites.space_occupancies import OccupantType
 from ...models.space_sites.space_occupancy_events import OccupancyEventType
 from ...crud.space_sites.space_occupancy_crud import log_occupancy_event
@@ -41,6 +42,7 @@ from ...models.space_sites.sites import Site
 from ...models.leasing_tenants.leases import Lease
 from ...models.leasing_tenants.tenants import Tenant
 from ...schemas.leasing_tenants.tenants_schemas import (
+    ManageTenantSpaceRequest,
     SpaceTenantApprovalRequest,
     TenantApprovalOut,
     TenantSpaceBase,
@@ -163,8 +165,8 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
             ).label("tenant_spaces")
         )
         .select_from(Tenant)
-        .join(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
-        .join(
+        .outerjoin(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
+        .outerjoin(
             Site,
             and_(
                 Site.id == TenantSpace.site_id,
@@ -172,7 +174,7 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
                 Site.is_deleted.is_(False),
             )
         )
-        .join(Space, Space.id == TenantSpace.space_id)
+        .outerjoin(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
         .filter(
             Tenant.is_deleted.is_(False),
@@ -297,9 +299,9 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
             ).label("tenant_spaces")
         )
         .select_from(Tenant)
-        .join(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
-        .join(Site, Site.id == TenantSpace.site_id)
-        .join(Space, Space.id == TenantSpace.space_id)
+        .outerjoin(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
+        .outerjoin(Site, Site.id == TenantSpace.site_id)
+        .outerjoin(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
         .filter(
             Tenant.id == tenant_id
@@ -430,8 +432,6 @@ def create_tenant_internal(
 ) -> Tenant:
     now = datetime.utcnow()
 
-    validate_active_tenants_for_spaces(db, tenant.tenant_spaces)
-
     # Duplicate name check
     if db.query(Tenant).filter(
         Tenant.is_deleted == False,
@@ -473,51 +473,32 @@ def create_tenant_internal(
     db.add(db_tenant)
     db.flush()  # 🔑 get tenant.id
 
-    for space in tenant.tenant_spaces:
-        t_space = TenantSpace(
-            tenant_id=db_tenant.id,
-            site_id=space.site_id,
-            space_id=space.space_id,
-            status=OwnershipStatus.pending,
-            created_at=now
-        )
-        db.add(t_space)
-        db.flush()
-
-        log_occupancy_event(
-            db=db,
-            space_id=space.space_id,
-            occupant_type=OccupantType.tenant,
-            occupant_user_id=user.id,
-            event_type=OccupancyEventType.tenant_requested,
-            source_id=t_space.id,
-            notes="Tenant requested space"
-        )
-
-    # user_sites sync
-    site_ids = get_site_ids_from_tenant_spaces(tenant.tenant_spaces)
-
-    upsert_user_sites_preserve_primary(
-        db=db,
-        user_id=user.id,
-        site_ids=site_ids
-    )
-
     return db_tenant
 
 
 def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCreate):
-    db_tenant = create_tenant_internal(
-        db=db,
-        auth_db=auth_db,
-        org_id=org_id,
-        tenant=tenant
-    )
 
-    auth_db.commit()
-    db.commit()
+    try:
+        db_tenant = create_tenant_internal(
+            db=db,
+            auth_db=auth_db,
+            org_id=org_id,
+            tenant=tenant
+        )
 
-    return get_tenant_detail(db, org_id, db_tenant.id)
+        auth_db.commit()
+        db.commit()
+
+        return get_tenant_detail(db, org_id, db_tenant.id)
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        auth_db.rollback
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def update_tenant(
@@ -527,87 +508,52 @@ def update_tenant(
     tenant_id: UUID,
     update_data: TenantUpdate
 ):
-    db_tenant = get_tenant_by_id(db, tenant_id)
-    if not db_tenant:
-        return error_response(
-            message="Tenant not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=404
-        )
-
-    update_dict = update_data.dict(exclude_unset=True)
-    now = datetime.utcnow()
-
-    # Duplicate name check
-    if "name" in update_dict and update_dict["name"] != db_tenant.name:
-        if db.query(Tenant).filter(
-            Tenant.id != tenant_id,
-            Tenant.is_deleted == False,
-            func.lower(Tenant.name) == func.lower(update_dict["name"])
-        ).first():
+    try:
+        db_tenant = get_tenant_by_id(db, tenant_id)
+        if not db_tenant:
             return error_response(
-                message=f"Tenant with name '{update_dict['name']}' already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message="Tenant not found",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=404
             )
 
-    # Update linked user
-    if db_tenant.user_id:
-        auth_db.query(Users).filter(
-            Users.id == db_tenant.user_id
-        ).update({
-            "full_name": update_dict.get("name", db_tenant.name),
-            "email": update_dict.get("email", db_tenant.email),
-            "phone": update_dict.get("phone", db_tenant.phone),
-            "updated_at": now
-        })
-
-    # Update tenant
-    update_dict["updated_at"] = now
-    db.query(Tenant).filter(Tenant.id == tenant_id).update(update_dict)
-
-    # Sync tenant spaces
-    if "tenant_spaces" in update_dict:
-        validate_tenant_space_update(db, tenant_id, update_dict, db_tenant)
-
-        db.query(TenantSpace).filter(
-            TenantSpace.tenant_id == tenant_id
-        ).update({"is_deleted": True})
-
-        for space in update_dict["tenant_spaces"]:
-            t_space = TenantSpace(
-                tenant_id=tenant_id,
-                site_id=space["site_id"],
-                space_id=space["space_id"],
-                status=OwnershipStatus.pending,
-                is_deleted=False,
-                created_at=now
-            )
-            db.add(t_space)
-            db.flush()
-
-            log_occupancy_event(
-                db=db,
-                space_id=space["space_id"],
-                occupant_type=OccupantType.tenant,
-                occupant_user_id=db_tenant.user_id,
-                event_type=OccupancyEventType.tenant_requested,
-                source_id=t_space.id,
-                notes="Tenant requested space"
-            )
-
-        # 🔑 Update user_sites
-        site_ids = get_site_ids_from_tenant_spaces(
-            update_dict["tenant_spaces"])
-        upsert_user_sites_preserve_primary(
-            db=db,
-            user_id=db_tenant.user_id,
-            site_ids=site_ids
+        update_dict = update_data.dict(
+            exclude_unset=True,
+            exclude={
+                "contact_info",
+                "type",
+                "tenant_spaces",
+                "tenant_leases",
+            }
         )
+        now = datetime.utcnow()
 
-    auth_db.commit()
-    db.commit()
-    return get_tenant_detail(db, org_id, tenant_id)
+        # Duplicate name check
+        if "name" in update_dict and update_dict["name"] != db_tenant.name:
+            if db.query(Tenant).filter(
+                Tenant.id != tenant_id,
+                Tenant.is_deleted == False,
+                func.lower(Tenant.name) == func.lower(update_dict["name"])
+            ).first():
+                return error_response(
+                    message=f"Tenant with name '{update_dict['name']}' already exists",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                    http_status=400
+                )
+
+        # Update tenant
+        update_dict["updated_at"] = now
+        db.query(Tenant).filter(Tenant.id == tenant_id).update(update_dict)
+        db.commit()
+        return get_tenant_detail(db, org_id, tenant_id)
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
@@ -684,6 +630,69 @@ def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
         db.rollback()
         auth_db.rollback()  # ✅ Rollback auth_db too
         return {"success": False, "message": f"Database error: {str(e)}"}
+
+
+def manage_tenant_space(
+    db: Session,
+    auth_db: Session,
+    org_id: UUID,
+    payload: ManageTenantSpaceRequest
+):
+    try:
+        db_tenant = get_tenant_by_id(db, payload.tenant_id)
+
+        if not db_tenant:
+            return error_response(
+                message="Tenant not found",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=404
+            )
+
+        db_user = (
+            auth_db.query(Users)
+            .filter(
+                Users.id == db_tenant.user_id,
+                Users.is_deleted == False
+            )
+            .first()
+        )
+
+        spaces = []
+        for space in payload.tenant_spaces:
+            spaces.append(
+                UserTenantSpace(
+                    site_id=space.site_id,
+                    space_id=space.space_id
+                )
+            )
+
+        user_account = UserAccountCreate(
+            user_id=db_user.id,
+            status="active",
+            account_type=UserAccountType.TENANT.value,
+            tenant_spaces=spaces
+        )
+
+        error = handle_account_type_update(
+            facility_db=db,
+            db_user=db_user,
+            user_account=user_account,
+            org_id=org_id
+        )
+
+        if error:
+            return error
+
+        return success_response(data=None, message="request submitted successfully")
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        auth_db.rollback
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 # -----------type lookup
@@ -1008,7 +1017,6 @@ def get_or_create_user_and_org(
     ).first()
 
     if not user:
-        random_password = generate_secure_password()
         user = Users(
             id=uuid.uuid4(),
             full_name=name,
@@ -1019,7 +1027,6 @@ def get_or_create_user_and_org(
             created_at=now,
             updated_at=now
         )
-        user.set_password(random_password)
         auth_db.add(user)
         auth_db.flush()
 
@@ -1028,14 +1035,23 @@ def get_or_create_user_and_org(
         UserOrganization.org_id == org_id
     ).first()
 
-    if not user_org:
-        auth_db.add(
-            UserOrganization(
-                user_id=user.id,
-                org_id=org_id,
-                account_type="tenant",
-                status="active"
+    try:
+        if not user_org:
+            auth_db.add(
+                UserOrganization(
+                    user_id=user.id,
+                    org_id=org_id,
+                    account_type="tenant",
+                    status="active"
+                )
             )
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        auth_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
         )
 
     return user, random_password
@@ -1125,59 +1141,77 @@ def approve_tenant(
     auth_db: Session,
     current_user: UserToken
 ):
-    #  Check if space already has an active lease
-    active_lease = (
-        db.query(Lease)
-        .filter(
-            Lease.space_id == params.space_id,
-            Lease.status == LeaseStatus.active
-        )
-        .first()
-    )
-
-    if active_lease:
-        raise HTTPException(
-            status_code=400,
-            detail="Space is already occupied by an active tenant"
+    try:
+        #  Check if space already has an active lease
+        active_lease = (
+            db.query(Lease)
+            .filter(
+                Lease.space_id == params.space_id,
+                Lease.status == LeaseStatus.active
+            )
+            .first()
         )
 
-    tenant_space = (
-        db.query(TenantSpace)
-        .filter(
-            TenantSpace.space_id == params.space_id,
-            TenantSpace.tenant_id == params.tenant_id,
-            TenantSpace.status == TenantSpaceStatus.pending
+        if active_lease:
+            raise HTTPException(
+                status_code=400,
+                detail="Space is already occupied by an active tenant"
+            )
+
+        tenant_space = (
+            db.query(TenantSpace)
+            .filter(
+                TenantSpace.space_id == params.space_id,
+                TenantSpace.tenant_id == params.tenant_id,
+                TenantSpace.status == TenantSpaceStatus.pending
+            )
+            .first()
         )
-        .first()
-    )
 
-    if not tenant_space:
-        raise HTTPException(
-            status_code=404, detail="Pending tenant request not found")
+        if not tenant_space:
+            raise HTTPException(
+                status_code=404, detail="Pending tenant request not found")
 
-    tenant_space.status = TenantSpaceStatus.approved
-    tenant_space.approved_at = func.now()
-    tenant_space.approved_by = current_user.user_id
+        tenant_space.status = TenantSpaceStatus.approved
+        tenant_space.approved_at = func.now()
+        tenant_space.approved_by = current_user.user_id
 
-    auth_db.query(UserOrganization).filter(
-        UserOrganization.user_id == current_user.user_id,
-        UserOrganization.org_id == current_user.org_id,
-        UserOrganization.account_type == UserAccountType.TENANT.value
-    ).update({"status": "active"})
+        auth_db.query(UserOrganization).filter(
+            UserOrganization.user_id == tenant_space.tenant.user_id,
+            UserOrganization.org_id == current_user.org_id,
+            UserOrganization.account_type == UserAccountType.TENANT.value
+        ).update({"status": "active"})
 
-    tenant_site_ids = [tenant_space.site_id]
+        tenant_site_ids = [tenant_space.site_id]
 
-    upsert_user_sites_preserve_primary(
-        db=db,
-        user_id=current_user.user_id,
-        site_ids=tenant_site_ids
-    )
+        upsert_user_sites_preserve_primary(
+            db=db,
+            user_id=current_user.user_id,
+            site_ids=tenant_site_ids
+        )
 
-    auth_db.commit()
-    db.commit()
-    db.refresh(tenant_space)
+        log_occupancy_event(
+            db=db,
+            space_id=params.space_id,
+            occupant_type=OccupantType.owner,
+            occupant_user_id=tenant_space.tenant.user_id,
+            event_type=OccupancyEventType.tenant_approved,
+            source_id=params.tenant_id,
+            notes="Tenant request for the space was approved"
+        )
 
-    return {"Tenant approved successfully"}
+        auth_db.commit()
+        db.commit()
+        return {"Tenant approved successfully"}
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        auth_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def reject_tenant(
@@ -1186,26 +1220,35 @@ def reject_tenant(
     db: Session,
     current_user: Users,
 ):
-    tenant_space = (
-        db.query(TenantSpace)
-        .filter(
-            TenantSpace.space_id == space_id,
-            TenantSpace.tenant_id == tenant_id,
-            TenantSpace.status == TenantSpaceStatus.pending
+    try:
+        tenant_space = (
+            db.query(TenantSpace)
+            .filter(
+                TenantSpace.space_id == space_id,
+                TenantSpace.tenant_id == tenant_id,
+                TenantSpace.status == TenantSpaceStatus.pending
+            )
+            .first()
         )
-        .first()
-    )
 
-    if not tenant_space:
-        raise HTTPException(
-            status_code=404, detail="Pending tenant request not found")
+        if not tenant_space:
+            raise HTTPException(
+                status_code=404, detail="Pending tenant request not found")
 
-    tenant_space.status = TenantSpaceStatus.rejected
-    tenant_space.rejected_at = func.now()
+        tenant_space.status = TenantSpaceStatus.rejected
+        tenant_space.rejected_at = func.now()
 
-    db.commit()
+        db.commit()
 
-    return success_response(data=None, message="Tenant rejected successfully")
+        return success_response(data=None, message="Tenant rejected successfully")
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def get_tenant_approvals(

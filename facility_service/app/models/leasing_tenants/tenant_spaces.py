@@ -25,6 +25,7 @@ class TenantSpace(Base):
         nullable=False
     )
     approved_at = Column(DateTime(timezone=True))
+    ended_at = Column(DateTime(timezone=True))
     rejected_at = Column(DateTime(timezone=True))
     approved_by = Column(UUID(as_uuid=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())

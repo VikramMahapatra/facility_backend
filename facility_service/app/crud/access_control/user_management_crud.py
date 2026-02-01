@@ -1296,7 +1296,6 @@ def handle_account_type_update(
         tenant.name = db_user.full_name
         tenant.phone = db_user.phone
         tenant.email = db_user.email
-        tenant.kind = user_account.tenant_type
 
         tenant_site_ids = list({
             space.site_id for space in user_account.tenant_spaces

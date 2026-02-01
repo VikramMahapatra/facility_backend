@@ -459,7 +459,7 @@ def register_space(
                 user_id=user.user_id,
                 status="active",
                 account_type=UserAccountType.TENANT.value,
-                tenant_spaces=tenant_spaces
+                tenant_spaces=tenant_spaces,
             )
 
             error = handle_account_type_update(

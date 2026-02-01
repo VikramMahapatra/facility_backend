@@ -284,6 +284,7 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
                 func.jsonb_agg(
                     func.distinct(
                         func.jsonb_build_object(
+                            "id", TenantSpace.id,
                             "site_id", Site.id,
                             "site_name", Site.name,
                             "space_id", Space.id,
@@ -670,8 +671,11 @@ def manage_tenant_space(
             user_id=db_user.id,
             status="active",
             account_type=UserAccountType.TENANT.value,
-            tenant_spaces=spaces
+            tenant_spaces=spaces,
+            tenant_type=db_tenant.kind
         )
+
+        print(user_account)
 
         error = handle_account_type_update(
             facility_db=db,

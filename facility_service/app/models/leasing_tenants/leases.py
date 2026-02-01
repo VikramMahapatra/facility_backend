@@ -50,7 +50,8 @@ class Lease(Base):
         "LeaseCharge", back_populates="lease", cascade="all, delete")
     site = relationship("Site", back_populates="leases")
     space = relationship("Space", back_populates="leases")
-
+        # ✅ ADD THIS
+    payment_terms = relationship("LeasePaymentTerm",back_populates="lease", cascade="all, delete-orphan")
 
 @event.listens_for(Lease, "before_insert")
 def generate_lease_number(mapper, connection, target):

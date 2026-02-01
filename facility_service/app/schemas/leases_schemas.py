@@ -150,3 +150,23 @@ class TenantSpaceItemOut(BaseModel):
 class TenantSpaceDetailOut(BaseModel):
     tenant_data: List[TenantSpaceItemOut]
 
+
+#LEASE PAYMENT TERM
+
+class LeasePaymentTermCreate(BaseModel):
+    description: Optional[str] = None
+    reference_no: Optional[str] = None
+    due_date: date
+    amount: Decimal
+    status: Optional[str] = "pending"
+    payment_method: Optional[str] = None
+    paid_at: Optional[datetime] = None
+
+
+class LeasePaymentTermOut(LeasePaymentTermCreate):
+    id: UUID
+    lease_id: UUID
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}

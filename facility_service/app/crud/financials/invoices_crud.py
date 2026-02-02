@@ -1504,12 +1504,9 @@ def get_invoice_payment_history(
         ).first()
         if lc:
             billable_item_name = f"Rent | Lease {lc.lease_number}"
-
             # Get customer name from lease
-        if lc.lease:
-            lease = lc.lease
-        if lease.tenant:
-            customer_name = lease.tenant.name or lease.tenant.legal_name
+            if lc.tenant:
+                customer_name = lc.tenant.name or lc.tenant.legal_name
 
     elif invoice.billable_item_type == "parking pass":
         pp = db.query(ParkingPass).filter(

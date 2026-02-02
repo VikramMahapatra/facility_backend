@@ -191,7 +191,7 @@ def get_space_tenants(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
-    return crud.get_space_tenants(space_id, db)
+    return crud.get_space_tenants(space_id, db, current_user.org_id)
 
 
 @router.post("/approve")

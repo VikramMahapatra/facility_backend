@@ -78,8 +78,12 @@ def space_building_lookup(
 
 
 @router.get("/detail/{space_id:str}", response_model=SpaceOut)
-def get_space_details(space_id: str, db: Session = Depends(get_db)):
-    db_space = crud.get_space_details_by_id(db, space_id)
+def get_space_details(
+        space_id: str,
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)
+):
+    db_space = crud.get_space_details_by_id(db, space_id, current_user)
     return db_space
 
 

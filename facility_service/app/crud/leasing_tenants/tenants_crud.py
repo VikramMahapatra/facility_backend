@@ -1068,6 +1068,7 @@ def get_site_ids_from_tenant_spaces(tenant_spaces):
 def get_space_tenants(
     space_id: UUID,
     db: Session,
+    org_id: UUID
 ):
     rows = (
         db.query(
@@ -1088,6 +1089,7 @@ def get_space_tenants(
             Tenant,
             Tenant.id == TenantSpace.tenant_id
         )
+        .join(Space, Space.id == TenantSpace.space_id)
         .outerjoin(
             Lease,
             and_(
@@ -1099,7 +1101,8 @@ def get_space_tenants(
         )
         .filter(
             TenantSpace.space_id == space_id,
-            TenantSpace.is_deleted == False
+            TenantSpace.is_deleted == False,
+            Space.org_id == org_id
         )
         .order_by(TenantSpace.created_at.desc())
         .all()

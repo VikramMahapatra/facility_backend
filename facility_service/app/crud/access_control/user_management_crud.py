@@ -1239,8 +1239,11 @@ def handle_account_type_update(
 
         now = datetime.utcnow()
 
-        existing_spaces = facility_db.query(TenantSpace).filter(
+        existing_spaces = facility_db.query(TenantSpace).join(
+            Space, Space.id == TenantSpace.space_id
+        ).filter(
             TenantSpace.tenant_id == tenant.id,
+            Space.org_id == org_id,
             TenantSpace.is_deleted == False
         ).all()
 
@@ -1325,6 +1328,7 @@ def handle_account_type_update(
 
         existing_spaces = facility_db.query(SpaceOwner).filter(
             SpaceOwner.owner_user_id == db_user.id,
+            SpaceOwner.owner_org_id == org_id,
             SpaceOwner.is_active == True
         ).all()
 

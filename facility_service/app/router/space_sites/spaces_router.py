@@ -83,7 +83,7 @@ def get_space_details(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)
 ):
-    db_space = crud.get_space_details_by_id(db, space_id, current_user)
+    db_space = crud.get_space_details_by_id(db, space_id)
     return db_space
 
 

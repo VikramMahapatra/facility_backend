@@ -202,7 +202,7 @@ def download_invoice_pdf(
 @router.post("/save-invoice-payment", response_model=None)
 def save_invoice_payment_detail(
     payload: PaymentCreateWithInvoice,
-    db: Session = Depends(),
+    db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.save_invoice_payment_detail(db, payload, current_user)

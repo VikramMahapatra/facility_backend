@@ -16,6 +16,11 @@ class PaymentCreateWithInvoice(BaseModel):
     paid_at: Optional[date_type] = None
     meta: Optional[Any] = None
 
+    class Config:
+        json_encoders = {
+            Decimal: float
+        }
+
 
 class InvoiceBase(BaseModel):
     org_id: Optional[UUID] = None

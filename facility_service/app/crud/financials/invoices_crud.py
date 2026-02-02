@@ -1729,22 +1729,6 @@ def save_invoice_payment_detail(
                         is_email=False
                     )
                     db.add(payment_notification)
-
-                    # 3. Notification for FULL PAYMENT (if invoice is fully paid)
-                    if actual_status == "paid":
-                        full_payment_notification = Notification(
-                            user_id=current_user.user_id,
-                            type=NotificationType.alert,
-                            title="Rent Invoice Fully Paid",
-                            message=f"Invoice {invoice.invoice_no} has been fully paid. Total: {invoice_amount}",
-                            posted_date=datetime.utcnow(),
-                            priority=PriorityType.medium,
-                            read=False,
-                            is_deleted=False,
-                            is_email=False
-                        )
-                        db.add(full_payment_notification)
-
                     # ADD THIS: Notification for owner maintenance invoice
                 elif invoice.billable_item_type == "owner maintenance":  # and space_owner:
 
@@ -1760,21 +1744,6 @@ def save_invoice_payment_detail(
                         is_email=False
                     )
                     db.add(payment_notification)
-
-                    # 3. Notification for FULL PAYMENT
-                    if actual_status == "paid":
-                        full_payment_notification = Notification(
-                            user_id=current_user.user_id,
-                            type=NotificationType.alert,
-                            title="Owner Maintenance Invoice Fully Paid",
-                            message=f"Invoice {invoice.invoice_no} has been fully paid. Total: {invoice_amount}",
-                            posted_date=datetime.utcnow(),
-                            priority=PriorityType.medium,
-                            read=False,
-                            is_deleted=False,
-                            is_email=False
-                        )
-                        db.add(full_payment_notification)
 
         # Calculate invoice amount
         invoice_amount = invoice.totals.get(
@@ -1806,6 +1775,39 @@ def save_invoice_payment_detail(
         # Update invoice with correct status
         invoice.status = actual_status
         invoice.is_paid = (actual_status == "paid")
+
+        if invoice.billable_item_type == "rent":
+
+            if actual_status == "paid":
+                full_payment_notification = Notification(
+                    user_id=current_user.user_id,
+                    type=NotificationType.alert,
+                    title="Rent Invoice Fully Paid",
+                    message=f"Invoice {invoice.invoice_no} has been fully paid. Total: {invoice_amount}",
+                    posted_date=datetime.utcnow(),
+                    priority=PriorityType.medium,
+                    read=False,
+                    is_deleted=False,
+                    is_email=False
+                )
+                db.add(full_payment_notification)
+
+                # ADD THIS: Notification for owner maintenance invoice
+        elif invoice.billable_item_type == "owner maintenance":  # and space_owner:
+            # 3. Notification for FULL PAYMENT
+            if actual_status == "paid":
+                full_payment_notification = Notification(
+                    user_id=current_user.user_id,
+                    type=NotificationType.alert,
+                    title="Owner Maintenance Invoice Fully Paid",
+                    message=f"Invoice {invoice.invoice_no} has been fully paid. Total: {invoice_amount}",
+                    posted_date=datetime.utcnow(),
+                    priority=PriorityType.medium,
+                    read=False,
+                    is_deleted=False,
+                    is_email=False
+                )
+                db.add(full_payment_notification)
 
         db.commit()
 

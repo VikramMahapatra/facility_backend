@@ -887,15 +887,15 @@ def search_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -
     #  USERS
     user_query = (
         db.query(Users)
-        .join(
-            UserOrganization,
-            and_(
-                UserOrganization.user_id == Users.id,
-                UserOrganization.org_id == org_id,
-                UserOrganization.status == "active",
-                Users.is_deleted == False
-            )
-        )
+        # .join(
+        #     UserOrganization,
+        #     and_(
+        #         UserOrganization.user_id == Users.id,
+        #         UserOrganization.org_id == org_id,
+        #         UserOrganization.status == "active",
+        #         Users.is_deleted == False
+        #     )
+        # )
         .filter(Users.is_deleted == False)
     )
 

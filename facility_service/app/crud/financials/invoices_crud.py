@@ -1685,7 +1685,7 @@ def save_invoice_payment_detail(
         else:
             # 🔍 Check if payment already exists by ref_no for this invoice
             existing_payment = db.query(PaymentAR).filter(
-                PaymentAR.invoice_id == payload.id,
+                PaymentAR.invoice_id == payload.invoice_id,
                 PaymentAR.ref_no == payload.ref_no
             ).first()
 

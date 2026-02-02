@@ -176,8 +176,17 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
         )
         .outerjoin(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
+        .outerjoin(
+            UserOrganization,
+            and_(
+                UserOrganization.user_id == Tenant.user_id,
+                UserOrganization.account_type == UserAccountType.TENANT.value,
+                UserOrganization.is_deleted.is_(False),
+            )
+        )
         .filter(
             Tenant.is_deleted.is_(False),
+            UserOrganization.org_id == user.org_id
         )
         .group_by(
             Tenant.id,

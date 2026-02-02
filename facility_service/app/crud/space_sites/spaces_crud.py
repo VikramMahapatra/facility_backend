@@ -811,7 +811,8 @@ def get_space_tenant_history(
             )
         )
         .filter(
-            TenantSpace.space_id == space_id
+            TenantSpace.space_id == space_id,
+            TenantSpace.is_deleted == False
         )
         .order_by(TenantSpace.created_at.desc())
         .all()

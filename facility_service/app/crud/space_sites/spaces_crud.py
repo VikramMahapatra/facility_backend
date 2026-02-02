@@ -742,7 +742,7 @@ def get_space_ownership_history(
 
     owners = (
         db.query(SpaceOwner)
-        .filter(SpaceOwner.space_id == space_id)
+        .filter(SpaceOwner.space_id == space_id, SpaceOwner.is_active == True)
         .order_by(SpaceOwner.start_date.desc())
         .all()
     )

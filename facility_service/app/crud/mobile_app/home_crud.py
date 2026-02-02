@@ -216,8 +216,6 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
     # Tenant or Flat Owner flow
     # ------------------------
     if account_type in (UserAccountType.TENANT, UserAccountType.FLAT_OWNER):
-        print("Tenant Type :", tenant_type)
-
         # Get all spaces for the site
         tenant_spaces_query = db.query(Space).join(
             TenantSpace, TenantSpace.space_id == Space.id
@@ -501,29 +499,6 @@ def register_space(
 
             if tenant_space:
                 space_status = tenant_space.status
-
-                # Get lease for this space
-                lease_query = facility_db.query(Lease).filter(
-                    Lease.space_id == space.id,
-                    Lease.tenant_id == tenant_obj.id,
-                    Lease.is_deleted == False,
-                    Lease.end_date >= date.today()
-                )
-
-                lease = lease_query.order_by(Lease.end_date.desc()).first()
-
-                # Fallback to most recent if no active lease
-                if not lease:
-                    lease_query = facility_db.query(Lease).filter(
-                        Lease.space_id == space.id,
-                        Lease.tenant_id == tenant_obj.id,
-                        Lease.is_deleted == False
-                    )
-                    lease = lease_query.order_by(
-                        Lease.end_date.desc()).first()
-
-                if lease:
-                    space_lease_contract_exist = True
 
             # Add space to response
         return MySpacesResponse(

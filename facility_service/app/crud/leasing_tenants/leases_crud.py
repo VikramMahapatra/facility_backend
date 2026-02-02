@@ -14,7 +14,7 @@ from facility_service.app.schemas.space_sites.space_occupany_schemas import Move
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from ...models.space_sites.buildings import Building
 from shared.helpers.property_helper import get_allowed_spaces
-from shared.utils.enums import UserAccountType
+from shared.utils.enums import OwnershipStatus, UserAccountType
 from ...models.financials.invoices import Invoice
 
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
@@ -271,7 +271,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             TenantSpace.space_id == payload.space_id,
             TenantSpace.tenant_id == payload.tenant_id,
             TenantSpace.is_deleted == False,
-            TenantSpace.status == TenantSpaceStatus.approved.value
+            TenantSpace.status == OwnershipStatus.approved
         ).first()
 
         if not tenant_space:
@@ -346,7 +346,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             tenant.status = "active"  # Sync tenant status
 
             #  Update TenantSpace → leased
-            tenant_space.status = TenantSpaceStatus.leased
+            tenant_space.status = OwnershipStatus.leased
             tenant_space.updated_at = func.now()
 
             #  Auto move-in (SAFE access)
@@ -439,12 +439,12 @@ def update(db: Session, payload: LeaseUpdate):
             if not tenant_space:
                 return error_response("Tenant is not linked to this space")
 
-            if tenant_space.status != TenantSpaceStatus.approved.value:
+            if tenant_space.status != OwnershipStatus.approved:
                 return error_response(
                     message="Tenant must be approved before activating lease"
                 )
 
-            tenant_space.status = TenantSpaceStatus.leased
+            tenant_space.status = OwnershipStatus.leased
             tenant_space.updated_at = func.now()
 
         # =========================
@@ -498,12 +498,12 @@ def update(db: Session, payload: LeaseUpdate):
                 old_tenant_space = db.query(TenantSpace).filter(
                     TenantSpace.space_id == old_space_id,
                     TenantSpace.tenant_id == tenant_id,
-                    TenantSpace.status == TenantSpaceStatus.leased,
+                    TenantSpace.status == OwnershipStatus.leased,
                     TenantSpace.is_deleted == False
                 ).first()
 
                 if old_tenant_space:
-                    old_tenant_space.status = TenantSpaceStatus.approved
+                    old_tenant_space.status = OwnershipStatus.approved
 
         db.flush()
 
@@ -657,7 +657,7 @@ def lease_tenant_lookup(
             Tenant.is_deleted == False,
             TenantSpace.is_deleted == False,
             TenantSpace.site_id == site_id,
-            TenantSpace.status == TenantSpaceStatus.approved,
+            TenantSpace.status == OwnershipStatus.approved,
         )
         .distinct()
         .order_by(

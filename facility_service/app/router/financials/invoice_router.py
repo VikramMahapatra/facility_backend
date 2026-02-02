@@ -157,10 +157,12 @@ def invoice_payement_method_lookup(
 def invoice_payment_history(
     invoice_id: UUID,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.get_invoice_payment_history(
         db=db,
+        auth_db=auth_db,
         org_id=current_user.org_id,
         invoice_id=invoice_id
     )

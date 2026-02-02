@@ -672,7 +672,7 @@ def assign_space_tenant(
             user_org.is_deleted = False
         else:
             user_org = UserOrganization(
-                user_id=payload.owner_user_id,
+                user_id=payload.tenant_user_id,
                 org_id=org_id,
                 status="inactive",
                 account_type=UserAccountType.TENANT.value,

@@ -132,7 +132,8 @@ def tenant_space_detail(
     return crud.get_tenant_space_detail(
         db=db,
         org_id=current_user.org_id,
-        tenant_id=tenant_id
+        tenant_id=tenant_id,
+        space_id=space_id
     )
 
 

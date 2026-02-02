@@ -173,15 +173,20 @@ def get_all_tenants(db: Session, auth_db: Session, user: UserToken, params: Tena
             ).label("tenant_spaces")
         )
         .select_from(Tenant)
-        .outerjoin(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
         .outerjoin(
-            Site,
+            TenantSpace,
             and_(
-                Site.id == TenantSpace.site_id,
-                Site.org_id == user.org_id,
-                Site.is_deleted.is_(False),
+                TenantSpace.tenant_id == Tenant.id,
+                TenantSpace.is_deleted.is_(False),
+                TenantSpace.site_id.in_(
+                    select(Site.id).where(
+                        Site.org_id == user.org_id,
+                        Site.is_deleted.is_(False)
+                    )
+                )
             )
         )
+        .outerjoin(Site, Site.id == TenantSpace.site_id)
         .outerjoin(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
         .filter(

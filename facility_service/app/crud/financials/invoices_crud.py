@@ -1703,7 +1703,7 @@ def save_invoice_payment_detail(
                 # ➕ Truly NEW payment
                 payment_ar = PaymentAR(
                     org_id=current_user.org_id,
-                    invoice_id=payload.id,
+                    invoice_id=payload.invoice_id,
                     method=payload.method,
                     ref_no=payload.ref_no,
                     amount=float(payload.amount),

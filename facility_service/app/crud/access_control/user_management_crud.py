@@ -1225,18 +1225,7 @@ def handle_account_type_update(
             Tenant.is_deleted == False
         ).first()
 
-        if tenant:
-            has_active_lease = facility_db.query(Lease).filter(
-                Lease.tenant_id == tenant.id,
-                Lease.is_deleted == False,
-                func.lower(Lease.status) == "active"
-            ).first()
-
-            if has_active_lease:
-                return error_response(
-                    message="Cannot update tenant spaces while active leases exist"
-                )
-        else:
+        if not tenant:
             tenant = Tenant(
                 user_id=db_user.id,
                 status="inactive",

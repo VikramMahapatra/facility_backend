@@ -125,6 +125,7 @@ def lease_detail(
 @router.get("/tenant-lease/detail", response_model=TenantSpaceDetailOut)
 def tenant_space_detail(
     tenant_id: UUID = Query(...),
+    space_id: UUID = Query(...),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):

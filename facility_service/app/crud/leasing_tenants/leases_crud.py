@@ -916,7 +916,7 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
     }
 
 
-def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID) -> dict:
+def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID, space_id: UUID) -> dict:
     # Get tenant
     # -----------------------------
     tenant = (
@@ -943,6 +943,7 @@ def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID) -> dict:
         )
         .filter(
             TenantSpace.tenant_id == tenant_id,
+            TenantSpace.space_id == space_id,
             TenantSpace.is_deleted == False
         )
         .all()

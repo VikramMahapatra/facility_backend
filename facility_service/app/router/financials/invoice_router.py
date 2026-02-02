@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from shared.helpers.json_response_helper import success_response
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import Lookup, UserToken
@@ -197,3 +197,12 @@ def download_invoice_pdf(
             "Content-Disposition": f'attachment; filename="Invoice_{invoice.invoice_no}.pdf"'
         }
     )
+
+
+@router.post("/save-invoice-payment", response_model=InvoiceOut)
+def save_invoice_payment_detail(
+    payload: PaymentCreateWithInvoice,
+    db: Session = Depends(),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.save_invoice_payment_detail(db, payload, current_user)

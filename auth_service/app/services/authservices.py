@@ -358,21 +358,20 @@ def switch_account(
             http_status=status.HTTP_404_NOT_FOUND
         )
 
-    with db.begin():
-        db.query(UserOrganization).filter(
-            UserOrganization.user_id == user_id,
-            UserOrganization.is_default == True
-        ).update(
-            {"is_default": False},
-            synchronize_session=False
-        )
+    db.query(UserOrganization).filter(
+        UserOrganization.user_id == user_id,
+        UserOrganization.is_default == True
+    ).update(
+        {"is_default": False},
+        synchronize_session=False
+    )
 
-        default_org = (
-            db.query(UserOrganization)
-            .filter(UserOrganization.id == request.user_org_id, UserOrganization.account_type == request.account_type)
-            .first()
-        )
+    default_org = (
+        db.query(UserOrganization)
+        .filter(UserOrganization.id == request.user_org_id, UserOrganization.account_type == request.account_type)
+        .first()
+    )
 
-        default_org.is_default = True
-
+    default_org.is_default = True
+    db.commit()
     return userservices.get_user_token(api_request, db, facility_db, user)

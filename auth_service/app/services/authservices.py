@@ -193,6 +193,7 @@ def verify_otp(
         return authschema.AuthenticationResponse(
             needs_registration=True,
             mobile=request.mobile,
+            user=None
         )
 
     return userservices.get_user_token(api_request, db, facility_db, user)

@@ -209,6 +209,14 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                 Site.is_deleted == False
             ).scalar()
 
+        lease_term_months = None
+
+        if row.frequency == "monthly" and row.start_date and row.end_date:
+            lease_term_months = calculate_lease_term_months(
+                row.start_date,
+                row.end_date
+            )
+
         leases.append(
             LeaseOut.model_validate(
                 {
@@ -219,6 +227,7 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                     "space_name": space_name,
                     "building_name": building_name,  # Add this
                     "building_block_id": building_block_id,  # Add this
+                    "lease_term_months": lease_term_months
                 }
             )
         )
@@ -720,6 +729,13 @@ def get_lease_by_id(db: Session, lease_id: str):
             Site.is_deleted == False
         ).scalar()
 
+    lease_term_months = None
+
+    if lease.frequency == "monthly" and lease.start_date and lease.end_date:
+        lease_term_months = calculate_lease_term_months(
+            lease.start_date,
+            lease.end_date
+        )
     return LeaseOut.model_validate(
         {
             **lease.__dict__,
@@ -729,6 +745,7 @@ def get_lease_by_id(db: Session, lease_id: str):
             "space_name": space_name,
             "building_name": building_name,  # Add this
             "building_block_id": building_block_id,  # Add this
+            "lease_term_months": lease_term_months
         }
     )
 
@@ -1124,3 +1141,13 @@ def get_lease_payment_terms(
         "items": terms,
         "total": total
     }
+
+
+def calculate_lease_term_months(start_date: date, end_date: date) -> int:
+    if not start_date or not end_date:
+        return 0
+
+    months = (end_date.year - start_date.year) * \
+        12 + (end_date.month - start_date.month)
+
+    return months + 1

@@ -120,7 +120,7 @@ def get_tenants_overview(db: Session, user: UserToken) -> dict:
     }
 
 
-def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> TenantListResponse:
+def get_all_tenants(db: Session, auth_db: Session, user: UserToken, params: TenantRequest) -> TenantListResponse:
     allowed_space_ids = None
 
     if user.account_type.lower() == UserAccountType.TENANT:
@@ -129,6 +129,14 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
 
         if not allowed_space_ids:
             return {"tenants": [], "total": 0}
+
+    tenant_user_ids = auth_db.query(UserOrganization.user_id).filter(
+        UserOrganization.org_id == user.org_id,
+        UserOrganization.account_type == UserAccountType.TENANT.value,
+        UserOrganization.is_deleted == False
+    ).all()
+
+    tenant_user_ids = [r[0] for r in tenant_user_ids]
 
     # ------------------ Residential Query ------------------
     tenant_query = (
@@ -176,17 +184,9 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
         )
         .outerjoin(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
-        .outerjoin(
-            UserOrganization,
-            and_(
-                UserOrganization.user_id == Tenant.user_id,
-                UserOrganization.account_type == UserAccountType.TENANT.value,
-                UserOrganization.is_deleted.is_(False),
-            )
-        )
         .filter(
             Tenant.is_deleted.is_(False),
-            UserOrganization.org_id == user.org_id
+            Tenant.user_id.in_(tenant_user_ids)
         )
         .group_by(
             Tenant.id,

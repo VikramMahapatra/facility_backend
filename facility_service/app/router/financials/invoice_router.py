@@ -199,7 +199,7 @@ def download_invoice_pdf(
     )
 
 
-@router.post("/save-invoice-payment", response_model=InvoiceOut)
+@router.post("/save-invoice-payment", response_model=None)
 def save_invoice_payment_detail(
     payload: PaymentCreateWithInvoice,
     db: Session = Depends(),

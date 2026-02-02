@@ -45,6 +45,7 @@ def tenant_detail(
 def tenants_all(
     params: TenantRequest = Depends(),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.get_all_tenants(db=db, user=current_user, params=params)

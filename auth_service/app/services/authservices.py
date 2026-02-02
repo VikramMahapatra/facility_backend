@@ -374,6 +374,5 @@ def switch_account(
         )
 
         default_org.is_default = True
-        db.commit()
 
     return userservices.get_user_token(api_request, db, facility_db, user)

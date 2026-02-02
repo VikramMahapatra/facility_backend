@@ -314,7 +314,19 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
             ).label("tenant_spaces")
         )
         .select_from(Tenant)
-        .outerjoin(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
+        .outerjoin(
+            TenantSpace,
+            and_(
+                TenantSpace.tenant_id == Tenant.id,
+                TenantSpace.is_deleted.is_(False),
+                TenantSpace.site_id.in_(
+                    select(Site.id).where(
+                        Site.org_id == org_id,
+                        Site.is_deleted.is_(False)
+                    )
+                )
+            )
+        )
         .outerjoin(Site, Site.id == TenantSpace.site_id)
         .outerjoin(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)

@@ -285,8 +285,8 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             Space.site_id == params.site_id,
             Space.is_deleted == False
         ).options(
-            joinedload(Space.building)
-            .joinedload(Space.site)
+            joinedload(Space.building),
+            joinedload(Space.site)
         )
 
         spaces = spaces_query.all()

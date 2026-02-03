@@ -1,3 +1,4 @@
+from datetime import date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -13,6 +14,21 @@ router = APIRouter(
     tags=["owner-maintenances"],
     dependencies=[Depends(validate_current_token)]
 )
+
+
+@router.post("/auto-generate-maintenance", response_model=OwnerMaintenanceListResponse)
+def auto_generate_maintenance(
+    date: date = Query(..., description="Any date of the month to generate maintenance for"),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.auto_generate_owner_maintenance(
+        db=db,
+        auth_db=auth_db,
+        input_date=date,
+        user=current_user
+    )
 
 
 @router.get("/all", response_model=OwnerMaintenanceListResponse)

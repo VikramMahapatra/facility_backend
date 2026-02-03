@@ -23,6 +23,7 @@ class LeaseBase(BaseModel):
     status: Optional[str] = None
     documents: Optional[Any] = None
     frequency: Optional[str] = None
+    lease_term_months: Optional[int] = None
 
 
 class LeaseCreate(LeaseBase):
@@ -30,6 +31,7 @@ class LeaseCreate(LeaseBase):
     site_id: UUID
     space_id: UUID
     start_date: date
+    auto_move_in: Optional[bool] = False
 
 
 class LeaseUpdate(LeaseBase):
@@ -49,6 +51,7 @@ class LeaseOut(LeaseBase):
     space_name: Optional[str] = None
     building_name: Optional[str] = None  # This must be here
     building_block_id: Optional[UUID] = None  # This must be here
+    auto_move_in: bool | None = None
 
     model_config = {"from_attributes": True}
 
@@ -88,6 +91,7 @@ class LeaseStatusResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class LeaseDetailRequest(BaseModel):
     lease_id: UUID
 
@@ -102,11 +106,11 @@ class LeaseDetailOut(BaseModel):
     rent_amount: Optional[Decimal] = None
     deposit_amount: Optional[Decimal] = None
     cam_rate: Optional[Decimal] = None
-    
+
     # Utilities (simple strings)
     electricity: Optional[str] = None
     water: Optional[str] = None
-    
+
     # Tenant info
     tenant_id: Optional[UUID] = None
     tenant_name: Optional[str] = None
@@ -114,7 +118,7 @@ class LeaseDetailOut(BaseModel):
     tenant_email: Optional[str] = None
     tenant_phone: Optional[str] = None
     tenant_kind: Optional[str] = None
-    
+
     # Space/Site info
     space_id: Optional[UUID] = None
     space_name: Optional[str] = None
@@ -124,14 +128,13 @@ class LeaseDetailOut(BaseModel):
     site_name: Optional[str] = None
     building_name: Optional[str] = None
     building_id: Optional[UUID] = None
-    
-    
+
     charges: List[LeaseChargeOut] = []
-    
+
     model_config = {"from_attributes": True}
 
 
-#FOR AUTO  LEASE CREATION FEATURE
+# FOR AUTO  LEASE CREATION FEATURE
 class TenantSpaceItemOut(BaseModel):
     tenant_id: UUID
     tenant_name: str
@@ -149,3 +152,34 @@ class TenantSpaceItemOut(BaseModel):
 class TenantSpaceDetailOut(BaseModel):
     tenant_data: List[TenantSpaceItemOut]
 
+
+# LEASE PAYMENT TERM
+
+class LeasePaymentTermCreate(BaseModel):
+    id: Optional[UUID] = None
+    lease_id: UUID
+    description: Optional[str] = None
+    reference_no: Optional[str] = None
+    due_date: date
+    amount: Decimal
+    status: Optional[str] = "pending"
+    payment_method: Optional[str] = None
+
+
+class LeasePaymentTermOut(BaseModel):
+    id: UUID
+    lease_id: UUID
+    description: Optional[str]
+    reference_no: Optional[str]
+    due_date: date
+    amount: float
+    status: str
+    payment_method: Optional[str]
+    paid_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LeasePaymentTermRequest(CommonQueryParams):
+    lease_id: UUID

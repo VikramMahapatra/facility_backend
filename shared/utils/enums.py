@@ -9,7 +9,12 @@ class UserAccountType(str, Enum):
 
 
 class OwnershipStatus(Enum):
-    requested = "requested"
+    # -- COMMON FOR BOTH
+    pending = "pending"
     approved = "approved"
     rejected = "rejected"
+    # - ADDITIONAL FOR OWNER
     revoked = "revoked"
+    # - ADDITIONAL FOR TENANT
+    leased = "leased"
+    ended = "ended"

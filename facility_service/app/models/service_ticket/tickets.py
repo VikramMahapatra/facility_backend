@@ -51,6 +51,7 @@ class Ticket(Base):
     preferred_time = Column(String(255),nullable=False,default=func.time(func.now()))
         # Add this:
     preferred_date = Column(Date, nullable=False, default=date.today)
+    user_id = Column(UUID(as_uuid=True))
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True),

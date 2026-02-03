@@ -3,6 +3,7 @@ import calendar
 import uuid
 from typing import List, Optional, Tuple, Dict, Any
 from datetime import datetime, date, timedelta
+from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import String, and_, func, extract, or_, cast, Date
 from sqlalchemy import desc
@@ -463,3 +464,127 @@ def get_lease_rent_amount(db: Session, lease_id: UUID):
         "lease_id": lease.id,
         "rent_amount": lease.rent_amount if lease.rent_amount else Decimal("0")
     }
+    
+    
+    
+    
+def auto_generate_lease_rent_charges(
+    db: Session,
+    auth_db: Session,
+    input_date: date,
+    current_user: UserToken
+) -> Dict[str, Any]:
+    """
+    Auto-generate RENT lease charges for all active leases for a billing month
+    """
+
+    # 🔹 Billing period
+    period_start = date(input_date.year, input_date.month, 1)
+    next_month = period_start.replace(day=28) + timedelta(days=4)
+    period_end = next_month.replace(day=1) - timedelta(days=1)
+
+    # 🔹 Fetch RENT charge code dynamically (NO hardcoding)
+    rent_code = db.query(LeaseChargeCode).filter(
+        LeaseChargeCode.org_id == current_user.org_id,
+        LeaseChargeCode.is_deleted == False,
+        LeaseChargeCode.code.ilike("%RENT%")
+    ).first()
+
+    if not rent_code:
+        raise HTTPException(status_code=400, detail="RENT charge code not configured")
+
+    # 🔹 Default tax (optional)
+    default_tax = db.query(TaxCode).filter(
+        TaxCode.org_id == current_user.org_id,
+        TaxCode.status == "active",
+        TaxCode.is_deleted == False
+    ).first()
+
+    tax_rate = default_tax.rate if default_tax else Decimal("0")
+    tax_code_id = default_tax.id if default_tax else None
+
+    # 🔹 Fetch active leases
+    leases = db.query(Lease).filter(
+        Lease.org_id == current_user.org_id,
+        Lease.status == "active",
+        Lease.is_deleted == False
+    ).all()
+
+    if not leases:
+        raise HTTPException(status_code=404, detail="No active leases found")
+
+    created_ids = []
+
+    for lease in leases:
+
+        # Skip leases without rent
+        if not lease.rent_amount or lease.rent_amount <= 0:
+            continue
+
+        # 🔹 Check overlapping RENT charge
+        existing = db.query(LeaseCharge).filter(
+            LeaseCharge.lease_id == lease.id,
+            LeaseCharge.charge_code_id == rent_code.id,
+            LeaseCharge.is_deleted == False,
+            LeaseCharge.period_start <= period_end,
+            LeaseCharge.period_end >= period_start
+        ).order_by(LeaseCharge.created_at.desc()).first()
+
+        # 🔹 If exists → check invoice
+        if existing:
+            invoice_item = db.query(Invoice).filter(
+                Invoice.billable_item_id == existing.id,
+                Invoice.billable_item_type == "lease_charge",
+                Invoice.due_date >= date.today(),
+                Invoice.is_deleted == False
+            ).first()
+
+            if invoice_item:
+                continue  # Already billed → NEVER recreate
+
+            # Not invoiced → allow regeneration only if overdue
+            continue
+
+        # 🔹 Calculate amounts
+        amount = lease.rent_amount
+        total_amount = amount + (amount * tax_rate / Decimal("100"))
+
+        # 🔹 Determine payer
+        if not lease.tenant_id:
+            continue
+
+        # 🔹 Create RENT lease charge
+        lease_charge = LeaseCharge(
+            lease_id=lease.id,
+            charge_code_id=rent_code.id,
+            period_start=period_start,
+            period_end=period_end,
+            amount=amount,
+            total_amount=total_amount,
+            tax_code_id=tax_code_id,
+            payer_type=lease.default_payer,
+            payer_id=lease.tenant_id,
+            is_deleted=False
+        )
+
+        db.add(lease_charge)
+        db.flush()
+        created_ids.append(lease_charge.id)
+
+    if not created_ids:
+        return {"charges": [], "total": 0}
+
+    db.commit()
+
+    # 🔹 Response with full objects
+    charges = []
+    for cid in created_ids:
+        charge = get_lease_charge_by_id(db, str(cid))
+        if charge:
+            charges.append(charge)
+
+    return {
+        "charges": charges,
+        "total": len(charges)
+    }
+    

@@ -16,7 +16,7 @@ class UserOrganization(AuthBase):
 
     user_id = Column(UUID(as_uuid=True), ForeignKey(
         "users.id"), nullable=False)
-    org_id = Column(UUID(as_uuid=True))
+    org_id = Column(UUID(as_uuid=False))
 
     # owner, admin, staff, etc
     account_type = Column(String(20), nullable=False)

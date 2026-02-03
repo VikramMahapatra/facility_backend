@@ -9,6 +9,10 @@ from shared.helpers.json_response_helper import success_response
 from shared.core.schemas import Lookup, UserToken
 
 from ...schemas.leasing_tenants.tenants_schemas import (
+    ManageTenantSpaceRequest,
+    SpaceTenantApprovalRequest,
+    SpaceTenantOut,
+    SpaceTenantResponse,
     TenantListResponse,
     TenantOut,
     TenantCreate,
@@ -41,9 +45,10 @@ def tenant_detail(
 def tenants_all(
     params: TenantRequest = Depends(),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_all_tenants(db=db, user=current_user, params=params)
+    return crud.get_all_tenants(db=db, auth_db=auth_db, user=current_user, params=params)
 
 # Overview
 
@@ -91,6 +96,16 @@ def delete_tenant_route(
     current_user: UserToken = Depends(validate_current_token)
 ): return crud.delete_tenant(db, auth_db, tenant_id)
 
+
+@router.post("/manage-spaces", response_model=None)
+def manage_tenant_space(
+    payload: ManageTenantSpaceRequest,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.manage_tenant_space(db, auth_db, current_user.org_id, payload)
+
 # ----------------  Type Lookup ----------------
 
 
@@ -133,10 +148,9 @@ def get_tenants_by_site_and_space(
     )
 
 
-
-@router.get("/payment-history/{tenant_id}")
+@router.get("/payment-history/{tenant_id:uuid}")
 def tenant_payment_history(
-    tenant_id: UUID ,
+    tenant_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
@@ -149,4 +163,71 @@ def tenant_payment_history(
         db=db,
         tenant_id=tenant_id,
         org_id=current_user.org_id
+    )
+
+
+@router.get("/users-by-site-space")
+def get_tenants_by_site_and_space(
+    site_id: UUID = Query(..., description="Site ID"),
+    space_id: UUID = Query(..., description="Space ID"),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """
+    Get tenants filtered by both site_id and space_id
+    """
+    tenants = crud.get_users_by_site_and_space(db, auth_db, site_id, space_id)
+
+    # If you're using success_response wrapper
+    return success_response(
+        data=tenants,  # This should be a list
+        message="Data retrieved successfully"
+    )
+
+
+@router.get("/{space_id:uuid}/spaces", response_model=SpaceTenantResponse)
+def get_space_tenants(
+    space_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    return crud.get_space_tenants(space_id, db, current_user.org_id)
+
+
+@router.post("/approve")
+def approve_tenant(
+    params: SpaceTenantApprovalRequest,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    return crud.approve_tenant(params, db, auth_db, current_user)
+
+
+@router.post("/reject")
+def reject_tenant(
+    params: SpaceTenantApprovalRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+):
+    return crud.reject_tenant(params.space_id, params.tenant_id, db)
+
+
+@router.get("/approvals")
+def list_tenant_approvals(
+    status: str | None = Query(None),
+    search: str | None = Query(None),
+    skip: int = Query(0),
+    limit: int = Query(10),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_tenant_approvals(
+        db=db,
+        org_id=current_user.org_id,
+        status=status,
+        search=search,
+        skip=skip,
+        limit=limit
     )

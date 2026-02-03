@@ -193,6 +193,7 @@ def verify_otp(
         return authschema.AuthenticationResponse(
             needs_registration=True,
             mobile=request.mobile,
+            user=None
         )
 
     return userservices.get_user_token(api_request, db, facility_db, user)
@@ -358,6 +359,14 @@ def switch_account(
             http_status=status.HTTP_404_NOT_FOUND
         )
 
+    db.query(UserOrganization).filter(
+        UserOrganization.user_id == user_id,
+        UserOrganization.is_default == True
+    ).update(
+        {"is_default": False},
+        synchronize_session=False
+    )
+
     default_org = (
         db.query(UserOrganization)
         .filter(UserOrganization.id == request.user_org_id, UserOrganization.account_type == request.account_type)
@@ -366,5 +375,4 @@ def switch_account(
 
     default_org.is_default = True
     db.commit()
-
     return userservices.get_user_token(api_request, db, facility_db, user)

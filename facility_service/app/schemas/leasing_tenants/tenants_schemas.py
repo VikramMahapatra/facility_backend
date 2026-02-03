@@ -1,26 +1,24 @@
 # app/schemas/leasing_tenants/tenants_schemas.py
 from uuid import UUID
 from typing import Optional, List, Any
-from datetime import date
-from pydantic import BaseModel
+from datetime import date, datetime
+from pydantic import BaseModel, ConfigDict
 from ...schemas.leases_schemas import LeaseOut
 from shared.core.schemas import CommonQueryParams
 
 
 class TenantSpaceBase(BaseModel):
-    site_id: UUID
+    site_id: Optional[UUID] = None
     building_block_id: Optional[UUID] = None
-    space_id: UUID
-    is_primary: bool = False
-    
+    space_id: Optional[UUID] = None
 
 
 class TenantSpaceOut(TenantSpaceBase):
-    site_name: str = None
-    space_name: str = None
+    id: Optional[UUID] = None
+    site_name:  Optional[str] = None
+    space_name:  Optional[str] = None
     building_block_name: Optional[str] = None
-    status: str = None
-    is_primary: bool = False
+    status:  Optional[str] = None
 
 
 class TenantBase(BaseModel):
@@ -98,3 +96,46 @@ class TenantDropdownResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ManageTenantSpaceRequest(BaseModel):
+    tenant_id: UUID
+    tenant_spaces: List[TenantSpaceBase]
+
+
+class SpaceTenantApprovalRequest(BaseModel):
+    space_id: UUID
+    tenant_id: UUID
+
+
+class SpaceTenantOut(BaseModel):
+    tenant_id: UUID
+    user_id: Optional[UUID] = None
+    full_name: str
+    email: str
+    status: str
+    created_at: datetime
+    lease_id: Optional[UUID] = None
+    lease_no: Optional[str] = None
+    start_date: Optional[date] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SpaceTenantResponse(BaseModel):
+    pending: List[SpaceTenantOut] = None
+    active: List[SpaceTenantOut] = None
+
+
+class TenantApprovalOut(BaseModel):
+    tenant_space_id: UUID
+    tenant_user_id: UUID
+    tenant_id: UUID
+    tenant_name: str
+    tenant_email: Optional[str]
+    space_id: UUID
+    space_name: str
+    site_name: Optional[str]
+    tenant_type: str
+    status: str
+    requested_at: datetime

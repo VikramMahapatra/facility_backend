@@ -7,7 +7,7 @@ from shared.core.schemas import Lookup, UserToken
 from uuid import UUID
 
 from ...schemas.access_control.user_management_schemas import (
-    AccountRequest, UserAccountCreate, UserAccountUpdate, UserDetailOut, UserListResponse, UserOut, UserCreate, UserRequest,
+    AccountRequest, CheckGlobalUserRequest, CheckGlobalUserResponse, UserAccountCreate, UserAccountUpdate, UserDetailOut, UserListResponse, UserOut, UserCreate, UserRequest,
     UserUpdate, UserDetailRequest
 )
 from ...crud.access_control import user_management_crud as crud
@@ -109,6 +109,30 @@ def search_user(
     )
 
 
+@router.post("/check-global", response_model=CheckGlobalUserResponse)
+def check_global_user(
+    payload: CheckGlobalUserRequest,
+    db: Session = Depends(get_db)
+):
+    return crud.check_global_user(
+        db=db,
+        payload=payload
+    )
+
+
+@router.post("/map-user-org", response_model=None)
+def map_user_to_org(
+    payload: CheckGlobalUserRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.map_user_to_org(
+        db=db,
+        payload=payload,
+        org_id=current_user.org_id
+    )
+
+
 @router.put("/update-account", response_model=UserDetailOut)
 def update_user(
         user_account: UserAccountUpdate,
@@ -136,7 +160,7 @@ def mark_account_default(
     auth_db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.mark_account_default(data, auth_db, current_user.user_id, current_user.org_id)
+    return crud.mark_account_default(data, auth_db)
 
 
 @router.post("/deactivate")
@@ -145,4 +169,4 @@ def deactivate_account(
     auth_db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.deactivate_account(data, auth_db, current_user.user_id, current_user.org_id)
+    return crud.deactivate_account(data, auth_db)

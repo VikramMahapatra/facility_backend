@@ -3,6 +3,8 @@ import shutil
 from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func, and_
+
+from shared.utils.enums import OwnershipStatus
 from ..models.space_owners_safe import SpaceOwnerSafe
 from ..models.user_organizations import UserOrganization
 from shared.utils.app_status_code import AppStatusCode
@@ -87,6 +89,16 @@ def create_user(
         db.add(user_instance)
         db.flush()
 
+        # ✅ Commit All OR Rollback All
+        user_org = UserOrganization(
+            user_id=user_instance.id,
+            org_id=org_id,
+            account_type=user.account_type.lower(),
+            status="pending",
+            is_default=True
+        )
+        db.add(user_org)
+
         # ✅ ACCOUNT TYPE: ORGANIZATION
         if user.account_type.lower() == "organization":
             if not user.organizationName:
@@ -124,7 +136,7 @@ def create_user(
             existing_tenant = facility_db.query(TenantSpaceSafe).filter(
                 and_(
                     TenantSpaceSafe.space_id == user.space_id,
-                    TenantSpaceSafe.status == "occupied",
+                    TenantSpaceSafe.status == "leased",
                     TenantSpaceSafe.is_deleted == False)
             ).first()
 
@@ -159,7 +171,7 @@ def create_user(
                 site_id=user.site_id,
                 space_id=user.space_id,
                 tenant_id=tenant_obj.id,
-                status="pending"
+                status=OwnershipStatus.pending
             )
             facility_db.add(space_tenant_link)
 
@@ -189,20 +201,11 @@ def create_user(
                     owner_user_id=user_instance.id,
                     space_id=user.space_id,
                     owner_org_id=org_id,
-                    is_active=False,
-                    start_date=now
+                    is_active=True,
+                    start_date=now,
+                    status=OwnershipStatus.pending
                 )
             )
-
-        # ✅ Commit All OR Rollback All
-        user_org = UserOrganization(
-            user_id=user_instance.id,
-            org_id=org_id,
-            account_type=user.account_type.lower(),
-            status="pending",
-            is_default=True
-        )
-        db.add(user_org)
 
         db.commit()
         facility_db.commit()
@@ -210,13 +213,13 @@ def create_user(
     except HTTPException:
         db.rollback()
         facility_db.rollback()
-        raise
+        return error_response(message="Something went wrong")
 
     except SQLAlchemyError as e:
         db.rollback()
         facility_db.rollback()
         print("DB Error:", e)
-        raise HTTPException(500, "Internal server error while creating user")
+        return error_response(message="Internal server error while creating user")
 
     return get_user_token(request, db, facility_db, user_instance)
 

@@ -6,10 +6,15 @@ from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
 
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists
+from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event, move_in
+from facility_service.app.models.leasing_tenants.lease_payment_term import LeasePaymentTerm
+from facility_service.app.models.space_sites.space_occupancies import OccupantType, SpaceOccupancy
+from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
+from facility_service.app.schemas.space_sites.space_occupany_schemas import MoveInRequest
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from ...models.space_sites.buildings import Building
 from shared.helpers.property_helper import get_allowed_spaces
-from shared.utils.enums import UserAccountType
+from shared.utils.enums import OwnershipStatus, UserAccountType
 from ...models.financials.invoices import Invoice
 
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
@@ -17,16 +22,17 @@ from ...models.leasing_tenants.tenants import Tenant
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
-from ...enum.leasing_tenants_enum import LeaseDefaultPayer, LeaseStatus, TenantStatus
+from ...enum.leasing_tenants_enum import LeaseDefaultPayer, LeaseFrequency, LeaseStatus, TenantSpaceStatus, TenantStatus
 from shared.core.schemas import Lookup, UserToken
 
 from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...schemas.leases_schemas import (
-    LeaseCreate, LeaseListResponse, LeaseOut, LeaseRequest, LeaseUpdate
+    LeaseCreate, LeaseListResponse, LeaseOut, LeasePaymentTermCreate, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate
 )
 from uuid import UUID
+from dateutil.relativedelta import relativedelta
 
 
 # ----------------------------------------------------
@@ -203,6 +209,14 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                 Site.is_deleted == False
             ).scalar()
 
+        lease_term_months = None
+
+        if row.frequency == "monthly" and row.start_date and row.end_date:
+            lease_term_months = calculate_lease_term_months(
+                row.start_date,
+                row.end_date
+            )
+
         leases.append(
             LeaseOut.model_validate(
                 {
@@ -213,6 +227,7 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                     "space_name": space_name,
                     "building_name": building_name,  # Add this
                     "building_block_id": building_block_id,  # Add this
+                    "lease_term_months": lease_term_months
                 }
             )
         )
@@ -260,6 +275,18 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         if not space:
             return error_response(message="Invalid space")
 
+            # Validate tenant-space approval
+        tenant_space = db.query(TenantSpace).filter(
+            TenantSpace.space_id == payload.space_id,
+            TenantSpace.tenant_id == payload.tenant_id,
+            TenantSpace.is_deleted == False,
+            TenantSpace.status == OwnershipStatus.approved
+        ).first()
+
+        if not tenant_space:
+            return error_response(
+                message="Tenant must be approved before creating a lease"
+            )
         #  Determine lease status
         lease_status = payload.status or "draft"
 
@@ -277,38 +304,73 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                     message="This space already has an active lease"
                 )
 
-            # Maintain TenantSpace (occupancy mirror)
-            tenant_space = db.query(TenantSpace).filter(
-                TenantSpace.space_id == payload.space_id,
-                TenantSpace.tenant_id == payload.tenant_id,
-                TenantSpace.is_deleted == False
-            ).first()
+        # =========================
+        # CALCULATE END DATE
+        # =========================
+        end_date = payload.end_date  # default (if already provided)
 
-            if tenant_space:
-                tenant_space.status = "occupied"
-            else:
-                db.add(
-                    TenantSpace(
-                        site_id=payload.site_id,
-                        space_id=payload.space_id,
-                        tenant_id=payload.tenant_id,
-                        status="occupied"
-                    )
+        if payload.frequency == "monthly":
+            if not payload.lease_term_months:
+                return error_response(
+                    message="lease_term_months is required for monthly leases"
                 )
 
-        # Create the lease record (always)
+            end_date = (
+                payload.start_date
+                + relativedelta(months=payload.lease_term_months)
+                - relativedelta(days=1)
+            )
+        else:
+            # 🔥 Annual lease (default)
+            end_date = (
+                payload.start_date
+                + relativedelta(years=1)
+                - relativedelta(days=1)
+            )
 
-        lease_data = payload.model_dump(exclude={"reference", "space_name"})
+         # Create the lease record (always)
+        lease_data = payload.model_dump(
+            exclude={"reference", "space_name", "auto_move_in", "lease_term_months"})
         lease_data.update({
             "status": lease_status,
-            "default_payer": "tenant"
+            "default_payer": "tenant",
+            "end_date": end_date
         })
 
         lease = Lease(**lease_data)
         db.add(lease)
+        db.flush()
+
+        log_occupancy_event(
+            db=db,
+            space_id=payload.space_id,
+            occupant_type=OccupantType.tenant,
+            occupant_user_id=tenant.user_id,
+            event_type=OccupancyEventType.lease_created,
+            source_id=lease.id,
+            notes=f"Lease created with status {lease_status}"
+        )
+
         if lease_status == "active":
             tenant.status = "active"  # Sync tenant status
-            space.status = "occupied"  # Sync space status
+
+            #  Update TenantSpace → leased
+            tenant_space.status = OwnershipStatus.leased
+            tenant_space.updated_at = func.now()
+
+            #  Auto move-in (SAFE access)
+            # ✅ AUTO MOVE-IN
+            if payload.auto_move_in is True:
+                move_in(
+                    db=db,
+                    params=MoveInRequest(
+                        space_id=payload.space_id,
+                        occupant_type="tenant",
+                        occupant_user_id=payload.tenant_id,
+                        lease_id=lease.id,
+                        tenant_id=payload.tenant_id
+                    )
+                )
 
         # Commit and return
         db.commit()
@@ -328,7 +390,10 @@ def update(db: Session, payload: LeaseUpdate):
             return None
 
         old_space_id = obj.space_id
-        data = payload.model_dump(exclude_unset=True)
+        data = payload.model_dump(
+            exclude_unset=True,
+            exclude={"lease_term_months"}
+        )
         tenant_id = data.get("tenant_id", obj.tenant_id)
         target_space_id = data.get("space_id", obj.space_id)
 
@@ -366,39 +431,62 @@ def update(db: Session, payload: LeaseUpdate):
         # Block tenant change on active lease
         if obj.status == "active" and "tenant_id" in data and tenant_id != obj.tenant_id:
             return error_response("Cannot change tenant on an active lease")
+        # Block space change on active lease
+        if obj.status == "active" and "space_id" in data and target_space_id != old_space_id:
+            return error_response("Cannot change space on an active lease")
 
-        # Update fields
-        for k, v in data.items():
-            setattr(obj, k, v)
-
+        old_status = obj.status
         # ---------- SIDE EFFECTS ----------
-        if obj.status == "active":
+        # Activate lease (draft → active)
+        if old_status != "active" and data.get("status") == "active":
             tenant_space = db.query(TenantSpace).filter(
                 TenantSpace.space_id == target_space_id,
                 TenantSpace.tenant_id == tenant_id,
                 TenantSpace.is_deleted == False
             ).first()
 
-            if tenant_space:
-                tenant_space.status = "occupied"
-            else:
-                db.add(TenantSpace(
-                    site_id=obj.site_id,
-                    space_id=target_space_id,
-                    tenant_id=tenant_id,
-                    status="occupied"
-                ))
+            if not tenant_space:
+                return error_response("Tenant is not linked to this space")
+
+            if tenant_space.status != OwnershipStatus.approved:
+                return error_response(
+                    message="Tenant must be approved before activating lease"
+                )
+
+            tenant_space.status = OwnershipStatus.leased
+            tenant_space.updated_at = func.now()
+
+        # =========================
+        # CALCULATE END DATE
+        # =========================
+        end_date = payload.end_date  # default (if already provided)
+
+        if payload.frequency == "monthly":
+            if not payload.lease_term_months:
+                return error_response(
+                    message="lease_term_months is required for monthly leases"
+                )
+
+            end_date = (
+                payload.start_date
+                + relativedelta(months=payload.lease_term_months)
+                - relativedelta(days=1)
+            )
+        else:
+            # 🔥 Annual lease (default)
+            end_date = (
+                payload.start_date
+                + relativedelta(years=1)
+                - relativedelta(days=1)
+            )
+
+        data["end_date"] = end_date
+
+        # Update fields
+        for k, v in data.items():
+            setattr(obj, k, v)
 
         # ---------- SPACE STATUS (DERIVED) ----------
-        active_exists = db.query(Lease).filter(
-            Lease.space_id == target_space_id,
-            Lease.status == "active",
-            Lease.is_deleted == False
-        ).count() > 0
-
-        space.status = "occupied" if active_exists else "available"
-
-        # ---------- OLD SPACE UPDATE ----------
         if old_space_id != target_space_id:
             old_space = db.query(Space).filter(
                 Space.id == old_space_id,
@@ -413,6 +501,18 @@ def update(db: Session, payload: LeaseUpdate):
                 ).count() > 0
 
                 old_space.status = "occupied" if old_active_exists else "available"
+
+            # 🔹 Revert old tenant mapping ONLY if previously active
+            if old_status == "active":
+                old_tenant_space = db.query(TenantSpace).filter(
+                    TenantSpace.space_id == old_space_id,
+                    TenantSpace.tenant_id == tenant_id,
+                    TenantSpace.status == OwnershipStatus.leased,
+                    TenantSpace.is_deleted == False
+                ).first()
+
+                if old_tenant_space:
+                    old_tenant_space.status = OwnershipStatus.approved
 
         db.flush()
 
@@ -566,6 +666,7 @@ def lease_tenant_lookup(
             Tenant.is_deleted == False,
             TenantSpace.is_deleted == False,
             TenantSpace.site_id == site_id,
+            TenantSpace.status == OwnershipStatus.approved,
         )
         .distinct()
         .order_by(
@@ -628,6 +729,13 @@ def get_lease_by_id(db: Session, lease_id: str):
             Site.is_deleted == False
         ).scalar()
 
+    lease_term_months = None
+
+    if lease.frequency == "monthly" and lease.start_date and lease.end_date:
+        lease_term_months = calculate_lease_term_months(
+            lease.start_date,
+            lease.end_date
+        )
     return LeaseOut.model_validate(
         {
             **lease.__dict__,
@@ -637,6 +745,7 @@ def get_lease_by_id(db: Session, lease_id: str):
             "space_name": space_name,
             "building_name": building_name,  # Add this
             "building_block_id": building_block_id,  # Add this
+            "lease_term_months": lease_term_months
         }
     )
 
@@ -661,10 +770,10 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         )
         .first()
     )
-    
+
     if not lease:
         return error_response(status_code=404, detail="Lease not found")
-    
+
     # Get building details
     building_name = None
     building_id = None
@@ -676,8 +785,8 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         if building:
             building_name = building.name
             building_id = building.id
-    
-    # Get ALL lease charges 
+
+    # Get ALL lease charges
     charges = (
         db.query(LeaseCharge)
         .options(
@@ -691,36 +800,36 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         .order_by(LeaseCharge.period_start.desc())
         .all()
     )
-    
+
     # Format charges (EXACTLY like lease_charges_crud)
     charges_list = []
     for lc in charges:
         lease_related = lc.lease
-        
+
         # Calculate tax
         tax_rate = lc.tax_code.rate if lc.tax_code else Decimal("0")
         tax_amount = (lc.amount * tax_rate) / Decimal("100")
-        
+
         # Calculate period days
         period_days = None
         if lc.period_start and lc.period_end:
             period_days = (lc.period_end - lc.period_start).days
-        
+
         # Get tenant name
         tenant_name = None
         if lease_related.tenant:
             tenant_name = lease_related.tenant.legal_name or lease_related.tenant.name
-        
+
         # Get invoice status
-       
+
         invoice = db.query(Invoice).filter(
             Invoice.billable_item_type == "lease charge",
             Invoice.billable_item_id == lc.id,
             Invoice.is_deleted == False
         ).first()
-        
+
         invoice_status = invoice.status if invoice else None
-        
+
         # Build charge object
         charges_list.append({
             "id": lc.id,
@@ -744,13 +853,13 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
             "created_at": lc.created_at,
             "payer_type": lc.payer_type,
             "invoice_status": invoice_status
-            
+
         })
-    
+
     # Parse utilities from lease.utilities field (NOT meta)
     electricity = None
     water = None
-    
+
     if lease.utilities:
         try:
             # If utilities is a JSON/dict
@@ -766,15 +875,14 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         except:
             # If parsing fails, set to None
             pass
-    
+
     # Get tenant details
     tenant_name = None
     tenant_legal_name = None
     tenant_email = None
     tenant_phone = None
     tenant_kind = None
-    
-    
+
     if lease.tenant:
         tenant_name = lease.tenant.name
         tenant_legal_name = lease.tenant.legal_name
@@ -786,10 +894,9 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
     space_kind = None
     if lease.space:
         space_kind = lease.space.kind
-    
-   
+
     return {
-       
+
         "id": lease.id,
         "lease_number": lease.lease_number or "",
         "status": lease.status,
@@ -798,11 +905,11 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         "rent_amount": lease.rent_amount,
         "deposit_amount": lease.deposit_amount,
         "cam_rate": lease.cam_rate,
-        
+
         # Utilities - parsed from lease.utilities
         "electricity": electricity,
         "water": water,
-        
+
         # Tenant info
         "tenant_id": lease.tenant_id,
         "tenant_name": tenant_name,
@@ -810,7 +917,7 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         "tenant_email": tenant_email,
         "tenant_phone": tenant_phone,
         "tenant_kind": tenant_kind,
-        
+
         # Space/Site info
         "space_id": lease.space_id,
         "space_name": lease.space.name if lease.space else None,
@@ -820,14 +927,13 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         "site_name": lease.site.name if lease.site else None,
         "building_name": building_name,
         "building_id": building_id,
-        
-       
+
+
         "charges": charges_list
     }
-    
-    
-    
-def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID) -> dict:
+
+
+def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID, space_id: UUID) -> dict:
     # Get tenant
     # -----------------------------
     tenant = (
@@ -854,6 +960,7 @@ def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID) -> dict:
         )
         .filter(
             TenantSpace.tenant_id == tenant_id,
+            TenantSpace.space_id == space_id,
             TenantSpace.is_deleted == False
         )
         .all()
@@ -921,3 +1028,126 @@ def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID) -> dict:
     return {
         "tenant_data": results
     }
+
+
+def lease_frequency_lookup(org_id: UUID, db: Session):
+    return [
+        Lookup(id=frequency.value, name=frequency.name.capitalize())
+        for frequency in LeaseFrequency
+    ]
+
+
+def create_payment_term(db: Session, payload: LeasePaymentTermCreate):
+    try:
+        # 0 Validate lease_id
+        if not payload.lease_id:
+            return error_response(message="lease_id is required")
+
+        # 1 Fetch & validate lease
+        lease = db.query(Lease).filter(
+            Lease.id == payload.lease_id,
+            Lease.is_deleted == False
+        ).first()
+
+        if not lease:
+            return error_response(message="Invalid lease")
+
+        # 2 Allow only valid lease states
+        if lease.status not in ("active", "draft"):
+            return error_response(
+                message="Payment terms can only be added to active or draft leases"
+            )
+
+        if payload.id:
+            payment_term = db.query(LeasePaymentTerm).filter(
+                LeasePaymentTerm.id == payload.id,
+                LeasePaymentTerm.lease_id == payload.lease_id
+            ).first()
+
+            if not payment_term:
+                return error_response(message="Payment term not found")
+
+            if payment_term.status == "paid":
+                return error_response(
+                    message="Paid payment terms cannot be edited"
+                )
+
+            update_data = payload.model_dump(
+                exclude_unset=True,
+                exclude={"id", "lease_id"}
+            )
+
+            if payment_term.status == "paid" and not payment_term.paid_at:
+                payment_term.paid_at = func.now()
+
+            if payment_term.status != "paid":
+                payment_term.paid_at = None
+
+            for k, v in update_data.items():
+                setattr(payment_term, k, v)
+
+        # =========================
+        # CREATE FLOW
+        # =========================
+        else:
+            data = payload.model_dump(exclude={"id"})
+            payment_term = LeasePaymentTerm(**data)
+            db.add(payment_term)
+            db.flush()
+
+        # =========================
+        # AUTO PAID TIMESTAMP
+        # =========================
+        if payment_term.status == "paid" and not payment_term.paid_at:
+            payment_term.paid_at = func.now()
+
+        db.commit()
+        db.refresh(payment_term)
+        return payment_term
+
+    except Exception as e:
+        db.rollback()
+        raise e
+
+
+def get_lease_payment_terms(
+    *,
+    db: Session,
+    params: LeasePaymentTermRequest
+):
+    lease = db.query(Lease).filter(
+        Lease.id == params.lease_id,
+        Lease.is_deleted == False
+    ).first()
+
+    if not lease:
+        return error_response(message="Lease not found")
+
+    query = db.query(LeasePaymentTerm).filter(
+        LeasePaymentTerm.lease_id == params.lease_id
+    )
+
+    total = query.count()
+
+    terms = (
+        query
+        .order_by(LeasePaymentTerm.due_date.asc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+
+    return {
+        "items": terms,
+        "total": total
+    }
+
+
+def calculate_lease_term_months(start_date: date, end_date: date) -> int:
+    if not start_date or not end_date:
+        return 0
+
+    months = (end_date.year - start_date.year) * \
+        12 + (end_date.month - start_date.month)
+
+    return months + 1

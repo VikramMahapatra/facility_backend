@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from shared.helpers.json_response_helper import success_response
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import Lookup, UserToken
@@ -36,12 +36,14 @@ def invoice_detail(
         invoice_id=params.invoice_id
     )
 
+
 @router.get("/invoice-type", response_model=List[Lookup])
 def invoice_type_lookup(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.invoice_type_lookup(db, current_user.org_id)
+
 
 @router.get("/all", response_model=InvoicesResponse)
 def get_invoices(
@@ -155,10 +157,12 @@ def invoice_payement_method_lookup(
 def invoice_payment_history(
     invoice_id: UUID,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.get_invoice_payment_history(
         db=db,
+        auth_db=auth_db,
         org_id=current_user.org_id,
         invoice_id=invoice_id
     )
@@ -168,11 +172,13 @@ def invoice_payment_history(
 def download_invoice_pdf(
     invoice_id: UUID,
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     # 1️⃣ Fetch invoice data FIRST (DB used here)
     invoice = get_invoice_detail(
         db=db,
+        auth_db=auth_db,
         org_id=current_user.org_id,
         invoice_id=invoice_id
     )
@@ -193,3 +199,12 @@ def download_invoice_pdf(
             "Content-Disposition": f'attachment; filename="Invoice_{invoice.invoice_no}.pdf"'
         }
     )
+
+
+@router.post("/save-invoice-payment", response_model=None)
+def save_invoice_payment_detail(
+    payload: PaymentCreateWithInvoice,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.save_invoice_payment_detail(db, payload, current_user)

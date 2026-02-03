@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
 from ...schemas.leases_schemas import (
-    LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut,
+    LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeasePaymentTermCreate, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut,
 )
 from ...crud.leasing_tenants import leases_crud as crud
 from shared.core.auth import allow_admin, validate_current_token
@@ -90,6 +90,14 @@ def lease_status_lookup(
     return crud.lease_status_lookup(current_user.org_id, db)
 
 
+@router.get("/lease-frequency", response_model=List[Lookup])
+def lease_frequency_lookup(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.lease_frequency_lookup(current_user.org_id, db)
+
+
 @router.get("/tenant-lookup", response_model=List[Lookup])
 def lease_tenant_lookup(
     site_id: Optional[str] = Query(None),
@@ -106,21 +114,41 @@ def lease_detail(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    
+
     return crud.get_lease_detail(
         db=db,
         org_id=current_user.org_id,
         lease_id=params.lease_id
     )
 
+
 @router.get("/tenant-lease/detail", response_model=TenantSpaceDetailOut)
 def tenant_space_detail(
-    tenant_id:UUID = Query(...),
+    tenant_id: UUID = Query(...),
+    space_id: UUID = Query(...),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.get_tenant_space_detail(
         db=db,
         org_id=current_user.org_id,
-        tenant_id=tenant_id
+        tenant_id=tenant_id,
+        space_id=space_id
     )
+
+
+@router.post("/create-lease-payment-term")
+def create_lease_payment_term(
+    payload: LeasePaymentTermCreate = Body(...),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.create_payment_term(db, payload)
+
+
+@router.get("/get-payment-terms")
+def get_lease_payment_terms(
+    params: LeasePaymentTermRequest = Depends(),
+    db: Session = Depends(get_db)
+):
+    return crud.get_lease_payment_terms(db=db, params=params)

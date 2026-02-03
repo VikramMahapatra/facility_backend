@@ -1,4 +1,5 @@
 # app/crud/leasing_tenants/tenants_crud.py
+from sqlalchemy import and_
 from datetime import datetime
 from typing import Dict, Optional, List
 import uuid
@@ -6,9 +7,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, desc, func, literal, or_, select, case, tuple_
 from uuid import UUID
-from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
-from auth_service.app.models.userroles import UserRoles
+from facility_service.app.schemas.access_control.user_management_schemas import UserAccountCreate, UserTenantSpace
+from ...crud.access_control.user_management_crud import handle_account_type_update, upsert_user_sites_preserve_primary
+from ...models.space_sites.space_occupancies import OccupantType
+from ...models.space_sites.space_occupancy_events import OccupancyEventType
+from ...crud.space_sites.space_occupancy_crud import log_occupancy_event
 from ...models.financials.invoices import Invoice, PaymentAR
 from ...models.parking_access.parking_pass import ParkingPass
 from ...models.service_ticket.tickets import Ticket
@@ -19,23 +23,28 @@ from shared.helpers.email_helper import EmailHelper
 from shared.helpers.password_generator import generate_secure_password
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.models.users import Users
+from ...models.space_sites.space_owners import SpaceOwner
+
 
 from shared.utils.app_status_code import AppStatusCode
-from shared.helpers.json_response_helper import error_response
-from shared.utils.enums import UserAccountType
+from shared.helpers.json_response_helper import error_response, success_response
+from shared.utils.enums import OwnershipStatus, UserAccountType
 
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.space_sites.spaces import Space
 from ...models.space_sites.buildings import Building
 
 from ...schemas.leases_schemas import LeaseOut
-from ...enum.leasing_tenants_enum import TenantStatus, TenantType
+from ...enum.leasing_tenants_enum import LeaseStatus, TenantSpaceStatus, TenantStatus, TenantType
 from shared.core.schemas import Lookup, UserToken
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.space_sites.sites import Site
 from ...models.leasing_tenants.leases import Lease
 from ...models.leasing_tenants.tenants import Tenant
 from ...schemas.leasing_tenants.tenants_schemas import (
+    ManageTenantSpaceRequest,
+    SpaceTenantApprovalRequest,
+    TenantApprovalOut,
     TenantSpaceBase,
     TenantCreate,
     TenantUpdate,
@@ -111,7 +120,7 @@ def get_tenants_overview(db: Session, user: UserToken) -> dict:
     }
 
 
-def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> TenantListResponse:
+def get_all_tenants(db: Session, auth_db: Session, user: UserToken, params: TenantRequest) -> TenantListResponse:
     allowed_space_ids = None
 
     if user.account_type.lower() == UserAccountType.TENANT:
@@ -120,6 +129,14 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
 
         if not allowed_space_ids:
             return {"tenants": [], "total": 0}
+
+    tenant_user_ids = auth_db.query(UserOrganization.user_id).filter(
+        UserOrganization.org_id == user.org_id,
+        UserOrganization.account_type == UserAccountType.TENANT.value,
+        UserOrganization.is_deleted == False
+    ).all()
+
+    tenant_user_ids = [r[0] for r in tenant_user_ids]
 
     # ------------------ Residential Query ------------------
     tenant_query = (
@@ -156,19 +173,25 @@ def get_all_tenants(db: Session, user: UserToken, params: TenantRequest) -> Tena
             ).label("tenant_spaces")
         )
         .select_from(Tenant)
-        .join(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
-        .join(
-            Site,
+        .outerjoin(
+            TenantSpace,
             and_(
-                Site.id == TenantSpace.site_id,
-                Site.org_id == user.org_id,
-                Site.is_deleted.is_(False),
+                TenantSpace.tenant_id == Tenant.id,
+                TenantSpace.is_deleted.is_(False),
+                TenantSpace.site_id.in_(
+                    select(Site.id).where(
+                        Site.org_id == user.org_id,
+                        Site.is_deleted.is_(False)
+                    )
+                )
             )
         )
-        .join(Space, Space.id == TenantSpace.space_id)
+        .outerjoin(Site, Site.id == TenantSpace.site_id)
+        .outerjoin(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
         .filter(
             Tenant.is_deleted.is_(False),
+            Tenant.user_id.in_(tenant_user_ids)
         )
         .group_by(
             Tenant.id,
@@ -275,6 +298,7 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
                 func.jsonb_agg(
                     func.distinct(
                         func.jsonb_build_object(
+                            "id", TenantSpace.id,
                             "site_id", Site.id,
                             "site_name", Site.name,
                             "space_id", Space.id,
@@ -290,9 +314,21 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
             ).label("tenant_spaces")
         )
         .select_from(Tenant)
-        .join(TenantSpace, and_(TenantSpace.tenant_id == Tenant.id, TenantSpace.is_deleted.is_(False)))
-        .join(Site, Site.id == TenantSpace.site_id)
-        .join(Space, Space.id == TenantSpace.space_id)
+        .outerjoin(
+            TenantSpace,
+            and_(
+                TenantSpace.tenant_id == Tenant.id,
+                TenantSpace.is_deleted.is_(False),
+                TenantSpace.site_id.in_(
+                    select(Site.id).where(
+                        Site.org_id == org_id,
+                        Site.is_deleted.is_(False)
+                    )
+                )
+            )
+        )
+        .outerjoin(Site, Site.id == TenantSpace.site_id)
+        .outerjoin(Space, Space.id == TenantSpace.space_id)
         .outerjoin(Building, Building.id == Space.building_block_id)
         .filter(
             Tenant.id == tenant_id
@@ -415,21 +451,20 @@ def get_commercial_partner_by_id(db: Session, partner_id: str) -> Optional[Comme
     ).first()
 
 
-def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCreate):
+def create_tenant_internal(
+    db: Session,
+    auth_db: Session,
+    org_id: UUID,
+    tenant: TenantCreate
+) -> Tenant:
     now = datetime.utcnow()
-
-    validate_active_tenants_for_spaces(db, tenant.tenant_spaces)
 
     # Duplicate name check
     if db.query(Tenant).filter(
         Tenant.is_deleted == False,
         func.lower(Tenant.name) == func.lower(tenant.name)
     ).first():
-        return error_response(
-            message=f"Tenant with name '{tenant.name}' already exists",
-            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-            http_status=400
-        )
+        raise ValueError(f"Tenant with name '{tenant.name}' already exists")
 
     user, random_password = get_or_create_user_and_org(
         auth_db=auth_db,
@@ -439,7 +474,6 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         phone=tenant.phone
     )
 
-    # Normalize commercial contact
     contact_info = tenant.contact_info or {
         "name": tenant.name,
         "email": tenant.email,
@@ -452,7 +486,8 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         email=tenant.email,
         phone=tenant.phone,
         kind=tenant.kind,
-        legal_name=tenant.legal_name or tenant.name if tenant.kind == "commercial" else None,
+        legal_name=tenant.legal_name or tenant.name
+        if tenant.kind == "commercial" else None,
         contact=contact_info if tenant.kind == "commercial" else None,
         family_info=tenant.family_info if tenant.kind == "residential" else None,
         vehicle_info=tenant.vehicle_info,
@@ -461,32 +496,36 @@ def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCre
         created_at=now,
         updated_at=now
     )
-    db.add(db_tenant)
-    db.flush()
 
-    for space in tenant.tenant_spaces:
-        db.add(
-            TenantSpace(
-                tenant_id=db_tenant.id,
-                site_id=space.site_id,
-                space_id=space.space_id,
-                status="pending",
-                created_at=now
-            )
+    db.add(db_tenant)
+    db.flush()  # 🔑 get tenant.id
+
+    return db_tenant
+
+
+def create_tenant(db: Session, auth_db: Session, org_id: UUID, tenant: TenantCreate):
+
+    try:
+        db_tenant = create_tenant_internal(
+            db=db,
+            auth_db=auth_db,
+            org_id=org_id,
+            tenant=tenant
         )
 
-    # 🔑 user_sites (tenant role)
-    site_ids = get_site_ids_from_tenant_spaces(tenant.tenant_spaces)
-    upsert_user_sites_preserve_primary(
-        db=db,
-        user_id=user.id,
-        site_ids=site_ids
-    )
+        auth_db.commit()
+        db.commit()
 
-    auth_db.commit()
-    db.commit()
-
-    return get_tenant_detail(db, org_id, db_tenant.id)
+        return get_tenant_detail(db, org_id, db_tenant.id)
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        auth_db.rollback
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def update_tenant(
@@ -496,77 +535,52 @@ def update_tenant(
     tenant_id: UUID,
     update_data: TenantUpdate
 ):
-    db_tenant = get_tenant_by_id(db, tenant_id)
-    if not db_tenant:
-        return error_response(
-            message="Tenant not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=404
-        )
-
-    update_dict = update_data.dict(exclude_unset=True)
-    now = datetime.utcnow()
-
-    # Duplicate name check
-    if "name" in update_dict and update_dict["name"] != db_tenant.name:
-        if db.query(Tenant).filter(
-            Tenant.id != tenant_id,
-            Tenant.is_deleted == False,
-            func.lower(Tenant.name) == func.lower(update_dict["name"])
-        ).first():
+    try:
+        db_tenant = get_tenant_by_id(db, tenant_id)
+        if not db_tenant:
             return error_response(
-                message=f"Tenant with name '{update_dict['name']}' already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                message="Tenant not found",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=404
             )
 
-    # Update linked user
-    if db_tenant.user_id:
-        auth_db.query(Users).filter(
-            Users.id == db_tenant.user_id
-        ).update({
-            "full_name": update_dict.get("name", db_tenant.name),
-            "email": update_dict.get("email", db_tenant.email),
-            "phone": update_dict.get("phone", db_tenant.phone),
-            "updated_at": now
-        })
-
-    # Update tenant
-    update_dict["updated_at"] = now
-    db.query(Tenant).filter(Tenant.id == tenant_id).update(update_dict)
-
-    # Sync tenant spaces
-    if "tenant_spaces" in update_dict:
-        validate_tenant_space_update(db, tenant_id, update_dict, db_tenant)
-
-        db.query(TenantSpace).filter(
-            TenantSpace.tenant_id == tenant_id
-        ).update({"is_deleted": True})
-
-        for space in update_dict["tenant_spaces"]:
-            db.add(
-                TenantSpace(
-                    tenant_id=tenant_id,
-                    site_id=space["site_id"],
-                    space_id=space["space_id"],
-                    status="pending",
-                    is_deleted=False,
-                    created_at=now
-                )
-            )
-
-        # 🔑 Update user_sites
-        site_ids = get_site_ids_from_tenant_spaces(
-            update_dict["tenant_spaces"])
-        upsert_user_sites_preserve_primary(
-            db=db,
-            user_id=db_tenant.user_id,
-            site_ids=site_ids
+        update_dict = update_data.dict(
+            exclude_unset=True,
+            exclude={
+                "contact_info",
+                "type",
+                "tenant_spaces",
+                "tenant_leases",
+            }
         )
+        now = datetime.utcnow()
 
-    auth_db.commit()
-    db.commit()
-    return get_tenant_detail(db, org_id, tenant_id)
+        # Duplicate name check
+        if "name" in update_dict and update_dict["name"] != db_tenant.name:
+            if db.query(Tenant).filter(
+                Tenant.id != tenant_id,
+                Tenant.is_deleted == False,
+                func.lower(Tenant.name) == func.lower(update_dict["name"])
+            ).first():
+                return error_response(
+                    message=f"Tenant with name '{update_dict['name']}' already exists",
+                    status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
+                    http_status=400
+                )
+
+        # Update tenant
+        update_dict["updated_at"] = now
+        db.query(Tenant).filter(Tenant.id == tenant_id).update(update_dict)
+        db.commit()
+        return get_tenant_detail(db, org_id, tenant_id)
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
 
 
 def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
@@ -645,6 +659,72 @@ def delete_tenant(db: Session, auth_db: Session, tenant_id: UUID) -> Dict:
         return {"success": False, "message": f"Database error: {str(e)}"}
 
 
+def manage_tenant_space(
+    db: Session,
+    auth_db: Session,
+    org_id: UUID,
+    payload: ManageTenantSpaceRequest
+):
+    try:
+        db_tenant = get_tenant_by_id(db, payload.tenant_id)
+
+        if not db_tenant:
+            return error_response(
+                message="Tenant not found",
+                status_code=str(AppStatusCode.OPERATION_ERROR),
+                http_status=404
+            )
+
+        db_user = (
+            auth_db.query(Users)
+            .filter(
+                Users.id == db_tenant.user_id,
+                Users.is_deleted == False
+            )
+            .first()
+        )
+
+        spaces = []
+        for space in payload.tenant_spaces:
+            spaces.append(
+                UserTenantSpace(
+                    site_id=space.site_id,
+                    space_id=space.space_id
+                )
+            )
+
+        user_account = UserAccountCreate(
+            user_id=db_user.id,
+            status="active",
+            account_type=UserAccountType.TENANT.value,
+            tenant_spaces=spaces,
+            tenant_type=db_tenant.kind
+        )
+
+        print(user_account)
+
+        error = handle_account_type_update(
+            facility_db=db,
+            db_user=db_user,
+            user_account=user_account,
+            org_id=org_id
+        )
+
+        if error:
+            return error
+
+        return success_response(data=None, message="request submitted successfully")
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        auth_db.rollback
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
+
 # -----------type lookup
 def tenant_type_lookup(db: Session, org_id: str) -> List[Dict]:
     return [
@@ -716,7 +796,7 @@ def get_tenants_by_site_and_space(db: Session, site_id: UUID, space_id: UUID):
             TenantSpace.space_id == space_id,
             Tenant.is_deleted == False,
             Tenant.status == "active",
-            TenantSpace.status == "current",
+            TenantSpace.status == "occupied",
             TenantSpace.is_deleted == False,
         )
         .all()
@@ -752,7 +832,7 @@ def validate_active_tenants_for_spaces(
             .filter(
                 TenantSpace.space_id == ts.space_id,
                 TenantSpace.is_deleted.is_(False),
-                TenantSpace.status == "occupied",
+                TenantSpace.status == "leased",
                 Tenant.is_deleted.is_(False),
             )
         )
@@ -762,7 +842,7 @@ def validate_active_tenants_for_spaces(
 
         if query.first():
             return error_response(
-                message="One or more spaces are already occupied"
+                message="Selected space(s) are already leased"
             )
 
 
@@ -827,17 +907,6 @@ def active_lease_for_occupant_exists(db: Session, tenant_id: UUID, space_id: UUI
         Lease.status == "active",
         Lease.is_deleted == False
     ).first() is not None
-
-
-def compute_space_status(db, tenant_id, space_id, role):
-    if role != "owner":
-        return "pending"
-
-    return (
-        "past"
-        if active_lease_for_occupant_exists(db, tenant_id, space_id)
-        else "current"
-    )
 
 
 def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> List[Dict]:
@@ -978,7 +1047,6 @@ def get_or_create_user_and_org(
     ).first()
 
     if not user:
-        random_password = generate_secure_password()
         user = Users(
             id=uuid.uuid4(),
             full_name=name,
@@ -989,7 +1057,6 @@ def get_or_create_user_and_org(
             created_at=now,
             updated_at=now
         )
-        user.set_password(random_password)
         auth_db.add(user)
         auth_db.flush()
 
@@ -998,63 +1065,384 @@ def get_or_create_user_and_org(
         UserOrganization.org_id == org_id
     ).first()
 
-    if not user_org:
-        auth_db.add(
-            UserOrganization(
-                user_id=user.id,
-                org_id=org_id,
-                account_type="tenant",
-                status="active"
+    try:
+        if not user_org:
+            auth_db.add(
+                UserOrganization(
+                    user_id=user.id,
+                    org_id=org_id,
+                    account_type="tenant",
+                    status="active"
+                )
             )
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        auth_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
         )
 
     return user, random_password
 
 
-def upsert_user_sites_preserve_primary(
-    *,
-    db: Session,
-    user_id: UUID,
-    site_ids: list[UUID]
-):
-    if not site_ids:
-        return
+def get_site_ids_from_tenant_spaces(tenant_spaces):
+    return list({ts.site_id for ts in tenant_spaces})
 
-    # Fetch existing primary site (if any)
-    existing_primary = (
-        db.query(UserSite)
+
+def get_space_tenants(
+    space_id: UUID,
+    db: Session,
+    org_id: UUID
+):
+    rows = (
+        db.query(
+            TenantSpace.tenant_id,
+            Tenant.user_id,
+            Tenant.name.label("full_name"),
+            Tenant.email,
+            TenantSpace.status,
+            Lease.id.label("lease_id"),
+            Lease.lease_number,
+            Lease.start_date,
+            Lease.end_date,
+            TenantSpace.created_at
+        )
+        # 🔑 explicitly set the FROM table
+        .select_from(TenantSpace)
+        .join(
+            Tenant,
+            Tenant.id == TenantSpace.tenant_id
+        )
+        .join(Space, Space.id == TenantSpace.space_id)
+        .outerjoin(
+            Lease,
+            and_(
+                Lease.space_id == TenantSpace.space_id,
+                Lease.tenant_id == TenantSpace.tenant_id,
+                Lease.is_deleted == False,
+                Lease.status == "active",
+            )
+        )
         .filter(
-            UserSite.user_id == user_id,
-            UserSite.is_primary == True
+            TenantSpace.space_id == space_id,
+            TenantSpace.is_deleted == False,
+            Space.org_id == org_id
+        )
+        .order_by(TenantSpace.created_at.desc())
+        .all()
+    )
+
+    pending = []
+    active = []
+
+    for r in rows:
+        base = {
+            "tenant_id": r.tenant_id,
+            "user_id": r.user_id,
+            "full_name": r.full_name,
+            "email": r.email,
+            "created_at": r.created_at,
+        }
+
+        if r.status == OwnershipStatus.pending:
+            pending.append({
+                **base,
+                "status": "pending"
+            })
+
+        elif r.status == OwnershipStatus.leased:
+            active.append({
+                **base,
+                "status": "leased",
+                "lease_id": r.lease_id,
+                "lease_no": r.lease_number,
+                "start_date": r.start_date,
+                "end_date": r.end_date,
+            })
+
+    return {
+        "pending": pending,
+        "active": active
+    }
+
+
+def approve_tenant(
+    params: SpaceTenantApprovalRequest,
+    db: Session,
+    auth_db: Session,
+    current_user: UserToken
+):
+    try:
+        #  Check if space already has an active lease
+        active_lease = (
+            db.query(Lease)
+            .filter(
+                Lease.space_id == params.space_id,
+                Lease.status == LeaseStatus.active
+            )
+            .first()
+        )
+
+        if active_lease:
+            raise HTTPException(
+                status_code=400,
+                detail="Space is already occupied by an active tenant"
+            )
+
+        tenant_space = (
+            db.query(TenantSpace)
+            .filter(
+                TenantSpace.space_id == params.space_id,
+                TenantSpace.tenant_id == params.tenant_id,
+                TenantSpace.status == TenantSpaceStatus.pending
+            )
+            .first()
+        )
+
+        if not tenant_space:
+            raise HTTPException(
+                status_code=404, detail="Pending tenant request not found")
+
+        tenant_space.status = TenantSpaceStatus.approved
+        tenant_space.approved_at = func.now()
+        tenant_space.approved_by = current_user.user_id
+
+        auth_db.query(UserOrganization).filter(
+            UserOrganization.user_id == tenant_space.tenant.user_id,
+            UserOrganization.org_id == current_user.org_id,
+            UserOrganization.account_type == UserAccountType.TENANT.value
+        ).update({"status": "active"})
+
+        tenant_site_ids = [tenant_space.site_id]
+
+        upsert_user_sites_preserve_primary(
+            db=db,
+            user_id=current_user.user_id,
+            site_ids=tenant_site_ids
+        )
+
+        log_occupancy_event(
+            db=db,
+            space_id=params.space_id,
+            occupant_type=OccupantType.owner,
+            occupant_user_id=tenant_space.tenant.user_id,
+            event_type=OccupancyEventType.tenant_approved,
+            source_id=params.tenant_id,
+            notes="Tenant request for the space was approved"
+        )
+
+        auth_db.commit()
+        db.commit()
+        return {"Tenant approved successfully"}
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        auth_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
+
+def reject_tenant(
+    space_id: UUID,
+    tenant_id: UUID,
+    db: Session,
+    current_user: Users,
+):
+    try:
+        tenant_space = (
+            db.query(TenantSpace)
+            .filter(
+                TenantSpace.space_id == space_id,
+                TenantSpace.tenant_id == tenant_id,
+                TenantSpace.status == TenantSpaceStatus.pending
+            )
+            .first()
+        )
+
+        if not tenant_space:
+            raise HTTPException(
+                status_code=404, detail="Pending tenant request not found")
+
+        tenant_space.status = TenantSpaceStatus.rejected
+        tenant_space.rejected_at = func.now()
+
+        db.commit()
+
+        return success_response(data=None, message="Tenant rejected successfully")
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
+
+def get_tenant_approvals(
+    db: Session,
+    org_id: UUID,
+    status: str | None = None,
+    search: str | None = None,
+    skip: int = 0,
+    limit: int = 10,
+):
+    query = (
+        db.query(
+            TenantSpace.id.label("tenant_space_id"),
+            Tenant.user_id.label("tenant_user_id"),
+            Tenant.id.label("tenant_id"),
+            Tenant.name.label("tenant_name"),
+            Tenant.email.label("tenant_email"),
+            Space.id.label("space_id"),
+            Space.name.label("space_name"),
+            Site.name.label("site_name"),
+            Tenant.kind.label("tenant_type"),
+            TenantSpace.status,
+            TenantSpace.created_at.label("requested_at")
+        )
+        .select_from(TenantSpace)
+        .join(Tenant, Tenant.id == TenantSpace.tenant_id)
+        .join(Space, Space.id == TenantSpace.space_id)
+        .join(Site, Site.id == Space.site_id)
+        .filter(
+            TenantSpace.is_deleted == False,
+            Site.org_id == org_id
+        )
+    )
+
+    # Status filter
+    if status:
+        query = query.filter(TenantSpace.status == status)
+
+    # Search filter
+    if search:
+        term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Tenant.name.ilike(term),
+                Tenant.email.ilike(term),
+                Space.name.ilike(term)
+            )
+        )
+
+    total = query.count()
+
+    rows = query.order_by(TenantSpace.created_at.desc()
+                          ).offset(skip).limit(limit).all()
+
+    items = [
+        TenantApprovalOut(
+            tenant_space_id=r.tenant_space_id,
+            tenant_user_id=r.tenant_user_id,
+            tenant_id=r.tenant_id,
+            tenant_name=r.tenant_name,
+            tenant_email=r.tenant_email,
+            space_id=r.space_id,
+            space_name=r.space_name,
+            site_name=r.site_name,
+            tenant_type=r.tenant_type,
+            status=r.status,
+            requested_at=r.requested_at,
+        )
+        for r in rows
+    ]
+
+    return {
+        "items": items,
+        "total": total
+    }
+
+
+def get_users_by_site_and_space(
+    db: Session,
+    auth_db: Session,
+    site_id: UUID,
+    space_id: UUID
+):
+
+    users_list = []
+
+    # ===============================
+    # 1️⃣ SPACE OWNERS
+    # ===============================
+    owner = (
+        db.query(SpaceOwner)
+        .filter(
+            SpaceOwner.space_id == space_id,
+            SpaceOwner.is_active == True,
+            SpaceOwner.owner_user_id.isnot(None)
         )
         .first()
     )
 
-    existing_primary_site_id = (
-        existing_primary.site_id if existing_primary else None
-    )
-
-    # Decide which site should be primary
-    if existing_primary_site_id in site_ids:
-        primary_site_id = existing_primary_site_id
-    else:
-        primary_site_id = site_ids[0]
-
-    # Clear old mappings
-    db.query(UserSite).filter(
-        UserSite.user_id == user_id
-    ).delete()
-
-    # Reinsert with preserved primary
-    for site_id in site_ids:
-        db.add(
-            UserSite(
-                user_id=user_id,
-                site_id=site_id,
-                is_primary=(site_id == primary_site_id)
+    if owner:
+        user = (
+            auth_db.query(Users)
+            .filter(
+                Users.id == owner.owner_user_id,
+                Users.is_deleted == False
             )
+            .first()
         )
 
+        if user:
+            users_list.append({
+                "id": owner.owner_user_id,
+                "name": f"{user.full_name} (owner)"
+            })
+    # ===============================
+    # 2️⃣ TENANTS
+    # ===============================
+    tenant = (
+        db.query(Tenant)
+        .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
+        .filter(
+            TenantSpace.site_id == site_id,
+            TenantSpace.space_id == space_id,
+            TenantSpace.status == OwnershipStatus.leased,  # ownwrship status leased
+            TenantSpace.is_deleted == False,
+            Tenant.is_deleted == False,
+            Tenant.status == "active",
+            Tenant.user_id.isnot(None)
+        )
+        .first()
+    )
 
-def get_site_ids_from_tenant_spaces(tenant_spaces):
-    return list({ts.site_id for ts in tenant_spaces})
+    if tenant:
+        user = (
+            auth_db.query(Users)
+            .filter(
+                Users.id == tenant.user_id,
+                Users.is_deleted == False
+            )
+            .first()
+        )
+
+    if user:
+        users_list.append({
+            "id": tenant.user_id,
+            "name": f"{user.full_name} (tenant)",
+            "tenant_id": tenant.id
+        })
+
+    # ===============================
+    # 3️⃣ REMOVE DUPLICATES
+    # ===============================
+    seen = set()
+    unique_users = []
+
+    for u in users_list:
+        if u["id"] not in seen:
+            seen.add(u["id"])
+            unique_users.append(u)
+
+    # ===============================
+    # FINAL RESPONSE
+    # ===============================
+    return unique_users

@@ -47,8 +47,8 @@ class SpaceOut(SpaceBase):
 class ActiveOwnerResponse(BaseModel):
     id: UUID
     owner_type: str
-    owner_id: UUID
-    owner_name: str
+    user_id: UUID
+    full_name: str
     ownership_percentage: Decimal
     start_date: date
     end_date: Optional[date] = None
@@ -88,15 +88,38 @@ class AssignSpaceOwnerIn(BaseModel):
     owner_user_id: UUID
 
 
+class AssignSpaceTenantIn(BaseModel):
+    space_id: UUID
+    tenant_user_id: UUID
+
+
 class OwnershipHistoryOut(BaseModel):
     id: UUID
     owner_user_id: Optional[UUID]
     owner_name: Optional[str]
-    ownership_type: str
-    ownership_percentage: Decimal
+    ownership_type: Optional[str] = None
+    ownership_percentage: Optional[Decimal] = None
     start_date: date
-    end_date: Optional[date]
+    end_date: Optional[date] = None
     is_active: bool
+    space_id: Optional[UUID] = None
+    space_name: Optional[str] = None
+    status: str
+
+    model_config = {"from_attributes": True}
+
+
+class TenantHistoryOut(BaseModel):
+    id: UUID
+    tenant_user_id: Optional[UUID]
+    tenant_name: Optional[str]
+    start_date: date
+    end_date: Optional[date] = None
+    is_active: bool
+    space_id: Optional[UUID] = None
+    space_name: Optional[str] = None
+    status: str
+    lease_no: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -107,7 +130,7 @@ class OwnershipApprovalRequest(BaseModel):
 
 
 class OwnershipApprovalListResponse(BaseModel):
-    request: List[OwnershipHistoryOut]
+    requests: List[OwnershipHistoryOut]
     total: int
 
     model_config = {"from_attributes": True}

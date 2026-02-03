@@ -1,6 +1,7 @@
+from decimal import Decimal
 from sqlite3 import IntegrityError
 from typing import Dict, List, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session ,joinedload
 from sqlalchemy import and_, exists, func, cast, literal, or_, case
@@ -44,6 +45,22 @@ def build_owner_maintenance_filters(org_id: UUID, params: OwnerMaintenanceReques
     
     return filters
 
+def get_owner_maintenance_amount(db: Session, space_id: UUID):
+    """
+    CAM = rate_per_sqft × space.area_sqft
+    """
+    CAM_RATE_PER_SQFT = Decimal("150.00")
+
+    space = db.query(Space).filter(
+        Space.id == space_id,
+        Space.is_deleted == False
+    ).first()
+
+    if not space or not space.area_sqft:
+        return Decimal("0.00")
+
+    return (CAM_RATE_PER_SQFT * space.area_sqft).quantize(Decimal("0.01"))
+    
 
 def get_owner_maintenance_query(db: Session, org_id: UUID, params: OwnerMaintenanceRequest):
     """Base query WITHOUT joins - use filters differently"""
@@ -262,15 +279,21 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
         )
     
     # Validate amount
-    if maintenance.amount <= 0:
+    # ✅ CALCULATE AMOUNT USING HELPER
+    amount = get_owner_maintenance_amount(db, maintenance.space_id)
+
+    if amount <= 0:
         raise HTTPException(
             status_code=400,
-            detail="Amount must be greater than 0"
+            detail="Maintenance amount could not be calculated"
         )
+
+
     
     # Create maintenance record with space_owner_id
-    maintenance_data = maintenance.model_dump()
+    maintenance_data = maintenance.model_dump(exclude={"amount"})
     maintenance_data["space_owner_id"] = space_owner.id
+    maintenance_data["amount"] = amount 
     
     db_maintenance = OwnerMaintenanceCharge(**maintenance_data)
     
@@ -327,13 +350,6 @@ def update_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
                 detail="Period start date must be before period end date"
             )
     
-    # Validate amount if being updated
-    if "amount" in update_data and update_data["amount"] <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Amount must be greater than 0"
-        )
-    
     # If space_id is being updated, find the new space owner
     new_space_owner_id = None
     if "space_id" in update_data:
@@ -351,7 +367,24 @@ def update_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
         
         new_space_owner_id = new_space_owner.id
         update_data["space_owner_id"] = new_space_owner_id
-    
+        
+    # 🔹 Recalculate amount if user provides `amount` or space_id changed
+    if "amount" in update_data or new_space_owner_id:
+        # Determine which space to use for calculation
+        space_id = update_data.get("space_id", db_maintenance.space_id)
+        
+        # Calculate the amount using your helper
+        amount = get_owner_maintenance_amount(db, space_id)
+        
+        if amount <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Maintenance amount could not be calculated"
+            )
+
+        # Replace existing value with recalculated amount
+        update_data["amount"] = amount  
+        
     # Check for duplicate maintenance period if space owner or period is changing
     space_owner_id = new_space_owner_id if new_space_owner_id else db_maintenance.space_owner_id
     period_start = update_data.get("period_start", db_maintenance.period_start)
@@ -637,3 +670,94 @@ def get_owner_maintenances_by_space(
     except Exception as e:
         print(f"Error in get_owner_maintenances_by_space: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+    
+    
+    
+def auto_generate_owner_maintenance(
+    db: Session,
+    auth_db: Session,
+    input_date: date,
+    user: UserToken
+):
+    period_start = date(input_date.year, input_date.month, 1)
+    next_month = period_start.replace(day=28) + timedelta(days=4)
+    period_end = next_month.replace(day=1) - timedelta(days=1)
+    due_date = period_end + timedelta(days=10)
+
+    spaces = db.query(Space).filter(
+        Space.org_id == user.org_id,
+        Space.is_deleted == False
+    ).all()
+
+    if not spaces:
+        raise HTTPException(status_code=404, detail="No spaces found")
+
+    created_ids = []
+
+    for space in spaces:
+        space_owner = db.query(SpaceOwner).filter(
+            SpaceOwner.space_id == space.id,
+            SpaceOwner.is_active == True
+        ).first()
+
+        if not space_owner:
+            continue
+
+        # 🔹 Check overlapping maintenance
+        existing = db.query(OwnerMaintenanceCharge).filter(
+            OwnerMaintenanceCharge.space_owner_id == space_owner.id,
+            OwnerMaintenanceCharge.is_deleted == False,
+            OwnerMaintenanceCharge.period_start <= period_end,
+            OwnerMaintenanceCharge.period_end >= period_start
+        ).order_by(OwnerMaintenanceCharge.created_at.desc()).first()
+
+        if existing:
+            # Paid or invoiced → NEVER create
+            if existing.status in ["paid", "invoiced"]:
+                continue
+
+            # Pending but not due yet → skip
+            if existing.status == "pending" and existing.due_date >= date.today():
+                continue
+
+            # Pending + due date passed → allow creation
+            # ✅ CALCULATE AMOUNT USING HELPER
+        amount = get_owner_maintenance_amount(db, space.id)
+
+        # Optional safety check
+        if amount <= 0:
+            continue
+        # ✅ Create maintenance
+        maintenance = OwnerMaintenanceCharge(
+            space_id=space.id,
+            space_owner_id=space_owner.id,
+            period_start=period_start,
+            period_end=period_end,
+            due_date=due_date,
+            amount=amount,
+            status="pending"
+        )
+
+        db.add(maintenance)
+        db.flush()
+        created_ids.append(maintenance.id)
+
+    if not created_ids:
+        return {"maintenances": [], "total": 0}
+
+    db.commit()
+
+    maintenances = []
+    for mid in created_ids:
+        data = get_owner_maintenance_by_id(
+            db=db,
+            auth_db=auth_db,
+            maintenance_id=str(mid)
+        )
+        if data:
+            maintenances.append(data)
+
+    return {
+        "maintenances": maintenances,
+        "total": len(maintenances)
+    }

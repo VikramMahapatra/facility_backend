@@ -365,30 +365,38 @@ async def create_ticket(
         )
 
     tenant_id = None
+    ticket_user_id = None
     title = None
 
     category_name = session.query(
         TicketCategory.category_name).filter(TicketCategory.id == data.category_id).scalar()
-
+    
     if account_type == UserAccountType.ORGANIZATION:
+        # Organization user: Get user_id from dropdown
+        ticket_user_id = data.user_id
         tenant_id = data.tenant_id
         title = data.title
     else:
-        tenant_id = session.query(Tenant.id).filter(and_(
-            Tenant.user_id == user.user_id, Tenant.is_deleted == False)).scalar()
-        # ✅ FIXED: Case-insensitive search with site check
-
-        title = f"{category_name} - {space.name}"
-
-        if not tenant_id:
+        # TENANT users - creating ticket for themselves
+        ticket_user_id = user.user_id
+        
+        # Find their tenant record
+        tenant = session.query(Tenant).filter(and_(
+            Tenant.user_id == user.user_id, 
+            Tenant.is_deleted == False
+        )).first()
+        
+        if tenant:
+            tenant_id = tenant.id
+        else:
             return error_response(
                 message=f"Invalid tenant",
                 status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 http_status=400
             )
+        title = f"{category_name} - {space.name}"
 
     if not category_name:
-        # ✅ Better error message to debug
         return error_response(
             message=f"Invalid category",
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
@@ -399,7 +407,8 @@ async def create_ticket(
         org_id=space.org_id,
         site_id=space.site_id if space.site_id else data.site_id,
         space_id=data.space_id,
-        tenant_id=tenant_id,
+        tenant_id=tenant_id,   # Will be NULL for owners
+        user_id=ticket_user_id,       # Always has value
         category_id=data.category_id,
         title=title,
         description=data.description,
@@ -467,13 +476,7 @@ async def create_ticket(
             .filter(Users.id == assigned_to)
             .scalar()
         )
-        # Check if assigned to ADMIN/ORGANIZATION (considered "unassigned" for workload)-----------CHANGED
-        # This doesn't change anything, just for understanding
-        if assigned_to_user and assigned_to_user.account_type.lower() in ["admin", "organization"]:
-            # Ticket will appear in "unassigned tickets" in workload management
-            pass
-
-        # Only create assignment log if this is different from initial value
+        
         if not hasattr(data, 'assigned_to') or not data.assigned_to:
             assignment_log = TicketAssignment(
                 ticket_id=new_ticket.id,

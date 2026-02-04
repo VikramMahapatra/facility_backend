@@ -1,6 +1,6 @@
 from decimal import Decimal
 from typing import Optional, Dict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
@@ -369,7 +369,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                         occupant_user_id=payload.tenant_id,
                         lease_id=lease.id,
                         tenant_id=payload.tenant_id,
-                        move_in_date=func.now()
+                        move_in_date=datetime.now(timezone.utc)
                     )
                 )
 

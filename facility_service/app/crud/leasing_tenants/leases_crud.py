@@ -368,7 +368,8 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                         occupant_type="tenant",
                         occupant_user_id=payload.tenant_id,
                         lease_id=lease.id,
-                        tenant_id=payload.tenant_id
+                        tenant_id=payload.tenant_id,
+                        move_in_date=func.now()
                     )
                 )
 

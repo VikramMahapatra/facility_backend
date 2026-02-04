@@ -668,7 +668,7 @@ def lease_tenant_lookup(
             TenantSpace.is_deleted == False,
             TenantSpace.site_id == site_id,
             TenantSpace.status.in_(
-                OwnershipStatus.approved, OwnershipStatus.ended
+                [OwnershipStatus.approved, OwnershipStatus.ended]
             )
         )
         .distinct()

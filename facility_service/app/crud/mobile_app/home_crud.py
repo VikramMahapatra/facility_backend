@@ -1,6 +1,6 @@
 from operator import or_
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, and_, distinct, case
+from sqlalchemy import func, cast, and_, distinct, case, or_, exists
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
@@ -50,8 +50,27 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
     account_type = user.account_type.lower()
 
     if account_type in (UserAccountType.TENANT, UserAccountType.FLAT_OWNER):
-
         sites = []
+
+        tenant_site_exists = (
+            exists()
+            .where(
+                TenantSpace.site_id == Site.id,
+                TenantSpace.tenant_id == Tenant.id,
+                Tenant.user_id == user.user_id
+            )
+            .correlate(Site)
+        )
+
+        owner_site_exists = (
+            exists()
+            .where(
+                SpaceOwner.space_id == Space.id,
+                Space.site_id == Site.id,
+                SpaceOwner.owner_user_id == user.user_id
+            )
+            .correlate(Site)
+        )
 
         user_sites = (
             db.query(UserSite)
@@ -61,7 +80,11 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
                 .joinedload(Site.org)
             )
             .filter(
-                UserSite.user_id == user.user_id
+                UserSite.user_id == user.user_id,
+                or_(
+                    tenant_site_exists,
+                    owner_site_exists
+                )
             )
             .all()
         )

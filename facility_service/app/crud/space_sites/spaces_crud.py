@@ -800,7 +800,8 @@ def get_space_tenant_history(
     space_tenants = (
         db.query(
             TenantSpace,
-            Lease.lease_number
+            Lease.lease_number,
+            Lease.status.label("lease_status")
         )
         .outerjoin(
             Lease,
@@ -820,19 +821,19 @@ def get_space_tenant_history(
 
     response = []
 
-    for tenant_space, lease_no in space_tenants:
-
-        response.append(
-            TenantHistoryOut(
-                id=tenant_space.id,
-                tenant_user_id=tenant_space.tenant.user_id,
-                tenant_name=tenant_space.tenant.name,
-                start_date=tenant_space.created_at.date() if tenant_space.created_at else None,
-                lease_no=lease_no,
-                is_active=True if tenant_space.tenant.status == "active" else False,
-                status=tenant_space.status
+    for tenant_space, lease_no, lease_status in space_tenants:
+        if lease_status == "active":
+            response.append(
+                TenantHistoryOut(
+                    id=tenant_space.id,
+                    tenant_user_id=tenant_space.tenant.user_id,
+                    tenant_name=tenant_space.tenant.name,
+                    start_date=tenant_space.created_at.date() if tenant_space.created_at else None,
+                    lease_no=lease_no,
+                    is_active=True if tenant_space.tenant.status == "active" else False,
+                    status=tenant_space.status
+                )
             )
-        )
 
     return response
 

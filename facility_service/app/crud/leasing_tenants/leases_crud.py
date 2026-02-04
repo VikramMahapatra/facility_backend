@@ -569,7 +569,7 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
         TenantSpace.tenant_id == obj.tenant_id,
         TenantSpace.is_deleted == False
     ).update(
-        {"status": "vacant"},
+        {"status": OwnershipStatus.ended},
         synchronize_session=False
     )
 
@@ -667,7 +667,9 @@ def lease_tenant_lookup(
             Tenant.is_deleted == False,
             TenantSpace.is_deleted == False,
             TenantSpace.site_id == site_id,
-            TenantSpace.status == OwnershipStatus.approved,
+            TenantSpace.status.in_(
+                OwnershipStatus.approved, OwnershipStatus.ended
+            )
         )
         .distinct()
         .order_by(

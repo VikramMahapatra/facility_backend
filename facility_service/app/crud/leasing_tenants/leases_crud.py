@@ -280,7 +280,9 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             TenantSpace.space_id == payload.space_id,
             TenantSpace.tenant_id == payload.tenant_id,
             TenantSpace.is_deleted == False,
-            TenantSpace.status == OwnershipStatus.approved
+            TenantSpace.status.in_(
+                [OwnershipStatus.approved, OwnershipStatus.ended]
+            )
         ).first()
 
         if not tenant_space:

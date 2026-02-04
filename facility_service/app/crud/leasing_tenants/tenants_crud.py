@@ -1107,7 +1107,8 @@ def get_space_tenants(
             Lease.lease_number,
             Lease.start_date,
             Lease.end_date,
-            TenantSpace.created_at
+            TenantSpace.created_at,
+            Lease.status.label("lease_status")
         )
         # 🔑 explicitly set the FROM table
         .select_from(TenantSpace)
@@ -1121,8 +1122,7 @@ def get_space_tenants(
             and_(
                 Lease.space_id == TenantSpace.space_id,
                 Lease.tenant_id == TenantSpace.tenant_id,
-                Lease.is_deleted == False,
-                Lease.status == "active",
+                Lease.is_deleted == False
             )
         )
         .filter(
@@ -1152,7 +1152,7 @@ def get_space_tenants(
                 "status": "pending"
             })
 
-        elif r.status == OwnershipStatus.leased:
+        elif r.status == OwnershipStatus.leased and r.lease_status == "active":
             active.append({
                 **base,
                 "status": "leased",

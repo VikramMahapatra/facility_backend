@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from uuid import UUID
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
 from facility_service.app.models.space_sites.user_sites import UserSite
@@ -134,7 +135,7 @@ def get_user_profile_data(
     )
 
 
-def get_my_spaces(db: Session, auth_db: Session, user: UserToken):
+def get_my_spaces(db: Session, auth_db: Session, user: UserToken, site_id: UUID):
     """
     Get comprehensive home details for a specific space
     """
@@ -184,6 +185,10 @@ def get_my_spaces(db: Session, auth_db: Session, user: UserToken):
             joinedload(Space.site)
         )
 
+        if site_id:
+            tenant_spaces_query.filter(Space.site_id == site_id)
+            owner_spaces_query.filter(Space.site_id == site_id)
+
         tenant_spaces = tenant_spaces_query.all()
         owner_spaces = owner_spaces_query.all()
         spaces = tenant_spaces + owner_spaces
@@ -209,8 +214,8 @@ def get_my_spaces(db: Session, auth_db: Session, user: UserToken):
         spaces_query = db.query(Space).filter(
             Space.is_deleted == False
         ).options(
-            joinedload(Space.building)
-            .joinedload(Space.site)
+            joinedload(Space.building),
+            joinedload(Space.site)
         )
 
         spaces = spaces_query.all()

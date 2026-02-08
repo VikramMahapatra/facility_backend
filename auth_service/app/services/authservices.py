@@ -26,8 +26,6 @@ twilio_client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
 
 security = HTTPBearer()
 
-OTP_EXPIRY_MINUTES = 5  # Optional: make OTP valid for 5 minutes
-
 
 #### GOOGLE AUTHENTICATION ###
 

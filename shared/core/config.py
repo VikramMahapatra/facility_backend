@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = os.getenv(
         "JWT_REFRESH_TOKEN_EXPIRE_DAYS")  # 7 Days default
 
-    OTP_EXPIRY_MINUTES = 5  # Optional: make OTP valid for 5 minutes
+    OTP_EXPIRY_MINUTES: int = 5  # Optional: make OTP valid for 5 minutes
 
     # Twilio
     TWILIO_ACCOUNT_SID: str | None = os.getenv("TWILIO_ACCOUNT_SID")

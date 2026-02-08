@@ -26,6 +26,8 @@ twilio_client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
 
 security = HTTPBearer()
 
+OTP_EXPIRY_MINUTES = 5  # Optional: make OTP valid for 5 minutes
+
 
 #### GOOGLE AUTHENTICATION ###
 
@@ -376,3 +378,64 @@ def switch_account(
     default_org.is_default = True
     db.commit()
     return userservices.get_user_token(api_request, db, facility_db, user)
+
+
+def resend_otp(background_tasks: BackgroundTasks, db: Session, facility_db: Session, request: authschema.MobileRequest):
+    try:
+        message = None
+        otp = generate_otp()
+
+        # -------------------------
+        # Handle Mobile OTP
+        # -------------------------
+        if request.mobile and request.mobile.strip():
+            print("MOBILE VALUE:", repr(request.mobile))
+
+            # Send SMS OTP via Twilio (uncomment in production)
+            # verification = twilio_client.verify.v2.services(settings.TWILIO_VERIFY_SID).verifications.create(
+            #     to=request.mobile,
+            #     channel="sms"
+            # )
+            message = "OTP resent to your mobile number."
+
+        # -------------------------
+        # Handle Email OTP
+        # -------------------------
+        elif request.email:
+            # Delete previous unverified OTP for this email
+            db.query(OtpVerification).filter(
+                OtpVerification.email == request.email,
+                OtpVerification.is_verified == False
+            ).delete()
+            db.commit()
+
+            # Store new OTP
+            otp_entry = OtpVerification(
+                email=request.email,
+                otp=otp,
+                created_at=datetime.utcnow(),
+                is_verified=False
+            )
+            db.add(otp_entry)
+            db.commit()
+
+            # Send OTP email
+            send_otp_email(background_tasks, facility_db, otp, request.email)
+            message = "OTP resent to your email."
+
+        else:
+            return error_response(
+                message="Invalid Request: Provide email or mobile",
+                status_code=400
+            )
+
+        return success_response(
+            data="",
+            message=message
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error resending OTP: {str(e)}"
+        )

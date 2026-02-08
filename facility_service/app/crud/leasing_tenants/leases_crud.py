@@ -343,18 +343,18 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         db.add(lease)
         db.flush()
 
-        log_occupancy_event(
-            db=db,
-            space_id=payload.space_id,
-            occupant_type=OccupantType.tenant,
-            occupant_user_id=tenant.user_id,
-            event_type=OccupancyEventType.lease_created,
-            source_id=lease.id,
-            notes=f"Lease created with status {lease_status}"
-        )
-
         if lease_status == "active":
             tenant.status = "active"  # Sync tenant status
+
+            log_occupancy_event(
+                db=db,
+                space_id=payload.space_id,
+                occupant_type=OccupantType.tenant,
+                occupant_user_id=tenant.user_id,
+                event_type=OccupancyEventType.lease_created,
+                source_id=lease.id,
+                notes=f"Lease created for tenant"
+            )
 
             #  Update TenantSpace → leased
             tenant_space.status = OwnershipStatus.leased
@@ -438,27 +438,6 @@ def update(db: Session, payload: LeaseUpdate):
         if obj.status == "active" and "space_id" in data and target_space_id != old_space_id:
             return error_response("Cannot change space on an active lease")
 
-        old_status = obj.status
-        # ---------- SIDE EFFECTS ----------
-        # Activate lease (draft → active)
-        if old_status != "active" and data.get("status") == "active":
-            tenant_space = db.query(TenantSpace).filter(
-                TenantSpace.space_id == target_space_id,
-                TenantSpace.tenant_id == tenant_id,
-                TenantSpace.is_deleted == False
-            ).first()
-
-            if not tenant_space:
-                return error_response("Tenant is not linked to this space")
-
-            if tenant_space.status != OwnershipStatus.approved:
-                return error_response(
-                    message="Tenant must be approved before activating lease"
-                )
-
-            tenant_space.status = OwnershipStatus.leased
-            tenant_space.updated_at = func.now()
-
         # =========================
         # CALCULATE END DATE
         # =========================
@@ -484,6 +463,37 @@ def update(db: Session, payload: LeaseUpdate):
             )
 
         data["end_date"] = end_date
+
+        old_status = obj.status
+        # ---------- SIDE EFFECTS ----------
+        # Activate lease (draft → active)
+        if old_status != "active" and data.get("status") == "active":
+            tenant_space = db.query(TenantSpace).filter(
+                TenantSpace.space_id == target_space_id,
+                TenantSpace.tenant_id == tenant_id,
+                TenantSpace.is_deleted == False
+            ).first()
+
+            if not tenant_space:
+                return error_response("Tenant is not linked to this space")
+
+            if tenant_space.status != OwnershipStatus.approved:
+                return error_response(
+                    message="Tenant must be approved before activating lease"
+                )
+
+            tenant_space.status = OwnershipStatus.leased
+            tenant_space.updated_at = func.now()
+
+            log_occupancy_event(
+                db=db,
+                space_id=payload.space_id,
+                occupant_type=OccupantType.tenant,
+                occupant_user_id=tenant.user_id,
+                event_type=OccupancyEventType.lease_created,
+                source_id=obj.id,
+                notes=f"Lease created for tenant"
+            )
 
         # Update fields
         for k, v in data.items():

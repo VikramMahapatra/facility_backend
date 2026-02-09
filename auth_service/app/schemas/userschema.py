@@ -97,11 +97,11 @@ class UserResponse(EmptyStringModel):
     phone: str
     account_types: List[UserOrganizationOut]
     default_account_type: str
-    default_organization_name: str
+    default_organization_name: Optional[str] = None
     status: str
     is_authenticated: bool = False
-    roles: List[RoleOut]
-    role_policies: List[RolePolicyOut]
+    roles: Optional[List[RoleOut]] = None
+    role_policies: Optional[List[RolePolicyOut]] = None
 
     class Config:
         from_attributes = True

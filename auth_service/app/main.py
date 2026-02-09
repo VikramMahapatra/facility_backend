@@ -1,5 +1,6 @@
 # app/main.py
 from fastapi import FastAPI
+from auth_service.app.routers import super_admin_router
 from shared.core.database import AuthBase, auth_engine
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -40,6 +41,7 @@ setup_exception_handlers(app)
 # Routers
 app.include_router(authrouter.router)
 app.include_router(userrouter.router)
+app.include_router(super_admin_router.router)
 
 
 @app.get("/api/auth/health")

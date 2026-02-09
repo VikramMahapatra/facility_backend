@@ -195,7 +195,7 @@ def allow_admin(current_user: UserToken = Depends(validate_current_token)):
     return current_user
 
 
-def require_super_admin(current_user: UserToken = Depends(validate_current_token)):
+def require_super_admin(current_user: UserToken = Depends(validate_token)):
     if current_user.account_type.lower() != UserAccountType.SUPER_ADMIN.value:
         return error_response(
             message="Not authorized as Super Admin"

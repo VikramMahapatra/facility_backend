@@ -32,7 +32,8 @@ def get_pending_users_for_approval(
         .join(Users, Users.id == UserOrganization.user_id)
         .filter(
             UserOrganization.org_id == org_id,
-            func.lower(UserOrganization.status) == "pending_approval",
+            func.lower(Users.status) == "pending_approval",
+            func.lower(UserOrganization.status) == "pending",
             UserOrganization.is_deleted == False,
             Users.is_deleted == False
         )

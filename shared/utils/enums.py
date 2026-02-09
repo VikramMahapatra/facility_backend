@@ -6,6 +6,7 @@ class UserAccountType(str, Enum):
     TENANT = "tenant"
     STAFF = "staff"
     FLAT_OWNER = "owner"
+    SUPER_ADMIN = "super_admin"
 
 
 class OwnershipStatus(Enum):

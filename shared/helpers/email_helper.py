@@ -66,7 +66,6 @@ class EmailHelper:
                 html_body=html_body,
                 attachments=attachments,
             )
-            logger.info(f"✅ Email '{template_code}' sent to {recipients}")
             return True
 
         except KeyError as e:

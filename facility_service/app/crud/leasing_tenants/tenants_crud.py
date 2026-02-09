@@ -466,7 +466,7 @@ def create_tenant_internal(
     ).first():
         raise ValueError(f"Tenant with name '{tenant.name}' already exists")
 
-    user, random_password = get_or_create_user_and_org(
+    user = get_or_create_user_and_org(
         auth_db=auth_db,
         org_id=org_id,
         name=tenant.name,
@@ -1039,7 +1039,6 @@ def get_or_create_user_and_org(
     phone: str
 ):
     now = datetime.utcnow()
-    random_password = None
 
     user = auth_db.query(Users).filter(
         Users.is_deleted == False,
@@ -1052,7 +1051,6 @@ def get_or_create_user_and_org(
             full_name=name,
             email=email,
             phone=phone,
-            username=email or f"user_{uuid.uuid4().hex[:8]}",
             status="inactive",
             created_at=now,
             updated_at=now
@@ -1084,7 +1082,7 @@ def get_or_create_user_and_org(
             http_status=400
         )
 
-    return user, random_password
+    return user
 
 
 def get_site_ids_from_tenant_spaces(tenant_spaces):

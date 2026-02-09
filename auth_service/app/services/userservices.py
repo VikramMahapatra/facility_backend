@@ -20,7 +20,7 @@ from ..models.orgs_safe import OrgSafe
 from ..models.roles import Roles
 from ..models.userroles import UserRoles
 from shared.models.users import Users
-from ..schemas.userschema import RoleOut, UserCreate, UserOrganizationOut
+from ..schemas.userschema import RoleOut, UserCreate, UserOrganizationOut, UserResponse
 from shared.core.config import settings
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
@@ -77,14 +77,10 @@ def create_user(
         user_instance = Users(
             full_name=full_name,
             email=user.email,
-            username=user.email,
             phone=user.phone,
             picture_url=str(user.pictureUrl) if user.pictureUrl else None,
             status="pending_approval"
         )
-
-        if user.password:
-            user_instance.set_password(user.password)
 
         db.add(user_instance)
         db.flush()
@@ -225,15 +221,12 @@ def create_user(
 
 
 def get_user_token(request: Request, auth_db: Session, facility_db: Session, user: Users):
-
     ip = request.client.host
-    ua = request.headers.get("user-agent")
+    ua = request.headers.get("user-agent", "")
 
-    if "dart" in ua or "flutter" in ua:
-        platform = "mobile"
-    else:
-        platform = "portal"
+    platform = "mobile" if "dart" in ua or "flutter" in ua else "portal"
 
+    # Create login session
     session = UserLoginSession(
         user_id=user.id,
         platform=platform,
@@ -244,44 +237,56 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     auth_db.commit()
     auth_db.refresh(session)
 
-    user_org = (
-        auth_db.query(UserOrganization)
-        .filter(
-            UserOrganization.user_id == user.id,
-            UserOrganization.is_deleted == False
-        )
-        .order_by(
-            UserOrganization.is_default.desc(),
-            UserOrganization.joined_at.asc()
-        )
-        .first()
-    )
-
+    # Default values
+    org_id = None
+    account_type = "super_admin" if getattr(
+        user, "is_super_admin", False) else None
     roles = []
-    if user_org.roles:
-        roles = [str(role.id) for role in user_org.roles]
+    tenant_type = None
 
-    tenant = facility_db.query(TenantSafe).filter(
-        TenantSafe.user_id == user.id,
-        TenantSafe.is_deleted == False
-    ).first()
+    # If user is NOT super admin, fetch org/tenant info
+    if not getattr(user, "is_super_admin", False):
+        user_org = (
+            auth_db.query(UserOrganization)
+            .filter(
+                UserOrganization.user_id == user.id,
+                UserOrganization.is_deleted == False
+            )
+            .order_by(
+                UserOrganization.is_default.desc(),
+                UserOrganization.joined_at.asc()
+            )
+            .first()
+        )
 
-    tenant_type = tenant.kind if tenant else None
+        if user_org:
+            org_id = str(user_org.org_id)
+            account_type = user_org.account_type
+            roles = [str(role.id)
+                     for role in user_org.roles] if user_org.roles else []
+
+        tenant = facility_db.query(TenantSafe).filter(
+            TenantSafe.user_id == user.id,
+            TenantSafe.is_deleted == False
+        ).first()
+
+        tenant_type = tenant.kind if tenant else None
+
     is_mobile = platform == "mobile"
 
     token_data = {
         "user_id": str(user.id),
         "session_id": str(session.id),
-        "org_id": str(user_org.org_id),
-        "account_type": user_org.account_type,
+        "org_id": org_id,
+        "account_type": account_type,
         "tenant_type": tenant_type,
-        "role_ids": roles or []
+        "role_ids": roles
     }
 
+    # Create access token
     token = auth.create_access_token(token_data, is_mobile)
 
     refresh_token = None
-
     if session.platform == LoginPlatform.portal:
         refresh_token = auth.create_refresh_token(auth_db, session.id)
 
@@ -297,6 +302,21 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
 
 
 def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
+
+    if user_data.is_super_admin:
+        # For super admins, we can return minimal info without org/tenant details
+        return UserResponse(
+            id=str(user_data.id),
+            name=user_data.full_name,
+            email=user_data.email,
+            phone=user_data.phone,
+            account_types=[],
+            default_account_type="super_admin",
+            default_organization_name=None,
+            status=user_data.status,
+            is_authenticated=True,
+            roles=[]
+        )
 
     user_orgs = (
         auth_db.query(UserOrganization)

@@ -177,19 +177,19 @@ def get_vendor_by_id(db: Session, vendor_id: str) -> Optional[Vendor]:
 
 
 # ---------------- Create ----------------
-def create_vendor(db: Session,auth_db: Session, vendor: VendorCreate, org_id: UUID) -> VendorOut:
+def create_vendor(db: Session, auth_db: Session, vendor: VendorCreate, org_id: UUID) -> VendorOut:
     # Check for duplicate name
     existing_vendor = db.query(Vendor).filter(
         Vendor.name.ilike(vendor.name.strip()),
         Vendor.org_id == org_id,
         Vendor.is_deleted == False
     ).first()
-    
+
     if existing_vendor:
         return error_response(
             message=f"Vendor '{vendor.name}' already exists in this organization"
         )
-    
+
     # Check for duplicate GST number if provided
     if vendor.gst_vat_id:
         existing_gst = db.query(Vendor).filter(
@@ -216,17 +216,14 @@ def create_vendor(db: Session,auth_db: Session, vendor: VendorCreate, org_id: UU
             )
     now = datetime.utcnow()
 
-        # GENERATE RANDOM PASSWORD
-    random_password = generate_secure_password()
-    
     # CREATE USER RECORD
     new_user_id = str(uuid.uuid4())
-    
+
     contact_info = vendor.contact or {}
-    contact_name = contact_info.get("name") 
+    contact_name = contact_info.get("name")
     contact_email = contact_info.get("email")
     contact_phone = contact_info.get("phone")
-    
+
     new_user = Users(
         id=new_user_id,
         org_id=org_id,
@@ -238,15 +235,11 @@ def create_vendor(db: Session,auth_db: Session, vendor: VendorCreate, org_id: UU
         is_deleted=False,
         created_at=now,
         updated_at=now,
-        username=contact_email or f"user_{new_user_id[:8]}",  #  Add username
-        password=""  #  Initialize with empty string
     )
-    #  SET PASSWORD (hashes it)
-    new_user.set_password(random_password)
-    
+
     auth_db.add(new_user)
     auth_db.flush()
-    
+
     # Add user_id to contact info
     updated_contact = contact_info.copy()
     if new_user_id:
@@ -266,7 +259,7 @@ def create_vendor(db: Session,auth_db: Session, vendor: VendorCreate, org_id: UU
     return db_vendor
 
 
-def update_vendor(db: Session,auth_db: Session, vendor: VendorUpdate) -> Optional[Vendor]:
+def update_vendor(db: Session, auth_db: Session, vendor: VendorUpdate) -> Optional[Vendor]:
     db_vendor = get_vendor_by_id(db, vendor.id)
     if not db_vendor:
         return error_response(
@@ -308,11 +301,12 @@ def update_vendor(db: Session,auth_db: Session, vendor: VendorUpdate) -> Optiona
                 status_code="OPERATION_ERROR",
                 http_status=400
             )
-    
 
     # ---------------- Duplicate Phone Checks ----------------
-    new_phone = update_data.get("contact", {}).get("phone") if update_data.get("contact") else None
-    current_phone = db_vendor.contact.get("phone") if db_vendor.contact else None
+    new_phone = update_data.get("contact", {}).get(
+        "phone") if update_data.get("contact") else None
+    current_phone = db_vendor.contact.get(
+        "phone") if db_vendor.contact else None
     if new_phone and new_phone != current_phone:
         existing_phone = db.query(Vendor).filter(
             Vendor.contact["phone"].astext == new_phone,
@@ -332,15 +326,19 @@ def update_vendor(db: Session,auth_db: Session, vendor: VendorUpdate) -> Optiona
             Users.id == db_vendor.user_id,
             Users.is_deleted == False
         ).first()
-        
+
         if user:
-            new_contact = update_data.get("contact", {}) if update_data.get("contact") else {}
+            new_contact = update_data.get(
+                "contact", {}) if update_data.get("contact") else {}
             current_contact = db_vendor.contact or {}
-            
-            vendor_name = update_data.get("name") or db_vendor.name  # Use vendor name
-            contact_email = new_contact.get("email") or current_contact.get("email")
-            contact_phone = new_contact.get("phone") or current_contact.get("phone")
-            
+
+            vendor_name = update_data.get(
+                "name") or db_vendor.name  # Use vendor name
+            contact_email = new_contact.get(
+                "email") or current_contact.get("email")
+            contact_phone = new_contact.get(
+                "phone") or current_contact.get("phone")
+
             user.full_name = vendor_name  # Use vendor name
             if contact_email:
                 user.email = contact_email
@@ -357,7 +355,7 @@ def update_vendor(db: Session,auth_db: Session, vendor: VendorUpdate) -> Optiona
         return get_vendor_by_id(db, vendor.id)
 
     except IntegrityError:
-        auth_db.rollback() 
+        auth_db.rollback()
         db.rollback()
         return error_response(
             message="Error updating vendor",
@@ -369,7 +367,7 @@ def update_vendor(db: Session,auth_db: Session, vendor: VendorUpdate) -> Optiona
 # ----------------- Delete (Soft Delete) -----------------
 
 
-def delete_vendor(db: Session, auth_db: Session,vendor_id: uuid.UUID, org_id: uuid.UUID) -> Optional[Vendor]:
+def delete_vendor(db: Session, auth_db: Session, vendor_id: uuid.UUID, org_id: uuid.UUID) -> Optional[Vendor]:
     db_vendor = (
         db.query(Vendor)
         .filter(Vendor.id == vendor_id, Vendor.org_id == org_id, Vendor.is_deleted == False)
@@ -377,7 +375,7 @@ def delete_vendor(db: Session, auth_db: Session,vendor_id: uuid.UUID, org_id: uu
     )
     if not db_vendor:
         return None
-    
+
     if db_vendor.user_id:
         user = auth_db.query(Users).filter(
             Users.id == db_vendor.user_id,
@@ -399,7 +397,7 @@ def delete_vendor(db: Session, auth_db: Session,vendor_id: uuid.UUID, org_id: uu
 
     db_vendor.is_deleted = True
     db_vendor.updated_at = func.now()
-    
+
     auth_db.commit()
     db.commit()
     db.refresh(db_vendor)
@@ -410,9 +408,9 @@ def vendor_lookup(db: Session, org_id: UUID):
     contact_name = Vendor.contact["contact_name"].astext
     subquery = (
         db.query(Vendor.id)
-        .filter(Vendor.org_id == org_id, 
+        .filter(Vendor.org_id == org_id,
                 Vendor.is_deleted == False,
-                Vendor.status == "active" )
+                Vendor.status == "active")
         .distinct()
         .subquery()
     )
@@ -437,10 +435,10 @@ def vendor_lookup(db: Session, org_id: UUID):
     return vendors
 
 
-
-def vendor_workorder_lookup(db: Session, org_id: UUID): #lookup for work order creation
+# lookup for work order creation
+def vendor_workorder_lookup(db: Session, org_id: UUID):
     contact_name = Vendor.contact["contact_name"].astext
-    
+
     # ✅ SUBQUERY: Get vendors who have ACTIVE contracts
     vendors_with_active_contracts = (
         db.query(Contract.vendor_id)
@@ -456,7 +454,7 @@ def vendor_workorder_lookup(db: Session, org_id: UUID): #lookup for work order c
         .distinct()
         .subquery()
     )
-    
+
     # ✅ MAIN QUERY: Active vendors + have active contracts
     vendors = (
         db.query(
@@ -476,7 +474,8 @@ def vendor_workorder_lookup(db: Session, org_id: UUID): #lookup for work order c
             Vendor.org_id == org_id,
             Vendor.is_deleted == False,
             Vendor.status == "active",  # ✅ Vendor active
-            Vendor.id.in_(select(vendors_with_active_contracts.c.vendor_id))  # ✅ Has active contracts
+            # ✅ Has active contracts
+            Vendor.id.in_(select(vendors_with_active_contracts.c.vendor_id))
         )
         .order_by(Vendor.name.asc())
         .all()

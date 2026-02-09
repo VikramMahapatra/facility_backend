@@ -310,10 +310,6 @@ def create_user(
 
         user_data = user.model_dump(exclude={'org_id'})
 
-        # ✅ SET USERNAME FROM EMAIL (Requirement 1)
-        if user.email:
-            user_data['username'] = user.email
-
         db_user = Users(**user_data)
         db.add(db_user)
         db.flush()
@@ -329,17 +325,6 @@ def create_user(
         )
         db.add(user_org)
         db.commit()
-
-        # ✅ SEND EMAIL IF STATUS IS ACTIVE (following your pattern)
-        # if user.status and user.status.lower() == "active" and user.email:
-        #     send_user_credentials_email(
-        #         background_tasks=background_tasks,
-        #         db=facility_db,
-        #         email=user.email,
-        #         username=user.email,
-        #         password=user.password,  # Plain password for email only
-        #         full_name=user.full_name
-        #     )
 
         return get_user_by_id(db, db_user.id, user_org.org_id)
 
@@ -388,10 +373,6 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
         if not db_user:
             return None
 
-        # Track if password is being updated
-        password_updated = False
-        new_password = None
-
         # -----------------------
         # ✅ ADDED: VALIDATE EMAIL & PHONE DUPLICATES
         # -----------------------
@@ -419,23 +400,6 @@ def update_user(background_tasks: BackgroundTasks, db: Session, facility_db: Ses
             if key in ['email', 'phone'] and value != getattr(db_user, key):
                 continue  # Skip updating email/phone
             setattr(db_user, key, value)
-
-            # -----------------------
-        # ✅ ADDED: SEND PASSWORD UPDATE EMAIL
-        # -----------------------
-        if password_updated and new_password and db_user.email:
-            try:
-                send_password_update_email(
-                    background_tasks=background_tasks,
-                    db=facility_db,
-                    email=db_user.email,
-                    username=db_user.email,
-                    password=new_password,  # Plain password for email
-                    full_name=db_user.full_name
-                )
-            except Exception as email_error:
-                # Don't fail user update if email fails
-                print(f"Password update email failed: {email_error}")
 
         db.commit()
         db.refresh(db_user)

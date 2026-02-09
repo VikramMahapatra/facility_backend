@@ -15,6 +15,8 @@ from shared.core.schemas import UserToken
 from shared.core.database import get_auth_db as get_db
 from sqlalchemy.orm import Session
 
+from shared.utils.enums import UserAccountType
+
 security = HTTPBearer()
 
 
@@ -184,10 +186,18 @@ def validate_token(
 
 
 def allow_admin(current_user: UserToken = Depends(validate_current_token)):
-    if current_user.account_type.lower() != "organization":
+    if current_user.account_type.lower() != UserAccountType.ORGANIZATION.value:
         return error_response(
             message="Access forbidden: Admins only",
             http_status=403
         )
 
+    return current_user
+
+
+def require_super_admin(current_user: UserToken = Depends(validate_current_token)):
+    if current_user.account_type.lower() != UserAccountType.SUPER_ADMIN.value:
+        return error_response(
+            message="Not authorized as Super Admin"
+        )
     return current_user

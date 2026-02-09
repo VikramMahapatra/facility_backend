@@ -158,7 +158,7 @@ def validate_current_token(
     if not org_status:
         return error_response(
             message="User is inactive in this organization",
-            status_code=str(AppStatusCode.AUTHENTICATION_USER_ORG_INACTIVE),
+            status_code=str(AppStatusCode.AUTHENTICATION_USER_INACTIVE),
             http_status=403
         )
 

@@ -11,6 +11,7 @@ from sqlalchemy import and_, func, desc
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.userroles import UserRoles
 from facility_service.app.models.common.staff_sites import StaffSite
+from facility_service.app.models.space_sites.sites import Site
 from ...models.procurement.vendors import Vendor
 from shared.models.users import Users
 from shared.core.config import Settings
@@ -145,13 +146,22 @@ def build_ticket_filters(
                 Ticket.preferred_time,
                 Ticket.created_at,
                 Ticket.closed_date,
+                Ticket.site_id, 
                 Ticket.space_id,
                 Ticket.assigned_to,
                 Ticket.vendor_id,
             ),
             selectinload(Ticket.category).load_only(
                 TicketCategory.category_name
-            )
+            ),
+            selectinload(Ticket.site).load_only(
+                Site.id,
+                Site.name
+            ),
+            selectinload(Ticket.space).load_only(
+                Space.id,
+                Space.name
+            ),
         )
     )
 
@@ -206,6 +216,8 @@ def get_tickets(db: Session,auth_db: Session, params: TicketFilterRequest, curre
         data.pop("vendor_id", None)
         data.pop("preferred_time", None)   # <-- remove to avoid duplicate
         data.pop("preferred_date", None)   # <-- remove if also passing explicitly
+        data.pop("space_id", None)
+        data.pop("site_id", None)
 
         assigned_to_str = str(t.assigned_to) if t.assigned_to else None
         vendor_id_str = str(t.vendor_id) if t.vendor_id else None
@@ -215,6 +227,10 @@ def get_tickets(db: Session,auth_db: Session, params: TicketFilterRequest, curre
         results.append(
             TicketOut(
                 **data,
+                site_id=t.site_id,  
+                space_id=t.space_id,
+                site_name=t.site.name if t.site else None,        
+                space_name=t.space.name if t.space else None, 
                 category=t.category.category_name if t.category else None,
                 can_escalate=t.can_escalate,
                 can_reopen=t.can_reopen,
@@ -374,7 +390,14 @@ async def create_ticket(
     if account_type == UserAccountType.ORGANIZATION:
         # Organization user: Get user_id from dropdown
         ticket_user_id = data.user_id
-        tenant_id = data.tenant_id
+        tenant_id = data.tenant_id or (
+            session.query(Tenant.id)
+            .filter(
+                Tenant.user_id == data.user_id,
+                Tenant.is_deleted == False
+            )
+            .scalar()
+        )
         title = data.title
     else:
         # TENANT users - creating ticket for themselves

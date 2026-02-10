@@ -45,6 +45,9 @@ class TicketOut(BaseModel):
     id: UUID
     ticket_no: str
     space_id: Optional[UUID] = None
+    site_id:Optional[UUID]=None
+    site_name:Optional[str] = None
+    space_name:Optional[str] = None
     category: Optional[str] = None
     title: str
     description: str

@@ -10,7 +10,10 @@ from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 
 class ComplaintOut(EmptyStringModel):
     id: UUID
-    space_id: UUID
+    site_id:Optional[UUID] = None
+    site_name:Optional[str] = None
+    space_id: Optional[UUID] = None
+    space_name:Optional[str] = None
     category: str
     status: str
     description: Optional[str] = None

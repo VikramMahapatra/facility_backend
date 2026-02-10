@@ -94,7 +94,12 @@ def create_user(
                     http_status=status.HTTP_400_BAD_REQUEST
                 )
 
-            org_instance = OrgSafe(name=user.organizationName)
+            org_instance = OrgSafe(
+                name=user.organizationName,
+                billing_email=user.email,
+                contact_phone=user.phone,
+                status="pending"
+            )
             facility_db.add(org_instance)
             facility_db.flush()  # ✅ ensure id generated
 

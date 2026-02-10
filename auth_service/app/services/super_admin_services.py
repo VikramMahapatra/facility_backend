@@ -10,7 +10,18 @@ from shared.models.users import Users
 def list_pending_orgs(facility_db: Session):
     pending_orgs = facility_db.query(OrgSafe).filter(
         OrgSafe.status == "pending").all()
-    return {"pending_orgs": [o.to_dict() for o in pending_orgs]}
+    return {
+        "pending_orgs": [
+            {
+                "id": o.id,
+                "name": o.name,
+                "email": o.billing_email,
+                "phone": o.contact_phone,
+                "created_at": o.created_at.isoformat()
+            }
+            for o in pending_orgs
+        ]
+    }
 
 
 def approve_org(org_id: str, facility_db: Session, auth_db: Session):

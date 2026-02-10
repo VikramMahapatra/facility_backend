@@ -313,26 +313,36 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         )
         .all()
     )
+    user_ids=None
+    staff_users=[]
+    
+    if staff_sites:
+        user_ids = [staff.user_id for staff in staff_sites]
 
-    if not staff_sites:
-        return []  # No staff assigned to this site
 
-    # Step 4: Extract user_ids
-    user_ids = [staff.user_id for staff in staff_sites]
+        # Step 5: Fetch all user names from auth db
+        users = (
+            auth_db.query(Users.id, Users.full_name)
+            .filter(Users.id.in_(user_ids))
+            .all()
+        )
 
-    # Step 5: Fetch all user names from auth db
-    users = (
-        auth_db.query(Users.id, Users.full_name)
-        .filter(Users.id.in_(user_ids))
-        .all()
-    )
+        # Create a mapping of user_id to user data for quick lookup
+        user_map = {user.id: user.full_name for user in users}
 
-    # Create a mapping of user_id to user data for quick lookup
-    user_map = {user.id: user.full_name for user in users}
+        # Create a mapping of user_id to staff_role
+        role_map = {staff.user_id: staff.staff_role for staff in staff_sites}
 
-    # Create a mapping of user_id to staff_role
-    role_map = {staff.user_id: staff.staff_role for staff in staff_sites}
-
+        # Return with formatted name including role
+        staff_users = [
+            {
+                "user_id": user_id,
+                "full_name": f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
+            }
+            for user_id in user_ids
+            if user_id in user_map  # Only include users found in auth db
+        ]
+        
     org_users = (
         auth_db.query(Users.id, Users.full_name)
         .join(Users.organizations)
@@ -346,15 +356,7 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         .all()
     )
 
-    # Return with formatted name including role
-    staff_users = [
-        {
-            "user_id": user_id,
-            "full_name": f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
-        }
-        for user_id in user_ids
-        if user_id in user_map  # Only include users found in auth db
-    ]
+
     # Convert org users to EmployeeOut
     org_users_lookup = [
         EmployeeOut(

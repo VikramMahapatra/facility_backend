@@ -1422,12 +1422,12 @@ def get_users_by_site_and_space(
             .first()
         )
 
-    if user:
-        users_list.append({
-            "id": tenant.user_id,
-            "name": f"{user.full_name} (tenant)",
-            "tenant_id": tenant.id
-        })
+        if user:
+            users_list.append({
+                "id": tenant.user_id,
+                "name": f"{user.full_name} (tenant)",
+                "tenant_id": tenant.id
+            })
 
     # ===============================
     # 3️⃣ REMOVE DUPLICATES

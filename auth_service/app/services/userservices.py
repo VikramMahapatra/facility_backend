@@ -85,16 +85,6 @@ def create_user(
         db.add(user_instance)
         db.flush()
 
-        # ✅ Commit All OR Rollback All
-        user_org = UserOrganization(
-            user_id=user_instance.id,
-            org_id=org_id,
-            account_type=user.account_type.lower(),
-            status="pending",
-            is_default=True
-        )
-        db.add(user_org)
-
         # ✅ ACCOUNT TYPE: ORGANIZATION
         if user.account_type.lower() == "organization":
             if not user.organizationName:
@@ -202,6 +192,17 @@ def create_user(
                     status=OwnershipStatus.pending
                 )
             )
+
+            # ✅ Commit All OR Rollback All
+
+        user_org = UserOrganization(
+            user_id=user_instance.id,
+            org_id=org_id,
+            account_type=user.account_type.lower(),
+            status="pending",
+            is_default=True
+        )
+        db.add(user_org)
 
         db.commit()
         facility_db.commit()

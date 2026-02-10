@@ -5,7 +5,7 @@ from typing import List
 from shared.core.database import get_facility_db as get_db
 from ...schemas.space_sites.orgs_schemas import OrgOut, OrgCreate, OrgUpdate
 from ...crud.space_sites import orgs_crud as crud_orgs
-from shared.core.auth import validate_current_token
+from shared.core.auth import require_super_admin, validate_current_token
 from shared.core.schemas import UserToken
 
 
@@ -17,7 +17,12 @@ router = APIRouter(
 
 
 @router.get("/all", response_model=List[OrgOut])
-def read_orgs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_orgs(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(require_super_admin)
+):
     return crud_orgs.get_orgs(db, skip=skip, limit=limit)
 
 

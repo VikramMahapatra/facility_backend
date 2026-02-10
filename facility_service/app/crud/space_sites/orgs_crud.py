@@ -6,7 +6,9 @@ from ...schemas.space_sites.orgs_schemas import OrgCreate, OrgOut, OrgUpdate
 
 
 def get_orgs(db: Session, skip: int = 0, limit: int = 100) -> List[Org]:
-    return db.query(Org).offset(skip).limit(limit).all()
+    org_list = db.query(Org).offset(skip).limit(limit).all()
+
+    return [OrgOut.model_validate(org, from_attributes=True) for org in org_list]
 
 
 def get_org_by_id(db: Session, org_id: str) -> Optional[OrgOut]:

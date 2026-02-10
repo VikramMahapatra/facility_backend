@@ -13,6 +13,11 @@ router = APIRouter(prefix="/api/super-admin",
                    tags=["Super Admin"], dependencies=[Depends(auth.require_super_admin)])
 
 
+@router.get("/orgs/recent-pending")
+def get_pending_organizations(db: Session = Depends(get_facility_db)):
+    return super_admin_services.get_pending_organizations(db)
+
+
 @router.get("/orgs/pending")
 def list_pending_orgs(facility_db: Session = Depends(get_facility_db)):
     return super_admin_services.list_pending_orgs(facility_db)

@@ -186,8 +186,10 @@ def get_my_spaces(db: Session, auth_db: Session, user: UserToken, site_id: UUID)
         )
 
         if site_id:
-            tenant_spaces_query.filter(Space.site_id == site_id)
-            owner_spaces_query.filter(Space.site_id == site_id)
+            tenant_spaces_query = tenant_spaces_query.filter(
+                Space.site_id == site_id)
+            owner_spaces_query = owner_spaces_query.filter(
+                Space.site_id == site_id)
 
         tenant_spaces = tenant_spaces_query.all()
         owner_spaces = owner_spaces_query.all()

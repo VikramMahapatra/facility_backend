@@ -85,16 +85,6 @@ def create_user(
         db.add(user_instance)
         db.flush()
 
-        # ✅ Commit All OR Rollback All
-        user_org = UserOrganization(
-            user_id=user_instance.id,
-            org_id=org_id,
-            account_type=user.account_type.lower(),
-            status="pending",
-            is_default=True
-        )
-        db.add(user_org)
-
         # ✅ ACCOUNT TYPE: ORGANIZATION
         if user.account_type.lower() == "organization":
             if not user.organizationName:
@@ -104,7 +94,12 @@ def create_user(
                     http_status=status.HTTP_400_BAD_REQUEST
                 )
 
-            org_instance = OrgSafe(name=user.organizationName)
+            org_instance = OrgSafe(
+                name=user.organizationName,
+                billing_email=user.email,
+                contact_phone=user.phone,
+                status="pending"
+            )
             facility_db.add(org_instance)
             facility_db.flush()  # ✅ ensure id generated
 
@@ -202,6 +197,17 @@ def create_user(
                     status=OwnershipStatus.pending
                 )
             )
+
+            # ✅ Commit All OR Rollback All
+
+        user_org = UserOrganization(
+            user_id=user_instance.id,
+            org_id=org_id,
+            account_type=user.account_type.lower(),
+            status="pending",
+            is_default=True
+        )
+        db.add(user_org)
 
         db.commit()
         facility_db.commit()

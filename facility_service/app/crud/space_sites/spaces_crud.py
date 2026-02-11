@@ -105,12 +105,13 @@ def get_spaces_overview(db: Session, user: UserToken, params: SpaceRequest):
 def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListResponse:
     allowed_space_ids = None
 
-    if user.account_type.lower() == UserAccountType.TENANT:
+    if user.account_type.lower() == UserAccountType.TENANT.value or user.account_type.lower() == UserAccountType.FLAT_OWNER.value:
         allowed_spaces = get_allowed_spaces(db, user)
         allowed_space_ids = [s["space_id"] for s in allowed_spaces]
 
         if not allowed_space_ids:
             return {"spaces": [], "total": 0}
+
     base_query = get_space_query(db, user.org_id, params)
 
     # APPLY TENANT FILTER HERE
@@ -120,7 +121,7 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
     query = (
         base_query
         .join(Site, Space.site_id == Site.id)
-        .join(Building, Space.building_block_id == Building.id, isouter=True)
+        .outerjoin(Building, Space.building_block_id == Building.id)
         .add_columns(Building.name.label("building_block_name"), Site.name.label("site_name"))
     )
     total = db.query(func.count()).select_from(query.subquery()).scalar()

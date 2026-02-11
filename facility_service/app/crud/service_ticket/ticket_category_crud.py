@@ -10,6 +10,7 @@ from auth_service.app.models.user_organizations import UserOrganization
 from shared.models.users import Users
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
+from shared.utils.enums import UserAccountType
 from ...models.space_sites.sites import Site
 from shared.core.config import Settings
 
@@ -313,17 +314,22 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         )
         .all()
     )
-    user_ids=None
-    staff_users=[]
-    
+    user_ids = None
+    staff_users = []
+
     if staff_sites:
         user_ids = [staff.user_id for staff in staff_sites]
-
 
         # Step 5: Fetch all user names from auth db
         users = (
             auth_db.query(Users.id, Users.full_name)
-            .filter(Users.id.in_(user_ids))
+            .join(UserOrganization, Users.id == UserOrganization.user_id)
+            .filter(
+                Users.id.in_(user_ids),
+                UserOrganization.is_deleted == False,
+                UserOrganization.status == "active",
+                UserOrganization.account_type == UserAccountType.STAFF.value
+            )
             .all()
         )
 
@@ -342,20 +348,19 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
             for user_id in user_ids
             if user_id in user_map  # Only include users found in auth db
         ]
-        
+
     org_users = (
         auth_db.query(Users.id, Users.full_name)
         .join(Users.organizations)
         .filter(
             UserOrganization.org_id == org_id,
-            UserOrganization.account_type == "organization",
+            UserOrganization.account_type == UserAccountType.ORGANIZATION.value,
             UserOrganization.status == "active",
             Users.status == "active",
             Users.is_deleted == False
         )
         .all()
     )
-
 
     # Convert org users to EmployeeOut
     org_users_lookup = [

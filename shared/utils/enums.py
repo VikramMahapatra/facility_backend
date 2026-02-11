@@ -6,6 +6,7 @@ class UserAccountType(str, Enum):
     TENANT = "tenant"
     STAFF = "staff"
     FLAT_OWNER = "owner"
+    VENDOR = "vendor"
     SUPER_ADMIN = "super_admin"
 
 

@@ -404,12 +404,11 @@ def get_space_lookup(db: Session, site_id: str, building_id: str, user: UserToke
         )
         .join(Site, Space.site_id == Site.id)
         .outerjoin(Building, Space.building_block_id == Building.id)
-        .filter(Space.is_deleted == False,
-                Site.is_deleted == False,
-                Site.status == "active",
-                Building.is_deleted == False,
-                Building.status == "active"
-                )
+        .filter(
+            Space.is_deleted == False,
+            Site.is_deleted == False,
+            Site.status == "active"
+        )
         .order_by(Space.name.asc())
     )
 

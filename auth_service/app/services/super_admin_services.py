@@ -1,10 +1,12 @@
 
 
 from requests import Session
+from sqlalchemy import or_
 from auth_service.app.models.orgs_safe import OrgSafe
 from auth_service.app.models.rolepolicy import RolePolicy
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
+from auth_service.app.schemas.superadminschema import OrgApprovalRequest
 from shared.helpers.json_response_helper import error_response
 from shared.models.users import Users
 from shared.utils.system_resources import SYSTEM_ACTIONS, SYSTEM_RESOURCES
@@ -24,25 +26,47 @@ def get_pending_organizations(db: Session):
         {
             "id": str(org.id),
             "name": org.name,
+            "email": org.billing_email,
+            "phone": org.contact_phone,
             "created_at": org.created_at
         }
         for org in pending_orgs
     ]
 
 
-def list_pending_orgs(facility_db: Session):
-    pending_orgs = facility_db.query(OrgSafe).filter(
-        OrgSafe.status == "pending").all()
+def list_pending_orgs(facility_db: Session, params: OrgApprovalRequest):
+    org_query = facility_db.query(OrgSafe)
+    if params.status:
+        org_query = org_query.filter(OrgSafe.status == params.status)
+
+    if params.search:
+        search_term = f"%{params.search}%"
+        org_query = org_query.filter(
+            or_(
+                OrgSafe.name.ilike(search_term),
+                OrgSafe.billing_email.ilike(search_term),
+                OrgSafe.contact_phone.ilike(search_term)
+            )
+        )
+
+    orgs = (
+        org_query
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+
     return {
-        "pending_orgs": [
+        "orgs": [
             {
                 "id": o.id,
                 "name": o.name,
                 "email": o.billing_email,
                 "phone": o.contact_phone,
+                "status": o.status,
                 "created_at": o.created_at.isoformat()
             }
-            for o in pending_orgs
+            for o in orgs
         ]
     }
 

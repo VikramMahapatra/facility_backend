@@ -701,8 +701,6 @@ def manage_tenant_space(
             tenant_type=db_tenant.kind
         )
 
-        print(user_account)
-
         error = handle_account_type_update(
             facility_db=db,
             db_user=db_user,
@@ -1051,7 +1049,7 @@ def get_or_create_user_and_org(
             full_name=name,
             email=email,
             phone=phone,
-            status="inactive",
+            status="active",
             created_at=now,
             updated_at=now
         )

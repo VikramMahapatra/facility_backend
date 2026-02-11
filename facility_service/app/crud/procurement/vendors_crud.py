@@ -7,9 +7,13 @@ from sqlalchemy import case, func, lateral, literal, or_, select, String
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID
 from auth_service.app.models.roles import Roles
+from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.userroles import UserRoles
+from facility_service.app.crud.access_control.user_management_crud import handle_account_type_update
+from facility_service.app.schemas.access_control.user_management_schemas import UserAccountCreate
 from shared.helpers.password_generator import generate_secure_password
 from shared.models.users import Users
+from shared.utils.enums import UserAccountType
 
 
 from ...models.procurement.contracts import Contract
@@ -217,42 +221,34 @@ def create_vendor(db: Session, auth_db: Session, vendor: VendorCreate, org_id: U
     now = datetime.utcnow()
 
     # CREATE USER RECORD
-    new_user_id = str(uuid.uuid4())
 
     contact_info = vendor.contact or {}
     contact_name = contact_info.get("name")
     contact_email = contact_info.get("email")
     contact_phone = contact_info.get("phone")
 
-    new_user = Users(
-        id=new_user_id,
+    new_user = get_or_create_user_and_org(
+        auth_db=auth_db,
         org_id=org_id,
-        full_name=vendor.name,
+        name=contact_name,
         email=contact_email,
-        phone=contact_phone,
-        account_type="vendor",
-        status="inactive",
-        is_deleted=False,
-        created_at=now,
-        updated_at=now,
+        phone=contact_phone
     )
-
-    auth_db.add(new_user)
-    auth_db.flush()
 
     # Add user_id to contact info
     updated_contact = contact_info.copy()
-    if new_user_id:
-        updated_contact["user_id"] = str(new_user_id)
+    if new_user.id:
+        updated_contact["user_id"] = str(new_user.id)
 
     # Add org_id to vendor data
     vendor_data = vendor.model_dump()
     vendor_data['org_id'] = org_id
-    vendor_data['user_id'] = new_user_id  # Add user_id to vendor
+    vendor_data['user_id'] = new_user.id  # Add user_id to vendor
     vendor_data['contact'] = updated_contact
 
     db_vendor = Vendor(**vendor_data)
     db.add(db_vendor)
+
     auth_db.commit()
     db.commit()
     db.refresh(db_vendor)
@@ -320,31 +316,7 @@ def update_vendor(db: Session, auth_db: Session, vendor: VendorUpdate) -> Option
                 status_code="OPERATION_ERROR",
                 http_status=400
             )
-    # UPDATE USER RECORD
-    if db_vendor.user_id:
-        user = auth_db.query(Users).filter(
-            Users.id == db_vendor.user_id,
-            Users.is_deleted == False
-        ).first()
 
-        if user:
-            new_contact = update_data.get(
-                "contact", {}) if update_data.get("contact") else {}
-            current_contact = db_vendor.contact or {}
-
-            vendor_name = update_data.get(
-                "name") or db_vendor.name  # Use vendor name
-            contact_email = new_contact.get(
-                "email") or current_contact.get("email")
-            contact_phone = new_contact.get(
-                "phone") or current_contact.get("phone")
-
-            user.full_name = vendor_name  # Use vendor name
-            if contact_email:
-                user.email = contact_email
-            if contact_phone:
-                user.phone = contact_phone
-            user.updated_at = datetime.utcnow()
     # ---------------- Update Fields ----------------
     for key, value in update_data.items():
         setattr(db_vendor, key, value)
@@ -363,6 +335,60 @@ def update_vendor(db: Session, auth_db: Session, vendor: VendorUpdate) -> Option
             http_status=400
         )
 
+
+def get_or_create_user_and_org(
+    *,
+    auth_db: Session,
+    org_id: UUID,
+    name: str,
+    email: str,
+    phone: str
+):
+    now = datetime.utcnow()
+
+    user = auth_db.query(Users).filter(
+        Users.is_deleted == False,
+        or_(Users.email == email, Users.phone == phone)
+    ).first()
+
+    if not user:
+        user = Users(
+            id=uuid.uuid4(),
+            full_name=name,
+            email=email,
+            phone=phone,
+            status="active",
+            created_at=now,
+            updated_at=now
+        )
+        auth_db.add(user)
+        auth_db.flush()
+
+    user_org = auth_db.query(UserOrganization).filter(
+        UserOrganization.user_id == user.id,
+        UserOrganization.org_id == org_id
+    ).first()
+
+    try:
+        if not user_org:
+            auth_db.add(
+                UserOrganization(
+                    user_id=user.id,
+                    org_id=org_id,
+                    account_type=UserAccountType.VENDOR.value,  # ✅ Set account type to VENDOR
+                    status="active"
+                )
+            )
+    except Exception as e:
+        # ✅ ROLLBACK everything if any error occurs
+        auth_db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
+    return user
 
 # ----------------- Delete (Soft Delete) -----------------
 

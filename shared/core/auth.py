@@ -129,7 +129,13 @@ def validate_current_token(
     user_data = verify_token(db, token)
 
     # Fetch the user from the database
-    user = db.query(Users).filter(Users.id == user_data.user_id).first()
+    user = (
+        db.query(Users)
+        .filter(
+            Users.id == user_data.user_id,
+            Users.is_deleted == False
+        ).first()
+    )
 
     if not user:
         return error_response(
@@ -145,22 +151,23 @@ def validate_current_token(
             http_status=403
         )
 
-    org_status = (
-        db.query(UserOrgStatus)
-        .filter(
-            UserOrgStatus.user_id == user_data.user_id,
-            UserOrgStatus.org_id == user_data.org_id,
-            UserOrgStatus.status == "active"
+    if not user.is_super_admin:
+        org_status = (
+            db.query(UserOrgStatus)
+            .filter(
+                UserOrgStatus.user_id == user_data.user_id,
+                UserOrgStatus.org_id == user_data.org_id,
+                UserOrgStatus.status == "active"
+            )
+            .first()
         )
-        .first()
-    )
 
-    if not org_status:
-        return error_response(
-            message="User is inactive in this organization",
-            status_code=str(AppStatusCode.AUTHENTICATION_USER_INACTIVE),
-            http_status=403
-        )
+        if not org_status:
+            return error_response(
+                message="User is inactive in this organization",
+                status_code=str(AppStatusCode.AUTHENTICATION_USER_INACTIVE),
+                http_status=403
+            )
 
     user_data.status = user.status
     return user_data
@@ -173,7 +180,13 @@ def validate_token(
     token = credentials.credentials
     user_data = verify_token(db, token)
 
-    user = db.query(Users).filter(Users.id == user_data.user_id).first()
+    user = (
+        db.query(Users)
+        .filter(
+            Users.id == user_data.user_id,
+            Users.is_deleted == False
+        ).first()
+    )
 
     if not user:
         return error_response(

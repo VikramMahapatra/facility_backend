@@ -14,7 +14,7 @@ from auth_service.app.models.userroles import UserRoles
 from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event
 from facility_service.app.models.space_sites.space_occupancies import OccupantType
 from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
-from shared.utils.enums import OwnershipStatus
+from shared.utils.enums import OwnershipStatus, UserAccountType
 from ...models.space_sites.user_sites import UserSite
 from ...enum.leasing_tenants_enum import TenantStatus
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
@@ -851,16 +851,19 @@ def search_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -
     #  USERS
     user_query = (
         db.query(Users)
-        # .join(
-        #     UserOrganization,
-        #     and_(
-        #         UserOrganization.user_id == Users.id,
-        #         UserOrganization.org_id == org_id,
-        #         UserOrganization.status == "active",
-        #         Users.is_deleted == False
-        #     )
-        # )
-        .filter(Users.is_deleted == False)
+        .join(
+            UserOrganization,
+            and_(
+                UserOrganization.user_id == Users.id,
+                UserOrganization.status == "active",
+                UserOrganization.account_type.not_in(
+                    [UserAccountType.ORGANIZATION.value, UserAccountType.SUPER_ADMIN.value])
+            )
+        )
+        .filter(
+            Users.is_deleted == False,
+            Users.status == "active"
+        )
     )
 
     if search_users:

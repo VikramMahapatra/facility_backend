@@ -41,4 +41,5 @@ class UserSite(Base):
             unique=True,
             postgresql_where=expression.true() == is_primary
         ),
+        {'extend_existing': True}
     )

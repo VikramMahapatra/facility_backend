@@ -60,6 +60,7 @@ class UserOut(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     account_types: Optional[List[str]] = None
+    default_account_type: Optional[str] = None
     roles: Optional[List[RoleOut]] = None
 
     model_config = ConfigDict(from_attributes=True)

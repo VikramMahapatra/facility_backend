@@ -63,7 +63,7 @@ def get_pending_users_for_approval(
             email=user.email,
             phone=user.phone,
             picture_url=user.picture_url,
-            account_type=user_org.account_type,   # ✅ from user_organizations
+            default_account_type=user_org.account_type,   # ✅ from user_organizations
             status=user_org.status,               # ✅ pending_approval
             roles=[RoleOut.model_validate(role) for role in user_org.roles],
             created_at=user.created_at,

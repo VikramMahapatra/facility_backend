@@ -162,16 +162,6 @@ def update_user_approval_status(
             tenant.status = user_org.status
             tenant.is_deleted = True if request.status == ApprovalStatus.reject else False
 
-            if request.status == ApprovalStatus.approve:
-                lease = validate_tenant_lease(
-                    facility_db=facility_db,
-                    tenant_id=tenant.id,
-                    org_id=org_id
-                )
-
-                if not lease:
-                    return error_response(message="Tenant cannot be approved without an active lease")
-
     if user_org.account_type.lower() == "owner":
         space_owner = (
             facility_db.query(SpaceOwner)

@@ -135,7 +135,7 @@ class UserRequest(CommonQueryParams):
 class UserListResponse(BaseModel):
     users: List[UserOut]
     total: int
-    total_pending: int
+    total_pending: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1282,6 +1282,7 @@ def reject_tenant(
 
 def get_tenant_approvals(
     db: Session,
+    auth_db: Session,
     org_id: UUID,
     status: str | None = None,
     search: str | None = None,
@@ -1332,7 +1333,23 @@ def get_tenant_approvals(
     rows = query.order_by(TenantSpace.created_at.desc()
                           ).offset(skip).limit(limit).all()
 
-    items = [
+    items = []
+    for r in rows:
+
+        if r.tenant_user_id:
+            user = (
+                auth_db.query(Users)
+                .filter(
+                    Users.id == r.tenant_user_id,
+                    Users.status == "active"
+                )
+                .first()
+            )
+
+            # Skip if user not active
+            if not user:
+                continue
+
         TenantApprovalOut(
             tenant_space_id=r.tenant_space_id,
             tenant_user_id=r.tenant_user_id,
@@ -1346,8 +1363,6 @@ def get_tenant_approvals(
             status=r.status,
             requested_at=r.requested_at,
         )
-        for r in rows
-    ]
 
     return {
         "items": items,

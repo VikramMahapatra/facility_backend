@@ -1350,7 +1350,7 @@ def get_tenant_approvals(
             if not user:
                 continue
 
-        TenantApprovalOut(
+        items.append(TenantApprovalOut(
             tenant_space_id=r.tenant_space_id,
             tenant_user_id=r.tenant_user_id,
             tenant_id=r.tenant_id,
@@ -1362,7 +1362,7 @@ def get_tenant_approvals(
             tenant_type=r.tenant_type,
             status=r.status,
             requested_at=r.requested_at,
-        )
+        ))
 
     return {
         "items": items,

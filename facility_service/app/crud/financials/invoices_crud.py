@@ -1299,10 +1299,6 @@ def get_invoice_detail(db: Session, auth_db: Session, org_id: UUID, invoice_id: 
                 if ticket:
                     if ticket.tenant:
                         customer_name = ticket.tenant.name or ticket.tenant.legal_name
-                    elif ticket.vendor:
-                        customer_name = ticket.vendor.name
-                    elif ticket.space and ticket.space.tenant:
-                        customer_name = ticket.space.tenant.name or ticket.space.tenant.legal_name
 
         # ---------- LEASE CHARGE ----------
         elif invoice.billable_item_type == "rent":

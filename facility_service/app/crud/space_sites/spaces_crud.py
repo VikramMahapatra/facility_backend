@@ -875,10 +875,18 @@ def get_pending_space_owner_requests(
         if owner.owner_user_id:
             user = (
                 auth_db.query(Users)
-                .filter(Users.id == owner.owner_user_id)
+                .filter(
+                    Users.id == owner.owner_user_id,
+                    Users.status == "active"
+                )
                 .first()
             )
-            owner_name = user.full_name if user else None
+
+            # Skip if user not active
+            if not user:
+                continue
+
+            owner_name = user.full_name
 
         response.append(
             OwnershipHistoryOut(

@@ -1,9 +1,11 @@
 import os
 import shutil
+from uuid import UUID
 from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func, and_
 
+from ..models.user_sites_safe import UserSiteSafe
 from shared.utils.enums import OwnershipStatus
 from ..models.space_owners_safe import SpaceOwnerSafe
 from ..models.user_organizations import UserOrganization
@@ -166,6 +168,14 @@ def create_user(
             )
             facility_db.add(space_tenant_link)
 
+            tenant_site_ids = [user.site_id]
+
+            upsert_user_sites_preserve_primary(
+                facility_db=facility_db,
+                user_id=user_instance.id,
+                site_ids=tenant_site_ids
+            )
+
         elif user.account_type.lower() == "owner":
             # ✅ Find site
             site = facility_db.query(SiteSafe).filter(
@@ -180,7 +190,7 @@ def create_user(
 
             if not user.space_id:
                 return error_response(
-                    message="Space required for tenant",
+                    message="Space required for owner",
                     status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 )
 
@@ -198,7 +208,13 @@ def create_user(
                 )
             )
 
-            # ✅ Commit All OR Rollback All
+            owner_site_ids = [user.site_id]
+
+            upsert_user_sites_preserve_primary(
+                facility_db=facility_db,
+                user_id=user_instance.id,
+                site_ids=owner_site_ids
+            )
 
         user_org = UserOrganization(
             user_id=user_instance.id,
@@ -211,11 +227,6 @@ def create_user(
 
         db.commit()
         facility_db.commit()
-
-    except HTTPException:
-        db.rollback()
-        facility_db.rollback()
-        return error_response(message="Something went wrong")
 
     except SQLAlchemyError as e:
         db.rollback()
@@ -391,3 +402,48 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
     }
 
     return user_dict
+
+
+def upsert_user_sites_preserve_primary(
+    *,
+    facility_db: Session,
+    user_id: UUID,
+    site_ids: list[UUID]
+):
+    if not site_ids:
+        return
+
+    # Fetch existing primary site (if any)
+    existing_primary = (
+        facility_db.query(UserSiteSafe)
+        .filter(
+            UserSiteSafe.user_id == user_id,
+            UserSiteSafe.is_primary == True
+        )
+        .first()
+    )
+
+    existing_primary_site_id = (
+        existing_primary.site_id if existing_primary else None
+    )
+
+    # Decide which site should be primary
+    if existing_primary_site_id in site_ids:
+        primary_site_id = existing_primary_site_id
+    else:
+        primary_site_id = site_ids[0]
+
+    # Clear old mappings
+    facility_db.query(UserSiteSafe).filter(
+        UserSiteSafe.user_id == user_id
+    ).delete()
+
+    # Reinsert with preserved primary
+    for site_id in site_ids:
+        facility_db.add(
+            UserSiteSafe(
+                user_id=user_id,
+                site_id=site_id,
+                is_primary=(site_id == primary_site_id)
+            )
+        )

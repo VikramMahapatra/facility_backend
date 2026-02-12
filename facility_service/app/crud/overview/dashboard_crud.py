@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
 from sqlalchemy.orm import Session
-from sqlalchemy import Integer, and_, extract, func, case , literal_column, or_
+from sqlalchemy import Integer, and_, extract, func, case, literal_column, or_
 from datetime import date, datetime, timedelta
 
 from ...models.leasing_tenants.lease_charge_code import LeaseChargeCode
@@ -23,14 +23,14 @@ from ...models.parking_access.parking_pass import ParkingPass
 from ...models.parking_access.parking_zones import ParkingZone
 from ...models.parking_access.visitors import Visitor
 from ...models.space_sites.spaces import Space
-from ...models.leasing_tenants.leases import Lease  
+from ...models.leasing_tenants.leases import Lease
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.maintenance_assets.pm_template import PMTemplate
 from ...models.maintenance_assets.service_request import ServiceRequest
 from ...models.maintenance_assets.work_order import WorkOrder
 from ...models.maintenance_assets.assets import Asset
 from ...models.space_sites.sites import Site
-from ...models.hospitality.folios import Folio 
+from ...models.hospitality.folios import Folio
 from ...models.hospitality.folios_payments import FolioPayment
 from ...models.energy_iot.meter_readings import MeterReading
 from ...models.energy_iot.meters import Meter
@@ -38,6 +38,7 @@ from ...models.financials.invoices import Invoice, PaymentAR
 from sqlalchemy.dialects.postgresql import UUID
 from dateutil.relativedelta import relativedelta
 from datetime import timedelta
+
 
 def get_overview_data(db: Session, org_id: UUID) -> Dict[str, Any]:
     today = date.today()
@@ -58,7 +59,8 @@ def get_overview_data(db: Session, org_id: UUID) -> Dict[str, Any]:
 
     # ------------------- Monthly Revenue -------------------
     total_charges = (
-        db.query(func.coalesce(func.sum(FolioCharge.amount + (FolioCharge.amount * FolioCharge.tax_pct / 100)), 0))
+        db.query(func.coalesce(func.sum(FolioCharge.amount +
+                 (FolioCharge.amount * FolioCharge.tax_pct / 100)), 0))
         .join(Folio, Folio.id == FolioCharge.folio_id)
         .join(Booking, Booking.id == Folio.booking_id)
         .filter(
@@ -86,8 +88,11 @@ def get_overview_data(db: Session, org_id: UUID) -> Dict[str, Any]:
     # ------------------- Work Orders -------------------
     total_work_orders = (
         db.query(func.count(TicketWorkOrder.id))
-        .filter(TicketWorkOrder.ticket_id==Ticket.id,
-                Ticket.status=="open")
+        .filter(
+            TicketWorkOrder.ticket_id == Ticket.id,
+            Ticket.status == "open",
+            Ticket.org_id == org_id
+        )
         .scalar()
         or 0
     )
@@ -113,7 +118,8 @@ def get_overview_data(db: Session, org_id: UUID) -> Dict[str, Any]:
             Meter.org_id == org_id,
             Meter.kind == "electricity",
             MeterReading.ts >= func.date_trunc("month", func.current_date()),
-            MeterReading.ts < func.date_trunc("month", func.current_date()) + literal_column("INTERVAL '1 month'"),
+            MeterReading.ts < func.date_trunc(
+                "month", func.current_date()) + literal_column("INTERVAL '1 month'"),
         )
         .scalar()
         or 0.0
@@ -170,9 +176,8 @@ def get_overview_data(db: Session, org_id: UUID) -> Dict[str, Any]:
             "description": "Monthly consumption",
         },
     ]
-    
-    return {"stats": stats_list}
 
+    return {"stats": stats_list}
 
 
 def get_leasing_overview(db: Session, org_id: UUID):
@@ -182,27 +187,27 @@ def get_leasing_overview(db: Session, org_id: UUID):
         func.sum(
             case(
                 ((Lease.end_date >= today) &
-                (Lease.end_date <= today + timedelta(days=30)) &
-                (func.lower(Lease.status) == "active") &
-                (Lease.org_id == org_id), 1),
+                 (Lease.end_date <= today + timedelta(days=30)) &
+                 (func.lower(Lease.status) == "active") &
+                 (Lease.org_id == org_id), 1),
                 else_=0
             )
         ).label("renewals_30_days"),
         func.sum(
             case(
                 ((Lease.end_date >= today) &
-                (Lease.end_date <= today + timedelta(days=60)) &
-                (func.lower(Lease.status) == "active") &
-                (Lease.org_id == org_id), 1),
+                 (Lease.end_date <= today + timedelta(days=60)) &
+                 (func.lower(Lease.status) == "active") &
+                 (Lease.org_id == org_id), 1),
                 else_=0
             )
         ).label("renewals_60_days"),
         func.sum(
             case(
                 ((Lease.end_date >= today) &
-                (Lease.end_date <= today + timedelta(days=90)) &
-                (func.lower(Lease.status) == "active") &
-                (Lease.org_id == org_id), 1),
+                 (Lease.end_date <= today + timedelta(days=90)) &
+                 (func.lower(Lease.status) == "active") &
+                 (Lease.org_id == org_id), 1),
                 else_=0
             )
         ).label("renewals_90_days")
@@ -212,7 +217,8 @@ def get_leasing_overview(db: Session, org_id: UUID):
     total_billed = (
         db.query(
             func.coalesce(
-                func.sum(LeaseCharge.amount + (LeaseCharge.amount * TaxCode.rate / 100)), 0
+                func.sum(LeaseCharge.amount +
+                         (LeaseCharge.amount * TaxCode.rate / 100)), 0
             )
         )
         .join(Lease, Lease.id == LeaseCharge.lease_id)
@@ -234,7 +240,8 @@ def get_leasing_overview(db: Session, org_id: UUID):
 
     # ------------------- Collection Rate -------------------
     collection_rate_pct = round(
-        (float(total_collected) / float(total_billed) * 100) if total_billed > 0 else 0,
+        (float(total_collected) / float(total_billed)
+         * 100) if total_billed > 0 else 0,
         2
     )
 
@@ -248,64 +255,67 @@ def get_leasing_overview(db: Session, org_id: UUID):
 
 # ------------------------ Maintenance Status ------------------------
 
+
 def get_maintenance_status(db: Session, org_id: UUID):
     today = date.today()
-    
+
     # Open Tickets
     open_tickets = db.query(func.count(Ticket.id))\
         .filter(Ticket.org_id == org_id,
-                func.lower(Ticket.status)==  'open')\
+                func.lower(Ticket.status) == 'open')\
         .scalar() or 0
-        
+
     # Closed Tickets
     closed_tickets = db.query(func.count(Ticket.id))\
         .filter(Ticket.org_id == org_id,
                 func.lower(Ticket.status) == 'closed')\
         .scalar() or 0
 
-    # Upcoming PM - 
+    # Upcoming PM -
     upcoming_pm = db.query(func.count(PMTemplate.id))\
-        .filter(PMTemplate.org_id==org_id,
-                func.lower(PMTemplate.status) =="active")\
-        .scalar()or 0
+        .filter(PMTemplate.org_id == org_id,
+                func.lower(PMTemplate.status) == "active")\
+        .scalar() or 0
 
     service_requests = db.query(func.count(Ticket.id))\
         .filter(Ticket.org_id == org_id,
-                func.lower(Ticket.status)==  'open')\
+                func.lower(Ticket.status) == 'open')\
         .scalar() or 0
-  
+
     asset_at_risk = db.query(
         func.sum(
             case(
                 (and_(
                     Asset.warranty_expiry.isnot(None),
                     Asset.warranty_expiry < today,
-                    Asset.is_deleted ==False
+                    Asset.is_deleted == False
                 ), 1),
-                else_=0 
+                else_=0
             )
         )
     ).filter(Asset.org_id == org_id,
-            func.lower(Asset.status) == "active",).scalar() or 0
- 
+             func.lower(Asset.status) == "active",).scalar() or 0
+
     return {
-        "open": open_tickets,                 
-        "closed": closed_tickets,             
-        "upcoming_pm": upcoming_pm,           
-        "service_requests": service_requests, 
-        "asset_at_risk": asset_at_risk   
+        "open": open_tickets,
+        "closed": closed_tickets,
+        "upcoming_pm": upcoming_pm,
+        "service_requests": service_requests,
+        "asset_at_risk": asset_at_risk
     }
-    
-#-----------------access and parking -------------------
+
+# -----------------access and parking -------------------
+
+
 def get_access_and_parking(db: Session, org_id: UUID):
     today = date.today()
-    
+
     # Today's Visitors
     today_visitors = db.query(func.count()).filter(
         Visitor.org_id == org_id,
         func.date(Visitor.entry_time) == today
     ).scalar()
-        
+
     # Total capacity
     total_capacity = db.query(func.coalesce(func.sum(ParkingZone.capacity), 0)).filter(
         ParkingZone.org_id == org_id
@@ -320,20 +330,20 @@ def get_access_and_parking(db: Session, org_id: UUID):
     ).scalar()
 
     # Occupancy %
-    parking_occupancy_pct = round((total_occupied / total_capacity * 100) if total_capacity else 0, 2)
+    parking_occupancy_pct = round(
+        (total_occupied / total_capacity * 100) if total_capacity else 0, 2)
 
-    
     # Spaces
     total_spaces = db.query(func.count()).filter(
         Space.org_id == org_id,
         Space.status == 'available'
     ).scalar()
-    
+
     occupied_spaces = db.query(func.count()).filter(
         Space.org_id == org_id,
         Space.status == 'occupied'
     ).scalar()
-    
+
     # Recent Access Events (latest 5)
     recent_access_events = (
         db.query(AccessEvent)
@@ -342,13 +352,13 @@ def get_access_and_parking(db: Session, org_id: UUID):
         .limit(5)
         .all()
     )
-    
-    
+
     formatted_events = [
-        {"time": ae.ts.strftime("%H:%M"), "event": "Entry" if ae.direction == "in" else "Exit", "location": ae.gate}
+        {"time": ae.ts.strftime(
+            "%H:%M"), "event": "Entry" if ae.direction == "in" else "Exit", "location": ae.gate}
         for ae in recent_access_events
     ]
-    
+
     return {
         "today_visitors": today_visitors,
         "parking_occupancy_pct": parking_occupancy_pct,
@@ -358,16 +368,16 @@ def get_access_and_parking(db: Session, org_id: UUID):
     }
 
 
-
 # ------------------------ Financial Summary ------------------------
 def get_financial_summary(db: Session, org_id: UUID):
     today = date.today()
 
-     # ------------------- Monthly Income -------------------
+    # ------------------- Monthly Income -------------------
     monthly_income = (
         db.query(
             func.coalesce(
-                func.sum(LeaseCharge.amount + LeaseCharge.amount * TaxCode.rate / 100),
+                func.sum(LeaseCharge.amount +
+                         LeaseCharge.amount * TaxCode.rate / 100),
                 0
             )
         )
@@ -377,9 +387,11 @@ def get_financial_summary(db: Session, org_id: UUID):
             Lease.org_id == org_id,
             or_(
                 LeaseCharge.period_start <= (
-                    func.date_trunc("month", func.current_date()) + literal_column("INTERVAL '1 month - 1 day'")
+                    func.date_trunc("month", func.current_date()) +
+                    literal_column("INTERVAL '1 month - 1 day'")
                 ),
-                LeaseCharge.period_end >= func.date_trunc("month", func.current_date())
+                LeaseCharge.period_end >= func.date_trunc(
+                    "month", func.current_date())
             )
         )
         .scalar()
@@ -390,7 +402,8 @@ def get_financial_summary(db: Session, org_id: UUID):
     overdue = (
         db.query(
             func.coalesce(
-                func.sum(LeaseCharge.amount + LeaseCharge.amount * TaxCode.rate / 100), 0
+                func.sum(LeaseCharge.amount + LeaseCharge.amount *
+                         TaxCode.rate / 100), 0
             )
         )
         .join(Lease, Lease.id == LeaseCharge.lease_id)
@@ -452,12 +465,12 @@ def get_financial_summary(db: Session, org_id: UUID):
     }
 
 
-#-------------------------------monthly revenue-----------------------
+# -------------------------------monthly revenue-----------------------
 def monthly_revenue_trend(db: Session, org_id: UUID):
     # Get the current date and calculate the last 4 months
     today = date.today()
     current_month_start = today.replace(day=1)
-    
+
     # Generate the last 4 months including current month
     months = []
     for i in range(3, -1, -1):  # Last 3 months + current month
@@ -466,18 +479,19 @@ def monthly_revenue_trend(db: Session, org_id: UUID):
             "date": month_date,
             "label": month_date.strftime("%b")
         })
-    
+
     monthly_data = []
-    
+
     for month_info in months:
         month_start = month_info["date"]
         month_end = (month_start + relativedelta(months=1)) - timedelta(days=1)
-        
+
         # Calculate rental revenue for the month
         rental_revenue = float((
             db.query(
                 func.coalesce(
-                    func.sum(LeaseCharge.amount + LeaseCharge.amount * TaxCode.rate / 100),
+                    func.sum(LeaseCharge.amount +
+                             LeaseCharge.amount * TaxCode.rate / 100),
                     0
                 )
             )
@@ -492,12 +506,13 @@ def monthly_revenue_trend(db: Session, org_id: UUID):
             )
             .scalar() or 0.0
         ))
-        
+
         # Calculate CAM revenue for the month
         cam_revenue = float((
             db.query(
                 func.coalesce(
-                    func.sum(LeaseCharge.amount + LeaseCharge.amount * TaxCode.rate / 100),
+                    func.sum(LeaseCharge.amount +
+                             LeaseCharge.amount * TaxCode.rate / 100),
                     0
                 )
             )
@@ -512,21 +527,20 @@ def monthly_revenue_trend(db: Session, org_id: UUID):
             )
             .scalar() or 0.0
         ))
-        
+
         # Round all values to 2 decimal places
         rental_revenue = round(rental_revenue, 2)
         cam_revenue = round(cam_revenue, 2)
         total_revenue = round(rental_revenue + cam_revenue, 2)
-        
+
         monthly_data.append({
             "month": month_info["label"],
             "rental": rental_revenue,
             "cam": cam_revenue,
             "total": total_revenue
         })
-    
-    return monthly_data
 
+    return monthly_data
 
 
 def space_occupancy(db: Session, org_id: UUID):
@@ -539,7 +553,7 @@ def space_occupancy(db: Session, org_id: UUID):
         )
         .scalar() or 0
     )
-    
+
     # Count occupied spaces
     occupied_spaces = (
         db.query(func.count(Space.id))
@@ -550,7 +564,7 @@ def space_occupancy(db: Session, org_id: UUID):
         )
         .scalar() or 0
     )
-    
+
     # Count available spaces
     available_spaces = (
         db.query(func.count(Space.id))
@@ -561,7 +575,7 @@ def space_occupancy(db: Session, org_id: UUID):
         )
         .scalar() or 0
     )
-    
+
     # Count out of service spaces
     out_of_service_spaces = (
         db.query(func.count(Space.id))
@@ -572,12 +586,12 @@ def space_occupancy(db: Session, org_id: UUID):
         )
         .scalar() or 0
     )
-    
+
     # Calculate occupancy rate (percentage)
     occupancy_rate = 0.0
     if total_spaces > 0:
         occupancy_rate = round((occupied_spaces / total_spaces) * 100, 1)
-    
+
     return {
         "total": total_spaces,
         "occupied": occupied_spaces,
@@ -587,46 +601,46 @@ def space_occupancy(db: Session, org_id: UUID):
     }
 
 
-
 def work_orders_priority(db: Session, org_id: UUID) -> List[Dict]:
     # Base query
     query = db.query(
         Ticket.priority,
         func.count(Ticket.id).label('count')
     ).filter(
-        Ticket.status=="open", 
+        Ticket.status == "open",
         TicketWorkOrder.id.is_not(None)
     )
 
     query = query.join(
-        TicketWorkOrder, 
+        TicketWorkOrder,
         TicketWorkOrder.ticket_id == Ticket.id
     )
-    
+
     if org_id:
         query = query.filter(Ticket.org_id == org_id)
-    
+
     results = query.group_by(Ticket.priority).all()
-    
+
     priority_order = ["high", "medium", "low"]
 
     priority_counts = {row.priority: row.count for row in results}
- 
+
     response = []
     for priority in priority_order:
         response.append({
             "priority": priority,
             "count": priority_counts.get(priority, 0)
         })
-    
+
     return response
+
 
 def get_energy_consumption_trend(db: Session, org_id: UUID):
     # Get the current date and calculate the last 4 months
     today = date.today()
-    
+
     current_month_start = today.replace(day=1)
-    
+
     # Generate the last 4 months including current month
     months = []
     for i in range(3, -1, -1):  # Last 3 months + current month: Aug, Sep, Oct, Nov
@@ -635,13 +649,13 @@ def get_energy_consumption_trend(db: Session, org_id: UUID):
             "date": month_date,
             "label": month_date.strftime("%b")
         })
-    
+
     monthly_data = []
-    
+
     for month_info in months:
         month_start = month_info["date"]
         month_end = (month_start + relativedelta(months=1)) - timedelta(days=1)
-        
+
         # Use between() for cleaner date range filtering
         electricity_consumption = float((
             db.query(
@@ -655,7 +669,7 @@ def get_energy_consumption_trend(db: Session, org_id: UUID):
             )
             .scalar() or 0.0
         ))
-        
+
         water_consumption = float((
             db.query(
                 func.coalesce(func.sum(MeterReading.delta), 0)
@@ -668,7 +682,7 @@ def get_energy_consumption_trend(db: Session, org_id: UUID):
             )
             .scalar() or 0.0
         ))
-        
+
         gas_consumption = float((
             db.query(
                 func.coalesce(func.sum(MeterReading.delta), 0)
@@ -681,14 +695,14 @@ def get_energy_consumption_trend(db: Session, org_id: UUID):
             )
             .scalar() or 0.0
         ))
-        
+
         monthly_data.append({
             "month": month_info["label"],
             "electricity": round(electricity_consumption, 2),
             "water": round(water_consumption, 2),
             "gas": round(gas_consumption, 2)
         })
-    
+
     return monthly_data
 
 
@@ -701,9 +715,12 @@ def get_occupancy_by_floor(db: Session, org_id: UUID) -> List[OccupancyByFloorRe
     occupancy_stats = db.query(
         Space.floor,
         func.count(Space.id).label('total'),
-        func.sum(case((func.lower(Space.status) == 'occupied', 1), else_=0)).label('occupied'),
-        func.sum(case((func.lower(Space.status) == 'available', 1), else_=0)).label('available'),
-        func.sum(case((func.lower(Space.status) == 'out_of_service', 1), else_=0)).label('out_of_service')
+        func.sum(case((func.lower(Space.status) == 'occupied', 1), else_=0)).label(
+            'occupied'),
+        func.sum(case((func.lower(Space.status) == 'available', 1), else_=0)).label(
+            'available'),
+        func.sum(case((func.lower(Space.status) == 'out_of_service', 1), else_=0)).label(
+            'out_of_service')
     ).filter(
         Space.org_id == org_id,
         Space.is_deleted == False,
@@ -712,18 +729,19 @@ def get_occupancy_by_floor(db: Session, org_id: UUID) -> List[OccupancyByFloorRe
         Space.floor
     ).order_by(
         # Natural sorting: numeric floors first, then others
-        func.cast(Space.floor, Integer).nullsfirst(),  # Fixed: Use Integer from sqlalchemy
+        # Fixed: Use Integer from sqlalchemy
+        func.cast(Space.floor, Integer).nullsfirst(),
         Space.floor
     ).all()
-    
-        # Convert to the exact format requested
+
+    # Convert to the exact format requested
     occupancy_data = []
     for floor, total, occupied, available, out_of_service in occupancy_stats:
         floor_str = str(floor) if floor is not None else "Unknown"
-        
+
         # Dynamic floor name conversion - integrated directly
         floor_lower = floor_str.lower().strip()
-        
+
         # Special cases
         if floor_lower == "0":
             floor_display = "Ground Floor"
@@ -732,12 +750,13 @@ def get_occupancy_by_floor(db: Session, org_id: UUID) -> List[OccupancyByFloorRe
             try:
                 floor_num = int(floor_lower)
                 suffixes = {1: "st", 2: "nd", 3: "rd"}
-                suffix = suffixes.get(floor_num, "th") if floor_num < 4 else "th"
+                suffix = suffixes.get(
+                    floor_num, "th") if floor_num < 4 else "th"
                 floor_display = f"{floor_num}{suffix} Floor"
             except (ValueError, TypeError):
                 # If it's not a number, return the original string capitalized
                 floor_display = floor_str.title()
-        
+
         occupancy_data.append(OccupancyByFloorResponse(
             floor=floor_display,
             total=total or 0,
@@ -745,10 +764,8 @@ def get_occupancy_by_floor(db: Session, org_id: UUID) -> List[OccupancyByFloorRe
             available=available or 0,
             outOfService=out_of_service or 0
         ))
-    
+
     return occupancy_data
-
-
 
 
 def get_energy_status(db: Session, org_id: UUID):
@@ -786,7 +803,7 @@ def get_energy_status(db: Session, org_id: UUID):
     # If no issues found, return system status
     if not alerts:
         alerts.append({
-            "type": "System", 
+            "type": "System",
             "message": ""
         })
 

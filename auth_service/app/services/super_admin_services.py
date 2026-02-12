@@ -9,6 +9,7 @@ from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.schemas.superadminschema import OrgApprovalRequest
 from shared.helpers.json_response_helper import error_response
 from shared.models.users import Users
+from shared.utils.enums import UserAccountType
 from shared.utils.system_resources import SYSTEM_ACTIONS, SYSTEM_RESOURCES
 
 
@@ -36,6 +37,9 @@ def get_pending_organizations(db: Session):
 
 def list_pending_orgs(facility_db: Session, params: OrgApprovalRequest):
     org_query = facility_db.query(OrgSafe)
+
+    total_pending_orgs = org_query.filter(OrgSafe.status == "pending").count()
+
     if params.status:
         org_query = org_query.filter(OrgSafe.status == params.status)
 
@@ -48,6 +52,8 @@ def list_pending_orgs(facility_db: Session, params: OrgApprovalRequest):
                 OrgSafe.contact_phone.ilike(search_term)
             )
         )
+
+    total = org_query.count()
 
     orgs = (
         org_query
@@ -67,7 +73,9 @@ def list_pending_orgs(facility_db: Session, params: OrgApprovalRequest):
                 "created_at": o.created_at.isoformat()
             }
             for o in orgs
-        ]
+        ],
+        "total": total,
+        "total_pending": total_pending_orgs
     }
 
 
@@ -92,19 +100,20 @@ def approve_org(org_id: str, facility_db: Session, auth_db: Session):
 
     auth_db.query(UserOrganization).filter(
         UserOrganization.org_id == org_id,
-        UserOrganization.account_type == "organization"
+        UserOrganization.account_type == UserAccountType.ORGANIZATION.value
     ).update({"status": "active"}, synchronize_session=False)
 
     # ------------------------------------------------
     # 3. Activate users
     # ------------------------------------------------
 
-    auth_db.query(Users).join(
-        UserOrganization,
-        Users.id == UserOrganization.user_id
-    ).filter(
+    user_ids = auth_db.query(UserOrganization.user_id).filter(
         UserOrganization.org_id == org_id,
-        UserOrganization.account_type == "organization"
+        UserOrganization.account_type == UserAccountType.ORGANIZATION.value
+    )
+
+    auth_db.query(Users).filter(
+        Users.id.in_(user_ids)
     ).update({"status": "active"}, synchronize_session=False)
 
     # ------------------------------------------------

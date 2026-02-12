@@ -228,11 +228,6 @@ def create_user(
         db.commit()
         facility_db.commit()
 
-    except HTTPException:
-        db.rollback()
-        facility_db.rollback()
-        return error_response(message="Something went wrong")
-
     except SQLAlchemyError as e:
         db.rollback()
         facility_db.rollback()

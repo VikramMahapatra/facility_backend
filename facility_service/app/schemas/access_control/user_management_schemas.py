@@ -135,6 +135,9 @@ class UserRequest(CommonQueryParams):
 class UserListResponse(BaseModel):
     users: List[UserOut]
     total: int
+    total_pending: int
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ApprovalStatus(str, Enum):
@@ -145,7 +148,7 @@ class ApprovalStatus(str, Enum):
 class ApprovalStatusRequest(BaseModel):
     user_id: UUID
     status: ApprovalStatus = Field(..., description="User approval status")
-    role_ids: List[str]
+    role_ids: Optional[List[str]] = None
 
     model_config = {
         "use_enum_values": True

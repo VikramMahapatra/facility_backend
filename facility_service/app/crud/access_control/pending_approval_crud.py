@@ -1,7 +1,7 @@
 from datetime import date
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import UUID, func
+from sqlalchemy import UUID, func, or_
 from typing import Dict, List, Optional
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
@@ -22,7 +22,7 @@ from ...schemas.access_control.user_management_schemas import (
 )
 
 
-def get_pending_users_for_approval(
+def get_all_users_for_approval(
     db: Session,
     org_id: str,
     params: UserRequest
@@ -32,12 +32,38 @@ def get_pending_users_for_approval(
         .join(Users, Users.id == UserOrganization.user_id)
         .filter(
             UserOrganization.org_id == org_id,
-            func.lower(Users.status) == "pending_approval",
-            func.lower(UserOrganization.status) == "pending",
             UserOrganization.is_deleted == False,
             Users.is_deleted == False
         )
     )
+
+    total_pendings = (
+        base_query.with_entities(
+            func.count(UserOrganization.id.distinct())
+        ).filter(
+            func.lower(
+                UserOrganization.status) == "pending"
+        ).scalar()
+    )
+
+    if params.status:
+        base_query = base_query.filter(
+            func.lower(UserOrganization.status) == params.status.lower()
+        )
+
+    # func.lower(Users.status) == "pending_approval",
+    # func.lower(UserOrganization.status) == "pending",
+
+    if params.search:
+        search_term = f"%{params.search}%"
+        base_query = base_query.filter(
+            or_(
+                UserOrganization.account_type.ilike(search_term),
+                Users.email.ilike(search_term),
+                Users.full_name.ilike(search_term),
+                Users.phone.ilike(search_term)
+            )
+        )
 
     total = base_query.with_entities(
         func.count(UserOrganization.id.distinct())
@@ -74,7 +100,8 @@ def get_pending_users_for_approval(
 
     return {
         "users": users_with_roles,
-        "total": total
+        "total": total,
+        "total_pending": total_pendings
     }
 
 
@@ -134,14 +161,16 @@ def update_user_approval_status(
         if tenant:
             tenant.status = user_org.status
             tenant.is_deleted = True if request.status == ApprovalStatus.reject else False
-            lease = validate_tenant_lease(
-                facility_db=facility_db,
-                tenant_id=tenant.id,
-                org_id=org_id
-            )
 
-            if not lease:
-                return error_response(message="Tenant cannot be approved without an active lease")
+            if request.status == ApprovalStatus.approve:
+                lease = validate_tenant_lease(
+                    facility_db=facility_db,
+                    tenant_id=tenant.id,
+                    org_id=org_id
+                )
+
+                if not lease:
+                    return error_response(message="Tenant cannot be approved without an active lease")
 
     if user_org.account_type.lower() == "owner":
         space_owner = (
@@ -185,7 +214,7 @@ def update_user_approval_status(
 
     db.refresh(user)
 
-    return user_management_crud.get_user(db, user.id)
+    return {"message": f"User {'approved' if request.status == ApprovalStatus.approve else 'rejected'} successfully"}
 
 
 def validate_tenant_lease(

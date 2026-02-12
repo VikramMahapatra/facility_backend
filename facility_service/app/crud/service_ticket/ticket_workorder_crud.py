@@ -5,8 +5,10 @@ from uuid import UUID
 from typing import List, Optional , Dict, Any
 from datetime import datetime
 
+from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
 from facility_service.app.models.financials.tax_codes import TaxCode
 from facility_service.app.models.maintenance_assets import work_order
+from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType
 
 from ...models.procurement.vendors import Vendor
 from shared.helpers.json_response_helper import error_response
@@ -23,7 +25,7 @@ from ...schemas.service_ticket.ticket_work_order_schemas import (
     TicketWorkOrderListResponse,
     TicketWorkOrderOverviewResponse
 )
-from shared.core.schemas import Lookup
+from shared.core.schemas import Lookup, UserToken
 from ...enum.ticket_service_enum import TicketWorkOrderStatusEnum
 
 
@@ -209,7 +211,7 @@ def create_ticket_work_order(
     db: Session, 
     auth_db: Session,
     work_order: TicketWorkOrderCreate,
-    org_id: UUID
+    current_user: UserToken
 ) -> TicketWorkOrderOut:
     
     # Get ticket with site info
@@ -221,7 +223,7 @@ def create_ticket_work_order(
         .outerjoin(Site, Ticket.site_id == Site.id)
         .filter(
             Ticket.id == work_order.ticket_id,
-            Ticket.org_id == org_id
+            Ticket.org_id == current_user.org_id
         )
         .first()
     )
@@ -255,18 +257,93 @@ def create_ticket_work_order(
     total_amount = base_amount + tax_amount
 
     db_work_order = TicketWorkOrder(
-        **work_order.model_dump(exclude={"total_amount"}),
+        **work_order.model_dump(exclude={"total_amount" ,"tax_code"}),
         total_amount=total_amount
     )   
     db.add(db_work_order)
     db.commit()
     db.refresh(db_work_order)
-    
-    return TicketWorkOrderOut(
-        **db_work_order.__dict__,
-        ticket_no=ticket.ticket_no,
-        site_name=site_name
+    # ---------------- NOTIFICATION LOGIC ---------------- #
+
+    # Fetch action user (creator of work order)
+    action_by_user = auth_db.query(Users).filter(
+        Users.id ==current_user.user_id
+    ).first()
+
+    action_by_name = action_by_user.full_name if action_by_user else "Unknown User"
+
+    recipient_ids = []
+
+    # 1️⃣ Assigned to
+    if ticket.assigned_to:
+        recipient_ids.append(ticket.assigned_to)
+
+    # 2️⃣ Ticket created for (Owner/Tenant)
+    if ticket.user_id:
+        recipient_ids.append(ticket.user_id)
+
+    # Vendor (if any) — comes from Ticket
+    if ticket.vendor_id:
+        recipient_ids.append(ticket.vendor_id)
+
+
+    # 4️⃣ Admin users
+    admin_user_ids = fetch_role_admin(
+        auth_db,
+        current_user.org_id
     )
+
+
+    if isinstance(admin_user_ids, list):
+        recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+    recipient_ids = list(set(recipient_ids))
+
+    # Create notifications
+    notifications = []
+    for recipient_id in recipient_ids:
+        notification = Notification(
+            user_id=recipient_id,
+            type=NotificationType.alert,
+            title="Work Order Created",
+            message=f"Work order created for Ticket {ticket.ticket_no} by {action_by_name}",
+            posted_date=datetime.utcnow(),
+            priority=PriorityType(ticket.priority),
+            read=False,
+            is_deleted=False
+        )
+        notifications.append(notification)
+
+    db.add_all(notifications)
+    db.commit()
+
+    # ---------------- END NOTIFICATION LOGIC ---------------- #
+    # Replace the entire return block with:
+    work_order_out = TicketWorkOrderOut(
+        id=db_work_order.id,
+        ticket_id=db_work_order.ticket_id,
+        description=db_work_order.description,
+        assigned_to=db_work_order.assigned_to,
+        status=db_work_order.status,
+        labour_cost=db_work_order.labour_cost,
+        material_cost=db_work_order.material_cost,
+        other_expenses=db_work_order.other_expenses,
+        estimated_time=db_work_order.estimated_time,
+        special_instructions=db_work_order.special_instructions,
+        tax_code_id=db_work_order.tax_code_id,
+        wo_no=db_work_order.wo_no,
+        created_at=db_work_order.created_at,
+        updated_at=db_work_order.updated_at,
+        is_deleted=db_work_order.is_deleted,
+        total_amount=db_work_order.total_amount,
+        tax_code=db_work_order.tax_code.code if db_work_order.tax_code else None,
+        ticket_no=ticket.ticket_no,
+        site_name=site_name,
+        assigned_to_name=None,  # You can fetch these if needed
+        vendor_name=None
+    )
+    return work_order_out
+
 
 # ---------------- Update ----------------
 def update_ticket_work_order(

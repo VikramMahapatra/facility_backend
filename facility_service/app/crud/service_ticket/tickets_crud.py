@@ -656,9 +656,8 @@ def escalate_ticket(
     # Add action user
     recipient_ids.append(data.action_by)
 
-    # Add tenant if exists
-    if ticket.tenant and ticket.tenant.user_id:
-        recipient_ids.append(ticket.tenant.user_id)
+    # Ticket owner / tenant (single source of truth) 
+    if ticket.user_id: recipient_ids.append(ticket.user_id)
 
     # Add admin users using the fetch_role_admin function
     admin_user_ids = fetch_role_admin(
@@ -811,9 +810,8 @@ async def resolve_ticket(
     # Add action user
     recipient_ids.append(data.action_by)
 
-    # Add tenant if exists
-    if ticket.tenant and ticket.tenant.user_id:
-        recipient_ids.append(ticket.tenant.user_id)
+    # Ticket owner / tenant (single source of truth) 
+    if ticket.user_id: recipient_ids.append(ticket.user_id)
 
     # Add admin users using the fetch_role_admin function
     admin_user_ids = fetch_role_admin(
@@ -938,9 +936,8 @@ def reopen_ticket(
     # Add action user
     recipient_ids.append(data.action_by)
 
-    # Add tenant if exists
-    if ticket.tenant and ticket.tenant.user_id:
-        recipient_ids.append(ticket.tenant.user_id)
+    # Ticket owner / tenant (single source of truth) 
+    if ticket.user_id: recipient_ids.append(ticket.user_id)
 
     # Add admin users using the fetch_role_admin function
     admin_user_ids = fetch_role_admin(
@@ -1063,9 +1060,8 @@ def on_hold_ticket(
     # Add action user
     recipient_ids.append(data.action_by)
 
-    # Add tenant if exists
-    if ticket.tenant and ticket.tenant.user_id:
-        recipient_ids.append(ticket.tenant.user_id)
+    # Ticket owner / tenant (single source of truth) 
+    if ticket.user_id: recipient_ids.append(ticket.user_id)
 
     # Add admin users using the fetch_role_admin function
     admin_user_ids = fetch_role_admin(
@@ -1187,9 +1183,8 @@ def return_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     # Add action user
     recipient_ids.append(data.action_by)
 
-    # Add tenant if exists
-    if ticket.tenant and ticket.tenant.user_id:
-        recipient_ids.append(ticket.tenant.user_id)
+    # Ticket owner / tenant (single source of truth) 
+    if ticket.user_id: recipient_ids.append(ticket.user_id)
 
     # Add admin users using the fetch_role_admin function
     admin_user_ids = fetch_role_admin(

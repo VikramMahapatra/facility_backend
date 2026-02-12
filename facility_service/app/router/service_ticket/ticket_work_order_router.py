@@ -34,7 +34,7 @@ def create_ticket_work_order_endpoint(
     current_user: UserToken = Depends(validate_current_token)
 ):
     """Create a new work order from a ticket"""
-    return crud.create_ticket_work_order(db,auth_db, work_order, current_user.org_id)
+    return crud.create_ticket_work_order(db,auth_db, work_order, current_user)
 
 
 

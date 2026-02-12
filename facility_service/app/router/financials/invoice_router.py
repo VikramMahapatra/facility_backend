@@ -102,9 +102,11 @@ def get_invoice_lookup(
 def create_invoice(
         invoice: InvoiceCreate,
         db: Session = Depends(get_db),
+        auth_db : Session =Depends(get_auth_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.create_invoice(
         db=db,
+        auth_db=auth_db,
         org_id=current_user.org_id,
         request=invoice,
         current_user=current_user

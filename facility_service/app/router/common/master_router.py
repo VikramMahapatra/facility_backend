@@ -3,6 +3,8 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+
+from ...crud.common import master_crud
 from ...schemas.space_sites.sites_schemas import SiteRequest
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token
@@ -29,3 +31,8 @@ def building_lookup(params: MasterQueryParams = None, db: Session = Depends(get_
 @router.post("/space-lookup", response_model=List[Lookup])
 def space_lookup(params: MasterQueryParams = None, db: Session = Depends(get_db)):
     return spaces_crud.get_space_master_lookup(db, params.site_id, params.building_id)
+
+
+@router.get("/accessories")
+def get_accessories(db: Session = Depends(get_db)):
+    return master_crud.get_accessories(db)

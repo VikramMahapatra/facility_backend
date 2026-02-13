@@ -4,9 +4,15 @@ from pydantic import BaseModel
 from typing import List, Optional, Any
 from decimal import Decimal
 
+from facility_service.app.enum.space_sites_enum import SpaceCategory
 from shared.utils.enums import OwnershipStatus
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from shared.core.schemas import CommonQueryParams
+
+
+class SpaceAccessoryCreate(BaseModel):
+    accessory_id: UUID
+    quantity: int
 
 
 class SpaceBase(EmptyStringModel):
@@ -14,6 +20,7 @@ class SpaceBase(EmptyStringModel):
     site_id: UUID
     name: Optional[str] = None
     kind: str
+    category: SpaceCategory
     floor: Optional[int] = None
     building_block_id: Optional[UUID] = None
     building_block: Optional[str] = None
@@ -22,6 +29,7 @@ class SpaceBase(EmptyStringModel):
     baths: Optional[int] = None
     attributes: Optional[Any] = None
     status: Optional[str] = "available"
+    accessories: Optional[list[SpaceAccessoryCreate]] = None
 
 
 class SpaceCreate(SpaceBase):

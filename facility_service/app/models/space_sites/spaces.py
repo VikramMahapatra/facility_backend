@@ -16,8 +16,6 @@ class Space(Base):
         "sites.id", ondelete="CASCADE"), nullable=False)
     building_block_id = Column(UUID(as_uuid=True), ForeignKey(
         "buildings.id", ondelete="SET NULL"), nullable=True)
-
-    code = Column(String(64), nullable=False)
     name = Column(String(128))
     kind = Column(String(32), nullable=False)
     floor = Column(String(32))

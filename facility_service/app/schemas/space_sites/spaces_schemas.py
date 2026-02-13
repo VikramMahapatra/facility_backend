@@ -12,7 +12,6 @@ from shared.core.schemas import CommonQueryParams
 class SpaceBase(EmptyStringModel):
     org_id: Optional[UUID] = None
     site_id: UUID
-    code: str
     name: Optional[str] = None
     kind: str
     floor: Optional[int] = None

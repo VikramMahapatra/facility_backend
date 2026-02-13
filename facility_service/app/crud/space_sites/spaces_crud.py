@@ -51,8 +51,7 @@ def build_space_filters(org_id: UUID, params: SpaceRequest):
 
     if params.search:
         search_term = f"%{params.search}%"
-        filters.append(or_(Space.name.ilike(search_term),
-                       Space.code.ilike(search_term)))
+        filters.append(Space.name.ilike(search_term))
 
     return filters
 
@@ -162,17 +161,17 @@ def create_space(db: Session, space: SpaceCreate):
             existing_space = db.query(Space).filter(
                 and_(Space.building_block_id == space.building_block_id,
                      Space.is_deleted == False,
-                     # Case-insensitive code within same building
-                     or_(func.lower(Space.code) == func.lower(space.code),
-                         func.lower(Space.name) == func.lower(space.name))
+                     func.lower(Space.name) == func.lower(space.name)
                      )).first()
 
         else:
             existing_space = db.query(Space).filter(
-                and_(or_(func.lower(Space.name) == func.lower(space.name),
-                         func.lower(Space.code) == func.lower(space.code)),
-                     Space.is_deleted == False,
-                     )).first()
+                and_(
+                    func.lower(Space.name) == func.lower(space.name),
+                    Space.building_block_id == None,
+                    Space.is_deleted == False,
+                )
+            ).first()
 
         if existing_space:
             return error_response(
@@ -255,23 +254,16 @@ def update_space(db: Session, space: SpaceUpdate):
             and_(Space.building_block_id == building_id,
                  Space.is_deleted == False,
                  Space.id != space.id,
-                 or_(
-                     func.lower(Space.code) == func.lower(
-                         update_data.get("code", "")),
-                     func.lower(Space.name) == func.lower(
-                         update_data.get("name", ""))
+                 func.lower(Space.name) == func.lower(
+                     update_data.get("name", "")
                  )
-                 )).first()
+                 )
+        ).first()
 
     else:
         existing_space = db.query(Space).filter(
-            and_(
-                or_(
-                    func.lower(Space.code) == func.lower(
-                        update_data.get("code", "")),
-                    func.lower(Space.name) == func.lower(
-                        update_data.get("name", ""))
-                ),
+            and_(func.lower(Space.name) == func.lower(
+                update_data.get("name", "")),
                 Space.is_deleted == False,
                 Space.id != space.id
             )
@@ -854,8 +846,7 @@ def get_pending_space_owner_requests(
     )
     if params.search:
         search_term = f"%{params.search}%"
-        base_query.filter(or_(Space.name.ilike(search_term),
-                              Space.code.ilike(search_term)))
+        base_query.filter(Space.name.ilike(search_term))
 
     total = base_query.count()
 

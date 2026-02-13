@@ -18,10 +18,7 @@ class Space(Base):
     building_block_id = Column(UUID(as_uuid=True), ForeignKey(
         "buildings.id", ondelete="SET NULL"), nullable=True)
     name = Column(String(128))
-    category = Column(
-        Enum(SpaceCategory, name="space_category_enum"),
-        nullable=False
-    )
+    category = Column(String(32), nullable=False)
     kind = Column(String(32), nullable=False)
     floor = Column(String(32))
     area_sqft = Column(Numeric(12, 2))

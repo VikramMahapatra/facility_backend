@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 from pydantic import BaseModel
-from typing import List, Optional, Any
+from typing import List, Literal, Optional, Any
 from decimal import Decimal
 
 from facility_service.app.enum.space_sites_enum import SpaceCategory
@@ -20,7 +20,7 @@ class SpaceBase(EmptyStringModel):
     site_id: UUID
     name: Optional[str] = None
     kind: str
-    category: SpaceCategory
+    category: Literal['residential', 'commercial']
     floor: Optional[int] = None
     building_block_id: Optional[UUID] = None
     building_block: Optional[str] = None

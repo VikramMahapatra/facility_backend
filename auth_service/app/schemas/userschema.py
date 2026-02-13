@@ -38,6 +38,7 @@ class UserCreate(BaseModel):
     phone: Optional[str] = None
     account_type: Literal["organization", "vendor", "tenant", "owner"]
     organizationName: Optional[str] = None
+    plan: Optional[Literal["pro", "basic", "enterprise"]] = None
     site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
     pictureUrl: Optional[HttpUrl] = None

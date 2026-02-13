@@ -100,6 +100,7 @@ def create_user(
                 name=user.organizationName,
                 billing_email=user.email,
                 contact_phone=user.phone,
+                plan=user.plan or "basic",
                 status="pending"
             )
             facility_db.add(org_instance)

@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event
+from facility_service.app.models.space_sites.space_accessories import SpaceAccessory
 from facility_service.app.models.space_sites.space_occupancies import OccupantType
 from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
 from ...crud.access_control.user_management_crud import handle_account_type_update, upsert_user_sites_preserve_primary
@@ -175,16 +176,33 @@ def create_space(db: Session, space: SpaceCreate):
 
         if existing_space:
             return error_response(
-                message=f"Space with code/name already exists ",
+                message=f"Space with name '{space.name}' already exists",
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
 
         # Create space - exclude building_block
+        accessories_data = space.accessories or []
+
         space.building_block_id = space.building_block_id if space.building_block_id else None
-        space_data = space.model_dump(exclude={"building_block"})
+        space_data = space.model_dump(
+            exclude={"building_block", "accessories"})
         db_space = Space(**space_data)
         db.add(db_space)
+        db.flush()
+
+        # -----------------------------
+        # Insert accessories mapping
+        # -----------------------------
+
+        for item in accessories_data:
+            db_accessory = SpaceAccessory(
+                space_id=db_space.id,
+                accessory_id=item.accessory_id,
+                quantity=item.quantity
+            )
+            db.add(db_accessory)
+
         db.commit()
         db.refresh(db_space)
         return db_space
@@ -271,16 +289,33 @@ def update_space(db: Session, space: SpaceUpdate):
 
     if existing_space:
         return error_response(
-            message=f"Space with code/name already exists ",
+            message=f"Space with name '{update_data.get('name')}' already exists",
             status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
+
+    accessories_data = update_data.pop("accessories", None)
 
     # Update space
     for key, value in update_data.items():
         setattr(db_space, key, value)
 
     try:
+        if accessories_data is not None:
+            # delete old mappings
+            db.query(SpaceAccessory).filter(
+                SpaceAccessory.space_id == db_space.id
+            ).delete()
+
+            # insert new mappings
+            for item in accessories_data:
+                db_accessory = SpaceAccessory(
+                    space_id=db_space.id,
+                    accessory_id=item.accessory_id,
+                    quantity=item.quantity
+                )
+                db.add(db_accessory)
+
         db.commit()
         db.refresh(db_space)
 

@@ -8,10 +8,11 @@ from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
 from auth_service.app.models.user_organizations import UserOrganization
-from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event
-from facility_service.app.models.space_sites.space_accessories import SpaceAccessory
-from facility_service.app.models.space_sites.space_occupancies import OccupantType
-from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
+from ...crud.space_sites.space_occupancy_crud import log_occupancy_event
+from ...models.space_sites.accessories import Accessory
+from ...models.space_sites.space_accessories import SpaceAccessory
+from ...models.space_sites.space_occupancies import OccupantType
+from ...models.space_sites.space_occupancy_events import OccupancyEventType
 from ...crud.access_control.user_management_crud import handle_account_type_update, upsert_user_sites_preserve_primary
 from ...schemas.access_control.user_management_schemas import UserAccountCreate, UserTenantSpace
 from ...models.space_sites.space_owners import OwnershipStatus, SpaceOwner
@@ -134,6 +135,29 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
         .all()
     )
 
+    space_ids = [row[0].id for row in spaces]
+
+    accessories_map = {}
+    if space_ids:
+        accessories = (
+            db.query(
+                SpaceAccessory.space_id,
+                SpaceAccessory.accessory_id,
+                SpaceAccessory.quantity,
+                Accessory.name.label("name")
+            )
+            .join(Accessory, Accessory.id == SpaceAccessory.accessory_id)
+            .filter(SpaceAccessory.space_id.in_(space_ids))
+            .all()
+        )
+
+        for acc in accessories:
+            accessories_map.setdefault(acc.space_id, []).append({
+                "accessory_id": acc.accessory_id,
+                "quantity": acc.quantity,
+                "name": acc.name
+            })
+
     results = []
     for row in spaces:
         space = row[0]                     # Space object
@@ -143,7 +167,8 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
         data = {
             **space.__dict__,
             "building_block": building_name,
-            "site_name": site_name
+            "site_name": site_name,
+            "accessories": accessories_map.get(space.id, [])
         }
         results.append(SpaceOut.model_validate(data))
 
@@ -357,10 +382,31 @@ def get_space_details_by_id(
     building_name = db_space.building_block_name  # Joined building name
     site_name = db_space.site_name  # Joined site name
 
+    accessory_items = (
+        db.query(
+            SpaceAccessory.space_id,
+            SpaceAccessory.accessory_id,
+            SpaceAccessory.quantity,
+            Accessory.name.label("name")
+        )
+        .join(Accessory, Accessory.id == SpaceAccessory.accessory_id)
+        .filter(SpaceAccessory.space_id == space.id)
+        .all()
+    )
+
+    accessories = []
+    for acc in accessory_items:
+        accessories.append({
+            "accessory_id": acc.accessory_id,
+            "quantity": acc.quantity,
+            "name": acc.name
+        })
+
     data = {
         **space.__dict__,
         "building_block": building_name,
-        "site_name": site_name
+        "site_name": site_name,
+        "accessories": accessories
     }
 
     return SpaceOut.model_validate(data)

@@ -25,7 +25,7 @@ from ...crud.space_sites.maintenance_template_crud import (
 
 
 router = APIRouter(
-    prefix="/maintenance-templates",
+    prefix="/api/maintenance-templates",
     tags=["Maintenance Templates"]
 )
 

@@ -13,7 +13,7 @@ from ...models.space_sites.accessories import Accessory
 from ...models.space_sites.space_accessories import SpaceAccessory
 from ...models.space_sites.space_occupancies import OccupantType
 from ...models.space_sites.space_occupancy_events import OccupancyEventType
-from ...crud.access_control.user_management_crud import handle_account_type_update, upsert_user_sites_preserve_primary
+from ...crud.access_control.user_management_crud import assign_tenant_spaces, assign_owner_spaces, upsert_user_sites_preserve_primary
 from ...schemas.access_control.user_management_schemas import UserAccountCreate, UserTenantSpace
 from ...models.space_sites.space_owners import OwnershipStatus, SpaceOwner
 from shared.models.users import Users
@@ -30,7 +30,7 @@ from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.leases import Lease
-from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipHistoryOut, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate, TenantHistoryOut
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipHistoryOut, SpaceAccessoryCreate, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate, TenantHistoryOut
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
@@ -249,9 +249,9 @@ def update_space(db: Session, space: SpaceUpdate):
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=404
         )
-
+    accessories_data = space.accessories
     update_data = space.model_dump(
-        exclude_unset=True, exclude={"building_block"})
+        exclude_unset=True, exclude={"building_block", "accessories"})
     # Convert empty UUID strings to None---------------------changed
     for field in ["building_block_id"]:
         if update_data.get(field) == "":
@@ -319,8 +319,6 @@ def update_space(db: Session, space: SpaceUpdate):
             http_status=400
         )
 
-    accessories_data = update_data.pop("accessories", None)
-
     # Update space
     for key, value in update_data.items():
         setattr(db_space, key, value)
@@ -347,10 +345,29 @@ def update_space(db: Session, space: SpaceUpdate):
         # Joined building name ------changed
         building_name = db_space.building.name if db_space.building_block_id else None
         site_name = db_space.site.name if db_space.site_id else None
+
+        accessories = (
+            db.query(
+                SpaceAccessory.space_id,
+                SpaceAccessory.accessory_id,
+                SpaceAccessory.quantity,
+                Accessory.name.label("name")
+            )
+            .join(Accessory, Accessory.id == SpaceAccessory.accessory_id)
+            .filter(SpaceAccessory.space_id == db_space.id)
+            .all()
+        )
+
+        validated_accessories = [
+            SpaceAccessoryCreate.model_validate(row._mapping)
+            for row in accessories
+        ]
+
         data = {
             **db_space.__dict__,
             "building_block": building_name,
-            "site_name": site_name
+            "site_name": site_name,
+            "accessories": validated_accessories
         }
 
         return SpaceOut.model_validate(data)
@@ -633,7 +650,7 @@ def assign_space_owner(
         user_org = auth_db.query(UserOrganization).filter(
             UserOrganization.user_id == payload.owner_user_id,
             UserOrganization.org_id == org_id,
-            UserOrganization.account_type == UserAccountType.FLAT_OWNER.value
+            UserOrganization.account_type == UserAccountType.FLAT_OWNER
         ).first()
 
         if user_org:
@@ -643,8 +660,8 @@ def assign_space_owner(
             user_org = UserOrganization(
                 user_id=payload.owner_user_id,
                 org_id=org_id,
-                status="inactive",
-                account_type=UserAccountType.FLAT_OWNER.value,
+                status="active",
+                account_type=UserAccountType.FLAT_OWNER,
                 is_deleted=False
             )
 
@@ -656,17 +673,10 @@ def assign_space_owner(
             )
         )
 
-        user_account = UserAccountCreate(
-            user_id=payload.owner_user_id,
-            status="active",
-            account_type=UserAccountType.FLAT_OWNER.value,
-            owner_spaces=owner_spaces
-        )
-
-        error = handle_account_type_update(
+        error = assign_owner_spaces(
             facility_db=db,
             db_user=user,
-            user_account=user_account,
+            owner_spaces=owner_spaces,
             org_id=org_id
         )
 
@@ -760,17 +770,10 @@ def assign_space_tenant(
             )
         )
 
-        user_account = UserAccountCreate(
-            user_id=payload.tenant_user_id,
-            status="active",
-            account_type=UserAccountType.TENANT.value,
-            tenant_spaces=tenant_spaces
-        )
-
-        error = handle_account_type_update(
+        error = assign_tenant_spaces(
             facility_db=db,
             db_user=user,
-            user_account=user_account,
+            tenant_spaces=tenant_spaces,
             org_id=org_id
         )
 

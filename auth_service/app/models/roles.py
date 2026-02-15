@@ -3,7 +3,6 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import TIMESTAMP, Column, String, Text, Boolean, func
 from shared.core.database import AuthBase
 from sqlalchemy.orm import relationship
-from auth_service.app.models.associations import user_org_roles
 
 
 class Roles(AuthBase):
@@ -20,8 +19,8 @@ class Roles(AuthBase):
                         server_default=func.now(), onupdate=func.now())
 
     policies = relationship("RolePolicy", back_populates="roles")
-    user_orgs = relationship(
-        "UserOrganization",
-        secondary=user_org_roles,
-        back_populates="roles"
+    account_types = relationship(
+        "RoleAccountType",
+        back_populates="role",
+        cascade="all, delete-orphan"
     )

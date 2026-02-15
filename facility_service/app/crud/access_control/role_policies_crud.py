@@ -6,7 +6,6 @@ from typing import Dict, List, Optional
 
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.rolepolicy import RolePolicy
-from auth_service.app.models.userroles import UserRoles
 from ...schemas.access_control.role_management_schemas import RoleCreate
 from shared.core.schemas import Lookup
 

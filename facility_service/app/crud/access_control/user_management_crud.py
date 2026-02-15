@@ -4,15 +4,15 @@ from datetime import datetime, date
 
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_
+from sqlalchemy import Enum, func, or_
 from typing import Dict, List, Optional
 
+from auth_service.app.models import roles
 from auth_service.app.models.orgs_safe import OrgSafe
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
-from auth_service.app.models.userroles import UserRoles
 from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event
-from facility_service.app.models.space_sites.space_occupancies import OccupantType
+from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus, OccupantType, SpaceOccupancy
 from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
 from shared.utils.enums import OwnershipStatus, UserAccountType
 from ...models.space_sites.user_sites import UserSite
@@ -37,7 +37,7 @@ from ...schemas.access_control.role_management_schemas import RoleOut
 from shared.core.schemas import Lookup
 from ...enum.access_control_enum import UserRoleEnum, UserStatusEnum
 from auth_service.app.models.user_organizations import UserOrganization
-from auth_service.app.models.associations import user_org_roles
+from auth_service.app.models.associations import RoleAccountType
 from sqlalchemy import and_, literal
 from sqlalchemy.dialects.postgresql import JSONB
 from fastapi import HTTPException
@@ -114,17 +114,34 @@ def get_user_by_id(db: Session, user_id: str, org_id: str):
     )
 
     account_types = list({
-        uo.account_type.lower()
+        uo.account_type
         for uo in user_orgs
         if uo.account_type
     })
 
-    roles = {
-        role.id: RoleOut.model_validate(role)
-        for uo in user_orgs
-        for role in (uo.roles or [])
-    }
-    roles = list(roles.values())
+    roles_query = (
+        db.query(Roles)
+        .join(Roles.account_types)
+        .filter(
+            Roles.org_id == org_id,
+            Roles.is_deleted == False,
+            RoleAccountType.account_type.in_(account_types)
+        )
+        .distinct()
+        .all()
+    )
+
+    roles = []
+    for role in roles_query:
+        role_data = RoleOut.model_validate({
+            **role.__dict__,
+            "account_types": [
+                rat.account_type.value if isinstance(
+                    rat.account_type, Enum) else rat.account_type
+                for rat in role.account_types
+            ]
+        })
+        roles.append(role_data)
 
     return UserOut.model_validate({
         **user.__dict__,
@@ -165,10 +182,10 @@ def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
     staff_role = None
 
     # Normalize account_type for case-insensitive comparison
-    account_type = user_org.account_type.lower() if user_org.account_type else ""
+    account_type = user_org.account_type
 
     # FOR TENANT USERS - USE FACILITY_DB
-    if account_type == "tenant":
+    if account_type == UserAccountType.TENANT:
         # Check individual tenant: Tenant → Space (no Building join)
         tenant_with_space = (facility_db.query(Tenant, Space)
                              .select_from(Tenant)
@@ -234,6 +251,30 @@ def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
             Vendor.is_deleted == False
         ).first()
 
+    roles_query = (
+        db.query(Roles)
+        .join(Roles.account_types)
+        .filter(
+            Roles.org_id == org_id,
+            Roles.is_deleted == False,
+            RoleAccountType.account_type == UserAccountType(account_type)
+        )
+        .distinct()
+        .all()
+    )
+
+    roles = []
+    for role in roles_query:
+        role_data = RoleOut.model_validate({
+            **role.__dict__,
+            "account_types": [
+                rat.account_type.value if isinstance(
+                    rat.account_type, Enum) else rat.account_type
+                for rat in role.account_types
+            ]
+        })
+        roles.append(role_data)
+
     # Create UserOut manually instead of using from_orm
     return UserOut(
         id=user.id,
@@ -244,7 +285,7 @@ def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
         picture_url=user.picture_url,
         account_type=user_org.account_type,
         status=user.status,
-        roles=[RoleOut.model_validate(role) for role in user_org.roles],
+        roles=roles,
         created_at=user.created_at,
         updated_at=user.updated_at,
         # ADD NEW FIELDS
@@ -480,7 +521,7 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
         if not user_org:
             return {"success": False, "message": "User organization not found"}
 
-        user_account_type = user_org.account_type.lower() if user_org.account_type else ""
+        user_account_type = user_org.account_type
         user_name = user.full_name or user.email
 
         # ✅ 1. SOFT DELETE THE USER
@@ -494,7 +535,7 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
         charge_count = 0
 
         # ✅ 2. DELETE RELATED DATA BASED ON ACCOUNT TYPE
-        if user_account_type == "tenant":
+        if user_account_type == UserAccountType.TENANT:
             # Handle individual tenant
             tenant = facility_db.query(Tenant).filter(
                 Tenant.user_id == user_id,
@@ -542,7 +583,7 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
                         "updated_at": datetime.utcnow()
                     }, synchronize_session=False)
 
-        elif user_account_type == "vendor":
+        elif user_account_type == UserAccountType.VENDOR:
             # Handle vendor deletion
             vendor = facility_db.query(Vendor).filter(
                 Vendor.contact['user_id'].astext == str(user_id),
@@ -554,7 +595,7 @@ def delete_user(db: Session, facility_db: Session, user_id: str) -> Dict:
                 vendor.updated_at = datetime.utcnow()
                 deleted_entities.append("vendor")
 
-        elif user_account_type == "staff":
+        elif user_account_type == UserAccountType.STAFF:
             # Handle staff site assignments deletion
             staff_sites = facility_db.query(StaffSite).filter(
                 StaffSite.user_id == user_id
@@ -692,16 +733,26 @@ def get_user_detail(
         }
 
         # ---------------- ROLES ----------------
+
         roles = (
             db.query(Roles)
-            .join(user_org_roles,
-                  user_org_roles.c.role_id == Roles.id)
-            .filter(user_org_roles.c.user_org_id == uo.id)
+            .join(Roles.account_types)
+            .filter(
+                Roles.org_id == org_id,
+                Roles.is_deleted == False,
+                RoleAccountType.account_type == uo.account_type
+            )
             .all()
         )
 
         account["roles"] = [
-            RoleOut.model_validate(r) for r in roles
+            RoleOut.model_validate({
+                **r.__dict__,
+                "account_types": [
+                    rat.account_type.value for rat in r.account_types
+                ]
+            })
+            for r in roles
         ]
 
         # =====================================================
@@ -711,7 +762,6 @@ def get_user_detail(
 
             tenant = (
                 facility_db.query(
-                    Tenant.kind.label("tenant_type"),
                     func.coalesce(
                         func.jsonb_agg(
                             func.jsonb_build_object(
@@ -740,7 +790,6 @@ def get_user_detail(
                     Tenant.is_deleted == False,
                     TenantSpace.is_deleted == False
                 )
-                .group_by(Tenant.kind)
                 .first()
             )
 
@@ -1195,11 +1244,10 @@ def handle_account_type_update(
         if not tenant:
             tenant = Tenant(
                 user_id=db_user.id,
-                status="inactive",
+                status=UserStatusEnum.ACTIVE.value,
                 name=db_user.full_name,
                 email=db_user.email,
                 phone=db_user.phone,
-                kind="residential"
             )
             facility_db.add(tenant)
             facility_db.flush()
@@ -1235,7 +1283,7 @@ def handle_account_type_update(
                     tenant_id=tenant.id,
                     site_id=space.site_id,
                     space_id=space.space_id,
-                    status=OwnershipStatus.pending,
+                    status=OwnershipStatus.approved,
                     created_at=now,
                     updated_at=now
                 )
@@ -1247,9 +1295,9 @@ def handle_account_type_update(
                     space_id=space.space_id,
                     occupant_type=OccupantType.tenant,
                     occupant_user_id=db_user.id,
-                    event_type=OccupancyEventType.tenant_requested,
+                    event_type=OccupancyEventType.tenant_approved,
                     source_id=t_space.id,
-                    notes="Tenant requested space during account update"
+                    notes="Admin approves space for the tenant during account update"
                 )
 
         tenant.name = db_user.full_name
@@ -1308,8 +1356,39 @@ def handle_account_type_update(
                 else:
                     return error_response(
                         message="Cannot remove space with active or approved status",
-                        status_code=str(AppStatusCode.INVALID_OPERATION)
+                        status_code=str(AppStatusCode.INVALID_INPUT)
                     )
+
+        conflicting_spaces = (
+            facility_db.query(SpaceOwner.space_id)
+            .join(
+                SpaceOccupancy,
+                and_(
+                    SpaceOccupancy.space_id == SpaceOwner.space_id,
+                    SpaceOccupancy.occupant_type == OccupantType.owner,
+                    SpaceOccupancy.status == OccupancyStatus.active
+                )
+            )
+            .filter(
+                SpaceOwner.space_id.in_(incoming_space_ids),
+                SpaceOwner.is_active == True,
+                SpaceOwner.owner_user_id != db_user.id,   # ignore self
+                SpaceOwner.status.notin_([
+                    OwnershipStatus.revoked,
+                    OwnershipStatus.rejected
+                ])
+            )
+            .distinct()
+            .all()
+        )
+
+        conflicting_space_ids = [row[0] for row in conflicting_spaces]
+
+        if conflicting_space_ids:
+            return error_response(
+                message="Space already has an active owner occupant",
+                status_code=str(AppStatusCode.INVALID_INPUT)
+            )
 
         for space in user_account.owner_spaces:
             existing = existing_by_space.get(space.space_id)
@@ -1321,7 +1400,7 @@ def handle_account_type_update(
                     space_id=space.space_id,
                     owner_org_id=org_id,
                     ownership_type="primary",
-                    status=OwnershipStatus.pending,
+                    status=OwnershipStatus.approved,
                     is_active=True,
                     start_date=now
                 )
@@ -1333,9 +1412,9 @@ def handle_account_type_update(
                     space_id=space.space_id,
                     occupant_type=OccupantType.owner,
                     occupant_user_id=db_user.id,
-                    event_type=OccupancyEventType.owner_requested,
+                    event_type=OccupancyEventType.owner_approved,
                     source_id=so.id,
-                    notes="Ownership requested during account update"
+                    notes="Admin approves the ownership of the space for the owner during account update"
                 )
 
         owner_site_ids = (
@@ -1379,6 +1458,196 @@ def handle_account_type_update(
         }
 
         facility_db.commit()
+
+    return None
+
+
+def assign_owner_spaces(
+    *,
+    facility_db: Session,
+    db_user: Users,
+    owner_spaces,
+    org_id: str,
+    is_request_from_mobile: bool = False
+):
+
+    if not owner_spaces:
+        return error_response(
+            message="At least one space is required",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+        )
+
+    incoming_space_ids = [s.space_id for s in owner_spaces]
+
+    now = datetime.utcnow()
+
+    # ------------------------------
+    # Existing owner assignments (self)
+    # ------------------------------
+    existing_assignments = facility_db.query(SpaceOwner).filter(
+        SpaceOwner.owner_user_id == db_user.id,
+        SpaceOwner.space_id.in_(incoming_space_ids),
+        SpaceOwner.is_active == True
+    ).all()
+
+    existing_space_ids = {sa.space_id for sa in existing_assignments}
+
+    # ------------------------------
+    # Conflict validation
+    # ------------------------------
+    conflicting_spaces = (
+        facility_db.query(SpaceOwner.space_id)
+        .join(
+            SpaceOccupancy,
+            and_(
+                SpaceOccupancy.space_id == SpaceOwner.space_id,
+                SpaceOccupancy.occupant_type == OccupantType.owner,
+                SpaceOccupancy.status == OccupancyStatus.active
+            )
+        )
+        .filter(
+            SpaceOwner.space_id.in_(incoming_space_ids),
+            SpaceOwner.owner_user_id != db_user.id,
+            SpaceOwner.is_active == True,
+            SpaceOwner.status.notin_([
+                OwnershipStatus.revoked,
+                OwnershipStatus.rejected
+            ])
+        )
+        .distinct()
+        .all()
+    )
+
+    if conflicting_spaces:
+        return error_response(
+            message="Space already has an active owner occupant",
+            status_code=str(AppStatusCode.IMPORTANT_ALERT)
+        )
+
+    # ------------------------------
+    # Insert only NEW spaces
+    # ------------------------------
+    for space in owner_spaces:
+
+        if space.space_id in existing_space_ids:
+            continue
+
+        so = SpaceOwner(
+            owner_user_id=db_user.id,
+            space_id=space.space_id,
+            owner_org_id=org_id,
+            ownership_type="primary",
+            status=OwnershipStatus.approved if not is_request_from_mobile else OwnershipStatus.pending,
+            is_active=True,
+            start_date=now
+        )
+
+        facility_db.add(so)
+        facility_db.flush()
+
+        log_occupancy_event(
+            db=facility_db,
+            space_id=space.space_id,
+            occupant_type=OccupantType.owner,
+            occupant_user_id=db_user.id,
+            event_type=OccupancyEventType.owner_approved if not is_request_from_mobile else OccupancyEventType.owner_requested,
+            source_id=so.id
+        )
+
+    facility_db.commit()
+
+    return None
+
+
+def assign_tenant_spaces(
+    *,
+    facility_db: Session,
+    db_user: Users,
+    tenant_spaces,
+    org_id: str,
+    is_request_from_mobile: bool = False
+):
+
+    if not tenant_spaces:
+        return error_response(
+            message="At least one space is required",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+        )
+
+    incoming_space_ids = [s.space_id for s in tenant_spaces]
+
+    tenant = facility_db.query(Tenant).filter(
+        Tenant.user_id == db_user.id,
+        Tenant.is_deleted == False
+    ).first()
+
+    if not tenant:
+        tenant = Tenant(
+            user_id=db_user.id,
+            status=UserStatusEnum.ACTIVE.value,
+            name=db_user.full_name,
+            email=db_user.email,
+            phone=db_user.phone,
+        )
+        facility_db.add(tenant)
+        facility_db.flush()
+
+    # ------------------------------
+    # Conflict validation
+    # ------------------------------
+    existing_assignments = facility_db.query(TenantSpace).filter(
+        TenantSpace.space_id.in_(incoming_space_ids),
+        TenantSpace.is_deleted == False,
+        TenantSpace.status == "leased"
+    ).all()
+
+    for ts in existing_assignments:
+        if ts.tenant.user_id != db_user.id:
+            return error_response(
+                message="One of the selected spaces is already occupied",
+                status_code=str(AppStatusCode.IMPORTANT_ALERT)
+            )
+
+    # ------------------------------
+    # Existing spaces for self
+    # ------------------------------
+    existing_spaces = facility_db.query(TenantSpace).filter(
+        TenantSpace.tenant_id == tenant.id,
+        TenantSpace.space_id.in_(incoming_space_ids),
+        TenantSpace.is_deleted == False
+    ).all()
+
+    existing_space_ids = {ts.space_id for ts in existing_spaces}
+
+    now = datetime.utcnow()
+
+    for space in tenant_spaces:
+
+        if space.space_id in existing_space_ids:
+            continue
+
+        t_space = TenantSpace(
+            tenant_id=tenant.id,
+            site_id=space.site_id,
+            space_id=space.space_id,
+            status=OwnershipStatus.approved if not is_request_from_mobile else OwnershipStatus.pending,
+            created_at=now,
+            updated_at=now
+        )
+
+        facility_db.add(t_space)
+        facility_db.flush()
+
+        log_occupancy_event(
+            db=facility_db,
+            space_id=space.space_id,
+            occupant_type=OccupantType.tenant,
+            occupant_user_id=db_user.id,
+            event_type=OccupancyEventType.tenant_approved if not is_request_from_mobile else OccupancyEventType.tenant_pending,
+            source_id=t_space.id
+        )
+
+    facility_db.commit()
 
     return None
 

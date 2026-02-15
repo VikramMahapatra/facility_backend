@@ -11,6 +11,7 @@ from shared.helpers.json_response_helper import error_response
 from shared.models.users import Users
 from shared.utils.enums import UserAccountType
 from shared.utils.system_resources import SYSTEM_ACTIONS, SYSTEM_RESOURCES
+from auth_service.app.models.associations import RoleAccountType
 
 
 def get_pending_organizations(db: Session):
@@ -140,14 +141,12 @@ def approve_org(org_id: str, facility_db: Session, auth_db: Session):
     # 5. Assign admin role to org admin user
     # ------------------------------------------------
 
-    admin_user_org = auth_db.query(UserOrganization).filter(
-        UserOrganization.org_id == org_id,
-        UserOrganization.account_type == "organization"
-    ).first()
-
-    if admin_user_org:
-
-        admin_user_org.roles.append(admin_role)
+    auth_db.add(
+        RoleAccountType(
+            role_id=admin_role.id,
+            account_type=UserAccountType.ORGANIZATION
+        )
+    )
 
     # ------------------------------------------------
     # 6. Create ALL ROLE POLICIES
@@ -194,7 +193,7 @@ def reject_org(org_id: str, facility_db: Session, auth_db: Session):
     # Make related user organizations with account_type 'organization' rejected
     auth_db.query(UserOrganization).filter(
         UserOrganization.org_id == org_id,
-        UserOrganization.account_type == "organization"
+        UserOrganization.account_type == UserAccountType.ORGANIZATION
     ).update({"status": "rejected"}, synchronize_session=False)
 
     facility_db.commit()

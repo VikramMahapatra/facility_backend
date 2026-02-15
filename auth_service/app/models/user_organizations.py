@@ -8,6 +8,8 @@ from sqlalchemy.orm import relationship
 from passlib.context import CryptContext
 from sqlalchemy.sql import expression
 
+from shared.utils.enums import UserAccountType
+
 
 class UserOrganization(AuthBase):
     __tablename__ = "user_organizations"
@@ -19,7 +21,14 @@ class UserOrganization(AuthBase):
     org_id = Column(UUID(as_uuid=False))
 
     # owner, admin, staff, etc
-    account_type = Column(String(20), nullable=False)
+    account_type = Column(
+        Enum(
+            UserAccountType,
+            values_callable=lambda enum: [e.value for e in enum],
+            name="user_account_type_enum"
+        ),
+        nullable=False
+    )
     status = Column(String(16), nullable=False, default="active")
     is_default = Column(Boolean, default=False, nullable=False)  # ✅
     joined_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
@@ -28,11 +37,6 @@ class UserOrganization(AuthBase):
     user = relationship(
         "Users",
         back_populates="organizations"
-    )
-    roles = relationship(
-        "Roles",
-        secondary="user_org_roles",
-        back_populates="user_orgs"
     )
 
     __table_args__ = (

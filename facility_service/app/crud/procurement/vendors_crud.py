@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import UUID
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
-from auth_service.app.models.userroles import UserRoles
 from facility_service.app.crud.access_control.user_management_crud import handle_account_type_update
 from facility_service.app.schemas.access_control.user_management_schemas import UserAccountCreate
 from shared.helpers.password_generator import generate_secure_password

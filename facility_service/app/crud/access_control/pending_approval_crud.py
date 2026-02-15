@@ -3,14 +3,15 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import UUID, func, or_
 from typing import Dict, List, Optional
+from auth_service.app.models import roles
+from auth_service.app.models.associations import RoleAccountType
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
-from shared.utils.enums import OwnershipStatus
+from shared.utils.enums import OwnershipStatus, UserAccountType
 from ...models.leasing_tenants.leases import Lease
 from shared.helpers.json_response_helper import error_response
 from shared.models.users import Users
-from auth_service.app.models.userroles import UserRoles
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant
 from ...crud.access_control import user_management_crud
@@ -82,6 +83,25 @@ def get_all_users_for_approval(
     for user_org in user_orgs:
         user = user_org.user
 
+        roles = (
+            db.query(Roles)
+            .join(Roles.account_types)
+            .filter(
+                Roles.org_id == user_org.org_id,
+                RoleAccountType.account_type == user_org.account_type
+            )
+            .all()
+        )
+
+        role_list = []
+        for role in roles:
+            role_list.append(RoleOut.model_validate({
+                **role.__dict__,
+                "account_types": [
+                    rat.account_type.value for rat in role.account_types
+                ]
+            }))
+
         user_out = UserOut(
             id=user.id,
             org_id=user_org.org_id,
@@ -91,7 +111,7 @@ def get_all_users_for_approval(
             picture_url=user.picture_url,
             default_account_type=user_org.account_type,   # ✅ from user_organizations
             status=user_org.status,               # ✅ pending_approval
-            roles=[RoleOut.model_validate(role) for role in user_org.roles],
+            roles=role_list,
             created_at=user.created_at,
             updated_at=user.updated_at
         )
@@ -138,7 +158,7 @@ def update_user_approval_status(
         return error_response(message="User is not associated with this organization")
 
     # 3️⃣ Only Tenant & Owner supported
-    if user_org.account_type not in ("tenant", "owner"):
+    if user_org.account_type.notin_([UserAccountType.TENANT, UserAccountType.FLAT_OWNER]):
         return error_response(message="Approval is only allowed for tenant or owner")
 
     # 4️⃣ Update approval status
@@ -150,7 +170,7 @@ def update_user_approval_status(
     # Optional: keep global user status in sync
     user.status = user_org.status
 
-    if user_org.account_type.lower() == "tenant":
+    if user_org.account_type.lower() == UserAccountType.TENANT:
         # 5️⃣ Facility DB updates (TENANT)
         tenant = (
             facility_db.query(Tenant)
@@ -162,7 +182,7 @@ def update_user_approval_status(
             tenant.status = user_org.status
             tenant.is_deleted = True if request.status == ApprovalStatus.reject else False
 
-    if user_org.account_type.lower() == "owner":
+    if user_org.account_type == UserAccountType.FLAT_OWNER:
         space_owner = (
             facility_db.query(SpaceOwner)
             .filter(

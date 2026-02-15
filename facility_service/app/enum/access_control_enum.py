@@ -5,6 +5,7 @@ class UserStatusEnum(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
+    PENDING = "pending"
 
 
 class UserRoleEnum(str, Enum):
@@ -19,6 +20,7 @@ class UserTypeEnum(str, Enum):
     STAFF = "staff"
     TENANT = "tenant"
     VENDOR = "vendor"
+
 
 class ApproverRoleEnum(str, Enum):
     ADMIN = "admin"

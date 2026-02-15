@@ -13,6 +13,7 @@ from shared.core.schemas import CommonQueryParams
 class SpaceAccessoryCreate(BaseModel):
     accessory_id: UUID
     quantity: int
+    name: Optional[str] = None
 
 
 class SpaceBase(EmptyStringModel):

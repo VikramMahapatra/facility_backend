@@ -14,8 +14,6 @@ class Tenant(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=True)
     name = Column(String(200), nullable=False)
-    kind = Column(String(32), nullable=False)  # residential | commercial
-    # merchant | brand | kiosk (only if commercial)
     commercial_type = Column(String(16), nullable=True)
     legal_name = Column(String(200), nullable=True)
     contact = Column(JSONB)

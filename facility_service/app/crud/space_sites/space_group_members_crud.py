@@ -15,12 +15,13 @@ from ...schemas.space_sites.space_group_members_schemas import SpaceGroupMemberB
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 
+
 def build_filters(org_id: UUID, params: SpaceGroupMemberRequest):
     filters = []
 
     # org_id comes from SpaceGroup
     filters.append(Space.org_id == org_id)
-    
+
     # Add soft-delete filters for all related models
     filters.append(Space.is_deleted == False)
     filters.append(Site.is_deleted == False)
@@ -51,8 +52,10 @@ def get_members_overview(db: Session, org_id: UUID, params: SpaceGroupMemberRequ
     counts = (
         db.query(
             func.count('*').label("total_assignments"),
-            func.count(func.distinct(SpaceGroupMember.space_id)).label("total_spaces"),
-            func.count(func.distinct(SpaceGroupMember.group_id)).label("total_groups"),
+            func.count(func.distinct(SpaceGroupMember.space_id)
+                       ).label("total_spaces"),
+            func.count(func.distinct(SpaceGroupMember.group_id)
+                       ).label("total_groups"),
         )
         .select_from(SpaceGroupMember)
         .join(Space, Space.id == SpaceGroupMember.space_id)
@@ -70,7 +73,8 @@ def get_members_overview(db: Session, org_id: UUID, params: SpaceGroupMemberRequ
         Space.is_deleted == False
     ).scalar()
 
-    assignment_rate = (counts.total_spaces / overall_spaces * 100) if overall_spaces else 0
+    assignment_rate = (counts.total_spaces /
+                       overall_spaces * 100) if overall_spaces else 0
     assignment_rate = round(assignment_rate, 2)
 
     return {
@@ -84,10 +88,10 @@ def get_members_overview(db: Session, org_id: UUID, params: SpaceGroupMemberRequ
 def get_assignment_preview(db: Session, org_id: UUID, params: SpaceGroupMemberRequest):
     # Remove SpaceGroupMember from filters since we're previewing BEFORE creation
     filters = []
-    
+
     # org_id comes from Space
     filters.append(Space.org_id == org_id)
-    
+
     # Add soft-delete filters
     filters.append(Space.is_deleted == False)
     filters.append(Site.is_deleted == False)
@@ -98,23 +102,23 @@ def get_assignment_preview(db: Session, org_id: UUID, params: SpaceGroupMemberRe
         filters.append(Space.id == params.space_id)
     if params.group_id:
         filters.append(SpaceGroup.id == params.group_id)
-    
+
     # ✅ CHANGED: Query Space and SpaceGroup directly, not through SpaceGroupMember
     assignment_preview_query = (
         db.query(
             Site.name.label("site_name"),
             Space.name.label("space_name"),
-            Space.code.label("space_code"),
             func.replace(SpaceGroup.kind, "_", " ").label("kind"),
             SpaceGroup.name.label("group_name"),
             SpaceGroup.specs
         )
         .select_from(Space)  # ✅ CHANGED: Start from Space table
         .join(Site, Site.id == Space.site_id)
-        .join(SpaceGroup, SpaceGroup.id == params.group_id)  # ✅ CHANGED: Direct join on group_id
+        # ✅ CHANGED: Direct join on group_id
+        .join(SpaceGroup, SpaceGroup.id == params.group_id)
         .filter(*filters)
     )
-    
+
     result = assignment_preview_query.first()
     if not result:
         return error_response(
@@ -122,7 +126,7 @@ def get_assignment_preview(db: Session, org_id: UUID, params: SpaceGroupMemberRe
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=404
         )
-    
+
     return result
 
 
@@ -153,7 +157,8 @@ def get_members(db: Session, org_id: UUID, params: SpaceGroupMemberRequest) -> S
         .join(SpaceGroup, SpaceGroup.id == SpaceGroupMember.group_id)
         .join(Site, Site.id == Space.site_id)
         .filter(*filters)
-        .order_by(SpaceGroupMember.updated_at.desc())   # ⬅ Order by latest updated
+        # ⬅ Order by latest updated
+        .order_by(SpaceGroupMember.updated_at.desc())
         .offset(params.skip)
         .limit(params.limit)
     )

@@ -5,6 +5,7 @@ from typing import Any, List, Literal, Optional
 from uuid import UUID
 from datetime import datetime
 
+from shared.utils.enums import UserAccountType
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 
 # Shared properties
@@ -36,13 +37,12 @@ class UserCreate(BaseModel):
     last_name: Optional[str] = None
     email: str
     phone: Optional[str] = None
-    account_type: Literal["organization", "vendor", "tenant", "owner"]
+    account_type: UserAccountType
     organizationName: Optional[str] = None
     plan: Optional[Literal["pro", "basic", "enterprise"]] = None
     site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
     pictureUrl: Optional[HttpUrl] = None
-    tenant_type: Optional[str] = None
 
     class Config:
         from_attributes = True  # allows Pydantic to work with SQLAlchemy objects

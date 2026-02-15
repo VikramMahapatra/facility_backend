@@ -146,7 +146,6 @@ def get_all_tenants(db: Session, auth_db: Session, user: UserToken, params: Tena
             Tenant.name,
             Tenant.email,
             Tenant.phone,
-            Tenant.kind,
             Tenant.legal_name,
             Tenant.commercial_type.label("type"),
             Tenant.status,
@@ -198,7 +197,6 @@ def get_all_tenants(db: Session, auth_db: Session, user: UserToken, params: Tena
             Tenant.name,
             Tenant.email,
             Tenant.phone,
-            Tenant.kind,
             Tenant.legal_name,
             Tenant.commercial_type,
             Tenant.status,
@@ -284,7 +282,6 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
             Tenant.name,
             Tenant.email,
             Tenant.phone,
-            Tenant.kind,
             Tenant.legal_name,
             Tenant.commercial_type.label("type"),
             Tenant.status,
@@ -338,7 +335,6 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
             Tenant.name,
             Tenant.email,
             Tenant.phone,
-            Tenant.kind,
             Tenant.legal_name,
             Tenant.commercial_type,
             Tenant.status,
@@ -473,23 +469,15 @@ def create_tenant_internal(
         email=tenant.email,
         phone=tenant.phone
     )
-
-    contact_info = tenant.contact_info or {
-        "name": tenant.name,
-        "email": tenant.email,
-        "phone": tenant.phone,
-        "address": {}
-    }
+    contact_info = tenant.contact_info or {}
 
     db_tenant = Tenant(
         name=tenant.name,
         email=tenant.email,
         phone=tenant.phone,
-        kind=tenant.kind,
-        legal_name=tenant.legal_name or tenant.name
-        if tenant.kind == "commercial" else None,
-        contact=contact_info if tenant.kind == "commercial" else None,
-        family_info=tenant.family_info if tenant.kind == "residential" else None,
+        legal_name=tenant.legal_name,
+        contact=contact_info,
+        family_info=tenant.family_info or {},
         vehicle_info=tenant.vehicle_info,
         status=TenantStatus.inactive,
         user_id=user.id,
@@ -698,7 +686,6 @@ def manage_tenant_space(
             status="active",
             account_type=UserAccountType.TENANT.value,
             tenant_spaces=spaces,
-            tenant_type=db_tenant.kind
         )
 
         error = handle_account_type_update(
@@ -1067,7 +1054,7 @@ def get_or_create_user_and_org(
                 UserOrganization(
                     user_id=user.id,
                     org_id=org_id,
-                    account_type="tenant",
+                    account_type=UserAccountType.TENANT,
                     status="active"
                 )
             )

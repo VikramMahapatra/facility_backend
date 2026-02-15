@@ -6,6 +6,7 @@ from sqlalchemy.orm import joinedload
 from auth_service.app.models.user_organizations import UserOrganization
 from shared.core.schemas import Lookup
 from shared.models.users import Users
+from shared.utils.enums import UserAccountType
 from ...enum.ticket_service_enum import TicketStatus
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_category import TicketCategory
@@ -71,7 +72,8 @@ def get_team_workload_management(
                 # ✅ Ensure user belongs to the correct organization
                 UserOrganization.org_id == org_id,
                 # ✅ Exclude ORGANIZATION and ADMIN users
-                UserOrganization.account_type.notin_(["organization", "admin"])
+                UserOrganization.account_type.notin_(
+                    [UserAccountType.ORGANIZATION])
             ).first()
 
             # ✅ ONLY count if assignee is NOT ORGANIZATION and NOT ADMIN
@@ -105,7 +107,8 @@ def get_team_workload_management(
             ).filter(
                 Users.id == ticket.assigned_to,
                 UserOrganization.org_id == org_id,
-                UserOrganization.account_type.notin_(["organization", "admin"])
+                UserOrganization.account_type.notin_(
+                    [UserAccountType.ORGANIZATION])
             ).first()
 
             # ✅ ONLY include if assignee is NOT ORGANIZATION and NOT ADMIN type
@@ -145,7 +148,9 @@ def get_team_workload_management(
             ).filter(
                 Users.id == ticket.assigned_to,
                 UserOrganization.org_id == org_id,
-                UserOrganization.account_type.notin_(["organization", "admin"])
+                UserOrganization.account_type.notin_(
+                    # Exclude ORGANIZATION users
+                    [UserAccountType.ORGANIZATION])
             ).first()
 
             # ✅ CORRECTED: Only include tickets assigned to organization/admin users

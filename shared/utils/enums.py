@@ -2,6 +2,7 @@ from enum import Enum
 
 
 class UserAccountType(str, Enum):
+    PENDING = "pending"
     ORGANIZATION = "organization"
     TENANT = "tenant"
     STAFF = "staff"

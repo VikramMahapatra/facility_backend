@@ -11,6 +11,7 @@ from facility_service.app.models.space_sites.orgs import Org
 from shared.models.users import Users
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
+from shared.utils.enums import UserAccountType
 from ...models.space_sites.sites import Site
 from shared.core.config import Settings
 
@@ -20,8 +21,8 @@ from ...models.service_ticket.sla_policy import SlaPolicy
 from ...models.service_ticket.tickets_category import TicketCategory
 from sqlalchemy.orm import joinedload
 from ...schemas.service_ticket.sla_policy_schemas import (
-    SlaPolicyCreate, 
-    SlaPolicyUpdate, 
+    SlaPolicyCreate,
+    SlaPolicyUpdate,
     SlaPolicyOut,
     SlaPolicyRequest,
     SlaPolicyListResponse,
@@ -29,7 +30,6 @@ from ...schemas.service_ticket.sla_policy_schemas import (
 )
 from shared.core.schemas import CommonQueryParams, Lookup
 from fastapi import HTTPException
-
 
 
 # ---------------- Build Filters ----------------
@@ -99,21 +99,21 @@ def get_sla_policies(
         # ✅ FIXED: Use correct field names (without _id suffix)
         default_contact_name = None
         escalation_contact_name = None
-        
+
         if policy.default_contact:  # ✅ NOT default_contact_id
             default_user = auth_db.query(Users.full_name).filter(
                 Users.id == policy.default_contact,  # ✅ NOT default_contact_id
                 Users.is_deleted == False
             ).first()
             default_contact_name = default_user.full_name if default_user else None
-            
+
         if policy.escalation_contact:  # ✅ NOT escalation_contact_id
             escalation_user = auth_db.query(Users.full_name).filter(
                 Users.id == policy.escalation_contact,  # ✅ NOT escalation_contact_id
                 Users.is_deleted == False
             ).first()
             escalation_contact_name = escalation_user.full_name if escalation_user else None
-        
+
         policy_out = SlaPolicyOut.model_validate({
             **policy.__dict__,
             "site_name": policy.site.name if policy.site else None,
@@ -130,6 +130,8 @@ def get_sla_policies(
 
 # ---------------- Overview Endpoint ----------------
 # ---------------- Overview Endpoint ----------------
+
+
 def get_sla_policies_overview(db: Session, org_id: UUID, site_id: Optional[UUID] = None) -> SlaPolicyOverviewResponse:
     """
     Calculate overview statistics for SLA policies - CONSISTENT with site filtering
@@ -139,7 +141,7 @@ def get_sla_policies_overview(db: Session, org_id: UUID, site_id: Optional[UUID]
         SlaPolicy.is_deleted == False,
         SlaPolicy.org_id == org_id
     ]
-    
+
     # ✅ Apply site filter to overview if provided
     if site_id and site_id != "all":
         base_filters.append(SlaPolicy.site_id == site_id)
@@ -154,9 +156,11 @@ def get_sla_policies_overview(db: Session, org_id: UUID, site_id: Optional[UUID]
     ).count()
 
     # Average response time - with same filters
-    avg_response_time_result = db.query(func.avg(SlaPolicy.response_time_mins)).filter(*base_filters).scalar()
-    
-    avg_response_time_minutes = float(avg_response_time_result) if avg_response_time_result else 0.0
+    avg_response_time_result = db.query(
+        func.avg(SlaPolicy.response_time_mins)).filter(*base_filters).scalar()
+
+    avg_response_time_minutes = float(
+        avg_response_time_result) if avg_response_time_result else 0.0
 
     return {
         "total_sla_policies": total_policies_count,
@@ -165,6 +169,8 @@ def get_sla_policies_overview(db: Session, org_id: UUID, site_id: Optional[UUID]
     }
 
 # ---------------- Helper function for getting policy with site and org ----------------
+
+
 def get_sla_policy_with_site_org(db: Session, auth_db: Session, policy_id: UUID):
     policy = (
         db.query(SlaPolicy)
@@ -178,26 +184,26 @@ def get_sla_policy_with_site_org(db: Session, auth_db: Session, policy_id: UUID)
         )
         .first()
     )
-    
+
     if policy:
         # ✅ FIXED: Use correct field names (without _id suffix)
         default_contact_name = None
         escalation_contact_name = None
-        
+
         if policy.default_contact:  # ✅ NOT default_contact_id
             default_user = auth_db.query(Users.full_name).filter(
                 Users.id == policy.default_contact,  # ✅ NOT default_contact_id
                 Users.is_deleted == False
             ).first()
             default_contact_name = default_user.full_name if default_user else None
-            
+
         if policy.escalation_contact:  # ✅ NOT escalation_contact_id
             escalation_user = auth_db.query(Users.full_name).filter(
                 Users.id == policy.escalation_contact,  # ✅ NOT escalation_contact_id
                 Users.is_deleted == False
             ).first()
             escalation_contact_name = escalation_user.full_name if escalation_user else None
-        
+
         return SlaPolicyOut.model_validate({
             **policy.__dict__,
             "site_name": policy.site.name if policy.site else None,
@@ -206,7 +212,6 @@ def get_sla_policy_with_site_org(db: Session, auth_db: Session, policy_id: UUID)
             "escalation_contact_name": escalation_contact_name
         })
     return None
-
 
 
 # ---------------- Get By ID ----------------
@@ -233,7 +238,7 @@ def create_sla_policy(db: Session, policy: SlaPolicyCreate, org_id: UUID) -> Sla
     # Add org_id to the policy data
     policy_data = policy.model_dump()
     policy_data['org_id'] = org_id
-    
+
     db_policy = SlaPolicy(**policy_data)
     db.add(db_policy)
     db.commit()
@@ -252,25 +257,25 @@ def update_sla_policy(db: Session, auth_db: Session, policy: SlaPolicyUpdate) ->
         )
 
     update_data = policy.model_dump(exclude_unset=True, exclude={'id'})
-    
+
     if 'site_id' in update_data and update_data['site_id'] != db_policy.site_id:
         categories_with_sla = db.query(TicketCategory.id).filter(
             TicketCategory.sla_id == policy.id,
             TicketCategory.is_deleted == False
         ).subquery()
-        
+
         has_active_tickets = db.query(Ticket).filter(
             Ticket.category_id.in_(categories_with_sla),
-            Ticket.status.not_in(['closed', 'returned', 'escalated'])  
+            Ticket.status.not_in(['closed', 'returned', 'escalated'])
         ).first()
-        
+
         if has_active_tickets:
             return error_response(
                 message="Cannot update site for SLA policy with active tickets",
                 status_code=str(AppStatusCode.OPERATION_ERROR),
                 http_status=400
             )
-    
+
     new_category = update_data.get('service_category')
     if new_category and new_category != db_policy.service_category:
         existing_policy = db.query(SlaPolicy).filter(
@@ -284,14 +289,15 @@ def update_sla_policy(db: Session, auth_db: Session, policy: SlaPolicyUpdate) ->
             return error_response(
                 message=f"SLA policy '{new_category}' already exists for this site"
             )
-    
+
     for key, value in update_data.items():
         setattr(db_policy, key, value)
 
     try:
         db.commit()
         # ✅ Return with contact names
-        return get_sla_policy_with_site_org(db, auth_db, policy.id)  # ✅ PASS auth_db
+        # ✅ PASS auth_db
+        return get_sla_policy_with_site_org(db, auth_db, policy.id)
 
     except IntegrityError as e:
         db.rollback()
@@ -302,6 +308,8 @@ def update_sla_policy(db: Session, auth_db: Session, policy: SlaPolicyUpdate) ->
         )
 
 # ---------------- Soft Delete ----------------
+
+
 def delete_sla_policy_soft(db: Session, policy_id: UUID) -> bool:
     db_policy = get_sla_policy_by_id(db, policy_id)
     if not db_policy:
@@ -312,7 +320,7 @@ def delete_sla_policy_soft(db: Session, policy_id: UUID) -> bool:
         TicketCategory.sla_id == policy_id,
         TicketCategory.is_deleted == False
     ).first()
-    
+
     if associated_categories:
         return error_response(
             message="Cannot delete SLA policy with associated ticket categories",
@@ -338,7 +346,7 @@ def service_category_lookup(db: Session, site_id: Optional[str] = None) -> List[
         .filter(
             SlaPolicy.is_deleted == False,
             SlaPolicy.active == True,
-            SlaPolicy.site_id == site_id  
+            SlaPolicy.site_id == site_id
         )
         .distinct(SlaPolicy.service_category)
         .order_by(SlaPolicy.service_category.asc())
@@ -352,6 +360,8 @@ def service_category_lookup(db: Session, site_id: Optional[str] = None) -> List[
     ]
 
 # ---------------- Contact Lookup (for both default and escalation) ----------------
+
+
 def contact_lookup(db: Session, auth_db: Session, org_id: UUID, site_id: Optional[str] = None) -> List[Lookup]:
     """
     Fetch contacts for a given site.
@@ -410,7 +420,7 @@ def contact_lookup(db: Session, auth_db: Session, org_id: UUID, site_id: Optiona
         .join(UserOrganization, UserOrganization.user_id == Users.id)
         .filter(
             UserOrganization.org_id == org_id,
-            UserOrganization.account_type == "organization",
+            UserOrganization.account_type == UserAccountType.ORGANIZATION.value,  # ✅ Use enum value
             UserOrganization.status == "active",
             Users.status == "active",
             Users.is_deleted == False
@@ -426,8 +436,6 @@ def contact_lookup(db: Session, auth_db: Session, org_id: UUID, site_id: Optiona
 
     # Return
     return all_users
-
-
 
 
 # ---------------- Org Lookup (Simple) ----------------

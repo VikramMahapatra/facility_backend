@@ -25,7 +25,6 @@ class TenantBase(BaseModel):
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
-    kind: str
     status: str
     contact_info: Optional[Any] = None
     family_info: Optional[Any] = None

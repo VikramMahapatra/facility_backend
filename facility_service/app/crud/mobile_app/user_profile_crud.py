@@ -79,7 +79,7 @@ def get_user_profile_data(
 
         spaces.append({
             "space_id": str(space.id),
-            "flat_number": tenant.flat_number or space.code or space.floor,
+            "flat_number": tenant.flat_number or space.name or space.floor,
             "building": building_name,
         })
 

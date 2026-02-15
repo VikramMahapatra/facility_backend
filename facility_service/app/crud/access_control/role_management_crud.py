@@ -1,11 +1,12 @@
 from operator import or_
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import Enum, desc, func
+from sqlalchemy.dialects.postgresql import insert
 from typing import Dict, List, Optional
 
 from auth_service.app.models.roles import Roles
+from auth_service.app.models.associations import RoleAccountType
 from shared.models.users import Users
-from auth_service.app.models.userroles import UserRoles
 from shared.core.schemas import Lookup
 
 from ...schemas.access_control.role_management_schemas import (
@@ -14,22 +15,36 @@ from ...schemas.access_control.role_management_schemas import (
 
 
 def get_roles(db: Session, org_id: str, params: RoleRequest):
-    role_query = db.query(Roles).filter(
+
+    query = db.query(Roles).options(
+        selectinload(Roles.account_types)
+    ).filter(
         Roles.org_id == org_id,
         Roles.is_deleted == False
     )
 
     if params.search:
-        search_term = f"%{params.search}%"
-        role_query = role_query.filter(Roles.name.ilike(search_term))
+        query = query.filter(Roles.name.ilike(f"%{params.search}%"))
 
-    total = role_query.with_entities(func.count(Roles.id.distinct())).scalar()
-    role_query = role_query.order_by(
-        desc(Roles.updated_at)
+    total = query.count()
+
+    roles = (
+        query.order_by(desc(Roles.updated_at))
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
     )
-    roles = role_query.offset(params.skip).limit(params.limit).all()
 
-    result = [RoleOut.model_validate(role) for role in roles]
+    result = []
+    for role in roles:
+        role_data = RoleOut.model_validate({
+            **role.__dict__,
+            "account_types": [
+                rat.account_type.value for rat in role.account_types
+            ]
+        })
+        result.append(role_data)
+
     return {"roles": result, "total": total}
 
 
@@ -38,15 +53,6 @@ def get_role_by_id(db: Session, role_id: str):
         Roles.id == role_id,
         Roles.is_deleted == False
     ).first()
-
-
-def get_role(db: Session, role_id: str):
-    role = get_role_by_id(db, role_id)
-    if not role:
-        return None
-
-    # Create UserOut manually instead of using from_orm
-    return RoleOut.model_validate(role)
 
 
 def get_role_by_name(db: Session, role_name: str, org_id: str = None):
@@ -66,13 +72,28 @@ def create_role(db: Session, role: RoleCreate):
         raise ValueError(
             f"Role with name '{role.name}' already exists in this organization")
 
-    role_data = role.model_dump()
+    role_data = role.model_dump(exclude={"account_types"})
     db_role = Roles(**role_data)
     db.add(db_role)
+    db.flush()
+
+    if role.account_types:
+        db_role.account_types.extend(
+            [
+                RoleAccountType(account_type=account_type)
+                for account_type in role.account_types
+            ]
+        )
+
     db.commit()
     db.refresh(db_role)
 
-    return RoleOut.model_validate(db_role)
+    return RoleOut.model_validate({
+        **db_role.__dict__,
+        "account_types": [
+            rat.account_type.value for rat in db_role.account_types
+        ]
+    })
 
 
 def update_role(db: Session, role: RoleUpdate):
@@ -95,12 +116,40 @@ def update_role(db: Session, role: RoleUpdate):
             raise ValueError(
                 f"Role with name '{update_data['name']}' already exists in this organization")
 
+    # ------------------------------------------------
+    # Update role fields
+    # ------------------------------------------------
+
+    account_types = update_data.pop("account_types", None)
+
     for key, value in update_data.items():
         setattr(db_role, key, value)
 
     db.commit()
+
+    # --------------- Update account types safely with upsert ----------------
+    if account_types is not None:
+        new_mappings = [
+            {"role_id": db_role.id, "account_type": account_type}
+            for account_type in account_types
+        ]
+
+        if new_mappings:
+            stmt = insert(RoleAccountType).values(new_mappings)
+            stmt = stmt.on_conflict_do_nothing(
+                # primary key columns
+                index_elements=["role_id", "account_type"]
+            )
+            db.execute(stmt)
+            db.commit()
+
     db.refresh(db_role)
-    return RoleOut.model_validate(db_role)
+    return RoleOut.model_validate({
+        **db_role.__dict__,
+        "account_types": [
+            rat.account_type.value for rat in db_role.account_types
+        ]
+    })
 
 
 def delete_role(db: Session, role_id: str) -> Dict:

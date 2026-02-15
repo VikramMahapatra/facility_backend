@@ -11,7 +11,6 @@ from sqlalchemy import and_, func, desc
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.user_organizations import UserOrganization
-from auth_service.app.models.userroles import UserRoles
 from facility_service.app.models.common.staff_sites import StaffSite
 from facility_service.app.models.space_sites.sites import Site
 from ...models.procurement.vendors import Vendor
@@ -656,8 +655,9 @@ def escalate_ticket(
     # Add action user
     recipient_ids.append(data.action_by)
 
-    # Ticket owner / tenant (single source of truth) 
-    if ticket.user_id: recipient_ids.append(ticket.user_id)
+    # Ticket owner / tenant (single source of truth)
+    if ticket.user_id:
+        recipient_ids.append(ticket.user_id)
 
     # Add admin users using the fetch_role_admin function
     admin_user_ids = fetch_role_admin(
@@ -810,8 +810,9 @@ async def resolve_ticket(
     # Add action user
     recipient_ids.append(data.action_by)
 
-    # Ticket owner / tenant (single source of truth) 
-    if ticket.user_id: recipient_ids.append(ticket.user_id)
+    # Ticket owner / tenant (single source of truth)
+    if ticket.user_id:
+        recipient_ids.append(ticket.user_id)
 
     # Add admin users using the fetch_role_admin function
     admin_user_ids = fetch_role_admin(
@@ -936,8 +937,9 @@ def reopen_ticket(
     # Add action user
     recipient_ids.append(data.action_by)
 
-    # Ticket owner / tenant (single source of truth) 
-    if ticket.user_id: recipient_ids.append(ticket.user_id)
+    # Ticket owner / tenant (single source of truth)
+    if ticket.user_id:
+        recipient_ids.append(ticket.user_id)
 
     # Add admin users using the fetch_role_admin function
     admin_user_ids = fetch_role_admin(
@@ -1060,8 +1062,9 @@ def on_hold_ticket(
     # Add action user
     recipient_ids.append(data.action_by)
 
-    # Ticket owner / tenant (single source of truth) 
-    if ticket.user_id: recipient_ids.append(ticket.user_id)
+    # Ticket owner / tenant (single source of truth)
+    if ticket.user_id:
+        recipient_ids.append(ticket.user_id)
 
     # Add admin users using the fetch_role_admin function
     admin_user_ids = fetch_role_admin(
@@ -1183,8 +1186,9 @@ def return_ticket(background_tasks: BackgroundTasks, db: Session, auth_db: Sessi
     # Add action user
     recipient_ids.append(data.action_by)
 
-    # Ticket owner / tenant (single source of truth) 
-    if ticket.user_id: recipient_ids.append(ticket.user_id)
+    # Ticket owner / tenant (single source of truth)
+    if ticket.user_id:
+        recipient_ids.append(ticket.user_id)
 
     # Add admin users using the fetch_role_admin function
     admin_user_ids = fetch_role_admin(

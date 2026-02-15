@@ -5,8 +5,10 @@ from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func, and_
 
+from auth_service.app.models.associations import RoleAccountType
+
 from ..models.user_sites_safe import UserSiteSafe
-from shared.utils.enums import OwnershipStatus
+from shared.utils.enums import OwnershipStatus, UserAccountType
 from ..models.space_owners_safe import SpaceOwnerSafe
 from ..models.user_organizations import UserOrganization
 from shared.utils.app_status_code import AppStatusCode
@@ -20,7 +22,6 @@ from ..models.tenants_safe import TenantSafe
 from shared.core import auth
 from ..models.orgs_safe import OrgSafe
 from ..models.roles import Roles
-from ..models.userroles import UserRoles
 from shared.models.users import Users
 from ..schemas.userschema import RoleOut, UserCreate, UserOrganizationOut, UserResponse
 from shared.core.config import settings
@@ -88,7 +89,7 @@ def create_user(
         db.flush()
 
         # ✅ ACCOUNT TYPE: ORGANIZATION
-        if user.account_type.lower() == "organization":
+        if user.account_type.lower() == UserAccountType.ORGANIZATION.value:
             if not user.organizationName:
                 return error_response(
                     message="Organization name required",
@@ -109,7 +110,7 @@ def create_user(
             org_id = org_instance.id
 
         # ✅ ACCOUNT TYPE: TENANT
-        elif user.account_type.lower() == "tenant":
+        elif user.account_type.lower() == UserAccountType.TENANT.value:
             # ✅ Find site
             site = facility_db.query(SiteSafe).filter(
                 SiteSafe.id == user.site_id).first()
@@ -177,7 +178,7 @@ def create_user(
                 site_ids=tenant_site_ids
             )
 
-        elif user.account_type.lower() == "owner":
+        elif user.account_type.lower() == UserAccountType.OWNER.value:
             # ✅ Find site
             site = facility_db.query(SiteSafe).filter(
                 SiteSafe.id == user.site_id).first()
@@ -280,15 +281,11 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         if user_org:
             org_id = str(user_org.org_id)
             account_type = user_org.account_type
-            roles = [str(role.id)
-                     for role in user_org.roles] if user_org.roles else []
 
         tenant = facility_db.query(TenantSafe).filter(
             TenantSafe.user_id == user.id,
             TenantSafe.is_deleted == False
         ).first()
-
-        tenant_type = tenant.kind if tenant else None
 
     is_mobile = platform == "mobile"
 
@@ -296,9 +293,7 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
         "user_id": str(user.id),
         "session_id": str(session.id),
         "org_id": org_id,
-        "account_type": account_type,
-        "tenant_type": tenant_type,
-        "role_ids": roles
+        "account_type": account_type
     }
 
     # Create access token
@@ -356,7 +351,17 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
 
     # ✅ Extract unique role policies
     role_policies = []
-    for role in default_org.roles:
+    roles = (
+        auth_db.query(Roles)
+        .join(Roles.account_types)
+        .filter(
+            Roles.org_id == default_org.org_id,
+            RoleAccountType.account_type == default_org.account_type
+        )
+        .all()
+    )
+
+    for role in roles:
         for policy in role.policies:
             role_policies.append({
                 "resource": policy.resource,
@@ -388,6 +393,15 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
         for org in user_orgs
     ]
 
+    role_list = []
+    for role in roles:
+        role_list.append(RoleOut.model_validate({
+            **role.__dict__,
+            "account_types": [
+                rat.account_type.value for rat in role.account_types
+            ]
+        }))
+
     user_dict = {
         "id": str(user_data.id),
         "name": user_data.full_name,
@@ -398,7 +412,7 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
         "default_organization_name": user_org_data.name if user_org_data else None,
         "status": user_data.status,
         "is_authenticated": True if user_data.status == "active" else False,
-        "roles": [RoleOut.model_validate(role) for role in default_org.roles],
+        "roles": role_list,
         "role_policies": role_policies
     }
 

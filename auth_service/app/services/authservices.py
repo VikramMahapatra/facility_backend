@@ -252,13 +252,11 @@ def refresh_access_token(db: Session, refresh_token_str: str):
     token.revoked = True
 
     # Issue new access + refresh tokens
-    roles = [str(r.id) for r in user.roles]
     new_access_token = auth.create_access_token({
         "user_id": str(user.id),
         "session_id": str(session.id),
         "org_id": str(user.org_id),
-        "account_type": user.account_type,
-        "role_ids": roles})
+        "account_type": user.account_type})
     new_refresh = auth.create_refresh_token(db, session.id)
 
     db.commit()

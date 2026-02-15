@@ -31,6 +31,7 @@ class SpaceBase(EmptyStringModel):
     attributes: Optional[Any] = None
     status: Optional[str] = "available"
     accessories: Optional[list[SpaceAccessoryCreate]] = None
+    maintenance_template_id: Optional[UUID] = None
 
 
 class SpaceCreate(SpaceBase):
@@ -48,6 +49,7 @@ class SpaceOut(SpaceBase):
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     owner_name: Optional[str] = None
+    maintenance_amount: Optional[Decimal] = None
 
     model_config = {"from_attributes": True}
 

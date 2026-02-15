@@ -8,6 +8,7 @@ from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
 from auth_service.app.models.user_organizations import UserOrganization
+from facility_service.app.models.space_sites.maintenance_templates import MaintenanceTemplate
 from ...crud.space_sites.space_occupancy_crud import log_occupancy_event
 from ...models.space_sites.accessories import Accessory
 from ...models.space_sites.space_accessories import SpaceAccessory
@@ -104,9 +105,12 @@ def get_spaces_overview(db: Session, user: UserToken, params: SpaceRequest):
 
 
 def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListResponse:
+
     allowed_space_ids = None
 
-    if user.account_type.lower() == UserAccountType.TENANT.value or user.account_type.lower() == UserAccountType.FLAT_OWNER.value:
+    if user.account_type.lower() == UserAccountType.TENANT.value or \
+       user.account_type.lower() == UserAccountType.FLAT_OWNER.value:
+
         allowed_spaces = get_allowed_spaces(db, user)
         allowed_space_ids = [s["space_id"] for s in allowed_spaces]
 
@@ -115,18 +119,48 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
 
     base_query = get_space_query(db, user.org_id, params)
 
-    # APPLY TENANT FILTER HERE
+    # APPLY TENANT FILTER
     if allowed_space_ids is not None:
         base_query = base_query.filter(Space.id.in_(allowed_space_ids))
 
+    # ⭐ MAIN QUERY WITH MAINTENANCE CALCULATION
     query = (
         base_query
         .join(Site, Space.site_id == Site.id)
         .outerjoin(Building, Space.building_block_id == Building.id)
-        .add_columns(Building.name.label("building_block_name"), Site.name.label("site_name"))
+        .outerjoin(
+            MaintenanceTemplate,
+            Space.maintenance_template_id == MaintenanceTemplate.id
+        )
+        .add_columns(
+            Building.name.label("building_block_name"),
+            Site.name.label("site_name"),
+
+            # ⭐ maintenance calculation
+            case(
+                (
+                    MaintenanceTemplate.calculation_type == "flat",
+                    MaintenanceTemplate.amount
+                ),
+                (
+                    MaintenanceTemplate.calculation_type == "per_sqft",
+                    func.coalesce(Space.area_sqft, 0) *
+                    MaintenanceTemplate.amount
+                ),
+                (
+                    MaintenanceTemplate.calculation_type == "per_bed",
+                    func.coalesce(Space.beds, 0) *
+                    MaintenanceTemplate.amount
+                ),
+                else_=None
+            ).label("maintenance_amount")
+        )
     )
+
+    # TOTAL COUNT
     total = db.query(func.count()).select_from(query.subquery()).scalar()
 
+    # PAGINATION
     spaces = (
         query
         .order_by(Space.updated_at.desc())
@@ -137,7 +171,9 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
 
     space_ids = [row[0].id for row in spaces]
 
+    # ACCESSORIES
     accessories_map = {}
+
     if space_ids:
         accessories = (
             db.query(
@@ -158,21 +194,29 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
                 "name": acc.name
             })
 
+    # BUILD RESPONSE
     results = []
+
     for row in spaces:
-        space = row[0]                     # Space object
-        building_name = row.building_block_name  # Joined building name
-        site_name = row.site_name              # Joined site name
+        space = row[0]
+        building_name = row.building_block_name
+        site_name = row.site_name
+        maintenance_amount = row.maintenance_amount
 
         data = {
             **space.__dict__,
             "building_block": building_name,
             "site_name": site_name,
+            "maintenance_amount": maintenance_amount,
             "accessories": accessories_map.get(space.id, [])
         }
+
         results.append(SpaceOut.model_validate(data))
 
-    return {"spaces": results, "total": total}
+    return {
+        "spaces": results,
+        "total": total
+    }
 
 
 def get_space_by_id(db: Session, space_id: str) -> Optional[Space]:
@@ -383,22 +427,54 @@ def update_space(db: Session, space: SpaceUpdate):
 def get_space_details_by_id(
         db: Session,
         space_id: str) -> Optional[SpaceOut]:
+
     db_space = (
         db.query(Space)
         .join(Site, Space.site_id == Site.id)
         .outerjoin(Building, Space.building_block_id == Building.id)
-        .add_columns(Building.name.label("building_block_name"), Site.name.label("site_name"))
-        .filter(Space.id == space_id, Space.is_deleted == False)
+        .outerjoin(
+            MaintenanceTemplate,
+            Space.maintenance_template_id == MaintenanceTemplate.id
+        )
+        .add_columns(
+            Building.name.label("building_block_name"),
+            Site.name.label("site_name"),
+
+            # ⭐ Maintenance calculation
+            case(
+                (
+                    MaintenanceTemplate.calculation_type == "flat",
+                    MaintenanceTemplate.amount
+                ),
+                (
+                    MaintenanceTemplate.calculation_type == "per_sqft",
+                    func.coalesce(Space.area_sqft, 0) *
+                    MaintenanceTemplate.amount
+                ),
+                (
+                    MaintenanceTemplate.calculation_type == "per_bed",
+                    func.coalesce(Space.beds, 0) *
+                    MaintenanceTemplate.amount
+                ),
+                else_=None
+            ).label("maintenance_amount")
+        )
+        .filter(
+            Space.id == space_id,
+            Space.is_deleted.is_(False)
+        )
         .first()
     )
 
     if not db_space:
         return None
 
-    space = db_space[0]  # Space object
-    building_name = db_space.building_block_name  # Joined building name
-    site_name = db_space.site_name  # Joined site name
+    space = db_space[0]
+    building_name = db_space.building_block_name
+    site_name = db_space.site_name
+    maintenance_amount = db_space.maintenance_amount
 
+    # ACCESSORIES
     accessory_items = (
         db.query(
             SpaceAccessory.space_id,
@@ -411,18 +487,20 @@ def get_space_details_by_id(
         .all()
     )
 
-    accessories = []
-    for acc in accessory_items:
-        accessories.append({
+    accessories = [
+        {
             "accessory_id": acc.accessory_id,
             "quantity": acc.quantity,
             "name": acc.name
-        })
+        }
+        for acc in accessory_items
+    ]
 
     data = {
         **space.__dict__,
         "building_block": building_name,
         "site_name": site_name,
+        "maintenance_amount": maintenance_amount,
         "accessories": accessories
     }
 

@@ -58,6 +58,7 @@ from fastapi import BackgroundTasks, HTTPException, status
 
 
 def get_tenants_overview(db: Session, user: UserToken) -> dict:
+
     allowed_space_ids = None
 
     if user.account_type.lower() == UserAccountType.TENANT:
@@ -74,33 +75,38 @@ def get_tenants_overview(db: Session, user: UserToken) -> dict:
 
     query = (
         db.query(
-            # Total residential
-            func.count(
-                func.distinct(
-                    case((Tenant.kind == "residential", Tenant.id))
-                )
-            ).label("individual_total"),
+            func.count(func.distinct(Tenant.id))
+            .label("total"),
 
-            # Total commercial
-            func.count(
-                func.distinct(
-                    case((Tenant.kind == "commercial", Tenant.id))
-                )
-            ).label("commercial_total"),
+            func.count(func.distinct(Tenant.id))
+            .filter(
+                TenantSpace.status == "leased",
+                Space.category == "residential",
+            )
+            .label("individual_total"),
 
-            # Active tenants
-            func.count(
-                func.distinct(
-                    case((Tenant.status == "active", Tenant.id))
-                )
-            ).label("active_total"),
+            func.count(func.distinct(Tenant.id))
+            .filter(
+                TenantSpace.status == "leased",
+                Space.category == "commercial",
+            )
+            .label("commercial_total"),
+
+            func.count(func.distinct(Tenant.id))
+            .filter(
+                Tenant.status == "active",
+            )
+            .label("active_total"),
         )
+        .select_from(Tenant)
         .join(TenantSpace, Tenant.id == TenantSpace.tenant_id)
+        .join(Space, TenantSpace.space_id == Space.id)
         .join(Site, TenantSpace.site_id == Site.id)
         .filter(
             Site.org_id == user.org_id,
             Tenant.is_deleted.is_(False),
             Site.is_deleted.is_(False),
+            Space.is_deleted.is_(False),
         )
     )
 
@@ -109,11 +115,8 @@ def get_tenants_overview(db: Session, user: UserToken) -> dict:
 
     result = query.one()
 
-    total_tenants = (result.individual_total or 0) + \
-        (result.commercial_total or 0)
-
     return {
-        "totalTenants": total_tenants,
+        "totalTenants": result.total or 0,
         "activeTenants": result.active_total or 0,
         "commercialTenants": result.commercial_total or 0,
         "individualTenants": result.individual_total or 0,
@@ -253,20 +256,8 @@ def get_all_tenants(db: Session, auth_db: Session, user: UserToken, params: Tena
             record.pop("building_block_id", None)
             record.pop("building_name", None)
 
-        if record.get("kind") == "individual":
-            record["contact_info"] = {
-                "name": record["name"],
-                "email": record["email"],
-                "phone": record["phone"],
-                "address": record.get("address"),
-            }
-
-        else:
-            contact = record.get("contact") or {}
-            if contact.get("address") is None:
-                contact["address"] = {
-                    "line1": "", "line2": "", "city": "", "state": "", "pincode": ""}
-            record["contact_info"] = contact
+        contact = record.get("contact") or {}
+        record["contact_info"] = contact
 
         record["tenant_leases"] = get_tenant_leases(
             db, user.org_id, record.get("id"))
@@ -352,28 +343,7 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
 
     record = dict(tenant._mapping)
     record["tenant_spaces"] = record["tenant_spaces"] or []
-
-    # ✅ Unified contact_info logic
-    if record["kind"] == "residential":
-        record["contact_info"] = {
-            "name": record["name"],
-            "email": record["email"],
-            "phone": record["phone"],
-            "address": record.get("address"),
-        }
-    else:
-        contact = record.get("contact") or {}
-        contact.setdefault(
-            "address",
-            {
-                "line1": "",
-                "line2": "",
-                "city": "",
-                "state": "",
-                "pincode": "",
-            },
-        )
-        record["contact_info"] = contact
+    record["contact_info"] = record.get("contact") or {}
 
     # ✅ Tenant leases (same as list API)
     record["tenant_leases"] = get_tenant_leases(
@@ -476,6 +446,8 @@ def create_tenant_internal(
         email=tenant.email,
         phone=tenant.phone,
         legal_name=tenant.legal_name,
+        commercial_type=tenant.type,
+        address=tenant.address,
         contact=contact_info,
         family_info=tenant.family_info or {},
         vehicle_info=tenant.vehicle_info,
@@ -531,7 +503,7 @@ def update_tenant(
                 status_code=str(AppStatusCode.OPERATION_ERROR),
                 http_status=404
             )
-
+        commercial_type = update_data.type or db_tenant.commercial_type
         update_dict = update_data.dict(
             exclude_unset=True,
             exclude={
@@ -557,6 +529,7 @@ def update_tenant(
                 )
 
         # Update tenant
+        update_dict["commercial_type"] = commercial_type
         update_dict["updated_at"] = now
         db.query(Tenant).filter(Tenant.id == tenant_id).update(update_dict)
         db.commit()

@@ -26,6 +26,7 @@ class TenantBase(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     status: str
+    address: Optional[Any] = None
     contact_info: Optional[Any] = None
     family_info: Optional[Any] = None
     vehicle_info: Optional[Any] = None
@@ -58,7 +59,6 @@ class TenantOut(BaseModel):
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
-    kind: str
     type: Optional[str] = "merchant"
     status: str
     contact_info: Optional[Any] = None

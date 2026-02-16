@@ -31,6 +31,7 @@ class ParkingSlotUpdate(ParkingSlotBase):
 
 class ParkingSlotRequest(CommonQueryParams):
     site_id: Optional[str] = None
+    zone_id: Optional[str] = None
 
 
 class ParkingSlotOut(ParkingSlotBase):

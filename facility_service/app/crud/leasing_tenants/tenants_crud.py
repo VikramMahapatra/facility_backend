@@ -500,7 +500,7 @@ def update_tenant(
         if not db_tenant:
             return error_response(
                 message="Tenant not found",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 http_status=404
             )
         commercial_type = update_data.type or db_tenant.commercial_type
@@ -632,7 +632,7 @@ def manage_tenant_space(
         if not db_tenant:
             return error_response(
                 message="Tenant not found",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 http_status=404
             )
 

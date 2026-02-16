@@ -127,7 +127,7 @@ def create_ticket_category(db: Session, category: TicketCategoryCreate) -> Ticke
     if category.sla_id is None or category.sla_id == "":
         return error_response(
             message="SLA policy cannot be  empty",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
 
@@ -145,7 +145,7 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate):
     if not db_category:
         return error_response(
             message="Ticket category not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 
@@ -155,7 +155,7 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate):
         if sla_value is None or sla_value == "":
             return error_response(
                 message="SLA policy cannot be updated to empty or null",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
+                status_code=str(AppStatusCode.EDIT_NOT_ALLOWED),
                 http_status=400
             )
     # Check for duplicate category name

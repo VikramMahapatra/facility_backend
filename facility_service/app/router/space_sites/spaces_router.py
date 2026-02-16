@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.utils.app_status_code import AppStatusCode
-from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipApprovalListResponse, OwnershipApprovalRequest, OwnershipHistoryOut, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate, TenantHistoryOut
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipApprovalListResponse, OwnershipApprovalRequest, OwnershipHistoryOut, RemoveOwnerRequest, RemoveSpaceTenantRequest, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate, TenantHistoryOut
 from ...crud.space_sites import spaces_crud as crud
 from shared.core.auth import allow_admin,  validate_current_token  # for dependicies
 from shared.core.schemas import CommonQueryParams, Lookup, UserToken
@@ -114,6 +114,19 @@ def assign_owner(
     )
 
 
+@router.post("/remove-owner", response_model=None)
+def remove_owner(
+    payload: RemoveOwnerRequest,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.remove_space_owner(
+        db=db,
+        payload=payload
+    )
+
+
 @router.post("/assign-tenant", response_model=None)
 def assign_space_tenant(
     payload: AssignSpaceTenantIn,
@@ -123,6 +136,22 @@ def assign_space_tenant(
 ):
 
     return crud.assign_space_tenant(
+        db=db,
+        auth_db=auth_db,
+        org_id=current_user.org_id,
+        payload=payload
+    )
+
+
+@router.post("/remove-tenant", response_model=None)
+def remove_space_tenant(
+    payload: RemoveSpaceTenantRequest,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+
+    return crud.remove_space_tenant(
         db=db,
         auth_db=auth_db,
         org_id=current_user.org_id,

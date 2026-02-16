@@ -80,7 +80,7 @@ def update_inventory_item(db: Session, item: InventoryItemUpdate, org_id: UUID) 
     if not db_item:
         return error_response(
             message="Inventory item not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 

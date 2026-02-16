@@ -252,7 +252,7 @@ def update_sla_policy(db: Session, auth_db: Session, policy: SlaPolicyUpdate) ->
     if not db_policy:
         return error_response(
             message="SLA policy not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 
@@ -272,7 +272,7 @@ def update_sla_policy(db: Session, auth_db: Session, policy: SlaPolicyUpdate) ->
         if has_active_tickets:
             return error_response(
                 message="Cannot update site for SLA policy with active tickets",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
+                status_code=str(AppStatusCode.EDIT_NOT_ALLOWED),
                 http_status=400
             )
 

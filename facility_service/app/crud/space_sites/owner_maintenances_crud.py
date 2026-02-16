@@ -9,6 +9,7 @@ from sqlalchemy import and_, exists, func, cast, literal, or_, case
 from sqlalchemy.dialects.postgresql import UUID
 
 from facility_service.app.enum.space_sites_enum import OwnerMaintenanceStatus
+from facility_service.app.models.financials.tax_codes import TaxCode
 from facility_service.app.models.space_sites.buildings import Building
 from facility_service.app.models.space_sites.maintenance_templates import MaintenanceTemplate
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
@@ -302,6 +303,8 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
     maintenance_data = maintenance.model_dump(exclude={"amount"})
     maintenance_data["space_owner_id"] = space_owner.id
     maintenance_data["amount"] = amount
+    maintenance_data["tax_amount"] = amount.get("tax_amount")
+    maintenance_data["total_amount"] = amount.get("total_amount")
 
     db_maintenance = OwnerMaintenanceCharge(**maintenance_data)
 
@@ -405,14 +408,16 @@ def update_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
             end_date=maintenance.period_end
         )
 
-        if amount <= 0:
+        if amount and amount.get("base_amount") <= 0:
             raise HTTPException(
                 status_code=400,
                 detail="Maintenance amount could not be calculated"
             )
 
         # Replace existing value with recalculated amount
-        update_data["amount"] = amount
+        update_data["amount"] = amount.get("base_amount")
+        update_data["tax_amount"] = amount.get("tax_amount")
+        update_data["total_amount"] = amount.get("total_amount")
 
     # Check for duplicate maintenance period if space owner or period is changing
     space_owner_id = new_space_owner_id if new_space_owner_id else db_maintenance.space_owner_id
@@ -794,7 +799,9 @@ def auto_generate_owner_maintenance(db: Session, input_date: date):
             space_id=space.id,
             period_start=actual_start,
             period_end=actual_end,
-            amount=round(amount, 2),
+            amount=round(amount.get("base_amount"), 2),
+            tax_amount=round(amount.get("tax_amount"), 2),
+            total_amount=round(amount.get("total_amount"), 2),
             due_date=period_end
         )
 
@@ -844,7 +851,7 @@ def get_calculated_maintenance_amount(
         end_date=end_date
     )
 
-    return amount.quantize(Decimal("0.01"))
+    return amount
 
 
 def calculate_maintenance_amount(
@@ -852,23 +859,25 @@ def calculate_maintenance_amount(
     template: MaintenanceTemplate,
     start_date: date,
     end_date: date
-) -> Decimal:
+):
 
     if not template:
-        return Decimal("0.00")
+        return {
+            "base_amount": Decimal("0.00"),
+            "tax_amount": Decimal("0.00"),
+            "total_amount": Decimal("0.00")
+        }
 
     # -----------------------------
-    # Determine full billing period
-    # (assumes monthly billing)
+    # Determine billing period
     # -----------------------------
 
     month_start = date(start_date.year, start_date.month, 1)
+
     days_in_month = calendar.monthrange(
         month_start.year,
         month_start.month
     )[1]
-
-    month_end = date(month_start.year, month_start.month, days_in_month)
 
     # -----------------------------
     # Calculate active days
@@ -877,7 +886,7 @@ def calculate_maintenance_amount(
     active_days = (end_date - start_date).days + 1
 
     # -----------------------------
-    # Calculate monthly amount
+    # Calculate monthly base amount
     # -----------------------------
 
     base_amount = Decimal(template.amount)
@@ -895,10 +904,43 @@ def calculate_maintenance_amount(
         monthly_amount = base_amount
 
     # -----------------------------
-    # Prorated calculation
+    # Prorated BASE calculation
     # -----------------------------
 
     daily_rate = monthly_amount / Decimal(days_in_month)
-    prorated_amount = daily_rate * Decimal(active_days)
 
-    return prorated_amount.quantize(Decimal("0.01"))
+    prorated_base = daily_rate * Decimal(active_days)
+
+    prorated_base = prorated_base.quantize(Decimal("0.01"))
+
+    # -----------------------------
+    # Apply tax AFTER proration
+    # -----------------------------
+
+    total_amount, tax_amount = apply_tax(
+        prorated_base,
+        template.tax_code
+    )
+
+    return {
+        "base_amount": prorated_base,
+        "tax_amount": tax_amount,
+        "total_amount": total_amount
+    }
+
+
+def apply_tax(amount: Decimal, tax_code: TaxCode | None) -> tuple[Decimal, Decimal]:
+
+    if not tax_code:
+        return amount, Decimal("0.00")
+
+    tax_rate = Decimal(tax_code.rate) / Decimal("100")
+
+    tax_amount = amount * tax_rate
+
+    total = amount + tax_amount
+
+    return (
+        total.quantize(Decimal("0.01")),
+        tax_amount.quantize(Decimal("0.01"))
+    )

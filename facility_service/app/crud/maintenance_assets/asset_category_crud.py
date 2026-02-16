@@ -13,13 +13,13 @@ from sqlalchemy import func, or_, and_
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
+
 def get_asset_categories(db: Session, org_id: str, skip: int = 0, limit: int = 100, search: Optional[str] = None):
     # Base query
     category_query = db.query(AssetCategory).filter(
         AssetCategory.is_deleted == False,
         AssetCategory.org_id == org_id
     )
-    
 
     if search:
         search_term = f"%{search}%"
@@ -29,11 +29,9 @@ def get_asset_categories(db: Session, org_id: str, skip: int = 0, limit: int = 1
                 AssetCategory.name.ilike(search_term)
             )
         )
-    
 
     total = category_query.count()
-    
-    
+
     categories = (
         category_query
         .with_entities(
@@ -50,14 +48,13 @@ def get_asset_categories(db: Session, org_id: str, skip: int = 0, limit: int = 1
         .limit(limit)
         .all()
     )
-    
+
     results = [
         AssetCategoryOut.model_validate(c._asdict())
         for c in categories
     ]
-    
-    return {"assetcategories": results, "total": total}
 
+    return {"assetcategories": results, "total": total}
 
 
 def get_asset_category_by_id(db: Session, category_id: str) -> Optional[AssetCategory]:
@@ -65,7 +62,7 @@ def get_asset_category_by_id(db: Session, category_id: str) -> Optional[AssetCat
     return db.query(AssetCategory).filter(AssetCategory.id == category_id, AssetCategory.is_deleted == False).first()
 
 
-def create_asset_category(db: Session, category: AssetCategoryCreate ,org_id:UUID) -> AssetCategory:
+def create_asset_category(db: Session, category: AssetCategoryCreate, org_id: UUID) -> AssetCategory:
     # Check for duplicate name (case-insensitive) within the same organization
     existing_category = db.query(AssetCategory).filter(
         AssetCategory.org_id == org_id,
@@ -94,7 +91,7 @@ def create_asset_category(db: Session, category: AssetCategoryCreate ,org_id:UUI
 
     # Create the category
     category_data = category.model_dump()
-    category_data["org_id"] = org_id 
+    category_data["org_id"] = org_id
     db_category = AssetCategory(id=str(uuid.uuid4()), **category_data)
     db.add(db_category)
     db.commit()
@@ -107,7 +104,7 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
     if not db_category:
         return error_response(
             message="Category not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 
@@ -121,7 +118,7 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
             AssetCategory.org_id == org_id,
             AssetCategory.id != category_id,
             AssetCategory.is_deleted == False,
-            AssetCategory.name.ilike(new_name) 
+            AssetCategory.name.ilike(new_name)
         ).first()
 
         if name_exists:
@@ -146,7 +143,6 @@ def update_asset_category(db: Session, category_id: str, category: AssetCategory
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
-
 
     for field, value in update_data.items():
         setattr(db_category, field, value)
@@ -199,7 +195,6 @@ def get_asset_category_lookup(db: Session, org_id: str):
     return categories
 
 
-
 def asset_parent_category_lookup(db: Session, org_id: str, category_id: Optional[str] = None) -> List[Dict]:
     query = (
         db.query(
@@ -218,13 +213,13 @@ def asset_parent_category_lookup(db: Session, org_id: str, category_id: Optional
             AssetCategory.org_id == org_id,
             AssetCategory.is_deleted == False
         ).all()
-        
+
         child_ids = [str(child[0]) for child in child_categories]
         if child_ids:
             query = query.filter(~AssetCategory.id.in_(child_ids))
-    
+
     query = query.distinct().order_by(AssetCategory.name.asc())
-    
+
     rows = query.all()
-    
+
     return [{"id": str(r.id), "name": r.name} for r in rows]

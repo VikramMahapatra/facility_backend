@@ -126,11 +126,11 @@ def delete_owner_maintenance(
     return crud.delete_owner_maintenance(db=db, maintenance_id=maintenance_id)
 
 
-@router.post("/calculated-maintenance-amount", response_model=Decimal)
+@router.post("/calculated-maintenance-amount", response_model=dict)
 def get_calculated_maintenance_amount(
     params: OwnerMaintenanceAmountRequest,
     db: Session = Depends(get_db)
-) -> Decimal:
+) -> dict:
     """Calculated maintenance amount for a space based on active owner maintenances"""
     return crud.get_calculated_maintenance_amount(
         db=db,

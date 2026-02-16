@@ -12,7 +12,7 @@ from facility_service.app.models.space_sites.maintenance_templates import Mainte
 from ...crud.space_sites.space_occupancy_crud import log_occupancy_event
 from ...models.space_sites.accessories import Accessory
 from ...models.space_sites.space_accessories import SpaceAccessory
-from ...models.space_sites.space_occupancies import OccupantType
+from ...models.space_sites.space_occupancies import OccupancyStatus, OccupantType, SpaceOccupancy
 from ...models.space_sites.space_occupancy_events import OccupancyEventType
 from ...crud.access_control.user_management_crud import assign_tenant_spaces, assign_owner_spaces, upsert_user_sites_preserve_primary
 from ...schemas.access_control.user_management_schemas import UserAccountCreate, UserTenantSpace
@@ -31,7 +31,7 @@ from ...models.space_sites.buildings import Building
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.leases import Lease
-from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipHistoryOut, SpaceAccessoryCreate, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate, TenantHistoryOut
+from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipHistoryOut, RemoveOwnerRequest, RemoveSpaceTenantRequest, SpaceAccessoryCreate, SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate, TenantHistoryOut
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
@@ -290,7 +290,7 @@ def update_space(db: Session, space: SpaceUpdate):
     if not db_space:
         return error_response(
             message="Space not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
     accessories_data = space.accessories
@@ -777,6 +777,51 @@ def assign_space_owner(
         )
 
 
+def remove_space_owner(
+    db: Session,
+    payload: RemoveOwnerRequest
+):
+
+    owner = db.query(SpaceOwner).filter(
+        SpaceOwner.space_id == payload.space_id,
+        SpaceOwner.status == OwnershipStatus.approved,
+        SpaceOwner.is_active == True
+    ).first()
+
+    if not owner:
+        raise error_response(message="Owner not found",
+                             status_code=AppStatusCode.REQUIRED_VALIDATION_ERROR)
+
+    # ✅ Close ownership instead of deleting
+    owner.is_active = False
+    owner.end_date = date.today()
+
+    # OPTIONAL — update space occupancy
+    occupancy = db.query(SpaceOccupancy).filter(
+        SpaceOccupancy.space_id == payload.space_id,
+        SpaceOccupancy.source_id == owner.id,
+        SpaceOccupancy.status == OccupancyStatus.active
+    ).first()
+
+    if occupancy:
+        occupancy.status = OccupancyStatus.moved_out
+        occupancy.move_out_date = owner.end_date
+
+    db.commit()
+    db.refresh(owner)
+
+    log_occupancy_event(
+        db=db,
+        space_id=payload.space_id,
+        occupant_type=OccupantType.owner,
+        occupant_user_id=owner.owner_user_id,
+        event_type=OccupancyEventType.owner_removed,
+        source_id=owner.id
+    )
+
+    return success_response(data=None, message="Owner removed successfully")
+
+
 def assign_space_tenant(
     db: Session,
     auth_db: Session,
@@ -867,6 +912,106 @@ def assign_space_tenant(
         # ✅ ROLLBACK everything if any error occurs
         db.rollback()
         auth_db.rollback
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
+
+def remove_space_tenant(
+    db: Session,
+    auth_db: Session,
+    org_id: UUID,
+    payload: RemoveSpaceTenantRequest
+):
+    try:
+        now = datetime.utcnow()
+
+        # ------------------------------
+        # Validate space
+        # ------------------------------
+        space = db.query(Space).filter(
+            Space.id == payload.space_id,
+            Space.org_id == org_id,
+            Space.is_deleted == False
+        ).first()
+
+        if not space:
+            raise error_response(message="Space not found")
+
+        # ------------------------------
+        # Validate tenant
+        # ------------------------------
+        tenant = db.query(Tenant).filter(
+            Tenant.user_id == payload.tenant_user_id,
+            Tenant.is_deleted == False
+        ).first()
+
+        if not tenant:
+            raise error_response(message="Tenant not found")
+
+        # ------------------------------
+        # Find active tenant space
+        # ------------------------------
+        tenant_space = db.query(TenantSpace).filter(
+            TenantSpace.space_id == payload.space_id,
+            TenantSpace.tenant_id == tenant.id,
+            TenantSpace.is_deleted == False
+        ).first()
+
+        if not tenant_space:
+            raise error_response(message="Tenant not assigned to this space")
+
+        # ------------------------------
+        # Soft remove
+        # ------------------------------
+        tenant_space.status = OwnershipStatus.ended
+        tenant_space.is_deleted = True
+        tenant_space.updated_at = now
+
+        # ------------------------------
+        # Log occupancy event
+        # ------------------------------
+        log_occupancy_event(
+            db=db,
+            space_id=payload.space_id,
+            occupant_type=OccupantType.tenant,
+            occupant_user_id=payload.tenant_user_id,
+            event_type=OccupancyEventType.tenant_removed,
+            source_id=tenant_space.id
+        )
+
+        db.commit()
+
+        # ------------------------------
+        # Optional: deactivate user org
+        # ------------------------------
+        active_spaces = db.query(TenantSpace).filter(
+            TenantSpace.tenant_id == tenant.id,
+            TenantSpace.is_deleted == False
+        ).count()
+
+        if active_spaces == 0:
+            user_org = auth_db.query(UserOrganization).filter(
+                UserOrganization.user_id == payload.tenant_user_id,
+                UserOrganization.org_id == org_id,
+                UserOrganization.account_type == UserAccountType.TENANT.value
+            ).first()
+
+            if user_org:
+                user_org.status = "inactive"
+
+            auth_db.commit()
+
+        return success_response(
+            data=None,
+            message="Tenant removed successfully"
+        )
+
+    except Exception as e:
+        db.rollback()
+        auth_db.rollback()
         return error_response(
             message=str(e),
             status_code=str(AppStatusCode.OPERATION_ERROR),

@@ -212,10 +212,10 @@ def get_contract_by_id(db: Session, contract_id: str) -> Optional[Contract]:
         )
         .first()
     )
-    
+
     if not contract:
         return None
-    
+
     # Your existing logic to convert to ContractOut
     # Just make sure to add vendor_name and site_name
     contract_out = ContractOut(
@@ -223,10 +223,12 @@ def get_contract_by_id(db: Session, contract_id: str) -> Optional[Contract]:
         vendor_name=contract.vendor_name,
         site_name=contract.site_name
     )
-    
+
     return contract_out
 
 # -------- Create Contract --------
+
+
 def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
     # ✅ VALIDATION 1: Vendor status validation - ensure vendor is active
     vendor = db.query(Vendor).filter(
@@ -237,24 +239,22 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
     if not vendor:
         return error_response(
             message="Vendor not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 
     if vendor.status != "active":
         return error_response(
             message="Cannot create contract with inactive vendor",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
 
-        
-        
     # ✅ VALIDATION 3: No overlapping contracts for same vendor+site+contract type
     overlapping_contract = db.query(Contract).filter(
         Contract.vendor_id == contract.vendor_id,
         Contract.site_id == contract.site_id,
-        Contract.type==contract.type,
+        Contract.type == contract.type,
         Contract.org_id == contract.org_id,
         Contract.is_deleted == False,
         # Check date overlaps
@@ -267,7 +267,7 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
     if overlapping_contract:
         return error_response(
             message=f"Vendor already has {overlapping_contract.type}   contract for this site during {overlapping_contract.start_date} to {overlapping_contract.end_date}",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
             http_status=400
         )
 
@@ -319,7 +319,6 @@ def create_contract(db: Session, contract: ContractCreate) -> ContractOut:
     return ContractOut.model_validate(contract_data)
 
 
-
 # -------- Update Contract --------
 def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractOut]:
     db_contract = (
@@ -330,7 +329,7 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
     if not db_contract:
         return error_response(
             message="Contract not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 
@@ -346,18 +345,16 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
         if not vendor:
             return error_response(
                 message="Vendor not found",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 http_status=404
             )
 
         if vendor.status != "active":
             return error_response(
                 message="Cannot assign contract to inactive vendor",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 http_status=400
             )
-
-    
 
     # ✅ VALIDATION 3: No overlapping contracts for same vendor+site+type
     vendor_id = update_data.get('vendor_id', db_contract.vendor_id)
@@ -370,7 +367,7 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
         overlapping_contract = db.query(Contract).filter(
             Contract.vendor_id == vendor_id,
             Contract.site_id == site_id,
-            Contract.type==contract.type,
+            Contract.type == contract.type,
             Contract.org_id == db_contract.org_id,
             Contract.id != contract.id,  # Exclude current contract
             Contract.is_deleted == False,
@@ -404,11 +401,11 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
                 status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
-    
+
     # Update contract if all validations pass
     for key, value in update_data.items():
         setattr(db_contract, key, value)
-    
+
     try:
         db.commit()
         db.refresh(db_contract)
@@ -422,6 +419,8 @@ def update_contract(db: Session, contract: ContractUpdate) -> Optional[ContractO
             http_status=400
         )
 # -------- Delete Contract (Soft Delete) --------
+
+
 def delete_contract(db: Session, contract_id: UUID, org_id: UUID) -> bool:
     # Verify contract exists and belongs to org
     db_contract = (

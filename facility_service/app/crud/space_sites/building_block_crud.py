@@ -19,7 +19,7 @@ from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.buildings import Building
 
 
-def get_buildings(db: Session, user:UserToken, params: BuildingRequest):
+def get_buildings(db: Session, user: UserToken, params: BuildingRequest):
     allowed_building_ids = None
 
     if user.account_type.lower() == UserAccountType.TENANT:
@@ -79,11 +79,11 @@ def get_buildings(db: Session, user:UserToken, params: BuildingRequest):
     )
     if allowed_building_ids is not None:
         building_query = building_query.filter(
-                Building.id.in_(allowed_building_ids)
+            Building.id.in_(allowed_building_ids)
         )
     else:
         building_query = building_query.filter(
-                Site.org_id == user.org_id
+            Site.org_id == user.org_id
         )
 
     if params.site_id and params.site_id.lower() != "all":
@@ -113,7 +113,8 @@ def create_building(db: Session, building: BuildingCreate):
     existing_building = db.query(Building).filter(
         Building.site_id == building.site_id,
         Building.is_deleted == False,
-        func.trim(func.lower(Building.name)) == func.trim(func.lower(building.name))
+        func.trim(func.lower(Building.name)) == func.trim(
+            func.lower(building.name))
     ).first()
 
     if existing_building:
@@ -136,12 +137,12 @@ def update_building(db: Session, building: BuildingUpdate):
     db_building = db.query(Building).filter(
         Building.id == building.id,
         Building.is_deleted == False  # Add this filter
-     ).first()
-    
+    ).first()
+
     if not db_building:
         return error_response(
             message="Building not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 
@@ -153,30 +154,32 @@ def update_building(db: Session, building: BuildingUpdate):
         has_spaces = db.query(Space).filter(
             Space.building_block_id == building.id,
             Space.is_deleted == False
-            ).first()
+        ).first()
 
         if has_spaces:
-                return error_response(
+            return error_response(
                 message="Cannot update site for a building that has spaces assigned to it"
             )
         existing_building = db.query(Building).filter(
             Building.site_id == building.site_id,
             Building.id != building.id,
             Building.is_deleted == False,
-            func.trim(func.lower(Building.name)) == func.trim(func.lower(update_data.get('name', '')))
+            func.trim(func.lower(Building.name)) == func.trim(
+                func.lower(update_data.get('name', '')))
         ).first()
         if existing_building:
             return error_response(
                 message=f"Building with name '{update_data['name']}' already exists in this site"
             )
-        
+
     # Check for duplicates only if name is being updated
     if 'name' in update_data and update_data['name'] != db_building.name:
         existing_building = db.query(Building).filter(
             Building.site_id == db_building.site_id,
             Building.id != building.id,
             Building.is_deleted == False,
-            func.trim(func.lower(Building.name)) == func.trim(func.lower(update_data.get('name', '')))
+            func.trim(func.lower(Building.name)) == func.trim(
+                func.lower(update_data.get('name', '')))
         ).first()
 
         if existing_building:
@@ -192,7 +195,7 @@ def update_building(db: Session, building: BuildingUpdate):
         db.commit()
         db.refresh(db_building)
         return get_building_by_id(db, building.id)
-        
+
     except IntegrityError as e:
         db.rollback()
         return error_response(
@@ -211,7 +214,7 @@ def get_building_lookup(db: Session, site_id: str, user: UserToken):
 
         if not allowed_building_ids:
             return {"buildings": [], "total": 0}
-        
+
     building_query = (
         db.query(Building.id, Building.name)
         .join(Site, Site.id == Building.site_id)
@@ -225,19 +228,17 @@ def get_building_lookup(db: Session, site_id: str, user: UserToken):
 
     if allowed_building_ids is not None:
         building_query = building_query.filter(
-                Building.id.in_(allowed_building_ids)
+            Building.id.in_(allowed_building_ids)
         )
     else:
         building_query = building_query.filter(
-                Site.org_id == user.org_id
+            Site.org_id == user.org_id
         )
 
     if site_id and site_id.lower() != "all":
         building_query = building_query.filter(Site.id == site_id)
 
     return building_query.all()
-
-
 
 
 # In building_crud.py - update the delete_building function
@@ -247,7 +248,7 @@ def delete_building(db: Session, building_id: str) -> Dict:
         Building.id == building_id,
         Building.is_deleted == False  # Add this filter
     ).first()
-    
+
     if not building:
         return {"success": False, "message": "Building not found"}
 
@@ -269,8 +270,6 @@ def delete_building(db: Session, building_id: str) -> Dict:
     db.commit()
 
     return {"success": True, "message": "Building deleted successfully"}
-
-
 
 
 def get_building_by_id(db: Session, building_id: str):
@@ -319,16 +318,14 @@ def get_building_by_id(db: Session, building_id: str):
         .outerjoin(space_subq, Building.id == space_subq.c.building_id)
         .filter(
             Building.id == building_id,
-         
+
         )
     )
 
     building = building_query.first()
     # Use _asdict() to convert Row objects to dictionaries
-    
+
     return BuildingOut.model_validate(building._asdict())
-
-
 
 
 def get_building_master_lookup(db: Session, site_id: str):

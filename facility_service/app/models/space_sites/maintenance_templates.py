@@ -20,7 +20,8 @@ class MaintenanceTemplate(Base):
     calculation_type = Column(String(20), nullable=False)
     # flat | per_sqft | per_bed | custom
     amount = Column(Numeric(10, 2), nullable=False)
-
+    tax_code_id = Column(UUID(as_uuid=True), ForeignKey(
+        "tax_codes.id"), nullable=True)
     # optional filters
     category = Column(String(32), nullable=True)
     kind = Column(String(32), nullable=True)

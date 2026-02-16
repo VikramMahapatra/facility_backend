@@ -64,7 +64,7 @@ def update_tax_code(
     if not result:
         return error_response(
             message="Tax code not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
     return result

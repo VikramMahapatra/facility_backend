@@ -101,7 +101,7 @@ def update_space_group(db: Session, group: SpaceGroupUpdate):
     if not sg:
         return error_response(
             message="Space group not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 

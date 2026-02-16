@@ -11,6 +11,7 @@ from sqlalchemy import event
 # Create a sequence for maintenance numbers
 maintenance_seq = Sequence('maintenance_no_seq', start=101, increment=1)
 
+
 class OwnerMaintenanceCharge(Base):  # Renamed class
     __tablename__ = "owner_maintenance_charges"
 
@@ -32,6 +33,9 @@ class OwnerMaintenanceCharge(Base):  # Renamed class
     period_start = Column(Date, nullable=False)
     period_end = Column(Date, nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
+    tax_amount = Column(Numeric(10, 2), nullable=False,
+                        default=0)  # base amount
+    total_amount = Column(Numeric(10, 2), nullable=False)
     status = Column(
         String(16),
         default="pending"
@@ -70,7 +74,6 @@ class OwnerMaintenanceCharge(Base):  # Renamed class
     space_owner = relationship("SpaceOwner")
     space = relationship("Space")
     invoice = relationship("Invoice")
-    
 
 
 # Event listener to auto-generate maintenance number
@@ -78,7 +81,7 @@ class OwnerMaintenanceCharge(Base):  # Renamed class
 def generate_maintenance_no(mapper, connection, target):
     if target.maintenance_no:
         return
-    
+
     # Correct way to get next sequence value
     next_number = connection.scalar(maintenance_seq.next_value())
     target.maintenance_no = f"MNT{next_number:03d}"

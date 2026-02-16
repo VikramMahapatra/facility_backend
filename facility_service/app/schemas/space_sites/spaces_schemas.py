@@ -144,3 +144,13 @@ class OwnershipApprovalListResponse(BaseModel):
     total: int
 
     model_config = {"from_attributes": True}
+
+
+class RemoveOwnerRequest(BaseModel):
+    space_id: UUID
+    owner_id: UUID
+
+
+class RemoveSpaceTenantRequest(BaseModel):
+    space_id: UUID
+    tenant_user_id: UUID

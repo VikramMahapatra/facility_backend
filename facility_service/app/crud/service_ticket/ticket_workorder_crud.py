@@ -2,7 +2,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from uuid import UUID
-from typing import List, Optional , Dict, Any
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
@@ -18,8 +18,8 @@ from ...models.space_sites.sites import Site
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...schemas.service_ticket.ticket_work_order_schemas import (
-    TicketWorkOrderCreate, 
-    TicketWorkOrderUpdate, 
+    TicketWorkOrderCreate,
+    TicketWorkOrderUpdate,
     TicketWorkOrderOut,
     TicketWorkOrderRequest,
     TicketWorkOrderListResponse,
@@ -33,17 +33,17 @@ from ...enum.ticket_service_enum import TicketWorkOrderStatusEnum
 def build_ticket_work_order_filters(org_id: UUID, params: TicketWorkOrderRequest):
     filters = [
         TicketWorkOrder.is_deleted == False,
-        Site.org_id == org_id  
+        Site.org_id == org_id
     ]
 
-    
     if params.site_id and params.site_id.lower() != "all":
         filters.append(Ticket.site_id == params.site_id)
     # If "all" or no site_id, show all sites within the org (no additional filter)
 
     # ✅ STATUS FILTER - Show work orders for specific status or all statuses
     if params.status and params.status.lower() != "all":
-        filters.append(func.lower(TicketWorkOrder.status) == params.status.lower())
+        filters.append(func.lower(TicketWorkOrder.status)
+                       == params.status.lower())
 
     # Search across description, ticket number, and site name
     if params.search:
@@ -79,7 +79,8 @@ def get_ticket_work_orders(
 
     # Get paginated data with all necessary joins
     work_orders_data = (
-        db.query(TicketWorkOrder, Ticket.ticket_no, Site.name.label('site_name'))
+        db.query(TicketWorkOrder, Ticket.ticket_no,
+                 Site.name.label('site_name'))
         .join(Ticket, TicketWorkOrder.ticket_id == Ticket.id)
         .join(Site, Ticket.site_id == Site.id)
         .filter(*filters)
@@ -101,9 +102,9 @@ def get_ticket_work_orders(
             # Assigned To Name from Ticket.assigned_to
             if ticket.assigned_to:
                 assigned_user = (
-                auth_db.query(Users)
-            .filter(Users.id == ticket.assigned_to)
-            .first())
+                    auth_db.query(Users)
+                    .filter(Users.id == ticket.assigned_to)
+                    .first())
             assigned_to_name = assigned_user.full_name if assigned_user else None
 
             # Vendor Name from Ticket.vendor_id
@@ -113,7 +114,7 @@ def get_ticket_work_orders(
                     Vendor.is_deleted == False
                 ).first()
                 vendor_name = vendor.name if vendor else None
-        
+
         work_order_out = TicketWorkOrderOut.model_validate({
             **wo.__dict__,
             "ticket_no": ticket_no,
@@ -129,6 +130,8 @@ def get_ticket_work_orders(
     )
 
 # ---------------- Overview Endpoint ----------------
+
+
 def get_ticket_work_orders_overview(db: Session, org_id: UUID, site_id: Optional[str] = None) -> TicketWorkOrderOverviewResponse:
     """
     Calculate overview statistics for ticket work orders with site filter
@@ -170,12 +173,13 @@ def get_ticket_work_orders_overview(db: Session, org_id: UUID, site_id: Optional
 
 # ---------------- Get By ID ----------------
 def get_ticket_work_order_by_id(
-    db: Session,  
+    db: Session,
     work_order_id: UUID
 ) -> Optional[TicketWorkOrderOut]:
-    
+
     work_order_data = (
-        db.query(TicketWorkOrder, Ticket.ticket_no, Site.name.label('site_name'))
+        db.query(TicketWorkOrder, Ticket.ticket_no,
+                 Site.name.label('site_name'))
         .join(Ticket, TicketWorkOrder.ticket_id == Ticket.id)
         .join(Site, Ticket.site_id == Site.id)
         .filter(
@@ -184,10 +188,10 @@ def get_ticket_work_order_by_id(
         )
         .first()
     )
-    
+
     if work_order_data:
         wo, ticket_no, site_name = work_order_data
-        
+
         # ✅ FIX: Get assigned vendor name from WORK ORDER's assigned_to from VENDOR table
         assigned_to_name = None
         if wo.assigned_to:
@@ -198,22 +202,23 @@ def get_ticket_work_order_by_id(
             assigned_to_name = vendor.name if vendor else None
 
         return TicketWorkOrderOut.model_validate({
-            **wo.__dict__,    
+            **wo.__dict__,
             "ticket_no": ticket_no,
             "assigned_to_name": assigned_to_name,
             "site_name": site_name
-            
+
         })
-    
+
     return None
 
+
 def create_ticket_work_order(
-    db: Session, 
+    db: Session,
     auth_db: Session,
     work_order: TicketWorkOrderCreate,
     current_user: UserToken
 ) -> TicketWorkOrderOut:
-    
+
     # Get ticket with site info
     ticket_data = (
         db.query(
@@ -227,14 +232,14 @@ def create_ticket_work_order(
         )
         .first()
     )
-    
+
     if not ticket_data:
         return error_response(
             message="Associated ticket not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
-    
+
     # Unpack the tuple correctly
     ticket, site_name = ticket_data  # ticket_data is (Ticket, site_name)
     # Create work order
@@ -257,9 +262,9 @@ def create_ticket_work_order(
     total_amount = base_amount + tax_amount
 
     db_work_order = TicketWorkOrder(
-        **work_order.model_dump(exclude={"total_amount" ,"tax_code"}),
+        **work_order.model_dump(exclude={"total_amount", "tax_code"}),
         total_amount=total_amount
-    )   
+    )
     db.add(db_work_order)
     db.commit()
     db.refresh(db_work_order)
@@ -267,7 +272,7 @@ def create_ticket_work_order(
 
     # Fetch action user (creator of work order)
     action_by_user = auth_db.query(Users).filter(
-        Users.id ==current_user.user_id
+        Users.id == current_user.user_id
     ).first()
 
     action_by_name = action_by_user.full_name if action_by_user else "Unknown User"
@@ -286,13 +291,11 @@ def create_ticket_work_order(
     if ticket.vendor_id:
         recipient_ids.append(ticket.vendor_id)
 
-
     # 4️⃣ Admin users
     admin_user_ids = fetch_role_admin(
         auth_db,
         current_user.org_id
     )
-
 
     if isinstance(admin_user_ids, list):
         recipient_ids.extend([a["user_id"] for a in admin_user_ids])
@@ -347,17 +350,17 @@ def create_ticket_work_order(
 
 # ---------------- Update ----------------
 def update_ticket_work_order(
-    db: Session, 
+    db: Session,
     auth_db: Session,
     work_order_update: TicketWorkOrderUpdate,
     org_id: UUID
 ) -> TicketWorkOrderOut:
-    
+
     # Get existing work order with relationships
     work_order_data = (
         db.query(
-            TicketWorkOrder, 
-            Ticket.ticket_no, 
+            TicketWorkOrder,
+            Ticket.ticket_no,
             Site.name.label('site_name')
         )
         .join(Ticket, TicketWorkOrder.ticket_id == Ticket.id)
@@ -369,17 +372,18 @@ def update_ticket_work_order(
         )
         .first()
     )
-    
+
     if not work_order_data:
         return error_response(
             message="Work order not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
-    
+
     db_work_order, ticket_no, site_name = work_order_data
     # Update fields (exclude id from update data)
-    update_data = work_order_update.model_dump(exclude_unset=True, exclude={'id'})
+    update_data = work_order_update.model_dump(
+        exclude_unset=True, exclude={'id'})
     for key, value in update_data.items():
         setattr(db_work_order, key, value)
     labour = Decimal(db_work_order.labour_cost or 0)
@@ -399,17 +403,16 @@ def update_ticket_work_order(
 
     db_work_order.total_amount = base_amount + (
         base_amount * tax_rate / Decimal("100")
-    )    
+    )
 
     db.commit()
     db.refresh(db_work_order)
-    
+
     return TicketWorkOrderOut(
         **db_work_order.__dict__,
         ticket_no=ticket_no,
         site_name=site_name
     )
-
 
 
 # ---------------- Soft Delete ----------------
@@ -418,7 +421,7 @@ def delete_ticket_work_order_soft(db: Session, work_order_id: UUID):
         TicketWorkOrder.id == work_order_id,
         TicketWorkOrder.is_deleted == False
     ).first()
-    
+
     if not db_work_order:
         return error_response(
             message="Work order not found",
@@ -429,9 +432,8 @@ def delete_ticket_work_order_soft(db: Session, work_order_id: UUID):
     db_work_order.is_deleted = True
     db_work_order.updated_at = func.now()
     db.commit()
-    
-    return {"message": "Work order deleted successfully"}
 
+    return {"message": "Work order deleted successfully"}
 
 
 # ---------------- Filter Work Orders by Status ----------------
@@ -450,7 +452,6 @@ def ticket_work_orders_filter_status_lookup(db: Session, org_id: str, status: Op
         query = query.filter(TicketWorkOrder.status == status)
 
     return query.all()
-
 
 
 # ---------------- Status Lookup ----------------
@@ -481,11 +482,6 @@ def ticket_lookup_for_work_orders(db: Session, org_id: UUID) -> List[Lookup]:
     return [Lookup(id=str(ticket.id), name=ticket.name) for ticket in tickets]
 
 
-
-
-
-
-
 # ---------------- Site Lookup (for dropdown) ----------------
 def site_lookup(db: Session, org_id: UUID) -> List[Lookup]:
     """
@@ -500,7 +496,7 @@ def site_lookup(db: Session, org_id: UUID) -> List[Lookup]:
         .order_by(Site.name.asc())
         .all()
     )
-    
+
     return [Lookup(id=site.id, name=site.name) for site in sites]
 
 
@@ -518,34 +514,35 @@ def contact_lookup(auth_db: Session) -> List[Lookup]:
         .order_by(Users.full_name.asc())
         .all()
     )
-    
+
     return [Lookup(id=user.id, name=user.full_name) for user in users]
 
 
-
 def get_names_for_ticket_id(
-    db: Session, 
+    db: Session,
     auth_db: Session,
     ticket_id: UUID
 ) -> Optional[Dict[str, Any]]:
 
     ticket = (db.query(Ticket).filter(Ticket.id == ticket_id).first())
     if not ticket:
-        return None 
-    
+        return None
+
     assigned_to_id = ticket.assigned_to
     vendor_id = ticket.vendor_id
-    
+
     assigned_to_name = None
     vendor_name = None
 
     if assigned_to_id:
-        assigned_user = (auth_db.query(Users).filter(Users.id == assigned_to_id).first())
+        assigned_user = (auth_db.query(Users).filter(
+            Users.id == assigned_to_id).first())
         if assigned_user:
             assigned_to_name = assigned_user.full_name
 
     if vendor_id:
-        vendor = (db.query(Vendor).filter( Vendor.id == vendor_id,Vendor.is_deleted == False).first())
+        vendor = (db.query(Vendor).filter(
+            Vendor.id == vendor_id, Vendor.is_deleted == False).first())
         if vendor:
             vendor_name = vendor.name
     return {

@@ -288,7 +288,7 @@ def update_site(db: Session, site: SiteUpdate):
     if not db_site:
         return error_response(
             message="Site not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 

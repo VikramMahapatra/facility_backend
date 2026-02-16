@@ -259,7 +259,7 @@ def update_vendor(db: Session, auth_db: Session, vendor: VendorUpdate) -> Option
     if not db_vendor:
         return error_response(
             message="Vendor not found",
-            status_code="OPERATION_ERROR",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 
@@ -277,7 +277,7 @@ def update_vendor(db: Session, auth_db: Session, vendor: VendorUpdate) -> Option
         if existing_vendor:
             return error_response(
                 message=f"Vendor name '{new_name}' already exists",
-                status_code="OPERATION_ERROR",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
 
@@ -293,7 +293,7 @@ def update_vendor(db: Session, auth_db: Session, vendor: VendorUpdate) -> Option
         if existing_gst:
             return error_response(
                 message=f"GST number '{new_gst}' already exists",
-                status_code="OPERATION_ERROR",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
 
@@ -312,7 +312,7 @@ def update_vendor(db: Session, auth_db: Session, vendor: VendorUpdate) -> Option
         if existing_phone:
             return error_response(
                 message=f"Phone number '{new_phone}' already exists",
-                status_code="OPERATION_ERROR",
+                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
                 http_status=400
             )
 
@@ -330,7 +330,7 @@ def update_vendor(db: Session, auth_db: Session, vendor: VendorUpdate) -> Option
         db.rollback()
         return error_response(
             message="Error updating vendor",
-            status_code="OPERATION_ERROR",
+            status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
         )
 

@@ -179,7 +179,7 @@ def update_parking_zone(db: Session, zone_update: ParkingZoneUpdate):  # ✅ Cha
     if not db_zone:
         return error_response(
             message="Parking zone not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 

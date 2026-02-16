@@ -35,7 +35,7 @@ def read_site(site_id: str, db: Session = Depends(get_db)):
     if not db_site:
         return error_response(
             message="Site not found",
-            status_code="OPERATION_ERROR",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 

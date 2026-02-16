@@ -1,4 +1,5 @@
 
+from facility_service.app.router.parking_access import parking_slots_router
 from facility_service.app.router.space_sites import maintenance_template_router
 from .router.space_sites import owner_maintenances_router
 from .router.leasing_tenants import lease_charge_code_router
@@ -45,7 +46,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from shared.core.database import facility_engine, Base
 
 from .models.energy_iot import meters, meter_readings
-from .models.parking_access import parking_zones, parking_pass, access_events, visitors
+from .models.parking_access import parking_zones, parking_pass, access_events, visitors, parking_slots
 from .models.crm import contacts, companies
 from .models.financials import invoices
 from .models.leasing_tenants import leases, lease_charges, tenant_spaces, tenants, lease_charge_code, lease_payment_term
@@ -154,6 +155,7 @@ app.include_router(parking_pass_router.router)
 app.include_router(owner_maintenances_router.router)
 app.include_router(space_occupancy_router.router)
 app.include_router(maintenance_template_router.router)
+app.include_router(parking_slots_router.router)
 
 
 @app.get("/api/health")

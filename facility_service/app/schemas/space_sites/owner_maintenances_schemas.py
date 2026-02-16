@@ -11,7 +11,7 @@ class OwnerMaintenanceBase(EmptyStringModel):
     space_id: UUID
     period_start: date
     period_end: date
-    amount: Decimal
+    amount: Optional[Decimal] = None
     status: Optional[str] = "pending"
     due_date: date
 
@@ -74,3 +74,9 @@ class OwnerMaintenanceBySpaceResponse(BaseModel):
     maintenances: List[OwnerMaintenanceOut]
 
     model_config = {"from_attributes": True}
+
+
+class OwnerMaintenanceAmountRequest(BaseModel):
+    space_id: str
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None

@@ -62,6 +62,11 @@ class Space(Base):
         back_populates="space",
         cascade="all, delete-orphan"
     )
+    parking_slots = relationship(
+        "ParkingSlot",
+        back_populates="space",
+        cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
 

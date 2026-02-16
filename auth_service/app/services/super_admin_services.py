@@ -1,5 +1,7 @@
 
 
+from datetime import datetime
+from fastapi import BackgroundTasks
 from requests import Session
 from sqlalchemy import or_
 from auth_service.app.models.orgs_safe import OrgSafe
@@ -7,6 +9,7 @@ from auth_service.app.models.rolepolicy import RolePolicy
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.schemas.superadminschema import OrgApprovalRequest
+from shared.helpers.email_helper import EmailHelper
 from shared.helpers.json_response_helper import error_response
 from shared.models.users import Users
 from shared.utils.enums import UserAccountType
@@ -80,7 +83,7 @@ def list_pending_orgs(facility_db: Session, params: OrgApprovalRequest):
     }
 
 
-def approve_org(org_id: str, facility_db: Session, auth_db: Session):
+def approve_org(background_tasks: BackgroundTasks, org_id: str, facility_db: Session, auth_db: Session):
 
     org = facility_db.query(OrgSafe).filter(
         OrgSafe.id == org_id
@@ -179,10 +182,19 @@ def approve_org(org_id: str, facility_db: Session, auth_db: Session):
     facility_db.commit()
     auth_db.commit()
 
+    # Send approval email to org admin
+    context = {
+        "organization_name": org.name,
+        "organization_email": org.billing_email,
+        "approval_date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")}
+
+    send_approval_email(background_tasks, db=auth_db,
+                        email=org.billing_email, context=context)
+
     return {"message": f"Organization '{org.name}' approved"}
 
 
-def reject_org(org_id: str, facility_db: Session, auth_db: Session):
+def reject_org(background_tasks: BackgroundTasks, org_id: str, facility_db: Session, auth_db: Session):
     org = facility_db.query(OrgSafe).filter(OrgSafe.id == org_id).first()
     if not org:
         return error_response(message="Organization not found")
@@ -198,6 +210,16 @@ def reject_org(org_id: str, facility_db: Session, auth_db: Session):
 
     facility_db.commit()
     auth_db.commit()
+
+    # Send rejection email to org admin
+    context = {
+        "organization_name": org.name,
+        "organization_email": org.billing_email,
+        "rejection_reason": "Unfortunately, your organization registration did not meet our criteria at this time. Please review the requirements and consider reapplying in the future."}
+
+    send_rejection_email(background_tasks, db=auth_db,
+                         email=org.billing_email, context=context)
+
     return {"message": f"Organization '{org.name}' rejected"}
 
 
@@ -211,3 +233,29 @@ def super_admin_stats(db: Session, facility_db: Session):
         "pending_orgs": pending_orgs,
         "total_users": total_users
     }
+
+
+def send_approval_email(background_tasks, db, email, context):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="org_approved",
+        recipients=[email],
+        subject="Your Organization Has Been Approved 🎉",
+        context=context,
+    )
+
+
+def send_rejection_email(background_tasks, db, email, context):
+    email_helper = EmailHelper()
+
+    background_tasks.add_task(
+        email_helper.send_email,
+        db=db,
+        template_code="org_rejected",
+        recipients=[email],
+        subject="Update Regarding Your Organization Registration",
+        context=context,
+    )

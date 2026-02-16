@@ -24,3 +24,8 @@ class ParkingZone(Base):
 
     # relationships
     passes = relationship("ParkingPass", back_populates="zone")
+    slots = relationship(
+        "ParkingSlot",
+        back_populates="zone",
+        cascade="all, delete-orphan"
+    )

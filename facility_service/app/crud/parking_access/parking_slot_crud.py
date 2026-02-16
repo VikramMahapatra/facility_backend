@@ -2,15 +2,30 @@ from uuid import UUID
 from facility_service.app.models.parking_access.parking_slots import ParkingSlot
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
+from facility_service.app.models.parking_access.parking_zones import ParkingZone
+from facility_service.app.models.space_sites.sites import Site
+from facility_service.app.models.space_sites.spaces import Space
+from facility_service.app.schemas.parking_access.parking_slot_schemas import ParkingSlotCreate, ParkingSlotOut, ParkingSlotUpdate
 from shared.core.schemas import UserToken
 from shared.helpers.json_response_helper import error_response
 
 
 def get_parking_slots(db: Session, org_id: UUID, params):
 
-    query = db.query(ParkingSlot).filter(
-        ParkingSlot.org_id == org_id,
-        ParkingSlot.is_deleted == False
+    query = (
+        db.query(
+            ParkingSlot,
+            Site.name.label("site_name"),
+            ParkingZone.name.label("zone_name"),
+            Space.name.label("space_name")
+        )
+        .join(Site, ParkingSlot.site_id == Site.id)
+        .join(ParkingZone, ParkingSlot.zone_id == ParkingZone.id)
+        .outerjoin(Space, ParkingSlot.space_id == Space.id)  # optional
+        .filter(
+            ParkingSlot.org_id == org_id,
+            ParkingSlot.is_deleted == False
+        )
     )
 
     if params.search:
@@ -26,12 +41,26 @@ def get_parking_slots(db: Session, org_id: UUID, params):
 
     total = query.count()
 
-    slots = (
+    rows = (
         query.order_by(ParkingSlot.created_at.desc())
         .offset(params.skip)
         .limit(params.limit)
         .all()
     )
+
+    slots = []
+
+    for slot, site_name, zone_name, space_name in rows:
+        slots.append(
+            ParkingSlotOut.model_validate(
+                {
+                    **slot.__dict__,
+                    "site_name": site_name,
+                    "zone_name": zone_name,
+                    "space_name": space_name
+                }
+            )
+        )
 
     return {
         "slots": slots,
@@ -67,10 +96,9 @@ def get_parking_slot_overview(db: Session, org_id: UUID):
     }
 
 
-def create_parking_slot(db: Session, org_id: UUID, data):
+def create_parking_slot(db: Session, data: ParkingSlotCreate):
 
     slot = ParkingSlot(
-        org_id=org_id,
         **data.model_dump()
     )
 
@@ -81,11 +109,11 @@ def create_parking_slot(db: Session, org_id: UUID, data):
     return slot
 
 
-def update_parking_slot(db: Session, org_id: UUID, data):
+def update_parking_slot(db: Session, data: ParkingSlotUpdate):
 
     slot = db.query(ParkingSlot).filter(
         ParkingSlot.id == data.id,
-        ParkingSlot.org_id == org_id,
+        ParkingSlot.org_id == data.org_id,
         ParkingSlot.is_deleted == False
     ).first()
 
@@ -98,7 +126,42 @@ def update_parking_slot(db: Session, org_id: UUID, data):
     db.commit()
     db.refresh(slot)
 
-    return slot
+    return get_slot_details(db, slot.org_id, slot.id)
+
+
+def get_slot_details(db: Session, org_id: UUID, slot_id: UUID):
+
+    result = (
+        db.query(
+            ParkingSlot,
+            Site.name.label("site_name"),
+            ParkingZone.name.label("zone_name"),
+            Space.name.label("space_name")
+        )
+        .join(Site, ParkingSlot.site_id == Site.id)
+        .join(ParkingZone, ParkingSlot.zone_id == ParkingZone.id)
+        .outerjoin(Space, ParkingSlot.space_id == Space.id)  # optional
+        .filter(
+            ParkingSlot.id == slot_id,
+            ParkingSlot.org_id == org_id,
+            ParkingSlot.is_deleted == False
+        )
+        .first()
+    )
+
+    if not result:
+        return None
+
+    slot, site_name, zone_name, space_name = result
+
+    return ParkingSlotOut.model_validate(
+        {
+            **slot.__dict__,
+            "site_name": site_name,
+            "zone_name": zone_name,
+            "space_name": space_name
+        }
+    )
 
 
 def delete_parking_slot(db: Session, org_id: UUID, slot_id: UUID):

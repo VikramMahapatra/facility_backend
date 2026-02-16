@@ -54,7 +54,8 @@ def update_parking_slot(
     current_user: UserToken = Depends(
         validate_current_token)  # ✅ Added authentication
 ):
-    return crud.update_parking_slot(db, current_user.org_id, slot)
+    slot.org_id = current_user.org_id
+    return crud.update_parking_slot(db, slot)
 
 
 @router.delete("/{slot_id}", response_model=None)

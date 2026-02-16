@@ -7,6 +7,7 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy.dialects.postgresql import UUID
 
 from facility_service.app.models.parking_access.parking_slots import ParkingSlot
+from shared.core.schemas import Lookup
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response
 
@@ -243,3 +244,21 @@ def delete_parking_zone(db: Session, zone_id: str):
     db.commit()
 
     return True
+
+
+def parking_zone_lookup(db: Session, org_id: str, site_id: str) -> List[Lookup]:
+    query = (
+        db.query(
+            ParkingZone.id.label("id"),
+            ParkingZone.name.label("name")
+        )
+        .filter(
+            ParkingZone.org_id == org_id,
+            ParkingZone.site_id == site_id,
+            ParkingZone.is_deleted == False
+        )
+        .distinct()
+        .order_by(ParkingZone.name.asc())
+    )
+    rows = query.all()
+    return [{"id": r.id, "name": r.name} for r in rows]

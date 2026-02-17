@@ -72,3 +72,8 @@ class AssignedParkingSlot(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+
+class AssignParkingSlotsRequest(BaseModel):
+    space_id: UUID
+    parking_slot_ids: Optional[List[UUID]] = None

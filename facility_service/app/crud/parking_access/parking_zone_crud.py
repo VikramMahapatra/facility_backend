@@ -9,13 +9,12 @@ from sqlalchemy.dialects.postgresql import UUID
 from facility_service.app.models.parking_access.parking_slots import ParkingSlot
 from shared.core.schemas import Lookup
 from shared.utils.app_status_code import AppStatusCode
-from shared.helpers.json_response_helper import error_response
+from shared.helpers.json_response_helper import error_response, success_response
 
 from ...models.space_sites.sites import Site
 from ...models.parking_access.parking_zones import ParkingZone
 from ...schemas.parking_access.parking_zone_schemas import ParkingZoneCreate, ParkingZoneOut, ParkingZoneRequest, ParkingZoneUpdate, ParkingZonesResponse
 from sqlalchemy import and_
-from fastapi import HTTPException, status
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS

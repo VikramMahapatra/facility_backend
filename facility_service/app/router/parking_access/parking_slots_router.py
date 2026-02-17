@@ -2,7 +2,7 @@ from typing import List, Optional
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from ...schemas.parking_access.parking_slot_schemas import ParkingSlotCreate, ParkingSlotOverview, ParkingSlotRequest, ParkingSlotUpdate, ParkingSlotsResponse
+from ...schemas.parking_access.parking_slot_schemas import AssignParkingSlotsRequest, ParkingSlotCreate, ParkingSlotOverview, ParkingSlotRequest, ParkingSlotUpdate, ParkingSlotsResponse
 from shared.helpers.json_response_helper import success_response
 from ...crud.parking_access import parking_slot_crud as crud
 from shared.core.database import get_facility_db as get_db
@@ -72,3 +72,21 @@ def available_parking_slot_lookup(
         validate_current_token)  # ✅ Added authentication
 ):
     return crud.available_parking_slot_lookup(db, current_user.org_id, zone_id)
+
+
+@router.get("/all-slot-lookup")
+def all_parking_slot_lookup(
+    zone_id: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(
+        validate_current_token)  # ✅ Added authentication
+):
+    return crud.all_parking_slot_lookup(db, current_user.org_id, zone_id)
+
+
+@router.post("/update-space-parking-slots", response_model=None)
+def update_parking_slots_for_space(
+        params: AssignParkingSlotsRequest,
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.update_parking_slots_for_space(db, current_user.org_id, params)

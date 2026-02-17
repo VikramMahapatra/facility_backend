@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 from facility_service.app.models.parking_access.parking_zones import ParkingZone
 from facility_service.app.models.space_sites.sites import Site
 from facility_service.app.models.space_sites.spaces import Space
-from facility_service.app.schemas.parking_access.parking_slot_schemas import ParkingSlotCreate, ParkingSlotOut, ParkingSlotUpdate
+from facility_service.app.schemas.parking_access.parking_slot_schemas import AssignParkingSlotsRequest, ParkingSlotCreate, ParkingSlotOut, ParkingSlotUpdate
 from shared.core.schemas import Lookup, UserToken
-from shared.helpers.json_response_helper import error_response
+from shared.helpers.json_response_helper import error_response, success_response
+from shared.utils.app_status_code import AppStatusCode
 
 
 def get_parking_slots(db: Session, org_id: UUID, params):
@@ -185,25 +186,94 @@ def delete_parking_slot(db: Session, org_id: UUID, slot_id: UUID):
 
 
 def available_parking_slot_lookup(db: Session, org_id: UUID, zone_id: UUID):
-
     slots = (
         db.query(
             ParkingSlot.id,
             ParkingSlot.slot_no
         )
-        .join(Site, ParkingSlot.site_id == Site.id)
-        .join(ParkingZone, ParkingSlot.zone_id == ParkingZone.id)
-        .outerjoin(Space, ParkingSlot.space_id == Space.id)  # optional
         .filter(
             ParkingSlot.org_id == org_id,
             ParkingSlot.is_deleted == False,
             ParkingSlot.zone_id == zone_id,
-            ParkingSlot.space_id.isnot(None)
+            ParkingSlot.space_id.is_(None)
         )
         .all()
     )
 
-    return [
-        Lookup(id=slot.id, name=slot.name)
-        for slot in slots
-    ]
+    return [Lookup(id=s.id, name=s.slot_no) for s in slots]
+
+
+def all_parking_slot_lookup(db: Session, org_id: UUID, zone_id: UUID):
+    slots = (
+        db.query(
+            ParkingSlot.id,
+            ParkingSlot.slot_no
+        )
+        .filter(
+            ParkingSlot.org_id == org_id,
+            ParkingSlot.is_deleted == False,
+            ParkingSlot.zone_id == zone_id
+        )
+        .all()
+    )
+
+    return [Lookup(id=s.id, name=s.slot_no) for s in slots]
+
+
+def update_parking_slots_for_space(
+    db: Session,
+    org_id: UUID,
+    payload: AssignParkingSlotsRequest  # contains space_id and parking_slot_ids
+):
+    # 1️⃣ Validate space exists
+    space = (
+        db.query(Space)
+        .filter(
+            Space.id == payload.space_id,
+            Space.org_id == org_id,
+            Space.is_deleted == False
+        )
+        .first()
+    )
+    if not space:
+        return error_response(
+            message="Space not found",
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
+        )
+
+    # 2️⃣ Fetch all currently assigned slots for this space
+    current_slots = db.query(ParkingSlot).filter(
+        ParkingSlot.space_id == payload.space_id,
+        ParkingSlot.org_id == org_id,
+        ParkingSlot.is_deleted == False
+    ).all()
+
+    current_slot_ids = set(slot.id for slot in current_slots)
+    new_slot_ids = set(payload.parking_slot_ids or [])  # handle empty list
+
+    # 3️⃣ Determine slots to add and remove
+    slots_to_add_ids = new_slot_ids - current_slot_ids
+    slots_to_remove_ids = current_slot_ids - new_slot_ids
+
+    # 4️⃣ Fetch and add new slots
+    if slots_to_add_ids:
+        slots_to_add = db.query(ParkingSlot).filter(
+            ParkingSlot.id.in_(slots_to_add_ids),
+            ParkingSlot.org_id == org_id,
+            ParkingSlot.is_deleted == False
+        ).all()
+        for slot in slots_to_add:
+            slot.space_id = payload.space_id
+
+    # 5️⃣ Remove slots (also handles empty payload case)
+    if slots_to_remove_ids:
+        slots_to_remove = db.query(ParkingSlot).filter(
+            ParkingSlot.id.in_(slots_to_remove_ids),
+            ParkingSlot.org_id == org_id,
+            ParkingSlot.is_deleted == False
+        ).all()
+        for slot in slots_to_remove:
+            slot.space_id = None
+
+    db.commit()
+    return success_response(data=None, message="Parking slots updated successfully")

@@ -47,6 +47,7 @@ class MaintenanceTemplateResponse(MaintenanceTemplateBase):
     id: UUID
     org_id: UUID
     site_name: Optional[str] = None
+    tax_rate: Optional[float] = None
     created_at: datetime
 
     class Config:

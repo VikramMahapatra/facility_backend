@@ -108,7 +108,6 @@ def get_parking_zones(db: Session, org_id: UUID, params: ParkingZoneRequest) -> 
                 "id": slot.id,
                 "slot_no": slot.slot_no,
                 "space_id": slot.space_id,
-                "status": slot.status,
                 "is_deleted": slot.is_deleted
             }
             for slot in zone.slots if not slot.is_deleted

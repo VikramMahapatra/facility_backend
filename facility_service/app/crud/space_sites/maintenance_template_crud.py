@@ -24,9 +24,10 @@ def get_all_maintenance_templates(
     base_query = (
         db.query(
             MaintenanceTemplate,
-            Site.name.label("site_name")
+            Site.name.label("site_name"),
+            TaxCode.rate.label("tax_rate")
         )
-        .outerjoin(Site, Site.id == MaintenanceTemplate.site_id)
+        .join(Site, Site.id == MaintenanceTemplate.site_id)
         .outerjoin(TaxCode, MaintenanceTemplate.tax_code_id == TaxCode.id)
         .filter(
             MaintenanceTemplate.org_id == org_id,
@@ -73,8 +74,9 @@ def get_all_maintenance_templates(
     )
 
     response = []
-    for template, site_name in results:
+    for template, site_name, tax_rate in results:
         template.site_name = site_name
+        template.tax_rate = tax_rate
         response.append(template)
 
     return {"templates": response, "total": total}

@@ -1,9 +1,10 @@
 # space.py
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Boolean, Column, String, Integer, Numeric, DateTime, ForeignKey, func, Index
+from sqlalchemy import Boolean, Column, Enum, String, Integer, Numeric, DateTime, ForeignKey, func, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
+from facility_service.app.enum.space_sites_enum import SpaceCategory
 from shared.core.database import Base
 
 
@@ -16,9 +17,10 @@ class Space(Base):
         "sites.id", ondelete="CASCADE"), nullable=False)
     building_block_id = Column(UUID(as_uuid=True), ForeignKey(
         "buildings.id", ondelete="SET NULL"), nullable=True)
-
-    code = Column(String(64), nullable=False)
+    maintenance_template_id = Column(UUID(as_uuid=True), ForeignKey(
+        "maintenance_templates.id", ondelete="SET NULL"), nullable=True)
     name = Column(String(128))
+    category = Column(String(32), nullable=False)
     kind = Column(String(32), nullable=False)
     floor = Column(String(32))
     area_sqft = Column(Numeric(12, 2))
@@ -57,6 +59,11 @@ class Space(Base):
     parking_passes = relationship("ParkingPass", back_populates="space")
     owners = relationship(
         "SpaceOwner",
+        back_populates="space",
+        cascade="all, delete-orphan"
+    )
+    parking_slots = relationship(
+        "ParkingSlot",
         back_populates="space",
         cascade="all, delete-orphan"
     )

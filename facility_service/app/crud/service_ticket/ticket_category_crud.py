@@ -10,6 +10,7 @@ from auth_service.app.models.user_organizations import UserOrganization
 from shared.models.users import Users
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
+from shared.utils.enums import UserAccountType
 from ...models.space_sites.sites import Site
 from shared.core.config import Settings
 
@@ -126,7 +127,7 @@ def create_ticket_category(db: Session, category: TicketCategoryCreate) -> Ticke
     if category.sla_id is None or category.sla_id == "":
         return error_response(
             message="SLA policy cannot be  empty",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
 
@@ -144,7 +145,7 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate):
     if not db_category:
         return error_response(
             message="Ticket category not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 
@@ -154,7 +155,7 @@ def update_ticket_category(db: Session, category: TicketCategoryUpdate):
         if sla_value is None or sla_value == "":
             return error_response(
                 message="SLA policy cannot be updated to empty or null",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
+                status_code=str(AppStatusCode.EDIT_NOT_ALLOWED),
                 http_status=400
             )
     # Check for duplicate category name
@@ -313,32 +314,47 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         )
         .all()
     )
+    user_ids = None
+    staff_users = []
 
-    if not staff_sites:
-        return []  # No staff assigned to this site
+    if staff_sites:
+        user_ids = [staff.user_id for staff in staff_sites]
 
-    # Step 4: Extract user_ids
-    user_ids = [staff.user_id for staff in staff_sites]
+        # Step 5: Fetch all user names from auth db
+        users = (
+            auth_db.query(Users.id, Users.full_name)
+            .join(UserOrganization, Users.id == UserOrganization.user_id)
+            .filter(
+                Users.id.in_(user_ids),
+                UserOrganization.is_deleted == False,
+                UserOrganization.status == "active",
+                UserOrganization.account_type == UserAccountType.STAFF.value
+            )
+            .all()
+        )
 
-    # Step 5: Fetch all user names from auth db
-    users = (
-        auth_db.query(Users.id, Users.full_name)
-        .filter(Users.id.in_(user_ids))
-        .all()
-    )
+        # Create a mapping of user_id to user data for quick lookup
+        user_map = {user.id: user.full_name for user in users}
 
-    # Create a mapping of user_id to user data for quick lookup
-    user_map = {user.id: user.full_name for user in users}
+        # Create a mapping of user_id to staff_role
+        role_map = {staff.user_id: staff.staff_role for staff in staff_sites}
 
-    # Create a mapping of user_id to staff_role
-    role_map = {staff.user_id: staff.staff_role for staff in staff_sites}
+        # Return with formatted name including role
+        staff_users = [
+            {
+                "user_id": user_id,
+                "full_name": f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
+            }
+            for user_id in user_ids
+            if user_id in user_map  # Only include users found in auth db
+        ]
 
     org_users = (
         auth_db.query(Users.id, Users.full_name)
         .join(Users.organizations)
         .filter(
             UserOrganization.org_id == org_id,
-            UserOrganization.account_type == "organization",
+            UserOrganization.account_type == UserAccountType.ORGANIZATION.value,
             UserOrganization.status == "active",
             Users.status == "active",
             Users.is_deleted == False
@@ -346,15 +362,6 @@ def get_employees_by_ticket(db: Session, auth_db: Session, ticket_id: str):
         .all()
     )
 
-    # Return with formatted name including role
-    staff_users = [
-        {
-            "user_id": user_id,
-            "full_name": f"{user_map.get(user_id, 'Unknown')} ({role_map.get(user_id, 'No Role')})"
-        }
-        for user_id in user_ids
-        if user_id in user_map  # Only include users found in auth db
-    ]
     # Convert org users to EmployeeOut
     org_users_lookup = [
         EmployeeOut(

@@ -193,6 +193,7 @@ def verify_otp(
         return authschema.AuthenticationResponse(
             needs_registration=True,
             mobile=request.mobile,
+            email=request.email,
             user=None
         )
 
@@ -251,13 +252,11 @@ def refresh_access_token(db: Session, refresh_token_str: str):
     token.revoked = True
 
     # Issue new access + refresh tokens
-    roles = [str(r.id) for r in user.roles]
     new_access_token = auth.create_access_token({
         "user_id": str(user.id),
         "session_id": str(session.id),
         "org_id": str(user.org_id),
-        "account_type": user.account_type,
-        "role_ids": roles})
+        "account_type": user.account_type})
     new_refresh = auth.create_refresh_token(db, session.id)
 
     db.commit()
@@ -376,3 +375,64 @@ def switch_account(
     default_org.is_default = True
     db.commit()
     return userservices.get_user_token(api_request, db, facility_db, user)
+
+
+def resend_otp(background_tasks: BackgroundTasks, db: Session, facility_db: Session, request: authschema.MobileRequest):
+    try:
+        message = None
+        otp = generate_otp()
+
+        # -------------------------
+        # Handle Mobile OTP
+        # -------------------------
+        if request.mobile and request.mobile.strip():
+            print("MOBILE VALUE:", repr(request.mobile))
+
+            # Send SMS OTP via Twilio (uncomment in production)
+            # verification = twilio_client.verify.v2.services(settings.TWILIO_VERIFY_SID).verifications.create(
+            #     to=request.mobile,
+            #     channel="sms"
+            # )
+            message = "OTP resent to your mobile number."
+
+        # -------------------------
+        # Handle Email OTP
+        # -------------------------
+        elif request.email:
+            # Delete previous unverified OTP for this email
+            db.query(OtpVerification).filter(
+                OtpVerification.email == request.email,
+                OtpVerification.is_verified == False
+            ).delete()
+            db.commit()
+
+            # Store new OTP
+            otp_entry = OtpVerification(
+                email=request.email,
+                otp=otp,
+                created_at=datetime.utcnow(),
+                is_verified=False
+            )
+            db.add(otp_entry)
+            db.commit()
+
+            # Send OTP email
+            send_otp_email(background_tasks, facility_db, otp, request.email)
+            message = "OTP resent to your email."
+
+        else:
+            return error_response(
+                message="Invalid Request: Provide email or mobile",
+                status_code=400
+            )
+
+        return success_response(
+            data="",
+            message=message
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error resending OTP: {str(e)}"
+        )

@@ -27,6 +27,15 @@ def send_otp(
     return authservices.send_otp(background_tasks, db, facility_db, request)
 
 
+@router.post("/mobile/resend_otp")
+def resend_otp(
+        request: authschema.MobileRequest,
+        background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db),
+        facility_db: Session = Depends(get_facility_db)):
+    return authservices.resend_otp(background_tasks, db, facility_db, request)
+
+
 @router.post("/mobile/verify_otp", response_model=authschema.AuthenticationResponse)
 def verify_otp(
         request: authschema.OTPVerify,

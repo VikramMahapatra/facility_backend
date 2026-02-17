@@ -14,7 +14,6 @@ class ParkingZone(Base):
     site_id = Column(UUID(as_uuid=True), ForeignKey(
         "sites.id"), nullable=False)
     name = Column(String(128), nullable=False)
-    capacity = Column(Integer)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True),
                         server_default=func.now(), onupdate=func.now())
@@ -24,3 +23,8 @@ class ParkingZone(Base):
 
     # relationships
     passes = relationship("ParkingPass", back_populates="zone")
+    slots = relationship(
+        "ParkingSlot",
+        back_populates="zone",
+        cascade="all, delete-orphan"
+    )

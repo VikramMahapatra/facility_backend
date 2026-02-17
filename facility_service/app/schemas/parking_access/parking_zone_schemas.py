@@ -11,7 +11,6 @@ class ParkingZoneBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
     name: str
-    capacity: Optional[int]
 
     model_config = {
         "from_attributes": True
@@ -33,6 +32,7 @@ class ParkingZoneRequest(CommonQueryParams):
 class ParkingZoneOut(ParkingZoneBase):
     id: UUID
     site_name: str
+    slots: Optional[int] = 0
 
 
 class ParkingZonesResponse(BaseModel):
@@ -44,7 +44,7 @@ class ParkingZonesResponse(BaseModel):
 
 class ParkingZoneOverview(BaseModel):
     totalZones: int
-    totalCapacity: int
-    avgCapacity: float
+    totalCapacity: Optional[int] = 0
+    avgCapacity: Optional[float] = 0
 
     model_config = {"from_attributes": True}

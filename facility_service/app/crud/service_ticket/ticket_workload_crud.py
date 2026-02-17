@@ -3,8 +3,10 @@ from sqlalchemy import func, case, and_
 from typing import List, Optional
 from sqlalchemy.orm import joinedload
 
+from auth_service.app.models.user_organizations import UserOrganization
 from shared.core.schemas import Lookup
 from shared.models.users import Users
+from shared.utils.enums import UserAccountType
 from ...enum.ticket_service_enum import TicketStatus
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_category import TicketCategory
@@ -63,12 +65,19 @@ def get_team_workload_management(
         technicians_workload = []
         for workload in workload_query.all():
             # Get technician name from auth database
-            user = auth_db.query(Users).filter(
-                Users.id == workload.assigned_to
+            user = auth_db.query(Users).join(
+                UserOrganization, UserOrganization.user_id == Users.id
+            ).filter(
+                Users.id == workload.assigned_to,
+                # ✅ Ensure user belongs to the correct organization
+                UserOrganization.org_id == org_id,
+                # ✅ Exclude ORGANIZATION and ADMIN users
+                UserOrganization.account_type.notin_(
+                    [UserAccountType.ORGANIZATION])
             ).first()
-            
+
             # ✅ ONLY count if assignee is NOT ORGANIZATION and NOT ADMIN
-            if user and user.account_type.lower() not in ["organization", "admin"]:
+            if user:
                 technician_name = user.full_name if user else f"User {workload.assigned_to}"
 
                 technicians_workload.append(TechnicianWorkloadSummary(
@@ -93,14 +102,19 @@ def get_team_workload_management(
         assigned_tickets = []
         for ticket in assigned_tickets_query.all():
             # Get technician name from auth database
-            user = auth_db.query(Users).filter(
-                Users.id == ticket.assigned_to
+            user = auth_db.query(Users).join(
+                UserOrganization, UserOrganization.user_id == Users.id
+            ).filter(
+                Users.id == ticket.assigned_to,
+                UserOrganization.org_id == org_id,
+                UserOrganization.account_type.notin_(
+                    [UserAccountType.ORGANIZATION])
             ).first()
-            
+
             # ✅ ONLY include if assignee is NOT ORGANIZATION and NOT ADMIN type
-            if user and user.account_type.lower() not in ["organization", "admin"]:
+            if user:
                 technician_name = user.full_name if user else f"User {ticket.assigned_to}"
-                
+
                 assigned_tickets.append(AssignedTicketOut(
                     id=ticket.id,
                     ticket_no=ticket.ticket_no,
@@ -108,7 +122,8 @@ def get_team_workload_management(
                     category=ticket.category.category_name if ticket.category else "Unknown",
                     assigned_to=ticket.assigned_to,
                     technician_name=technician_name,
-                    status=ticket.status.value if hasattr(ticket.status, 'value') else ticket.status,
+                    status=ticket.status.value if hasattr(
+                        ticket.status, 'value') else ticket.status,
                     priority=ticket.priority,
                     created_at=ticket.created_at,
                     is_overdue=ticket.is_overdue,
@@ -128,12 +143,18 @@ def get_team_workload_management(
         unassigned_tickets = []
         for ticket in unassigned_tickets_query.all():
             # Get the assigned user
-            assigned_user = auth_db.query(Users).filter(
-                Users.id == ticket.assigned_to
+            assigned_user = auth_db.query(Users).join(
+                UserOrganization, UserOrganization.user_id == Users.id
+            ).filter(
+                Users.id == ticket.assigned_to,
+                UserOrganization.org_id == org_id,
+                UserOrganization.account_type.notin_(
+                    # Exclude ORGANIZATION users
+                    [UserAccountType.ORGANIZATION])
             ).first()
-            
+
             # ✅ CORRECTED: Only include tickets assigned to organization/admin users
-            if assigned_user and assigned_user.account_type.lower() in ["organization", "admin"]:
+            if assigned_user:
                 # Get default contact from SLA
                 default_contact = None
                 default_contact_name = None
@@ -144,13 +165,14 @@ def get_team_workload_management(
                             Users.id == default_contact
                         ).first()
                         default_contact_name = default_user.full_name if default_user else None
-                
+
                 unassigned_tickets.append(UnassignedTicketOut(
                     id=ticket.id,
                     ticket_no=ticket.ticket_no,
                     title=ticket.title,
                     category=ticket.category.category_name if ticket.category else "Unknown",
-                    status=ticket.status.value if hasattr(ticket.status, 'value') else ticket.status,
+                    status=ticket.status.value if hasattr(
+                        ticket.status, 'value') else ticket.status,
                     priority=ticket.priority,
                     created_at=ticket.created_at,
                     is_overdue=ticket.is_overdue,
@@ -169,7 +191,6 @@ def get_team_workload_management(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error fetching team workload management data: {str(e)}")
-
 
 
 def get_available_technicians_for_site(
@@ -229,7 +250,7 @@ def get_available_technicians_for_site(
 def workload_assigned_to_lookup(db: Session, auth_db: Session, site_id: Optional[str] = None) -> List[Lookup]:
     if not site_id or not site_id.strip() or site_id.strip().lower() == "all":
         return []
-    
+
     staff_sites = (
         db.query(StaffSite.user_id, StaffSite.staff_role)
         .filter(

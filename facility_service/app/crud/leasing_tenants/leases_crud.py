@@ -1,6 +1,6 @@
 from decimal import Decimal
 from typing import Optional, Dict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
@@ -183,7 +183,6 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
         if row.space_id:
             # Get space details including building_block_id in single query
             space_details = db.query(
-                Space.code,
                 Space.name,
                 Space.building_block_id
             ).filter(
@@ -192,7 +191,6 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
             ).first()
 
             if space_details:
-                space_code = space_details.code
                 space_name = space_details.name
                 building_block_id = space_details.building_block_id
 
@@ -211,23 +209,30 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
 
         lease_term_months = None
 
-        if row.frequency == "monthly" and row.start_date and row.end_date:
+        if row.start_date and row.end_date:
             lease_term_months = calculate_lease_term_months(
                 row.start_date,
                 row.end_date
             )
 
+        derived_frequency = None
+        if lease_term_months:
+            if lease_term_months == 12:
+                derived_frequency = "annually"
+            else:
+                derived_frequency = "monthly"
+
         leases.append(
             LeaseOut.model_validate(
                 {
                     **row.__dict__,
-                    "space_code": space_code,
                     "site_name": site_name,
                     "tenant_name": tenant_name,
                     "space_name": space_name,
                     "building_name": building_name,  # Add this
                     "building_block_id": building_block_id,  # Add this
-                    "lease_term_months": lease_term_months
+                    "lease_term_months": lease_term_months,
+                    "derived_frequency": derived_frequency
                 }
             )
         )
@@ -280,7 +285,9 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             TenantSpace.space_id == payload.space_id,
             TenantSpace.tenant_id == payload.tenant_id,
             TenantSpace.is_deleted == False,
-            TenantSpace.status == OwnershipStatus.approved
+            TenantSpace.status.in_(
+                [OwnershipStatus.approved, OwnershipStatus.ended]
+            )
         ).first()
 
         if not tenant_space:
@@ -341,18 +348,18 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         db.add(lease)
         db.flush()
 
-        log_occupancy_event(
-            db=db,
-            space_id=payload.space_id,
-            occupant_type=OccupantType.tenant,
-            occupant_user_id=tenant.user_id,
-            event_type=OccupancyEventType.lease_created,
-            source_id=lease.id,
-            notes=f"Lease created with status {lease_status}"
-        )
-
         if lease_status == "active":
             tenant.status = "active"  # Sync tenant status
+
+            log_occupancy_event(
+                db=db,
+                space_id=payload.space_id,
+                occupant_type=OccupantType.tenant,
+                occupant_user_id=tenant.user_id,
+                event_type=OccupancyEventType.lease_created,
+                source_id=lease.id,
+                notes=f"Lease created for tenant"
+            )
 
             #  Update TenantSpace → leased
             tenant_space.status = OwnershipStatus.leased
@@ -368,7 +375,8 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                         occupant_type="tenant",
                         occupant_user_id=payload.tenant_id,
                         lease_id=lease.id,
-                        tenant_id=payload.tenant_id
+                        tenant_id=payload.tenant_id,
+                        move_in_date=datetime.now(timezone.utc)
                     )
                 )
 
@@ -435,27 +443,6 @@ def update(db: Session, payload: LeaseUpdate):
         if obj.status == "active" and "space_id" in data and target_space_id != old_space_id:
             return error_response("Cannot change space on an active lease")
 
-        old_status = obj.status
-        # ---------- SIDE EFFECTS ----------
-        # Activate lease (draft → active)
-        if old_status != "active" and data.get("status") == "active":
-            tenant_space = db.query(TenantSpace).filter(
-                TenantSpace.space_id == target_space_id,
-                TenantSpace.tenant_id == tenant_id,
-                TenantSpace.is_deleted == False
-            ).first()
-
-            if not tenant_space:
-                return error_response("Tenant is not linked to this space")
-
-            if tenant_space.status != OwnershipStatus.approved:
-                return error_response(
-                    message="Tenant must be approved before activating lease"
-                )
-
-            tenant_space.status = OwnershipStatus.leased
-            tenant_space.updated_at = func.now()
-
         # =========================
         # CALCULATE END DATE
         # =========================
@@ -481,6 +468,37 @@ def update(db: Session, payload: LeaseUpdate):
             )
 
         data["end_date"] = end_date
+
+        old_status = obj.status
+        # ---------- SIDE EFFECTS ----------
+        # Activate lease (draft → active)
+        if old_status != "active" and data.get("status") == "active":
+            tenant_space = db.query(TenantSpace).filter(
+                TenantSpace.space_id == target_space_id,
+                TenantSpace.tenant_id == tenant_id,
+                TenantSpace.is_deleted == False
+            ).first()
+
+            if not tenant_space:
+                return error_response("Tenant is not linked to this space")
+
+            if tenant_space.status != OwnershipStatus.approved:
+                return error_response(
+                    message="Tenant must be approved before activating lease"
+                )
+
+            tenant_space.status = OwnershipStatus.leased
+            tenant_space.updated_at = func.now()
+
+            log_occupancy_event(
+                db=db,
+                space_id=payload.space_id,
+                occupant_type=OccupantType.tenant,
+                occupant_user_id=tenant.user_id,
+                event_type=OccupancyEventType.lease_created,
+                source_id=obj.id,
+                notes=f"Lease created for tenant"
+            )
 
         # Update fields
         for k, v in data.items():
@@ -568,7 +586,7 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
         TenantSpace.tenant_id == obj.tenant_id,
         TenantSpace.is_deleted == False
     ).update(
-        {"status": "vacant"},
+        {"status": OwnershipStatus.ended},
         synchronize_session=False
     )
 
@@ -666,7 +684,9 @@ def lease_tenant_lookup(
             Tenant.is_deleted == False,
             TenantSpace.is_deleted == False,
             TenantSpace.site_id == site_id,
-            TenantSpace.status == OwnershipStatus.approved,
+            TenantSpace.status.in_(
+                [OwnershipStatus.approved, OwnershipStatus.ended]
+            )
         )
         .distinct()
         .order_by(
@@ -736,6 +756,14 @@ def get_lease_by_id(db: Session, lease_id: str):
             lease.start_date,
             lease.end_date
         )
+
+    derived_frequency = None
+    if lease_term_months:
+        if lease_term_months == 12:
+            derived_frequency = "annually"
+        else:
+            derived_frequency = "monthly"
+
     return LeaseOut.model_validate(
         {
             **lease.__dict__,
@@ -745,7 +773,8 @@ def get_lease_by_id(db: Session, lease_id: str):
             "space_name": space_name,
             "building_name": building_name,  # Add this
             "building_block_id": building_block_id,  # Add this
-            "lease_term_months": lease_term_months
+            "lease_term_months": lease_term_months,
+            "derived_frequency": derived_frequency
         }
     )
 

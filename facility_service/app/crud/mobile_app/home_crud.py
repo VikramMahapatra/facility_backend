@@ -1,12 +1,12 @@
 from operator import or_
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, and_, distinct, case
+from sqlalchemy import func, cast, and_, distinct, case, or_, exists
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from auth_service.app.models.user_organizations import UserOrganization
-from facility_service.app.crud.access_control.user_management_crud import handle_account_type_update
+from facility_service.app.crud.access_control.user_management_crud import assign_owner_spaces, assign_tenant_spaces, handle_account_type_update
 from facility_service.app.models.space_sites.user_sites import UserSite
 from facility_service.app.schemas.mobile_app.user_profile_schemas import MySpacesResponse
 from shared.helpers.json_response_helper import error_response
@@ -50,8 +50,27 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
     account_type = user.account_type.lower()
 
     if account_type in (UserAccountType.TENANT, UserAccountType.FLAT_OWNER):
-
         sites = []
+
+        tenant_site_exists = (
+            exists()
+            .where(
+                TenantSpace.site_id == Site.id,
+                TenantSpace.tenant_id == Tenant.id,
+                Tenant.user_id == user.user_id
+            )
+            .correlate(Site)
+        )
+
+        owner_site_exists = (
+            exists()
+            .where(
+                SpaceOwner.space_id == Space.id,
+                Space.site_id == Site.id,
+                SpaceOwner.owner_user_id == user.user_id
+            )
+            .correlate(Site)
+        )
 
         user_sites = (
             db.query(UserSite)
@@ -61,7 +80,11 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
                 .joinedload(Site.org)
             )
             .filter(
-                UserSite.user_id == user.user_id
+                UserSite.user_id == user.user_id,
+                or_(
+                    tenant_site_exists,
+                    owner_site_exists
+                )
             )
             .all()
         )
@@ -427,18 +450,12 @@ def register_space(
                 )
             )
 
-            user_account = UserAccountCreate(
-                user_id=user.user_id,
-                status="active",
-                account_type=UserAccountType.FLAT_OWNER.value,
-                owner_spaces=owner_spaces
-            )
-
-            error = handle_account_type_update(
+            error = assign_owner_spaces(
                 facility_db=facility_db,
                 db_user=db_user,
-                user_account=user_account,
-                org_id=site.org_id
+                owner_spaces=owner_spaces,
+                org_id=site.org_id,
+                is_request_from_mobile=True
             )
 
             if error:
@@ -453,18 +470,12 @@ def register_space(
                 )
             )
 
-            user_account = UserAccountCreate(
-                user_id=user.user_id,
-                status="active",
-                account_type=UserAccountType.TENANT.value,
-                tenant_spaces=tenant_spaces,
-            )
-
-            error = handle_account_type_update(
+            error = assign_tenant_spaces(
                 facility_db=facility_db,
                 db_user=db_user,
-                user_account=user_account,
-                org_id=site.org_id
+                tenant_spaces=tenant_spaces,
+                org_id=site.org_id,
+                s_request_from_mobile=True
             )
 
             if error:

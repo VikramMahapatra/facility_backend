@@ -1,10 +1,14 @@
 import os
 import shutil
+from uuid import UUID
 from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func, and_
 
-from shared.utils.enums import OwnershipStatus
+from auth_service.app.models.associations import RoleAccountType
+
+from ..models.user_sites_safe import UserSiteSafe
+from shared.utils.enums import OwnershipStatus, UserAccountType
 from ..models.space_owners_safe import SpaceOwnerSafe
 from ..models.user_organizations import UserOrganization
 from shared.utils.app_status_code import AppStatusCode
@@ -18,9 +22,8 @@ from ..models.tenants_safe import TenantSafe
 from shared.core import auth
 from ..models.orgs_safe import OrgSafe
 from ..models.roles import Roles
-from ..models.userroles import UserRoles
 from shared.models.users import Users
-from ..schemas.userschema import RoleOut, UserCreate, UserOrganizationOut
+from ..schemas.userschema import RoleOut, UserCreate, UserOrganizationOut, UserResponse
 from shared.core.config import settings
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
@@ -77,30 +80,16 @@ def create_user(
         user_instance = Users(
             full_name=full_name,
             email=user.email,
-            username=user.email,
             phone=user.phone,
             picture_url=str(user.pictureUrl) if user.pictureUrl else None,
             status="pending_approval"
         )
 
-        if user.password:
-            user_instance.set_password(user.password)
-
         db.add(user_instance)
         db.flush()
 
-        # ✅ Commit All OR Rollback All
-        user_org = UserOrganization(
-            user_id=user_instance.id,
-            org_id=org_id,
-            account_type=user.account_type.lower(),
-            status="pending",
-            is_default=True
-        )
-        db.add(user_org)
-
         # ✅ ACCOUNT TYPE: ORGANIZATION
-        if user.account_type.lower() == "organization":
+        if user.account_type.lower() == UserAccountType.ORGANIZATION.value:
             if not user.organizationName:
                 return error_response(
                     message="Organization name required",
@@ -108,14 +97,20 @@ def create_user(
                     http_status=status.HTTP_400_BAD_REQUEST
                 )
 
-            org_instance = OrgSafe(name=user.organizationName)
+            org_instance = OrgSafe(
+                name=user.organizationName,
+                billing_email=user.email,
+                contact_phone=user.phone,
+                plan=user.plan or "basic",
+                status="pending"
+            )
             facility_db.add(org_instance)
             facility_db.flush()  # ✅ ensure id generated
 
             org_id = org_instance.id
 
         # ✅ ACCOUNT TYPE: TENANT
-        elif user.account_type.lower() == "tenant":
+        elif user.account_type.lower() == UserAccountType.TENANT.value:
             # ✅ Find site
             site = facility_db.query(SiteSafe).filter(
                 SiteSafe.id == user.site_id).first()
@@ -175,7 +170,15 @@ def create_user(
             )
             facility_db.add(space_tenant_link)
 
-        elif user.account_type.lower() == "owner":
+            tenant_site_ids = [user.site_id]
+
+            upsert_user_sites_preserve_primary(
+                facility_db=facility_db,
+                user_id=user_instance.id,
+                site_ids=tenant_site_ids
+            )
+
+        elif user.account_type.lower() == UserAccountType.OWNER.value:
             # ✅ Find site
             site = facility_db.query(SiteSafe).filter(
                 SiteSafe.id == user.site_id).first()
@@ -189,7 +192,7 @@ def create_user(
 
             if not user.space_id:
                 return error_response(
-                    message="Space required for tenant",
+                    message="Space required for owner",
                     status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 )
 
@@ -207,13 +210,25 @@ def create_user(
                 )
             )
 
+            owner_site_ids = [user.site_id]
+
+            upsert_user_sites_preserve_primary(
+                facility_db=facility_db,
+                user_id=user_instance.id,
+                site_ids=owner_site_ids
+            )
+
+        user_org = UserOrganization(
+            user_id=user_instance.id,
+            org_id=org_id,
+            account_type=user.account_type.lower(),
+            status="pending",
+            is_default=True
+        )
+        db.add(user_org)
+
         db.commit()
         facility_db.commit()
-
-    except HTTPException:
-        db.rollback()
-        facility_db.rollback()
-        return error_response(message="Something went wrong")
 
     except SQLAlchemyError as e:
         db.rollback()
@@ -225,15 +240,12 @@ def create_user(
 
 
 def get_user_token(request: Request, auth_db: Session, facility_db: Session, user: Users):
-
     ip = request.client.host
-    ua = request.headers.get("user-agent")
+    ua = request.headers.get("user-agent", "")
 
-    if "dart" in ua or "flutter" in ua:
-        platform = "mobile"
-    else:
-        platform = "portal"
+    platform = "mobile" if "dart" in ua or "flutter" in ua else "portal"
 
+    # Create login session
     session = UserLoginSession(
         user_id=user.id,
         platform=platform,
@@ -244,44 +256,50 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     auth_db.commit()
     auth_db.refresh(session)
 
-    user_org = (
-        auth_db.query(UserOrganization)
-        .filter(
-            UserOrganization.user_id == user.id,
-            UserOrganization.is_deleted == False
-        )
-        .order_by(
-            UserOrganization.is_default.desc(),
-            UserOrganization.joined_at.asc()
-        )
-        .first()
-    )
-
+    # Default values
+    org_id = None
+    account_type = "super_admin" if getattr(
+        user, "is_super_admin", False) else None
     roles = []
-    if user_org.roles:
-        roles = [str(role.id) for role in user_org.roles]
+    tenant_type = None
 
-    tenant = facility_db.query(TenantSafe).filter(
-        TenantSafe.user_id == user.id,
-        TenantSafe.is_deleted == False
-    ).first()
+    # If user is NOT super admin, fetch org/tenant info
+    if not getattr(user, "is_super_admin", False):
+        user_org = (
+            auth_db.query(UserOrganization)
+            .filter(
+                UserOrganization.user_id == user.id,
+                UserOrganization.is_deleted == False
+            )
+            .order_by(
+                UserOrganization.is_default.desc(),
+                UserOrganization.joined_at.asc()
+            )
+            .first()
+        )
 
-    tenant_type = tenant.kind if tenant else None
+        if user_org:
+            org_id = str(user_org.org_id)
+            account_type = user_org.account_type
+
+        tenant = facility_db.query(TenantSafe).filter(
+            TenantSafe.user_id == user.id,
+            TenantSafe.is_deleted == False
+        ).first()
+
     is_mobile = platform == "mobile"
 
     token_data = {
         "user_id": str(user.id),
         "session_id": str(session.id),
-        "org_id": str(user_org.org_id),
-        "account_type": user_org.account_type,
-        "tenant_type": tenant_type,
-        "role_ids": roles or []
+        "org_id": org_id,
+        "account_type": account_type
     }
 
+    # Create access token
     token = auth.create_access_token(token_data, is_mobile)
 
     refresh_token = None
-
     if session.platform == LoginPlatform.portal:
         refresh_token = auth.create_refresh_token(auth_db, session.id)
 
@@ -297,6 +315,21 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
 
 
 def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
+
+    if user_data.is_super_admin:
+        # For super admins, we can return minimal info without org/tenant details
+        return UserResponse(
+            id=str(user_data.id),
+            name=user_data.full_name,
+            email=user_data.email,
+            phone=user_data.phone,
+            account_types=[],
+            default_account_type="super_admin",
+            default_organization_name=None,
+            status=user_data.status,
+            is_authenticated=True,
+            roles=[]
+        )
 
     user_orgs = (
         auth_db.query(UserOrganization)
@@ -318,7 +351,17 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
 
     # ✅ Extract unique role policies
     role_policies = []
-    for role in default_org.roles:
+    roles = (
+        auth_db.query(Roles)
+        .join(Roles.account_types)
+        .filter(
+            Roles.org_id == default_org.org_id,
+            RoleAccountType.account_type == default_org.account_type
+        )
+        .all()
+    )
+
+    for role in roles:
         for policy in role.policies:
             role_policies.append({
                 "resource": policy.resource,
@@ -350,6 +393,15 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
         for org in user_orgs
     ]
 
+    role_list = []
+    for role in roles:
+        role_list.append(RoleOut.model_validate({
+            **role.__dict__,
+            "account_types": [
+                rat.account_type.value for rat in role.account_types
+            ]
+        }))
+
     user_dict = {
         "id": str(user_data.id),
         "name": user_data.full_name,
@@ -360,8 +412,53 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
         "default_organization_name": user_org_data.name if user_org_data else None,
         "status": user_data.status,
         "is_authenticated": True if user_data.status == "active" else False,
-        "roles": [RoleOut.model_validate(role) for role in default_org.roles],
+        "roles": role_list,
         "role_policies": role_policies
     }
 
     return user_dict
+
+
+def upsert_user_sites_preserve_primary(
+    *,
+    facility_db: Session,
+    user_id: UUID,
+    site_ids: list[UUID]
+):
+    if not site_ids:
+        return
+
+    # Fetch existing primary site (if any)
+    existing_primary = (
+        facility_db.query(UserSiteSafe)
+        .filter(
+            UserSiteSafe.user_id == user_id,
+            UserSiteSafe.is_primary == True
+        )
+        .first()
+    )
+
+    existing_primary_site_id = (
+        existing_primary.site_id if existing_primary else None
+    )
+
+    # Decide which site should be primary
+    if existing_primary_site_id in site_ids:
+        primary_site_id = existing_primary_site_id
+    else:
+        primary_site_id = site_ids[0]
+
+    # Clear old mappings
+    facility_db.query(UserSiteSafe).filter(
+        UserSiteSafe.user_id == user_id
+    ).delete()
+
+    # Reinsert with preserved primary
+    for site_id in site_ids:
+        facility_db.add(
+            UserSiteSafe(
+                user_id=user_id,
+                site_id=site_id,
+                is_primary=(site_id == primary_site_id)
+            )
+        )

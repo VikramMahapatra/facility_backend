@@ -15,6 +15,8 @@ from shared.core.schemas import UserToken
 from shared.core.database import get_auth_db as get_db
 from sqlalchemy.orm import Session
 
+from shared.utils.enums import UserAccountType
+
 security = HTTPBearer()
 
 
@@ -127,7 +129,13 @@ def validate_current_token(
     user_data = verify_token(db, token)
 
     # Fetch the user from the database
-    user = db.query(Users).filter(Users.id == user_data.user_id).first()
+    user = (
+        db.query(Users)
+        .filter(
+            Users.id == user_data.user_id,
+            Users.is_deleted == False
+        ).first()
+    )
 
     if not user:
         return error_response(
@@ -143,22 +151,23 @@ def validate_current_token(
             http_status=403
         )
 
-    org_status = (
-        db.query(UserOrgStatus)
-        .filter(
-            UserOrgStatus.user_id == user_data.user_id,
-            UserOrgStatus.org_id == user_data.org_id,
-            UserOrgStatus.status == "active"
+    if not user.is_super_admin:
+        org_status = (
+            db.query(UserOrgStatus)
+            .filter(
+                UserOrgStatus.user_id == user_data.user_id,
+                UserOrgStatus.org_id == user_data.org_id,
+                UserOrgStatus.status == "active"
+            )
+            .first()
         )
-        .first()
-    )
 
-    if not org_status:
-        return error_response(
-            message="User is inactive in this organization",
-            status_code=str(AppStatusCode.AUTHENTICATION_USER_ORG_INACTIVE),
-            http_status=403
-        )
+        if not org_status:
+            return error_response(
+                message="User is inactive in this organization",
+                status_code=str(AppStatusCode.AUTHENTICATION_USER_INACTIVE),
+                http_status=403
+            )
 
     user_data.status = user.status
     return user_data
@@ -171,7 +180,13 @@ def validate_token(
     token = credentials.credentials
     user_data = verify_token(db, token)
 
-    user = db.query(Users).filter(Users.id == user_data.user_id).first()
+    user = (
+        db.query(Users)
+        .filter(
+            Users.id == user_data.user_id,
+            Users.is_deleted == False
+        ).first()
+    )
 
     if not user:
         return error_response(
@@ -184,10 +199,18 @@ def validate_token(
 
 
 def allow_admin(current_user: UserToken = Depends(validate_current_token)):
-    if current_user.account_type.lower() != "organization":
+    if current_user.account_type.lower() != UserAccountType.ORGANIZATION.value:
         return error_response(
             message="Access forbidden: Admins only",
             http_status=403
         )
 
+    return current_user
+
+
+def require_super_admin(current_user: UserToken = Depends(validate_token)):
+    if current_user.account_type.lower() != UserAccountType.SUPER_ADMIN.value:
+        return error_response(
+            message="Not authorized as Super Admin"
+        )
     return current_user

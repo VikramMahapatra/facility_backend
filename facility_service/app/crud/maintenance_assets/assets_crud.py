@@ -46,7 +46,7 @@ def get_assets_query(db: Session, org_id: UUID, params: AssetsRequest):
     filters = build_asset_filters(org_id, params)
 
     # ✅ FIXED: Always join with AssetCategory to get category name
-    query = db.query(Asset).outerjoin(  
+    query = db.query(Asset).outerjoin(
         AssetCategory, Asset.category_id == AssetCategory.id)
 
     # ✅ FIXED: Add category filter if provided
@@ -197,11 +197,11 @@ def create_asset(db: Session, asset: AssetCreate):
     # Check for duplicate tag (case-insensitive)
     if asset.tag:
         existing_tag = db.query(Asset).filter(
-        Asset.org_id == asset.org_id,
-        Asset.site_id == asset.site_id,
-        Asset.is_deleted == False,
-        func.lower(Asset.tag) == func.lower(asset.tag)  # Case-insensitive
-    ).first()
+            Asset.org_id == asset.org_id,
+            Asset.site_id == asset.site_id,
+            Asset.is_deleted == False,
+            func.lower(Asset.tag) == func.lower(asset.tag)  # Case-insensitive
+        ).first()
 
     if existing_tag:
         return error_response(
@@ -223,7 +223,7 @@ def update_asset(db: Session, asset_update: AssetUpdate):
     if not asset_update.id:
         return error_response(
             message="Asset ID is required in request body",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
 
@@ -231,7 +231,7 @@ def update_asset(db: Session, asset_update: AssetUpdate):
     if not db_asset:
         return error_response(
             message="Asset not found",
-            status_code=str(AppStatusCode.OPERATION_ERROR),
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=404
         )
 
@@ -292,7 +292,7 @@ def update_asset(db: Session, asset_update: AssetUpdate):
             site = db.query(Site).filter(Site.id == db_asset.site_id).first()
             if site:
                 location = f"{site.name}"
-        
+
         return {
             **db_asset.__dict__,
             "location": location

@@ -221,10 +221,12 @@ def list_tenant_approvals(
     skip: int = Query(0),
     limit: int = Query(10),
     db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.get_tenant_approvals(
         db=db,
+        auth_db=auth_db,
         org_id=current_user.org_id,
         status=status,
         search=search,

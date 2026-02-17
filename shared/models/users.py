@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import TIMESTAMP, Boolean, Column, Integer, MetaData, String, Table, Text, func, text
+from sqlalchemy import TIMESTAMP, Boolean, Column, Index, Integer, MetaData, String, Table, Text, func, text
 from ..core.database import AuthBase
 from sqlalchemy.orm import relationship
 
@@ -21,9 +21,6 @@ class Users(AuthBase):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     full_name = Column(String(200), nullable=False)
 
-    username = Column(String(100), unique=True, index=True, nullable=False)
-    password = Column(String(255), nullable=True)
-
     email = Column(String(200), nullable=True)
     phone = Column(String(20), nullable=True)
     picture_url = Column(Text, nullable=True)
@@ -32,6 +29,7 @@ class Users(AuthBase):
     updated_at = Column(TIMESTAMP(timezone=True),
                         server_default=func.now(), onupdate=func.now())
     is_deleted = Column(Boolean, default=False)  # ✅ Soft delete field
+    is_super_admin = Column(Boolean, default=False)
 
     organizations = relationship(
         "UserOrganization",
@@ -39,11 +37,27 @@ class Users(AuthBase):
         cascade="all, delete-orphan"
     )
 
-    def set_password(self, password: str):
-        self.password = bcrypt_context.hash(password)
+    __table_args__ = (
+        Index(
+            "uq_users_email_active",
+            "email",
+            unique=True,
+            postgresql_where=(is_deleted == False)
+        ),
+        Index(
+            "uq_users_phone_active",
+            "phone",
+            unique=True,
+            postgresql_where=(is_deleted == False)
+        ),
+        Index(
+            "uq_single_super_admin",
+            "is_super_admin",
+            unique=True,
+            postgresql_where=(is_super_admin == True)
+        )
 
-    def verify_password(self, password: str) -> bool:
-        return bcrypt_context.verify(password, self.password)
+    )
 
 
 # @event.listens_for(Users, 'after_insert')

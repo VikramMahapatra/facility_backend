@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
 from sqlalchemy.dialects.postgresql import JSONB
+from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from facility_service.app.models.space_sites.owner_maintenances import OwnerMaintenanceCharge
@@ -438,7 +439,7 @@ def calculate_invoice_status(db: Session, invoice_id: UUID, invoice_amount: floa
         return "partial"
 
 
-def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_user):
+def create_invoice(db: Session,auth_db:Session, org_id: UUID, request: InvoiceCreate, current_user):
     if not request.billable_item_type:
         raise HTTPException(status_code=400, detail="module_type is required")
     if not request.billable_item_id:
@@ -559,6 +560,48 @@ def create_invoice(db: Session, org_id: UUID, request: InvoiceCreate, current_us
 
         invoice_amount = float(db_invoice.totals.get(
             "grand", 0)) if db_invoice.totals else 0
+
+        # ================= WORK ORDER INVOICE NOTIFICATIONS ================= #
+        if request.billable_item_type == "work order" and ticket:
+
+            recipient_ids = []
+
+            # Ticket created for
+            if ticket.user_id:
+                recipient_ids.append(ticket.user_id)
+
+            # Assigned to
+            if ticket.assigned_to:
+                recipient_ids.append(ticket.assigned_to)
+
+            # Vendor
+            if ticket.vendor_id:
+                recipient_ids.append(ticket.vendor_id)
+
+            # Admin users
+            admin_user_ids = fetch_role_admin(auth_db, org_id)
+            if isinstance(admin_user_ids, list):
+                recipient_ids.extend([a["user_id"] for a in admin_user_ids])
+
+            recipient_ids = list(set(recipient_ids))
+
+            notifications = []
+            for recipient_id in recipient_ids:
+                notification = Notification(
+                    user_id=recipient_id,
+                    type=NotificationType.alert,
+                    title="Invoice Created for Work Order",
+                    message=f"Invoice {db_invoice.invoice_no} created for {billable_item_name}. Amount: {invoice_amount}",
+                    posted_date=datetime.utcnow(),
+                    priority=PriorityType.medium,
+                    read=False,
+                    is_deleted=False,
+                    is_email=False
+                )
+                notifications.append(notification)
+
+            db.add_all(notifications)
+        # ==================================================================== #
 
         # ADD THIS: Notification for invoice creation (lease charge only)
         if request.billable_item_type == "rent" and lease:
@@ -1299,10 +1342,6 @@ def get_invoice_detail(db: Session, auth_db: Session, org_id: UUID, invoice_id: 
                 if ticket:
                     if ticket.tenant:
                         customer_name = ticket.tenant.name or ticket.tenant.legal_name
-                    elif ticket.vendor:
-                        customer_name = ticket.vendor.name
-                    elif ticket.space and ticket.space.tenant:
-                        customer_name = ticket.space.tenant.name or ticket.space.tenant.legal_name
 
         # ---------- LEASE CHARGE ----------
         elif invoice.billable_item_type == "rent":

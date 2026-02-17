@@ -14,7 +14,6 @@ class TenantSafe(Base):
     email = Column(String)
     phone = Column(String)
     status = Column(String(16))
-    kind = Column(String(32), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
     commercial_type = Column(String(16), nullable=True)
     legal_name = Column(String(200), nullable=False)

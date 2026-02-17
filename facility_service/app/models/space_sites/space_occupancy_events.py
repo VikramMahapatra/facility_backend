@@ -15,9 +15,12 @@ class OccupancyEventType(str, PyEnum):
     tenant_requested = "tenant_requested"
     tenant_approved = "tenant_approved"
     tenant_rejected = "tenant_rejected"
+    tenant_removed = "tenant_removed"
     owner_requested = "owner_requested"
     owner_approved = "owner_approved"
+    owner_removed = "owner_removed"
     lease_created = "lease_created"
+    lease_ended = "lease_ended"
     moved_in = "moved_in"
     moved_out = "moved_out"
 

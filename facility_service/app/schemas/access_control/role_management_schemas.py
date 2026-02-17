@@ -4,12 +4,14 @@ from datetime import datetime
 from uuid import UUID
 
 from shared.core.schemas import CommonQueryParams, Lookup
+from shared.utils.enums import UserAccountType
 
 
 class RoleBase(BaseModel):
     org_id: Optional[UUID] = None
     name: str
     description: str
+    account_types: Optional[list[UserAccountType]] = []
 
 
 class RoleCreate(RoleBase):

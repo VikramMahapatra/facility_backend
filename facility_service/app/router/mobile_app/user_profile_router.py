@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from shared.core.database import get_auth_db, get_facility_db
 from shared.core.auth import validate_token
-from shared.core.schemas import UserToken
+from shared.core.schemas import MasterQueryParams, UserToken
 from ...schemas.mobile_app.user_profile_schemas import MySpacesResponse, UserProfileResponse
 from ...crud.mobile_app import user_profile_crud as crud
 
@@ -31,8 +31,9 @@ def get_user_profile(
 
 @router.post("/my-spaces", response_model=List[MySpacesResponse])
 def get_my_spaces(
+    params: MasterQueryParams,
     db: Session = Depends(get_facility_db),
     auth_db: Session = Depends(get_auth_db),
-    current_user: UserToken = Depends(validate_token)
+    current_user: UserToken = Depends(validate_token),
 ):
-    return crud.get_my_spaces(db, auth_db, current_user)
+    return crud.get_my_spaces(db, auth_db, current_user, params.site_id)

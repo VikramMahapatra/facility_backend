@@ -1,16 +1,17 @@
 from datetime import date
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import UUID, func
+from sqlalchemy import UUID, func, or_
 from typing import Dict, List, Optional
+from auth_service.app.models import roles
+from auth_service.app.models.associations import RoleAccountType
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
-from shared.utils.enums import OwnershipStatus
+from shared.utils.enums import OwnershipStatus, UserAccountType
 from ...models.leasing_tenants.leases import Lease
 from shared.helpers.json_response_helper import error_response
 from shared.models.users import Users
-from auth_service.app.models.userroles import UserRoles
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant
 from ...crud.access_control import user_management_crud
@@ -22,7 +23,7 @@ from ...schemas.access_control.user_management_schemas import (
 )
 
 
-def get_pending_users_for_approval(
+def get_all_users_for_approval(
     db: Session,
     org_id: str,
     params: UserRequest
@@ -32,11 +33,38 @@ def get_pending_users_for_approval(
         .join(Users, Users.id == UserOrganization.user_id)
         .filter(
             UserOrganization.org_id == org_id,
-            func.lower(UserOrganization.status) == "pending_approval",
             UserOrganization.is_deleted == False,
             Users.is_deleted == False
         )
     )
+
+    total_pendings = (
+        base_query.with_entities(
+            func.count(UserOrganization.id.distinct())
+        ).filter(
+            func.lower(
+                UserOrganization.status) == "pending"
+        ).scalar()
+    )
+
+    if params.status:
+        base_query = base_query.filter(
+            func.lower(UserOrganization.status) == params.status.lower()
+        )
+
+    # func.lower(Users.status) == "pending_approval",
+    # func.lower(UserOrganization.status) == "pending",
+
+    if params.search:
+        search_term = f"%{params.search}%"
+        base_query = base_query.filter(
+            or_(
+                UserOrganization.account_type.ilike(search_term),
+                Users.email.ilike(search_term),
+                Users.full_name.ilike(search_term),
+                Users.phone.ilike(search_term)
+            )
+        )
 
     total = base_query.with_entities(
         func.count(UserOrganization.id.distinct())
@@ -55,6 +83,25 @@ def get_pending_users_for_approval(
     for user_org in user_orgs:
         user = user_org.user
 
+        roles = (
+            db.query(Roles)
+            .join(Roles.account_types)
+            .filter(
+                Roles.org_id == user_org.org_id,
+                RoleAccountType.account_type == user_org.account_type
+            )
+            .all()
+        )
+
+        role_list = []
+        for role in roles:
+            role_list.append(RoleOut.model_validate({
+                **role.__dict__,
+                "account_types": [
+                    rat.account_type.value for rat in role.account_types
+                ]
+            }))
+
         user_out = UserOut(
             id=user.id,
             org_id=user_org.org_id,
@@ -62,9 +109,9 @@ def get_pending_users_for_approval(
             email=user.email,
             phone=user.phone,
             picture_url=user.picture_url,
-            account_type=user_org.account_type,   # ✅ from user_organizations
+            default_account_type=user_org.account_type,   # ✅ from user_organizations
             status=user_org.status,               # ✅ pending_approval
-            roles=[RoleOut.model_validate(role) for role in user_org.roles],
+            roles=role_list,
             created_at=user.created_at,
             updated_at=user.updated_at
         )
@@ -73,7 +120,8 @@ def get_pending_users_for_approval(
 
     return {
         "users": users_with_roles,
-        "total": total
+        "total": total,
+        "total_pending": total_pendings
     }
 
 
@@ -110,7 +158,7 @@ def update_user_approval_status(
         return error_response(message="User is not associated with this organization")
 
     # 3️⃣ Only Tenant & Owner supported
-    if user_org.account_type not in ("tenant", "owner"):
+    if user_org.account_type.notin_([UserAccountType.TENANT, UserAccountType.FLAT_OWNER]):
         return error_response(message="Approval is only allowed for tenant or owner")
 
     # 4️⃣ Update approval status
@@ -122,7 +170,7 @@ def update_user_approval_status(
     # Optional: keep global user status in sync
     user.status = user_org.status
 
-    if user_org.account_type.lower() == "tenant":
+    if user_org.account_type.lower() == UserAccountType.TENANT:
         # 5️⃣ Facility DB updates (TENANT)
         tenant = (
             facility_db.query(Tenant)
@@ -133,16 +181,8 @@ def update_user_approval_status(
         if tenant:
             tenant.status = user_org.status
             tenant.is_deleted = True if request.status == ApprovalStatus.reject else False
-            lease = validate_tenant_lease(
-                facility_db=facility_db,
-                tenant_id=tenant.id,
-                org_id=org_id
-            )
 
-            if not lease:
-                return error_response(message="Tenant cannot be approved without an active lease")
-
-    if user_org.account_type.lower() == "owner":
+    if user_org.account_type == UserAccountType.FLAT_OWNER:
         space_owner = (
             facility_db.query(SpaceOwner)
             .filter(
@@ -184,7 +224,7 @@ def update_user_approval_status(
 
     db.refresh(user)
 
-    return user_management_crud.get_user(db, user.id)
+    return {"message": f"User {'approved' if request.status == ApprovalStatus.approve else 'rejected'} successfully"}
 
 
 def validate_tenant_lease(

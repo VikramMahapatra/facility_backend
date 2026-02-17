@@ -2,10 +2,13 @@ from enum import Enum
 
 
 class UserAccountType(str, Enum):
+    PENDING = "pending"
     ORGANIZATION = "organization"
     TENANT = "tenant"
     STAFF = "staff"
     FLAT_OWNER = "owner"
+    VENDOR = "vendor"
+    SUPER_ADMIN = "super_admin"
 
 
 class OwnershipStatus(Enum):

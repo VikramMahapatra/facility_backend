@@ -58,6 +58,7 @@ from fastapi import BackgroundTasks, HTTPException, status
 
 
 def get_tenants_overview(db: Session, user: UserToken) -> dict:
+
     allowed_space_ids = None
 
     if user.account_type.lower() == UserAccountType.TENANT:
@@ -74,33 +75,38 @@ def get_tenants_overview(db: Session, user: UserToken) -> dict:
 
     query = (
         db.query(
-            # Total residential
-            func.count(
-                func.distinct(
-                    case((Tenant.kind == "residential", Tenant.id))
-                )
-            ).label("individual_total"),
+            func.count(func.distinct(Tenant.id))
+            .label("total"),
 
-            # Total commercial
-            func.count(
-                func.distinct(
-                    case((Tenant.kind == "commercial", Tenant.id))
-                )
-            ).label("commercial_total"),
+            func.count(func.distinct(Tenant.id))
+            .filter(
+                TenantSpace.status == "leased",
+                Space.category == "residential",
+            )
+            .label("individual_total"),
 
-            # Active tenants
-            func.count(
-                func.distinct(
-                    case((Tenant.status == "active", Tenant.id))
-                )
-            ).label("active_total"),
+            func.count(func.distinct(Tenant.id))
+            .filter(
+                TenantSpace.status == "leased",
+                Space.category == "commercial",
+            )
+            .label("commercial_total"),
+
+            func.count(func.distinct(Tenant.id))
+            .filter(
+                Tenant.status == "active",
+            )
+            .label("active_total"),
         )
+        .select_from(Tenant)
         .join(TenantSpace, Tenant.id == TenantSpace.tenant_id)
+        .join(Space, TenantSpace.space_id == Space.id)
         .join(Site, TenantSpace.site_id == Site.id)
         .filter(
             Site.org_id == user.org_id,
             Tenant.is_deleted.is_(False),
             Site.is_deleted.is_(False),
+            Space.is_deleted.is_(False),
         )
     )
 
@@ -109,11 +115,8 @@ def get_tenants_overview(db: Session, user: UserToken) -> dict:
 
     result = query.one()
 
-    total_tenants = (result.individual_total or 0) + \
-        (result.commercial_total or 0)
-
     return {
-        "totalTenants": total_tenants,
+        "totalTenants": result.total or 0,
         "activeTenants": result.active_total or 0,
         "commercialTenants": result.commercial_total or 0,
         "individualTenants": result.individual_total or 0,
@@ -146,7 +149,6 @@ def get_all_tenants(db: Session, auth_db: Session, user: UserToken, params: Tena
             Tenant.name,
             Tenant.email,
             Tenant.phone,
-            Tenant.kind,
             Tenant.legal_name,
             Tenant.commercial_type.label("type"),
             Tenant.status,
@@ -198,7 +200,6 @@ def get_all_tenants(db: Session, auth_db: Session, user: UserToken, params: Tena
             Tenant.name,
             Tenant.email,
             Tenant.phone,
-            Tenant.kind,
             Tenant.legal_name,
             Tenant.commercial_type,
             Tenant.status,
@@ -255,20 +256,8 @@ def get_all_tenants(db: Session, auth_db: Session, user: UserToken, params: Tena
             record.pop("building_block_id", None)
             record.pop("building_name", None)
 
-        if record.get("kind") == "individual":
-            record["contact_info"] = {
-                "name": record["name"],
-                "email": record["email"],
-                "phone": record["phone"],
-                "address": record.get("address"),
-            }
-
-        else:
-            contact = record.get("contact") or {}
-            if contact.get("address") is None:
-                contact["address"] = {
-                    "line1": "", "line2": "", "city": "", "state": "", "pincode": ""}
-            record["contact_info"] = contact
+        contact = record.get("contact") or {}
+        record["contact_info"] = contact
 
         record["tenant_leases"] = get_tenant_leases(
             db, user.org_id, record.get("id"))
@@ -284,7 +273,6 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
             Tenant.name,
             Tenant.email,
             Tenant.phone,
-            Tenant.kind,
             Tenant.legal_name,
             Tenant.commercial_type.label("type"),
             Tenant.status,
@@ -338,7 +326,6 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
             Tenant.name,
             Tenant.email,
             Tenant.phone,
-            Tenant.kind,
             Tenant.legal_name,
             Tenant.commercial_type,
             Tenant.status,
@@ -356,28 +343,7 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
 
     record = dict(tenant._mapping)
     record["tenant_spaces"] = record["tenant_spaces"] or []
-
-    # ✅ Unified contact_info logic
-    if record["kind"] == "residential":
-        record["contact_info"] = {
-            "name": record["name"],
-            "email": record["email"],
-            "phone": record["phone"],
-            "address": record.get("address"),
-        }
-    else:
-        contact = record.get("contact") or {}
-        contact.setdefault(
-            "address",
-            {
-                "line1": "",
-                "line2": "",
-                "city": "",
-                "state": "",
-                "pincode": "",
-            },
-        )
-        record["contact_info"] = contact
+    record["contact_info"] = record.get("contact") or {}
 
     # ✅ Tenant leases (same as list API)
     record["tenant_leases"] = get_tenant_leases(
@@ -466,30 +432,24 @@ def create_tenant_internal(
     ).first():
         raise ValueError(f"Tenant with name '{tenant.name}' already exists")
 
-    user, random_password = get_or_create_user_and_org(
+    user = get_or_create_user_and_org(
         auth_db=auth_db,
         org_id=org_id,
         name=tenant.name,
         email=tenant.email,
         phone=tenant.phone
     )
-
-    contact_info = tenant.contact_info or {
-        "name": tenant.name,
-        "email": tenant.email,
-        "phone": tenant.phone,
-        "address": {}
-    }
+    contact_info = tenant.contact_info or {}
 
     db_tenant = Tenant(
         name=tenant.name,
         email=tenant.email,
         phone=tenant.phone,
-        kind=tenant.kind,
-        legal_name=tenant.legal_name or tenant.name
-        if tenant.kind == "commercial" else None,
-        contact=contact_info if tenant.kind == "commercial" else None,
-        family_info=tenant.family_info if tenant.kind == "residential" else None,
+        legal_name=tenant.legal_name,
+        commercial_type=tenant.type,
+        address=tenant.address,
+        contact=contact_info,
+        family_info=tenant.family_info or {},
         vehicle_info=tenant.vehicle_info,
         status=TenantStatus.inactive,
         user_id=user.id,
@@ -540,10 +500,10 @@ def update_tenant(
         if not db_tenant:
             return error_response(
                 message="Tenant not found",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 http_status=404
             )
-
+        commercial_type = update_data.type or db_tenant.commercial_type
         update_dict = update_data.dict(
             exclude_unset=True,
             exclude={
@@ -569,6 +529,7 @@ def update_tenant(
                 )
 
         # Update tenant
+        update_dict["commercial_type"] = commercial_type
         update_dict["updated_at"] = now
         db.query(Tenant).filter(Tenant.id == tenant_id).update(update_dict)
         db.commit()
@@ -671,7 +632,7 @@ def manage_tenant_space(
         if not db_tenant:
             return error_response(
                 message="Tenant not found",
-                status_code=str(AppStatusCode.OPERATION_ERROR),
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 http_status=404
             )
 
@@ -698,10 +659,7 @@ def manage_tenant_space(
             status="active",
             account_type=UserAccountType.TENANT.value,
             tenant_spaces=spaces,
-            tenant_type=db_tenant.kind
         )
-
-        print(user_account)
 
         error = handle_account_type_update(
             facility_db=db,
@@ -1039,7 +997,6 @@ def get_or_create_user_and_org(
     phone: str
 ):
     now = datetime.utcnow()
-    random_password = None
 
     user = auth_db.query(Users).filter(
         Users.is_deleted == False,
@@ -1052,8 +1009,7 @@ def get_or_create_user_and_org(
             full_name=name,
             email=email,
             phone=phone,
-            username=email or f"user_{uuid.uuid4().hex[:8]}",
-            status="inactive",
+            status="active",
             created_at=now,
             updated_at=now
         )
@@ -1071,7 +1027,7 @@ def get_or_create_user_and_org(
                 UserOrganization(
                     user_id=user.id,
                     org_id=org_id,
-                    account_type="tenant",
+                    account_type=UserAccountType.TENANT,
                     status="active"
                 )
             )
@@ -1084,7 +1040,7 @@ def get_or_create_user_and_org(
             http_status=400
         )
 
-    return user, random_password
+    return user
 
 
 def get_site_ids_from_tenant_spaces(tenant_spaces):
@@ -1107,7 +1063,8 @@ def get_space_tenants(
             Lease.lease_number,
             Lease.start_date,
             Lease.end_date,
-            TenantSpace.created_at
+            TenantSpace.created_at,
+            Lease.status.label("lease_status")
         )
         # 🔑 explicitly set the FROM table
         .select_from(TenantSpace)
@@ -1121,8 +1078,7 @@ def get_space_tenants(
             and_(
                 Lease.space_id == TenantSpace.space_id,
                 Lease.tenant_id == TenantSpace.tenant_id,
-                Lease.is_deleted == False,
-                Lease.status == "active",
+                Lease.is_deleted == False
             )
         )
         .filter(
@@ -1152,7 +1108,7 @@ def get_space_tenants(
                 "status": "pending"
             })
 
-        elif r.status == OwnershipStatus.leased:
+        elif r.status == OwnershipStatus.leased and r.lease_status == "active":
             active.append({
                 **base,
                 "status": "leased",
@@ -1286,6 +1242,7 @@ def reject_tenant(
 
 def get_tenant_approvals(
     db: Session,
+    auth_db: Session,
     org_id: UUID,
     status: str | None = None,
     search: str | None = None,
@@ -1336,8 +1293,24 @@ def get_tenant_approvals(
     rows = query.order_by(TenantSpace.created_at.desc()
                           ).offset(skip).limit(limit).all()
 
-    items = [
-        TenantApprovalOut(
+    items = []
+    for r in rows:
+
+        if r.tenant_user_id:
+            user = (
+                auth_db.query(Users)
+                .filter(
+                    Users.id == r.tenant_user_id,
+                    Users.status == "active"
+                )
+                .first()
+            )
+
+            # Skip if user not active
+            if not user:
+                continue
+
+        items.append(TenantApprovalOut(
             tenant_space_id=r.tenant_space_id,
             tenant_user_id=r.tenant_user_id,
             tenant_id=r.tenant_id,
@@ -1349,9 +1322,7 @@ def get_tenant_approvals(
             tenant_type=r.tenant_type,
             status=r.status,
             requested_at=r.requested_at,
-        )
-        for r in rows
-    ]
+        ))
 
     return {
         "items": items,
@@ -1424,12 +1395,12 @@ def get_users_by_site_and_space(
             .first()
         )
 
-    if user:
-        users_list.append({
-            "id": tenant.user_id,
-            "name": f"{user.full_name} (tenant)",
-            "tenant_id": tenant.id
-        })
+        if user:
+            users_list.append({
+                "id": tenant.user_id,
+                "name": f"{user.full_name} (tenant)",
+                "tenant_id": tenant.id
+            })
 
     # ===============================
     # 3️⃣ REMOVE DUPLICATES

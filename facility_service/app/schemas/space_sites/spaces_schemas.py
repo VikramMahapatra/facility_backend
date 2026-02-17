@@ -1,20 +1,28 @@
 from datetime import date, datetime
 from uuid import UUID
 from pydantic import BaseModel
-from typing import List, Optional, Any
+from typing import List, Literal, Optional, Any
 from decimal import Decimal
 
+from ...enum.space_sites_enum import SpaceCategory
+from ...schemas.parking_access.parking_slot_schemas import AssignedParkingSlot
 from shared.utils.enums import OwnershipStatus
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from shared.core.schemas import CommonQueryParams
 
 
+class SpaceAccessoryCreate(BaseModel):
+    accessory_id: UUID
+    quantity: int
+    name: Optional[str] = None
+
+
 class SpaceBase(EmptyStringModel):
     org_id: Optional[UUID] = None
     site_id: UUID
-    code: str
     name: Optional[str] = None
     kind: str
+    category: Literal['residential', 'commercial']
     floor: Optional[int] = None
     building_block_id: Optional[UUID] = None
     building_block: Optional[str] = None
@@ -23,6 +31,8 @@ class SpaceBase(EmptyStringModel):
     baths: Optional[int] = None
     attributes: Optional[Any] = None
     status: Optional[str] = "available"
+    accessories: Optional[list[SpaceAccessoryCreate]] = None
+    maintenance_template_id: Optional[UUID] = None
 
 
 class SpaceCreate(SpaceBase):
@@ -40,6 +50,9 @@ class SpaceOut(SpaceBase):
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     owner_name: Optional[str] = None
+    maintenance_amount: Optional[Decimal] = None
+    tax_rate: Optional[Decimal] = None
+    parking_slots: Optional[List[AssignedParkingSlot]] = None
 
     model_config = {"from_attributes": True}
 
@@ -134,3 +147,13 @@ class OwnershipApprovalListResponse(BaseModel):
     total: int
 
     model_config = {"from_attributes": True}
+
+
+class RemoveOwnerRequest(BaseModel):
+    space_id: UUID
+    owner_id: UUID
+
+
+class RemoveSpaceTenantRequest(BaseModel):
+    space_id: UUID
+    tenant_user_id: UUID

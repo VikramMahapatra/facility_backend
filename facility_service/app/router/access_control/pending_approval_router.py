@@ -21,10 +21,10 @@ def get_users_for_approval(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_pending_users_for_approval(db, current_user.org_id, params)
+    return crud.get_all_users_for_approval(db, current_user.org_id, params)
 
 
-@router.put("/", response_model=UserOut)
+@router.put("/", response_model=None)
 def update_user_approval_status(
         request: ApprovalStatusRequest,
         db: Session = Depends(get_db),

@@ -3,6 +3,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timedelta
 import uuid
 from shared.core.database import AuthBase as Base
+from shared.core.config import settings
 
 
 class OtpVerification(Base):
@@ -17,4 +18,4 @@ class OtpVerification(Base):
     @property
     def is_expired(self):
         """OTP valid for 5 minutes"""
-        return datetime.utcnow() > self.created_at + timedelta(minutes=5)
+        return datetime.utcnow() > self.created_at + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)

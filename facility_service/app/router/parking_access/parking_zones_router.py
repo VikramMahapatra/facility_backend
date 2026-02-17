@@ -61,3 +61,11 @@ def delete_parking_zone(
     current_user: UserToken = Depends(
         validate_current_token)  # ✅ Added authentication
 ): return crud.delete_parking_zone(db, zone_id)
+
+
+@router.get("/lookup", response_model=List[Lookup])
+def parking_zone_lookup(
+        site_id: str = Query(None),
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.parking_zone_lookup(db, current_user.org_id, site_id)

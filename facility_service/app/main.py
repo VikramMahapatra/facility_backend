@@ -1,12 +1,14 @@
 
+from facility_service.app.router.parking_access import parking_slots_router
+from facility_service.app.router.space_sites import maintenance_template_router
 from .router.space_sites import owner_maintenances_router
 from .router.leasing_tenants import lease_charge_code_router
 from shared.models import email_template
 from .router.system import notifiaction_settings_router
 from .router.system import notifications_router, system_settings_router
 from .router.procurement import contracts_router, vendor_router
-from .router.mobile_app import master_router, home_router, help_desk_router, user_profile_router
-from .router.common import export_router
+from .router.mobile_app import home_router, help_desk_router, user_profile_router
+from .router.common import export_router, master_router
 from .router.service_ticket import tickets_router, ticket_category_router, ticket_dashboard_router, ticket_workload_router, sla_policy_router, ticket_work_order_router
 from .router.energy_iot import meter_readings_router, meters_router, consumption_report_router
 from .router.overview import analytics_router, dashboard_router
@@ -44,13 +46,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from shared.core.database import facility_engine, Base
 
 from .models.energy_iot import meters, meter_readings
-from .models.parking_access import parking_zones, parking_pass, access_events, visitors
+from .models.parking_access import parking_zones, parking_pass, access_events, visitors, parking_slots
 from .models.crm import contacts, companies
 from .models.financials import invoices
-from .models.leasing_tenants import leases, lease_charges, tenant_spaces, tenants, lease_charge_code ,lease_payment_term
+from .models.leasing_tenants import leases, lease_charges, tenant_spaces, tenants, lease_charge_code, lease_payment_term
 from .models.space_sites import (
     buildings, orgs, sites, space_filter_models, space_group_members, space_groups, space_owners, owner_maintenances,
-    user_sites, space_occupancies, space_occupancy_events
+    user_sites, space_occupancies, space_occupancy_events, maintenance_templates
 )
 from .models.system import notifications, notification_settings, system_settings
 from .models.common import comments, attachments, staff_sites
@@ -152,6 +154,8 @@ app.include_router(system_settings_router.router)
 app.include_router(parking_pass_router.router)
 app.include_router(owner_maintenances_router.router)
 app.include_router(space_occupancy_router.router)
+app.include_router(maintenance_template_router.router)
+app.include_router(parking_slots_router.router)
 
 
 @app.get("/api/health")

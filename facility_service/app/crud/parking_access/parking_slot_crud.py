@@ -6,7 +6,7 @@ from facility_service.app.models.parking_access.parking_zones import ParkingZone
 from facility_service.app.models.space_sites.sites import Site
 from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.schemas.parking_access.parking_slot_schemas import ParkingSlotCreate, ParkingSlotOut, ParkingSlotUpdate
-from shared.core.schemas import UserToken
+from shared.core.schemas import Lookup, UserToken
 from shared.helpers.json_response_helper import error_response
 
 
@@ -182,3 +182,28 @@ def delete_parking_slot(db: Session, org_id: UUID, slot_id: UUID):
     db.commit()
 
     return {"success": True}
+
+
+def available_parking_slot_lookup(db: Session, org_id: UUID, zone_id: UUID):
+
+    slots = (
+        db.query(
+            ParkingSlot.id,
+            ParkingSlot.slot_no
+        )
+        .join(Site, ParkingSlot.site_id == Site.id)
+        .join(ParkingZone, ParkingSlot.zone_id == ParkingZone.id)
+        .outerjoin(Space, ParkingSlot.space_id == Space.id)  # optional
+        .filter(
+            ParkingSlot.org_id == org_id,
+            ParkingSlot.is_deleted == False,
+            ParkingSlot.zone_id == zone_id,
+            ParkingSlot.space_id.isnot(None)
+        )
+        .all()
+    )
+
+    return [
+        Lookup(id=slot.id, name=slot.name)
+        for slot in slots
+    ]

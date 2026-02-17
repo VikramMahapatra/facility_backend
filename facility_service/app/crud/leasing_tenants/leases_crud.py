@@ -183,7 +183,6 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
         if row.space_id:
             # Get space details including building_block_id in single query
             space_details = db.query(
-                Space.code,
                 Space.name,
                 Space.building_block_id
             ).filter(
@@ -192,7 +191,6 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
             ).first()
 
             if space_details:
-                space_code = space_details.code
                 space_name = space_details.name
                 building_block_id = space_details.building_block_id
 
@@ -211,23 +209,30 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
 
         lease_term_months = None
 
-        if row.frequency == "monthly" and row.start_date and row.end_date:
+        if row.start_date and row.end_date:
             lease_term_months = calculate_lease_term_months(
                 row.start_date,
                 row.end_date
             )
 
+        derived_frequency = None
+        if lease_term_months:
+            if lease_term_months == 12:
+                derived_frequency = "annually"
+            else:
+                derived_frequency = "monthly"
+
         leases.append(
             LeaseOut.model_validate(
                 {
                     **row.__dict__,
-                    "space_code": space_code,
                     "site_name": site_name,
                     "tenant_name": tenant_name,
                     "space_name": space_name,
                     "building_name": building_name,  # Add this
                     "building_block_id": building_block_id,  # Add this
-                    "lease_term_months": lease_term_months
+                    "lease_term_months": lease_term_months,
+                    "derived_frequency": derived_frequency
                 }
             )
         )
@@ -751,6 +756,14 @@ def get_lease_by_id(db: Session, lease_id: str):
             lease.start_date,
             lease.end_date
         )
+
+    derived_frequency = None
+    if lease_term_months:
+        if lease_term_months == 12:
+            derived_frequency = "annually"
+        else:
+            derived_frequency = "monthly"
+
     return LeaseOut.model_validate(
         {
             **lease.__dict__,
@@ -760,7 +773,8 @@ def get_lease_by_id(db: Session, lease_id: str):
             "space_name": space_name,
             "building_name": building_name,  # Add this
             "building_block_id": building_block_id,  # Add this
-            "lease_term_months": lease_term_months
+            "lease_term_months": lease_term_months,
+            "derived_frequency": derived_frequency
         }
     )
 

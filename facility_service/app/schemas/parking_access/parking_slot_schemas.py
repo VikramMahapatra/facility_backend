@@ -48,9 +48,27 @@ class ParkingSlotsResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ParkingSlotsResponse(BaseModel):
+    slots: List[ParkingSlotOut]
+    total: int
+
+    model_config = {"from_attributes": True}
+
+
 class ParkingSlotOverview(BaseModel):
     totalSlots: int
     availableSlots: int
     assignedSlots: float
 
     model_config = {"from_attributes": True}
+
+
+class AssignedParkingSlot(BaseModel):
+    id: UUID
+    slot_no: str
+    slot_type: Optional[str] = None
+    zone_id: Optional[UUID] = None
+
+    model_config = {
+        "from_attributes": True
+    }

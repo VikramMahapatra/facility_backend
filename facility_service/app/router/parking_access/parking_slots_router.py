@@ -2,10 +2,7 @@ from typing import List, Optional
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-
-from facility_service.app.schemas.parking_access.parking_zone_schemas import ParkingZoneUpdate
-
-from ...schemas.parking_access.parking_slot_schemas import ParkingSlotCreate, ParkingSlotOverview, ParkingSlotRequest, ParkingSlotsResponse
+from ...schemas.parking_access.parking_slot_schemas import ParkingSlotCreate, ParkingSlotOverview, ParkingSlotRequest, ParkingSlotUpdate, ParkingSlotsResponse
 from shared.helpers.json_response_helper import success_response
 from ...crud.parking_access import parking_slot_crud as crud
 from shared.core.database import get_facility_db as get_db
@@ -49,7 +46,7 @@ def create_parking_slot(
 
 @router.put("/", response_model=None)
 def update_parking_slot(
-    slot: ParkingSlotCreate,  # ✅ Changed: Remove slot_id parameter, get ID from slot body
+    slot: ParkingSlotUpdate,  # ✅ Changed: Remove slot_id parameter, get ID from slot body
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(
         validate_current_token)  # ✅ Added authentication
@@ -65,3 +62,13 @@ def delete_parking_slot(
     current_user: UserToken = Depends(
         validate_current_token)  # ✅ Added authentication
 ): return crud.delete_parking_slot(db, current_user.org_id, slot_id)
+
+
+@router.get("/available-slot-lookup")
+def available_parking_slot_lookup(
+    zone_id: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(
+        validate_current_token)  # ✅ Added authentication
+):
+    return crud.available_parking_slot_lookup(db, current_user.org_id, zone_id)

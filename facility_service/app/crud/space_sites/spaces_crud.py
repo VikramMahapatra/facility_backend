@@ -8,6 +8,7 @@ from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
 
 from auth_service.app.models.user_organizations import UserOrganization
+from facility_service.app.models.financials.tax_codes import TaxCode
 from facility_service.app.models.space_sites.maintenance_templates import MaintenanceTemplate
 from ...crud.space_sites.space_occupancy_crud import log_occupancy_event
 from ...models.space_sites.accessories import Accessory
@@ -436,10 +437,13 @@ def get_space_details_by_id(
             MaintenanceTemplate,
             Space.maintenance_template_id == MaintenanceTemplate.id
         )
+        .outerjoin(
+            TaxCode,
+            TaxCode.id == MaintenanceTemplate.tax_code_id
+        )
         .add_columns(
             Building.name.label("building_block_name"),
             Site.name.label("site_name"),
-
             # ⭐ Maintenance calculation
             case(
                 (
@@ -457,7 +461,8 @@ def get_space_details_by_id(
                     MaintenanceTemplate.amount
                 ),
                 else_=None
-            ).label("maintenance_amount")
+            ).label("maintenance_amount"),
+            TaxCode.rate.label("tax_rate")
         )
         .filter(
             Space.id == space_id,
@@ -473,6 +478,7 @@ def get_space_details_by_id(
     building_name = db_space.building_block_name
     site_name = db_space.site_name
     maintenance_amount = db_space.maintenance_amount
+    tax_rate = db_space.tax_rate
 
     # ACCESSORIES
     accessory_items = (
@@ -496,12 +502,24 @@ def get_space_details_by_id(
         for acc in accessory_items
     ]
 
+    parking_slots = [
+        {
+            "id": slot.id,
+            "slot_no": slot.slot_no,
+            "slot_type": slot.slot_type,
+            "zone_id": slot.zone_id
+        }
+        for slot in space.parking_slots
+    ]
+
     data = {
         **space.__dict__,
         "building_block": building_name,
         "site_name": site_name,
         "maintenance_amount": maintenance_amount,
-        "accessories": accessories
+        "accessories": accessories,
+        "tax_rate": tax_rate,
+        "parking_slots": parking_slots
     }
 
     return SpaceOut.model_validate(data)

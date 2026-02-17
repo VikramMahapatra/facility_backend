@@ -4,7 +4,8 @@ from pydantic import BaseModel
 from typing import List, Literal, Optional, Any
 from decimal import Decimal
 
-from facility_service.app.enum.space_sites_enum import SpaceCategory
+from ...enum.space_sites_enum import SpaceCategory
+from ...schemas.parking_access.parking_slot_schemas import AssignedParkingSlot
 from shared.utils.enums import OwnershipStatus
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 from shared.core.schemas import CommonQueryParams
@@ -50,6 +51,8 @@ class SpaceOut(SpaceBase):
     updated_at: Optional[datetime]
     owner_name: Optional[str] = None
     maintenance_amount: Optional[Decimal] = None
+    tax_rate: Optional[Decimal] = None
+    parking_slots: Optional[List[AssignedParkingSlot]] = None
 
     model_config = {"from_attributes": True}
 

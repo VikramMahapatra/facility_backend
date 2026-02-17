@@ -144,7 +144,7 @@ def get_owner_maintenances(
     filters.extend([
         Space.org_id == user.org_id,
         Site.org_id == user.org_id,
-        SpaceOwner.is_active == True,
+        # SpaceOwner.is_active == True,
         Space.is_deleted == False
     ])
 
@@ -287,6 +287,7 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
     maintenance_template = db.query(MaintenanceTemplate).get(template)
 
     amount = calculate_maintenance_amount(
+        db=db,
         space=space,
         template=maintenance_template,
         start_date=maintenance.period_start,
@@ -402,6 +403,7 @@ def update_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
         maintenance_template = db.query(MaintenanceTemplate).get(template)
 
         amount = calculate_maintenance_amount(
+            db=db,
             space=new_space_owner.space,
             template=maintenance_template,
             start_date=maintenance.period_start,
@@ -782,6 +784,7 @@ def auto_generate_owner_maintenance(db: Session, input_date: date):
         # Calculate amount
         # ------------------------------
         amount = calculate_maintenance_amount(
+            db=db,
             space=owner.space,
             template=maintenance_template,
             start_date=actual_start,
@@ -845,6 +848,7 @@ def get_calculated_maintenance_amount(
 
     # Calculate amount
     amount = calculate_maintenance_amount(
+        db=db,
         space=space,
         template=maintenance_template,
         start_date=start_date,
@@ -855,6 +859,7 @@ def get_calculated_maintenance_amount(
 
 
 def calculate_maintenance_amount(
+    db: Session,
     space: Space,
     template: MaintenanceTemplate,
     start_date: date,
@@ -916,10 +921,12 @@ def calculate_maintenance_amount(
     # -----------------------------
     # Apply tax AFTER proration
     # -----------------------------
+    tax_code = (db.query(TaxCode).filter(
+        TaxCode.id == template.tax_code_id).first())
 
     total_amount, tax_amount = apply_tax(
         prorated_base,
-        template.tax_code
+        tax_code
     )
 
     return {

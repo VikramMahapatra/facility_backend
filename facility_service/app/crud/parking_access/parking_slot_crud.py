@@ -72,18 +72,21 @@ def get_parking_slot_overview(db: Session, org_id: UUID):
 
     result = db.query(
         func.count(ParkingSlot.id).label("total_slots"),
+
         func.sum(
             case(
-                (ParkingSlot.status == "available", 1),
+                (ParkingSlot.space_id == None, 1),
                 else_=0
             )
         ).label("available_slots"),
+
         func.sum(
             case(
-                (ParkingSlot.status == "assigned", 1),
+                (ParkingSlot.space_id != None, 1),
                 else_=0
             )
         ).label("assigned_slots"),
+
     ).filter(
         ParkingSlot.org_id == org_id,
         ParkingSlot.is_deleted == False

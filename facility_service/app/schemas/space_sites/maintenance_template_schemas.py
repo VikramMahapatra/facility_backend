@@ -19,6 +19,7 @@ class MaintenanceTemplateBase(BaseModel):
     category: Optional[str] = None
     kind: Optional[str] = None
     site_id: Optional[UUID] = None
+    tax_code_id: Optional[UUID] = None
 
 
 # ======================

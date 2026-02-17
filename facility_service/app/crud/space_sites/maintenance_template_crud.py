@@ -5,6 +5,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from facility_service.app.models.financials.tax_codes import TaxCode
 from facility_service.app.models.space_sites.maintenance_templates import MaintenanceTemplate
 from facility_service.app.models.space_sites.sites import Site
 from facility_service.app.schemas.space_sites.maintenance_template_schemas import MaintenanceTemplateCreate, MaintenanceTemplateRequest, MaintenanceTemplateResponse, MaintenanceTemplateUpdate
@@ -26,6 +27,7 @@ def get_all_maintenance_templates(
             Site.name.label("site_name")
         )
         .outerjoin(Site, Site.id == MaintenanceTemplate.site_id)
+        .outerjoin(TaxCode, MaintenanceTemplate.tax_code_id == TaxCode.id)
         .filter(
             MaintenanceTemplate.org_id == org_id,
             MaintenanceTemplate.is_deleted == False

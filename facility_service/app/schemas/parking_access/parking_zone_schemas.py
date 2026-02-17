@@ -45,6 +45,6 @@ class ParkingZonesResponse(BaseModel):
 class ParkingZoneOverview(BaseModel):
     totalZones: int
     totalCapacity: Optional[int] = 0
-    avgCapacity: Optional[int] = 0
+    avgCapacity: Optional[float] = 0
 
     model_config = {"from_attributes": True}

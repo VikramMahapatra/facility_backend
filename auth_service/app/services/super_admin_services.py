@@ -151,6 +151,16 @@ def approve_org(background_tasks: BackgroundTasks, org_id: str, facility_db: Ses
         )
     )
 
+    org_user_orgs = auth_db.query(UserOrganization).filter(
+        UserOrganization.org_id == org_id,
+        UserOrganization.account_type == UserAccountType.ORGANIZATION
+    ).all()
+
+    for user_org in org_user_orgs:
+        # avoid duplicate assignment
+        if admin_role not in user_org.roles:
+            user_org.roles.append(admin_role)
+
     # ------------------------------------------------
     # 6. Create ALL ROLE POLICIES
     # ------------------------------------------------

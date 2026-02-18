@@ -1,6 +1,7 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import TIMESTAMP, Column, String, Text, Boolean, func
+from auth_service.app.models.user_org_role_association import user_org_roles
 from shared.core.database import AuthBase
 from sqlalchemy.orm import relationship
 
@@ -23,4 +24,9 @@ class Roles(AuthBase):
         "RoleAccountType",
         back_populates="role",
         cascade="all, delete-orphan"
+    )
+    user_orgs = relationship(
+        "UserOrganization",
+        secondary=user_org_roles,
+        back_populates="roles"
     )

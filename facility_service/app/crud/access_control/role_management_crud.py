@@ -125,10 +125,12 @@ def update_role(db: Session, role: RoleUpdate):
     for key, value in update_data.items():
         setattr(db_role, key, value)
 
-    db.commit()
+    db.query(RoleAccountType).filter(
+        RoleAccountType.role_id == db_role.id
+    ).delete()
 
     # --------------- Update account types safely with upsert ----------------
-    if account_types is not None:
+    if account_types:
         new_mappings = [
             {"role_id": db_role.id, "account_type": account_type}
             for account_type in account_types
@@ -141,8 +143,8 @@ def update_role(db: Session, role: RoleUpdate):
                 index_elements=["role_id", "account_type"]
             )
             db.execute(stmt)
-            db.commit()
 
+    db.commit()
     db.refresh(db_role)
     return RoleOut.model_validate({
         **db_role.__dict__,

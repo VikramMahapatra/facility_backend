@@ -174,9 +174,8 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
         if row.tenant:
             tenant_name = row.tenant.legal_name or row.tenant.name
 
-        space_code = None
         site_name = None
-        space_name = None
+        space_name = row.space.name if row.space else None
         building_name = None  # Add this
         building_block_id = None  # Add this
         # Get space and building details
@@ -191,7 +190,6 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
             ).first()
 
             if space_details:
-                space_name = space_details.name
                 building_block_id = space_details.building_block_id
 
                 # Get building name if building_block_id exists
@@ -622,13 +620,30 @@ def delete(db: Session, lease_id: str, org_id: UUID) -> Dict:
 # ----------------------------------------------------
 
 
-def lease_lookup(org_id: UUID, db: Session):
-    leases = (
+def lease_lookup(
+    org_id: UUID,
+    site_id: UUID,
+    building_id: UUID,
+    db: Session
+):
+    lease_query = (
         db.query(Lease)
-        .filter(Lease.org_id == org_id, Lease.is_deleted == False, Lease.status == 'active')
+        .join(Space, Space.id == Lease.space_id)
+        .filter(
+            Lease.org_id == org_id,
+            Lease.is_deleted == False,
+            Lease.status == 'active')
         .distinct(Lease.id)
-        .all()
     )
+
+    if site_id and site_id.lower() != "all":
+        lease_query = lease_query.filter(Space.site_id == site_id)
+
+    if building_id and building_id.lower() != "all":
+        lease_query = lease_query.filter(
+            Space.building_block_id == building_id)
+
+    leases = lease_query.all()
 
     lookups = []
     for lease in leases:
@@ -637,14 +652,12 @@ def lease_lookup(org_id: UUID, db: Session):
             lease_no = lease.lease_number or ""
         else:
             continue
+
         space_name = lease.space.name if lease.space else None
-        site_name = lease.site.name if lease.site else None
 
         parts = [lease_no, base_name]
         if space_name:
             parts.append(space_name)
-        if site_name:
-            parts.append(site_name)
 
         display_name = " - ".join(parts)
         lookups.append(Lookup(id=lease.id, name=display_name))
@@ -819,12 +832,12 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
     charges = (
         db.query(LeaseCharge)
         .options(
-            joinedload(LeaseCharge.charge_code),
             joinedload(LeaseCharge.tax_code)
         )
         .filter(
             LeaseCharge.lease_id == lease_id,
-            LeaseCharge.is_deleted == False
+            LeaseCharge.is_deleted == False,
+            func.lower(LeaseCharge.charge_code) == "rent"
         )
         .order_by(LeaseCharge.period_start.desc())
         .all()
@@ -910,14 +923,12 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
     tenant_legal_name = None
     tenant_email = None
     tenant_phone = None
-    tenant_kind = None
 
     if lease.tenant:
         tenant_name = lease.tenant.name
         tenant_legal_name = lease.tenant.legal_name
         tenant_email = lease.tenant.email
         tenant_phone = lease.tenant.phone
-        tenant_kind = lease.tenant.kind
 
     # Get space kind
     space_kind = None
@@ -945,12 +956,10 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         "tenant_legal_name": tenant_legal_name,
         "tenant_email": tenant_email,
         "tenant_phone": tenant_phone,
-        "tenant_kind": tenant_kind,
 
         # Space/Site info
         "space_id": lease.space_id,
         "space_name": lease.space.name if lease.space else None,
-        "space_code": lease.space.code if lease.space else None,
         "space_kind": space_kind,
         "site_id": lease.site_id,
         "site_name": lease.site.name if lease.site else None,

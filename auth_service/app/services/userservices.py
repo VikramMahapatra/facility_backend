@@ -148,14 +148,6 @@ def create_user(
                 email=user.email,
                 phone=user.phone,
                 status="inactive",
-                kind="residential" if user.tenant_type == "individual" else "commercial",
-                commercial_type="merchant" if user.tenant_type == "commercial" else None,
-                legal_name=full_name if user.tenant_type == "commercial" else None,
-                contact={
-                    "name": full_name,
-                    "phone": user.phone,
-                    "email": user.email
-                } if user.tenant_type == "commercial" else None,
                 user_id=user_instance.id
             )
             facility_db.add(tenant_obj)
@@ -261,7 +253,6 @@ def get_user_token(request: Request, auth_db: Session, facility_db: Session, use
     account_type = "super_admin" if getattr(
         user, "is_super_admin", False) else None
     roles = []
-    tenant_type = None
 
     # If user is NOT super admin, fetch org/tenant info
     if not getattr(user, "is_super_admin", False):

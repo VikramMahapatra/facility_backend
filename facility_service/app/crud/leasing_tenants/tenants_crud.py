@@ -1259,7 +1259,6 @@ def get_tenant_approvals(
             Space.id.label("space_id"),
             Space.name.label("space_name"),
             Site.name.label("site_name"),
-            Tenant.kind.label("tenant_type"),
             TenantSpace.status,
             TenantSpace.created_at.label("requested_at")
         )
@@ -1319,7 +1318,6 @@ def get_tenant_approvals(
             space_id=r.space_id,
             space_name=r.space_name,
             site_name=r.site_name,
-            tenant_type=r.tenant_type,
             status=r.status,
             requested_at=r.requested_at,
         ))

@@ -135,6 +135,5 @@ class TenantApprovalOut(BaseModel):
     space_id: UUID
     space_name: str
     site_name: Optional[str]
-    tenant_type: str
     status: str
     requested_at: datetime

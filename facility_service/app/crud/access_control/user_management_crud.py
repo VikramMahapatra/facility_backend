@@ -175,7 +175,6 @@ def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
     site_id = None
     space_id = None
     building_block_id = None
-    tenant_type = None
     site_ids = []
     tenant_spaces = []
 
@@ -204,7 +203,6 @@ def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
             site_id = space.site_id  # Get site_id from Space
             space_id = space.id  # Get space_id from Space
             building_block_id = space.building_block_id  # Get building_block_id from Space
-            tenant_type = "individual"
 
             # ✅ ONLY ADDITION (THIS WAS MISSING)
             tenant_spaces_db = (
@@ -292,7 +290,6 @@ def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
         site_id=site_id,
         space_id=space_id,
         building_block_id=building_block_id,
-        tenant_type=tenant_type,
         site_ids=site_ids,
         staff_role=staff_role,
         tenant_spaces=tenant_spaces   # ✅ ADD THIS LINE ONLY
@@ -728,7 +725,6 @@ def get_user_detail(
             "roles": [],
             "site_ids": [],
             "tenant_spaces": [],
-            "tenant_type": None,
             "staff_role": None
         }
 
@@ -794,7 +790,6 @@ def get_user_detail(
             )
 
             if tenant:
-                account["tenant_type"] = tenant.tenant_type
                 account["tenant_spaces"] = tenant.tenant_spaces
 
         elif uo.account_type.lower() == "owner":
@@ -1095,7 +1090,7 @@ def update_user_account(
         update_data = user_account.model_dump(
             exclude_unset=True,
             exclude={'user_org_id', 'role_ids', 'tenant_spaces',
-                     'site_ids', 'tenant_type', 'staff_role'}
+                     'site_ids', 'staff_role'}
         )
 
         # -----------------------

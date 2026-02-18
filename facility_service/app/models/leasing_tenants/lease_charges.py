@@ -13,13 +13,13 @@ class LeaseCharge(Base):
     lease_id = Column(UUID(as_uuid=True), ForeignKey(
         "leases.id", ondelete="CASCADE"))
     charge_code_id = Column(UUID(as_uuid=True), ForeignKey(
-        "lease_charge_codes.id", ondelete="CASCADE"))
+        "lease_charge_codes.id", ondelete="CASCADE"), nullable=True)
     period_start = Column(Date)
     period_end = Column(Date)
     amount = Column(Numeric(14, 2), nullable=False)
     total_amount = Column(Numeric(14, 2), nullable=False)
     tax_code_id = Column(UUID(as_uuid=True), ForeignKey("tax_codes.id"))
-    payer_type = Column(String(16), nullable=False)  # owner | occupant | split
+    charge_code = Column(String(16), nullable=False)  # RENT
     # FK to tenants.id (soft FK)
     payer_id = Column(UUID(as_uuid=True), nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
@@ -29,7 +29,7 @@ class LeaseCharge(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
 
     lease = relationship("Lease", back_populates="charges")
-    # ✅ ADD THIS LINE
-    charge_code = relationship("LeaseChargeCode", back_populates="charges")
+    # # ✅ ADD THIS LINE
+    # charge_code = relationship("LeaseChargeCode", back_populates="charges")
 
     tax_code = relationship("TaxCode", back_populates="charge")

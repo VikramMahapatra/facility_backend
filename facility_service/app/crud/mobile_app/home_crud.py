@@ -205,7 +205,6 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
     """
     now = datetime.now(timezone.utc)
     account_type = user.account_type.lower()
-    tenant_type = user.tenant_type.lower() if user.tenant_type else None
     period_end = date.today()
 
     user_record = auth_db.query(Users).filter(

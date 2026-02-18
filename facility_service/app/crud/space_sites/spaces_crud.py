@@ -818,6 +818,7 @@ def remove_space_owner(
     occupancy = db.query(SpaceOccupancy).filter(
         SpaceOccupancy.space_id == payload.space_id,
         SpaceOccupancy.source_id == owner.id,
+        SpaceOccupancy.occupant_type == "owner",
         SpaceOccupancy.status == OccupancyStatus.active
     ).first()
 
@@ -988,6 +989,17 @@ def remove_space_tenant(
         tenant_space.is_deleted = True
         tenant_space.updated_at = now
 
+        # OPTIONAL — update space occupancy
+        occupancy = db.query(SpaceOccupancy).filter(
+            SpaceOccupancy.space_id == payload.space_id,
+            SpaceOccupancy.source_id == tenant.id,
+            SpaceOccupancy.occupant_type == "tenant",
+            SpaceOccupancy.status == OccupancyStatus.active
+        ).first()
+
+        if occupancy:
+            occupancy.status = OccupancyStatus.moved_out
+            occupancy.move_out_date = now
         # ------------------------------
         # Log occupancy event
         # ------------------------------

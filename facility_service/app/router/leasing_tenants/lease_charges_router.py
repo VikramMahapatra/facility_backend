@@ -2,7 +2,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from ...schemas.leasing_tenants.lease_charges_schemas import AutoLeaseChargeResponse, LeaseChargeCreate, LeaseChargeListResponse, LeaseChargeRequest, LeaseChargeUpdate, LeaseChargesOverview, LeaseRentAmountResponse
+from ...schemas.leasing_tenants.lease_charges_schemas import AutoLeaseChargeResponse, LeaseChargeCreate, LeaseChargeListResponse, LeaseChargeRequest, LeaseChargeUpdate, LeaseChargesOverview, LeaseRentAmountResponse, RentAmountRequest
 from ...crud.leasing_tenants import lease_charges_crud as crud
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import allow_admin, validate_current_token  # for dependicies
@@ -16,9 +16,12 @@ router = APIRouter(
 )
 
 # -----------------------------------------------------------------
+
+
 @router.post("/auto-generate", response_model=AutoLeaseChargeResponse)
 def auto_generate_lease_charges_endpoint(
-    target_date: date = Query(..., description="Any date in the month to generate lease charges for"),
+    target_date: date = Query(
+        ..., description="Any date in the month to generate lease charges for"),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
@@ -29,6 +32,7 @@ def auto_generate_lease_charges_endpoint(
         input_date=target_date,
         current_user=current_user
     )
+
 
 @router.get("/all", response_model=LeaseChargeListResponse)
 def get_lease_charges(
@@ -50,19 +54,19 @@ def create_lease_charge(
         data: LeaseChargeCreate,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token),
-        _ : UserToken = Depends(allow_admin)
-):        
-    return crud.create_lease_charge(db, data ,current_user.user_id)
+        _: UserToken = Depends(allow_admin)
+):
+    return crud.create_lease_charge(db, data, current_user.user_id)
 
 
 @router.put("/", response_model=None)
 def update_lease_charge(
-    data: LeaseChargeUpdate, 
+    data: LeaseChargeUpdate,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
-    _ : UserToken = Depends(allow_admin)
-                        
-):                        
+    _: UserToken = Depends(allow_admin)
+
+):
     return crud.update_lease_charge(db, data)
 
 
@@ -87,6 +91,7 @@ def get_charge_code_lookup(
         current_user: UserToken = Depends(validate_current_token)):
     return crud.lease_charge_code_lookup(db, current_user.org_id)
 
+
 @router.get("/tax-code-lookup", response_model=List[Lookup])
 def get_tax_code_lookup(
         db: Session = Depends(get_db),
@@ -94,9 +99,9 @@ def get_tax_code_lookup(
     return crud.tax_code_lookup(db, current_user.org_id)
 
 
-@router.get("/lease-rent/{lease_id}", response_model=LeaseRentAmountResponse)
+@router.post("/lease-rent", response_model=LeaseRentAmountResponse)
 def get_lease_rent_amount(
-    lease_id: UUID,
+    params: RentAmountRequest,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
@@ -104,9 +109,10 @@ def get_lease_rent_amount(
     Get lease rent amount by lease ID
     Used to auto-fill amount when user selects "Rent" charge code
     """
-    result = crud.get_lease_rent_amount(db, lease_id)
-    
+    result = crud.get_lease_rent_amount(
+        db, params.lease_id, params.tax_code_id, params.start_date, params.end_date)
+
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
-    
+
     return result

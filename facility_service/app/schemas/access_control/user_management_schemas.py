@@ -78,7 +78,6 @@ class UserAccountBase(BaseModel):
     is_default: Optional[bool] = False
     role_ids: Optional[List[str]] = None
     site_ids: Optional[List[str]] = None
-    tenant_type: Optional[str] = None
     staff_role: Optional[str] = None
     tenant_spaces: Optional[List[UserTenantSpace]] = None
     owner_spaces: Optional[List[UserTenantSpace]] = None
@@ -104,7 +103,6 @@ class UserAccountOut(BaseModel):
     roles: Optional[List[RoleOut]] = None
     site_ids: Optional[List[str]] = None
     sites: Optional[List[StaffSiteOut]] = None
-    tenant_type: Optional[str] = None
     staff_role: Optional[str] = None
     tenant_spaces: Optional[List[TenantSpaceOut]] = None
     owner_spaces: Optional[List[TenantSpaceOut]] = None

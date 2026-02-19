@@ -29,7 +29,6 @@ class LeaseChargeUpdate(LeaseChargeBase):
 
 class LeaseChargesOverview(BaseModel):
     total_charges: float
-    tax_amount: float
     this_month: int
     avg_charge: float
 
@@ -46,7 +45,7 @@ class LeaseChargeOut(BaseModel):
     site_name: str
     building_block_id: Optional[UUID] = None
     space_name: str
-    building_name: Optional[str] = None
+    building_block: Optional[str] = None
     charge_code: Optional[str] = None
     charge_code_id: Optional[UUID] = None
     period_start: Optional[date]
@@ -55,7 +54,6 @@ class LeaseChargeOut(BaseModel):
     lease_start: Optional[date] = None
     lease_end: Optional[date] = None
     rent_amount: Optional[Decimal] = None
-    tax_amount: Optional[Decimal] = None
     total_amount: Optional[Decimal] = None
     tax_code_id: Optional[UUID]
     tax_pct: Optional[Decimal]

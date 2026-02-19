@@ -2,7 +2,7 @@
 import uuid
 from enum import Enum as PyEnum
 from sqlalchemy import (
-    Column, Date, DateTime, Enum, ForeignKey, Text
+    Boolean, Column, Date, DateTime, Enum, ForeignKey, String, Text
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -19,6 +19,7 @@ class OccupancyStatus(str, PyEnum):
     pending = "pending"
     active = "active"
     moved_out = "moved_out"
+    rejected = "rejected"
 
 
 class SpaceOccupancy(Base):
@@ -36,10 +37,15 @@ class SpaceOccupancy(Base):
     move_in_date = Column(Date, nullable=False)
     move_out_date = Column(Date, nullable=True)
 
+    heavy_items = Column(Boolean, default=False)
+    elevator_required = Column(Boolean, default=False)
+    parking_required = Column(Boolean, default=False)
+    time_slot = Column(String(50), nullable=True)  # e.g., "09:00-11:00"
     status = Column(
-        Enum(OccupancyStatus),
+        Enum(OccupancyStatus, name="occupancy_status_enum"),
         default=OccupancyStatus.active,
         nullable=False
     )
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

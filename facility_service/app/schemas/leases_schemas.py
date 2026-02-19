@@ -186,3 +186,13 @@ class TenantSpaceDetailOut(BaseModel):
 
 class LeasePaymentTermRequest(CommonQueryParams):
     lease_id: UUID
+
+
+class LeaseLookup(BaseModel):
+    id: UUID  # accepts both UUID and str
+    name: str
+    tenant_name: str
+    lease_no: str
+
+    class Config:
+        from_attributes = True

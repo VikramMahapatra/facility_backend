@@ -54,6 +54,7 @@ def get_current_occupancy(db: Session, auth_db: Session, space_id: UUID):
 
 def move_in(
     db: Session,
+    user_id: UUID,
     params: MoveInRequest
 ):
     try:
@@ -70,6 +71,29 @@ def move_in(
         if active:
             return error_response(message="Space is already occupied")
 
+        if params.occupant_type == "tenant":
+            if not params.tenant_id:
+                params.tenant_id = (
+                    db.query(Tenant.id)
+                    .filter(
+                        Tenant.user_id == user_id,
+                        SpaceOccupancy.status == "active"
+                    )
+                    .first()
+                )
+
+            if params.tenant_id and not params.lease_id:
+                params.lease_id = (
+                    db.query(Lease.id)
+                    .filter(
+                        Lease.space_id == params.space_id,
+                        Lease.tenant_id == params.tenant_id,
+                        Lease.status == "active",
+                        Lease.is_deleted == False
+                    )
+                    .first()
+                )
+
         # 2️⃣ Create occupancy
         occ = SpaceOccupancy(
             space_id=params.space_id,
@@ -78,7 +102,10 @@ def move_in(
             lease_id=params.lease_id,
             source_id=params.tenant_id,
             move_in_date=func.now(),
-            status="active"
+            heavy_items=params.heavy_items,
+            elevator_required=params.elevator_required,
+            parking_required=params.parking_required,
+            status=params.status
         )
 
         db.add(occ)

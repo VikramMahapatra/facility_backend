@@ -29,7 +29,7 @@ from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...schemas.leases_schemas import (
-    LeaseCreate, LeaseListResponse, LeaseOut, LeasePaymentTermCreate, LeasePaymentTermOut, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate
+    LeaseCreate, LeaseListResponse, LeaseLookup, LeaseOut, LeasePaymentTermCreate, LeasePaymentTermOut, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate
 )
 from uuid import UUID
 from dateutil.relativedelta import relativedelta
@@ -726,15 +726,14 @@ def lease_lookup(
 
         space_name = lease.space.name if lease.space else None
 
-        parts = []
-        if space_name:
-            parts.append(space_name)
-
-        parts.append(base_name)
-        parts.append("#" + lease_no)
-
-        display_name = " - ".join(parts)
-        lookups.append(Lookup(id=lease.id, name=display_name))
+        lookups.append(
+            LeaseLookup(
+                id=lease.id,
+                name=space_name,
+                tenant_name=base_name,
+                lease_no="#" + lease_no
+            )
+        )
 
     return lookups
 

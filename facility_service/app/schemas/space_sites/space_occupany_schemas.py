@@ -2,7 +2,8 @@
 from datetime import date, datetime
 from uuid import UUID
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
+from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus
 
 
 class MoveInRequest(BaseModel):
@@ -12,6 +13,11 @@ class MoveInRequest(BaseModel):
     tenant_id:  Optional[UUID] = None
     lease_id: Optional[UUID] = None
     move_in_date: datetime
+    heavy_items: bool = False
+    elevator_required: bool = False
+    parking_required: bool = False
+    time_slot: Optional[str] = None  # e.g., "09:00-11:00"
+    status: Optional[OccupancyStatus] = OccupancyStatus.active
 
 
 class MoveOutRequest(BaseModel):

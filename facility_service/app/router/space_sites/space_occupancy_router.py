@@ -3,6 +3,8 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+
+from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus
 from ...schemas.space_sites.space_occupany_schemas import MoveInRequest
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import success_response
@@ -26,10 +28,23 @@ def current_occupancy(
 @router.post("/move-in")
 def move_in_space(
     payload: MoveInRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
 ):
-    crud.move_in(db, payload)
+    payload.status = OccupancyStatus.active
+    crud.move_in(db, current_user.user_id, payload)
     return {"success": True}
+
+
+@router.post("/move-in-request")
+def move_in_request(
+    payload: MoveInRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    payload.status = OccupancyStatus.pending
+    crud.move_in(db, current_user.user_id, payload)
+    return success_response(data=None, message="Move In request submitted")
 
 
 @router.post("/{space_id}/move-out")

@@ -12,7 +12,6 @@ class OwnerMaintenanceBase(EmptyStringModel):
     period_start: date
     period_end: date
     amount: Optional[Decimal] = None
-    status: Optional[str] = "pending"
     due_date: date
 
 
@@ -38,6 +37,7 @@ class OwnerMaintenanceOut(OwnerMaintenanceBase):
     building_name: Optional[str] = None
     invoice_id: Optional[UUID] = None
     owner_user_id: Optional[UUID] = None
+    status: Optional[str] = "pending"
 
     model_config = {"from_attributes": True}
 

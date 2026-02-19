@@ -68,6 +68,7 @@ class AssignedParkingSlot(BaseModel):
     slot_no: str
     slot_type: Optional[str] = None
     zone_id: Optional[UUID] = None
+    zone_name: Optional[str] = None
 
     model_config = {
         "from_attributes": True

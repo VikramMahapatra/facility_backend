@@ -655,9 +655,12 @@ def lease_lookup(
 
         space_name = lease.space.name if lease.space else None
 
-        parts = [lease_no, base_name]
+        parts = []
         if space_name:
             parts.append(space_name)
+
+        parts.append(base_name)
+        parts.append("#" + lease_no)
 
         display_name = " - ".join(parts)
         lookups.append(Lookup(id=lease.id, name=display_name))

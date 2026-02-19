@@ -1,6 +1,6 @@
 # site_crud.py
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, and_, distinct, case
+from sqlalchemy import func, cast, and_, distinct, case, or_
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -225,12 +225,26 @@ def get_maintenance_template_lookup(
 
     if params.category:
         query = query.filter(
-            MaintenanceTemplate.category == params.category
+            or_(
+                MaintenanceTemplate.category == params.category,
+                MaintenanceTemplate.category.is_(None)
+            )
         )
 
     if params.kind:
         query = query.filter(
-            MaintenanceTemplate.kind == params.kind
+            or_(
+                MaintenanceTemplate.kind == params.kind,
+                MaintenanceTemplate.kind.is_(None)
+            )
+        )
+
+    if params.sub_kind:
+        query = query.filter(
+            or_(
+                MaintenanceTemplate.sub_kind == params.sub_kind,
+                MaintenanceTemplate.sub_kind.is_(None)
+            )
         )
 
     query = query.order_by(MaintenanceTemplate.created_at.desc())

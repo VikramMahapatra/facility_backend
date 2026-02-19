@@ -16,6 +16,7 @@ class OccupantType(str, PyEnum):
 
 
 class OccupancyStatus(str, PyEnum):
+    pending = "pending"
     active = "active"
     moved_out = "moved_out"
 

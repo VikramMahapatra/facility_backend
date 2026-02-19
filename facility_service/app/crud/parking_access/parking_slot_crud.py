@@ -1,6 +1,6 @@
 from uuid import UUID
 from facility_service.app.models.parking_access.parking_slots import ParkingSlot
-from sqlalchemy import func, case
+from sqlalchemy import func, case, literal, or_
 from sqlalchemy.orm import Session
 from facility_service.app.models.parking_access.parking_zones import ParkingZone
 from facility_service.app.models.space_sites.sites import Site
@@ -185,39 +185,89 @@ def delete_parking_slot(db: Session, org_id: UUID, slot_id: UUID):
     return {"success": True}
 
 
-def available_parking_slot_lookup(db: Session, org_id: UUID, zone_id: UUID):
-    slots = (
+def available_parking_slot_lookup(
+    db: Session,
+    org_id: UUID,
+    site_id: UUID,
+    zone_id: UUID,
+    space_id: UUID
+):
+    slot_query = (
         db.query(
             ParkingSlot.id,
-            ParkingSlot.slot_no
+            (
+                ParkingSlot.slot_no +
+                literal(" (") +
+                ParkingZone.name +
+                literal(")")
+            ).label("display_name")
         )
+        .join(ParkingZone, ParkingZone.id == ParkingSlot.zone_id)
         .filter(
             ParkingSlot.org_id == org_id,
             ParkingSlot.is_deleted == False,
-            ParkingSlot.zone_id == zone_id,
+            ParkingSlot.site_id == site_id,
+        )
+    )
+
+    # ✅ Include:
+    # - unassigned slots
+    # - slots already assigned to this space
+    if space_id:
+        slot_query = slot_query.filter(
+            or_(
+                ParkingSlot.space_id.is_(None),
+                ParkingSlot.space_id == space_id
+            )
+        )
+    else:
+        slot_query = slot_query.filter(
             ParkingSlot.space_id.is_(None)
         )
-        .all()
+
+    if zone_id:
+        slot_query = slot_query.filter(ParkingSlot.zone_id == zone_id)
+
+    slot_query = slot_query.order_by(
+        ParkingZone.name.asc(),
+        ParkingSlot.slot_no.asc()
     )
 
-    return [Lookup(id=s.id, name=s.slot_no) for s in slots]
+    slots = slot_query.all()
+
+    return [Lookup(id=s.id, name=s.display_name) for s in slots]
 
 
-def all_parking_slot_lookup(db: Session, org_id: UUID, zone_id: UUID):
-    slots = (
+def all_parking_slot_lookup(db: Session, org_id: UUID, site_id: UUID, zone_id: UUID):
+    slot_query = (
         db.query(
             ParkingSlot.id,
-            ParkingSlot.slot_no
+            (
+                ParkingSlot.slot_no +
+                literal(" (") +
+                ParkingZone.name +
+                literal(")")
+            ).label("display_name")
         )
+        .join(ParkingZone, ParkingZone.id == ParkingSlot.zone_id)
         .filter(
             ParkingSlot.org_id == org_id,
-            ParkingSlot.is_deleted == False,
-            ParkingSlot.zone_id == zone_id
+            ParkingSlot.site_id == site_id,
+            ParkingSlot.is_deleted == False
         )
-        .all()
     )
 
-    return [Lookup(id=s.id, name=s.slot_no) for s in slots]
+    if zone_id:
+        slot_query = slot_query.filter(ParkingSlot.zone_id == zone_id)
+
+    # ✅ ORDER BY zone name then slot number
+    slot_query = slot_query.order_by(
+        ParkingZone.name.asc(),
+        ParkingSlot.slot_no.asc()
+    )
+
+    slots = slot_query.all()
+    return [Lookup(id=s.id, name=s.display_name) for s in slots]
 
 
 def update_parking_slots_for_space(

@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import (
-    Boolean, Column, Sequence, String, Date, Numeric, Text, ForeignKey, DateTime, func, UniqueConstraint, Index
+    Boolean, Column, Sequence, String, Date, Numeric, Text, ForeignKey, DateTime, func, UniqueConstraint, Index, select
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -8,15 +8,11 @@ from shared.core.database import Base
 from sqlalchemy import event
 
 
-# Create a sequence for maintenance numbers
-maintenance_seq = Sequence('maintenance_no_seq', start=101, increment=1)
-
-
 class OwnerMaintenanceCharge(Base):  # Renamed class
     __tablename__ = "owner_maintenance_charges"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False)
     maintenance_no = Column(String(20), unique=True, nullable=False)
     space_owner_id = Column(
         UUID(as_uuid=True),
@@ -57,6 +53,11 @@ class OwnerMaintenanceCharge(Base):  # Renamed class
 
     # Indexes
     _table_args_ = (
+        UniqueConstraint(
+            "org_id",
+            "maintenance_no",
+            name="uq_org_maintenance_no"
+        ),
         Index(
             "ix_owner_maintenance_owner_period",
             "space_owner_id",
@@ -79,9 +80,23 @@ class OwnerMaintenanceCharge(Base):  # Renamed class
 # Event listener to auto-generate maintenance number
 @event.listens_for(OwnerMaintenanceCharge, "before_insert")
 def generate_maintenance_no(mapper, connection, target):
+
     if target.maintenance_no:
         return
 
-    # Correct way to get next sequence value
-    next_number = connection.scalar(maintenance_seq.next_value())
-    target.maintenance_no = f"MNT{next_number:03d}"
+    # Get last number for this org
+    stmt = (
+        select(func.max(OwnerMaintenanceCharge.maintenance_no))
+        .where(OwnerMaintenanceCharge.org_id == target.org_id)
+        .where(OwnerMaintenanceCharge.maintenance_no.like("MNT%"))
+    )
+
+    last_no = connection.execute(stmt).scalar()
+
+    if last_no:
+        last_number = int(last_no.replace("MNT", ""))
+        next_number = last_number + 1
+    else:
+        next_number = 101
+
+    target.maintenance_no = f"MNT{next_number}"

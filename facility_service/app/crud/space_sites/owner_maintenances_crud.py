@@ -236,7 +236,7 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
     ).first()
 
     if not space:
-        raise HTTPException(status_code=404, detail="Space not found")
+        return error_response(status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR), message="Space not found")
 
     # Find the active space owner for this space
     space_owner = db.query(SpaceOwner).filter(
@@ -245,9 +245,9 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
     ).first()
 
     if not space_owner:
-        raise HTTPException(
-            status_code=404,
-            detail="No active owner found for this space. Please assign an owner first."
+        return error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message="No active owner found for this space. Please assign an owner first."
         )
 
     # Check for duplicate maintenance period for the same space owner
@@ -262,16 +262,16 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
     ).first()
 
     if existing_maintenance:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Maintenance already exists for this space owner for period starting {maintenance.period_start}"
+        return error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message=f"Maintenance already exists for this space owner for period starting {maintenance.period_start}"
         )
 
     # Validate period dates
     if maintenance.period_start >= maintenance.period_end:
-        raise HTTPException(
-            status_code=400,
-            detail="Period start date must be before period end date"
+        return error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message="Period start date must be before period end date"
         )
 
     # Validate amount
@@ -279,7 +279,8 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
     template = space.maintenance_template_id
 
     if not template:
-        raise error_response(
+        return error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             message="Space does not have a maintenance template assigned"
         )
 
@@ -295,13 +296,14 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
     )
 
     if amount <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Maintenance amount could not be calculated"
+        return error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message="Maintenance amount could not be calculated"
         )
 
     # Create maintenance record with space_owner_id
     maintenance_data = maintenance.model_dump(exclude={"amount"})
+    maintenance_data["org_id"] = space.org_id
     maintenance_data["space_owner_id"] = space_owner.id
     maintenance_data["amount"] = amount
     maintenance_data["tax_amount"] = amount.get("tax_amount")
@@ -326,9 +328,9 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
 
     except IntegrityError as e:
         db.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail="Error creating maintenance record"
+        return error_response(
+            status_code=str(AppStatusCode.OPERATION_FAILED),
+            message="Error creating maintenance record"
         )
 
 
@@ -342,14 +344,16 @@ def update_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
     ).first()
 
     if not db_maintenance:
-        raise HTTPException(
-            status_code=404, detail="Maintenance record not found")
+        return error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message="Maintenance record not found"
+        )
 
     # Check if maintenance is already invoiced or paid
     if db_maintenance.status in ["invoiced", "paid"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot update maintenance record with status '{db_maintenance.status}'"
+        return error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message=f"Cannot update maintenance record with status '{db_maintenance.status}'"
         )
 
     # Get update data
@@ -363,9 +367,9 @@ def update_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
         period_end = update_data.get("period_end", db_maintenance.period_end)
 
         if period_start >= period_end:
-            raise HTTPException(
-                status_code=400,
-                detail="Period start date must be before period end date"
+            return error_response(
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                message="Period start date must be before period end date"
             )
 
     # If space_id is being updated, find the new space owner
@@ -378,9 +382,9 @@ def update_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
         ).first()
 
         if not new_space_owner:
-            raise HTTPException(
-                status_code=404,
-                detail="No active owner found for the new space"
+            return error_response(
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+                message="No active owner found for the new space"
             )
 
         new_space_owner_id = new_space_owner.id
@@ -725,7 +729,6 @@ def auto_generate_owner_maintenance(db: Session, input_date: date):
 
     period_start, period_end = get_month_period(input_date)
 
-    # fetch owners active during this period
     owners = (
         db.query(SpaceOwner)
         .join(Space, Space.id == SpaceOwner.space_id)
@@ -739,14 +742,24 @@ def auto_generate_owner_maintenance(db: Session, input_date: date):
         .all()
     )
 
-    for owner in owners:
+    created_count = 0   # ⭐ track new records
 
-        # prevent duplicate generation
+    for owner in owners:
+        actual_start = max(owner.start_date, period_start)
+        actual_end = period_end
+
+        if owner.end_date:
+            actual_end = min(owner.end_date, period_end)
+
+        if actual_start > actual_end:
+            continue
+
+        # ⭐ NOW check duplicate
         exists = (
             db.query(OwnerMaintenanceCharge.id)
             .filter(
                 OwnerMaintenanceCharge.space_owner_id == owner.id,
-                OwnerMaintenanceCharge.period_start == period_start,
+                OwnerMaintenanceCharge.period_start == actual_start,
                 OwnerMaintenanceCharge.is_deleted == False
             )
             .first()
@@ -761,28 +774,12 @@ def auto_generate_owner_maintenance(db: Session, input_date: date):
         if not template:
             continue
 
-        # fetch template object
         maintenance_template = db.query(MaintenanceTemplate).get(template)
 
         if not maintenance_template:
             continue
 
-        # ------------------------------
-        # Calculate actual active period
-        # ------------------------------
-
-        actual_start = max(owner.start_date, period_start)
-        actual_end = period_end
-
-        if owner.end_date:
-            actual_end = min(owner.end_date, period_end)
-
-        if actual_start > actual_end:
-            continue
-
-        # ------------------------------
-        # Calculate amount
-        # ------------------------------
+        # calculate amount
         amount = calculate_maintenance_amount(
             db=db,
             space=owner.space,
@@ -791,13 +788,8 @@ def auto_generate_owner_maintenance(db: Session, input_date: date):
             end_date=actual_end
         )
 
-        # ------------------------------
-        # create maintenance record
-        # ------------------------------
-
         maintenance = OwnerMaintenanceCharge(
-            id=uuid.uuid4(),
-            maintenance_no=f"MC-{uuid.uuid4().hex[:8]}",
+            org_id=space.org_id,
             space_owner_id=owner.id,
             space_id=space.id,
             period_start=actual_start,
@@ -809,8 +801,18 @@ def auto_generate_owner_maintenance(db: Session, input_date: date):
         )
 
         db.add(maintenance)
+        created_count += 1   # ⭐ increment
+
+    # ⭐ If no new records created → raise error
+    if created_count == 0:
+        return error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message="Maintenance charges already generated for this period."
+        )
 
     db.commit()
+
+    return {"created": created_count}
 
 
 def get_month_period(input_date: date):

@@ -22,10 +22,12 @@ class Space(Base):
     name = Column(String(128))
     category = Column(String(32), nullable=False)
     kind = Column(String(32), nullable=False)
+    sub_kind = Column(String(32))
     floor = Column(String(32))
     area_sqft = Column(Numeric(12, 2))
     beds = Column(Integer)
     baths = Column(Integer)
+    balconies = Column(Integer)
     attributes = Column(JSONB)
     status = Column(String(24), default="available")
 

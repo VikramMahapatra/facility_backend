@@ -66,22 +66,25 @@ def delete_parking_slot(
 
 @router.get("/available-slot-lookup")
 def available_parking_slot_lookup(
-    zone_id: str = Query(...),
+    site_id: str = Query(...),
+    zone_id: str = Query(None),
+    space_id: str = Query(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(
         validate_current_token)  # ✅ Added authentication
 ):
-    return crud.available_parking_slot_lookup(db, current_user.org_id, zone_id)
+    return crud.available_parking_slot_lookup(db, current_user.org_id, site_id, zone_id, space_id)
 
 
 @router.get("/all-slot-lookup")
 def all_parking_slot_lookup(
-    zone_id: str = Query(...),
+    site_id: str = Query(...),
+    zone_id: str = Query(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(
         validate_current_token)  # ✅ Added authentication
 ):
-    return crud.all_parking_slot_lookup(db, current_user.org_id, zone_id)
+    return crud.all_parking_slot_lookup(db, current_user.org_id, site_id, zone_id)
 
 
 @router.post("/update-space-parking-slots", response_model=None)

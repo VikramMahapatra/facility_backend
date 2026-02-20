@@ -696,14 +696,6 @@ def auto_generate_lease_rent_charges(
 
     db.commit()
 
-    # 🔹 Response with full objects
-    charges = []
-    for cid in created_ids:
-        charge = get_lease_charge_by_id(db, str(cid))
-        if charge:
-            charges.append(charge)
-
     return {
-        "charges": charges,
-        "total": len(charges)
+        "total_charge_created": len(created_ids)
     }

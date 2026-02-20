@@ -116,5 +116,4 @@ class LeaseChargeAutoOut(BaseModel):
 
 
 class AutoLeaseChargeResponse(BaseModel):
-    charges: List[LeaseChargeAutoOut]
-    total: int
+    total_charge_created: int

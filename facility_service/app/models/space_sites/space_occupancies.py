@@ -22,10 +22,16 @@ class OccupancyStatus(str, PyEnum):
     rejected = "rejected"
 
 
+class RequestType(str, PyEnum):
+    move_in = "move_in"
+    move_out = "move_out"
+
+
 class SpaceOccupancy(Base):
     __tablename__ = "space_occupancies"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    request_type = Column(Enum(RequestType), nullable=False)
     space_id = Column(UUID(as_uuid=True), ForeignKey(
         "spaces.id"), nullable=False)
     occupant_type = Column(Enum(OccupantType), nullable=False)
@@ -49,3 +55,6 @@ class SpaceOccupancy(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    original_occupancy_id = Column(UUID(as_uuid=True), ForeignKey(
+        "space_occupancies.id"), nullable=True)

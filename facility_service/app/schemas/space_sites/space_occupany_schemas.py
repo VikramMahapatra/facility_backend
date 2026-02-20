@@ -3,7 +3,8 @@ from datetime import date, datetime
 from uuid import UUID
 from pydantic import BaseModel
 from typing import Literal, Optional
-from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus
+from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus, RequestType
+from shared.core.schemas import CommonQueryParams
 
 
 class MoveInRequest(BaseModel):
@@ -21,8 +22,12 @@ class MoveInRequest(BaseModel):
 
 
 class MoveOutRequest(BaseModel):
-    move_out_date: date
+    space_id: UUID
     reason: Optional[str] = None
+    keys_returned: bool = False
+    accessories_returned: bool = False
+    damage_checked: bool = False
+    remarks: Optional[str] = None
 
 
 class SpaceOccupancyOut(BaseModel):
@@ -36,3 +41,36 @@ class SpaceOccupancyOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class OccupancyApprovalRequest(CommonQueryParams):
+    status: Optional[str] = None
+    request_type: Optional[RequestType] = None
+
+
+class SpaceOccupancyRequestOut(BaseModel):
+    id: UUID
+    request_type: str
+
+    space_id: UUID
+    space_name: str
+    site_name: str
+    building_name: str
+
+    occupant_name: str
+    occupant_type: str
+
+    requested_at: datetime
+    move_in_date: Optional[datetime] = None
+    move_out_date: Optional[datetime] = None
+
+    reason: Optional[str] = None
+    status: str
+
+    class Config:
+        from_attributes = True   # pydantic v2
+
+
+class SpaceMoveOutRequest(BaseModel):
+    space_id: UUID
+    move_out_date: date

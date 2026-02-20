@@ -40,6 +40,7 @@ class Lease(Base):
     utilities = Column(JSONB)
     status = Column(String(16), default="active")
     documents = Column(JSONB)
+    termination_date = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True),
                         server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now())

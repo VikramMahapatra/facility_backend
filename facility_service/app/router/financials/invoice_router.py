@@ -102,7 +102,7 @@ def get_invoice_lookup(
 def create_invoice(
         invoice: InvoiceCreate,
         db: Session = Depends(get_db),
-        auth_db : Session =Depends(get_auth_db),
+        auth_db: Session = Depends(get_auth_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.create_invoice(
         db=db,
@@ -210,3 +210,12 @@ def save_invoice_payment_detail(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.save_invoice_payment_detail(db, payload, current_user)
+
+
+@router.get("/invoices/preview-number")
+def preview_invoice_number(
+    org_id: UUID,
+    db: Session = Depends(get_db)
+):
+    invoice_no = crud.generate_invoice_number(db, org_id)
+    return {"invoice_no": invoice_no}

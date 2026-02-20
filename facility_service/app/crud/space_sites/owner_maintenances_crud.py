@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 from datetime import date, datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, exists, func, cast, literal, or_, case
+from sqlalchemy import Integer, and_, exists, func, cast, literal, or_, case
 from sqlalchemy.dialects.postgresql import UUID
 
 from facility_service.app.enum.space_sites_enum import OwnerMaintenanceStatus
@@ -308,7 +308,8 @@ def create_owner_maintenance(db: Session, auth_db: Session, maintenance: OwnerMa
     maintenance_data["amount"] = amount
     maintenance_data["tax_amount"] = amount.get("tax_amount")
     maintenance_data["total_amount"] = amount.get("total_amount")
-
+    maintenance_data["maintenance_no"] = generate_maintenance_no(
+        db, space.org_id)
     db_maintenance = OwnerMaintenanceCharge(**maintenance_data)
 
     try:
@@ -788,8 +789,11 @@ def auto_generate_owner_maintenance(db: Session, input_date: date):
             end_date=actual_end
         )
 
+        maintenance_no = generate_maintenance_no(db, space.org_id)
+
         maintenance = OwnerMaintenanceCharge(
             org_id=space.org_id,
+            maintenance_no=maintenance_no,
             space_owner_id=owner.id,
             space_id=space.id,
             period_start=actual_start,
@@ -953,3 +957,28 @@ def apply_tax(amount: Decimal, tax_code: TaxCode | None) -> tuple[Decimal, Decim
         total.quantize(Decimal("0.01")),
         tax_amount.quantize(Decimal("0.01"))
     )
+
+
+def generate_maintenance_no(db: Session, org_id: UUID):
+
+    last_number = (
+        db.query(
+            func.max(
+                cast(
+                    func.replace(
+                        OwnerMaintenanceCharge.maintenance_no,
+                        "MNT",
+                        ""
+                    ),
+                    Integer
+                )
+            )
+        )
+        .filter(OwnerMaintenanceCharge.org_id == org_id)
+        .with_for_update()
+        .scalar()
+    )
+
+    next_number = (last_number or 100) + 1
+
+    return f"MNT{next_number}"

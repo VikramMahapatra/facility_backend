@@ -75,28 +75,3 @@ class OwnerMaintenanceCharge(Base):  # Renamed class
     space_owner = relationship("SpaceOwner")
     space = relationship("Space")
     invoice = relationship("Invoice")
-
-
-# Event listener to auto-generate maintenance number
-@event.listens_for(OwnerMaintenanceCharge, "before_insert")
-def generate_maintenance_no(mapper, connection, target):
-
-    if target.maintenance_no:
-        return
-
-    # Get last number for this org
-    stmt = (
-        select(func.max(OwnerMaintenanceCharge.maintenance_no))
-        .where(OwnerMaintenanceCharge.org_id == target.org_id)
-        .where(OwnerMaintenanceCharge.maintenance_no.like("MNT%"))
-    )
-
-    last_no = connection.execute(stmt).scalar()
-
-    if last_no:
-        last_number = int(last_no.replace("MNT", ""))
-        next_number = last_number + 1
-    else:
-        next_number = 101
-
-    target.maintenance_no = f"MNT{next_number}"

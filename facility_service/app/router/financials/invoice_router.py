@@ -212,7 +212,7 @@ def save_invoice_payment_detail(
     return crud.save_invoice_payment_detail(db, payload, current_user)
 
 
-@router.get("/invoices/preview-number")
+@router.get("/preview-number")
 def preview_invoice_number(
     org_id: UUID,
     db: Session = Depends(get_db)

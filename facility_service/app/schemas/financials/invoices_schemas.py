@@ -41,6 +41,7 @@ class InvoiceLineCreate(InvoiceLineBase):
 class InvoiceBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
+    space_id: UUID
     date: date_type
     due_date: Optional[date_type] = None
     currency: str

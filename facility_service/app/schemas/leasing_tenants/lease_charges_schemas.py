@@ -41,7 +41,7 @@ class LeaseChargeOut(BaseModel):
     id: UUID
     lease_id: UUID
     tenant_name: str
-    site_id: UUID
+    site_id: Optional[UUID] = None
     site_name: str
     building_block_id: Optional[UUID] = None
     space_name: str

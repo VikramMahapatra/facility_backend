@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists
 from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event, move_in
+from facility_service.app.enum.revenue_enum import InvoiceType
 from facility_service.app.models.leasing_tenants.lease_payment_term import LeasePaymentTerm
 from facility_service.app.models.space_sites.space_occupancies import OccupantType, SpaceOccupancy
 from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
@@ -15,7 +16,7 @@ from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from ...models.space_sites.buildings import Building
 from shared.helpers.property_helper import get_allowed_spaces
 from shared.utils.enums import OwnershipStatus, UserAccountType
-from ...models.financials.invoices import Invoice
+from ...models.financials.invoices import Invoice, InvoiceLine
 
 from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant
@@ -312,6 +313,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             return error_response(
                 message="Term duration is required for lease"
             )
+        end_date = None
 
         if payload.lease_frequency == "monthly":
             end_date = (
@@ -939,11 +941,17 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
 
         # Get invoice status
 
-        invoice = db.query(Invoice).filter(
-            Invoice.billable_item_type == "lease charge",
-            Invoice.billable_item_id == lc.id,
-            Invoice.is_deleted == False
-        ).first()
+        invoice = (
+            db.query(Invoice)
+            .join(
+                InvoiceLine, Invoice.id == InvoiceLine.invoice_id
+            )
+            .filter(
+                InvoiceLine.item_id == lc.id,
+                InvoiceLine.code == InvoiceType.rent.value,
+                Invoice.is_deleted == False
+            ).first()
+        )
 
         invoice_status = invoice.status if invoice else None
 
@@ -954,8 +962,7 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
             "tenant_name": tenant_name,
             "site_name": lease_related.site.name if lease_related.site else None,
             "space_name": lease_related.space.name if lease_related.space else None,
-            "charge_code": lc.charge_code.code if lc.charge_code else None,
-            "charge_code_id": lc.charge_code_id,
+            "charge_code": lc.charge_code,
             "period_start": lc.period_start,
             "period_end": lc.period_end,
             "amount": lc.amount,
@@ -968,7 +975,6 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
             "tax_pct": tax_rate,
             "period_days": period_days,
             "created_at": lc.created_at,
-            "payer_type": lc.payer_type,
             "invoice_status": invoice_status
 
         })

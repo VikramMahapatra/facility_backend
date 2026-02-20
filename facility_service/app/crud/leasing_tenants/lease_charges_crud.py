@@ -9,7 +9,8 @@ from sqlalchemy import String, and_, func, extract, or_, cast, Date
 from sqlalchemy import desc
 from decimal import Decimal, ROUND_HALF_UP
 
-from facility_service.app.models.financials.invoices import Invoice
+from facility_service.app.enum.revenue_enum import InvoiceType
+from facility_service.app.models.financials.invoices import Invoice, InvoiceLine
 from facility_service.app.models.space_sites.buildings import Building
 
 from ...models.system.notifications import Notification, NotificationType, PriorityType
@@ -197,11 +198,18 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
                     ).scalar()
 
          # ✅ SIMPLE CHECK: Get invoice status for this lease charge
-        invoice = db.query(Invoice).filter(
-            Invoice.billable_item_type == "lease charge",
-            Invoice.billable_item_id == lc.id,
-            Invoice.is_deleted == False
-        ).first()
+        invoice = (
+            db.query(Invoice)
+            .join(
+                InvoiceLine, Invoice.id == InvoiceLine.invoice_id
+            )
+            .filter(
+                InvoiceLine.item_id == lc.id,
+                InvoiceLine.code == InvoiceType.rent.value,
+                Invoice.due_date >= date.today(),
+                Invoice.is_deleted == False
+            ).first()
+        )
 
         invoice_status = invoice.status if invoice else None
 
@@ -249,11 +257,17 @@ def get_lease_charge_detail(db: Session, charge_id: UUID):
     tax_rate = lc.tax_code.rate if lc.tax_code else Decimal("0")
 
     # Invoice status
-    invoice = db.query(Invoice).filter(
-        Invoice.billable_item_type == "lease charge",
-        Invoice.billable_item_id == lc.id,
-        Invoice.is_deleted == False
-    ).first()
+    invoice = (
+        db.query(Invoice)
+        .join(
+            InvoiceLine, Invoice.id == InvoiceLine.invoice_id
+        )
+        .filter(
+            InvoiceLine.item_id == lc.id,
+            InvoiceLine.code == InvoiceType.rent.value,
+            Invoice.is_deleted == False
+        ).first()
+    )
     invoice_status = invoice.status if invoice else None
 
     # Building / space info
@@ -653,12 +667,18 @@ def auto_generate_lease_rent_charges(
 
         # 🔹 If exists → check invoice
         if existing:
-            invoice_item = db.query(Invoice).filter(
-                Invoice.billable_item_id == existing.id,
-                Invoice.billable_item_type == "lease_charge",
-                Invoice.due_date >= date.today(),
-                Invoice.is_deleted == False
-            ).first()
+            invoice_item = (
+                db.query(Invoice)
+                .join(
+                    InvoiceLine, Invoice.id == InvoiceLine.invoice_id
+                )
+                .filter(
+                    InvoiceLine.item_id == existing.id,
+                    InvoiceLine.code == InvoiceType.rent.value,
+                    Invoice.due_date >= date.today(),
+                    Invoice.is_deleted == False
+                ).first()
+            )
 
             if invoice_item:
                 continue  # Already billed → NEVER recreate

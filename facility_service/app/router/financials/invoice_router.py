@@ -86,14 +86,14 @@ def get_payments(
     return crud.get_payments(db=db, auth_db=auth_db, org_id=current_user.org_id, params=params)
 
 
-@router.get("/entity-lookup", response_model=List[Lookup])
+@router.get("/customer-pending-charges")
 def get_invoice_lookup(
-    site_id: UUID = Query(...),
-    billable_item_type: str = Query(...),
+    space_id: UUID = Query(...),
+    code: str = Query(...),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_invoice_entities_lookup(db, current_user.org_id, site_id, billable_item_type)
+    return crud.get_pending_charges_by_customer(db, space_id, code)
 
 # ✅ FIXED: Match CRUD parameters
 

@@ -1,8 +1,10 @@
+from collections import defaultdict
+
 from sqlalchemy import Integer, func
 from sqlalchemy.orm import joinedload
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Any, Dict, List
 from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
@@ -674,142 +676,142 @@ def delete_invoice_soft(db: Session, invoice_id: str, org_id: UUID) -> bool:
     }
 
 
-def get_invoice_entities_lookup(db: Session, org_id: UUID, site_id: UUID, billable_item_type: str):
-    entities = []
+def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> List[Dict]:
+    """
+    Returns a list of dicts:
+    [
+        {
+            "customer_id": UUID,
+            "customer_name": str,
+            "charges": [
+                {"type": "rent", "id": ..., "period": "..."},
+                {"type": "maintenance", "id": ..., "period": "..."},
+                ...
+            ]
+        },
+        ...
+    ]
+    """
+    customers = defaultdict(
+        lambda: {"customer_id": None, "customer_name": None, "charges": []})
 
-    if billable_item_type == "work order":
+    if code == InvoiceType.rent.value:
+
+        # ---------------------------
+        # Rent Charges
+        # ---------------------------
+        rent_charges = db.query(LeaseCharge).filter(
+            LeaseCharge.is_deleted == False,
+            LeaseCharge.space_id == space_id,
+            ~LeaseCharge.id.in_(
+                db.query(InvoiceLine.item_id).join(Invoice)
+                .filter(
+                    Invoice.space_id == space_id,
+                    InvoiceLine.code == "rent",
+                    Invoice.status.notin_(["void", "paid"]),
+                    Invoice.is_deleted == False
+                )
+            )
+        ).all()
+
+        for lc in rent_charges:
+            cust_id = lc.tenant_id
+            cust_name = lc.tenant_name
+            customers[cust_id]["customer_id"] = cust_id
+            customers[cust_id]["customer_name"] = cust_name
+            customers[cust_id]["charges"].append({
+                "type": "rent",
+                "id": str(lc.id),
+                "period": f"{lc.start_date:%d %b %Y} - {lc.end_date:%d %b %Y}"
+            })
+    elif code == InvoiceType.owner_maintenance.value:
+        # ---------------------------
+        # Maintenance Charges
+        # ---------------------------
+        maint_charges = db.query(OwnerMaintenanceCharge).filter(
+            OwnerMaintenanceCharge.is_deleted == False,
+            OwnerMaintenanceCharge.space_id == space_id,
+            ~OwnerMaintenanceCharge.id.in_(
+                db.query(InvoiceLine.item_id).join(Invoice)
+                .filter(
+                    Invoice.space_id == space_id,
+                    InvoiceLine.code == "maintenance",
+                    Invoice.status.notin_(["void", "paid"]),
+                    Invoice.is_deleted == False
+                )
+            )
+        ).all()
+
+        for om in maint_charges:
+            cust_id = om.user_id
+            cust_name = om.user_name
+            customers[cust_id]["customer_id"] = cust_id
+            customers[cust_id]["customer_name"] = cust_name
+            customers[cust_id]["charges"].append({
+                "type": "maintenance",
+                "id": str(om.id),
+                "period": f"{om.period_start:%d %b %Y} - {om.period_end:%d %b %Y}"
+            })
+    elif code == InvoiceType.parking_pass.value:
+        # ---------------------------
+        # Parking Passes
+        # ---------------------------
+        passes = db.query(ParkingPass).filter(
+            ParkingPass.is_deleted == False,
+            ParkingPass.space_id == space_id,
+            ~ParkingPass.id.in_(
+                db.query(InvoiceLine.item_id).join(Invoice)
+                .filter(
+                    Invoice.space_id == space_id,
+                    InvoiceLine.code == "parking pass",
+                    Invoice.status.notin_(["void", "paid"]),
+                    Invoice.is_deleted == False
+                )
+            )
+        ).all()
+
+        for pp in passes:
+            cust_id = pp.user_id
+            cust_name = pp.user_name
+            customers[cust_id]["customer_id"] = cust_id
+            customers[cust_id]["customer_name"] = cust_name
+            customers[cust_id]["charges"].append({
+                "type": "parking pass",
+                "id": str(pp.id),
+                "period": f"{pp.valid_from:%d %b %Y} - {pp.valid_to:%d %b %Y}",
+                "pass_no": pp.pass_no
+            })
+    elif code == InvoiceType.work_order.value:
+        # ---------------------------
+        # Work Orders
+        # ---------------------------
         work_orders = db.query(TicketWorkOrder).filter(
             TicketWorkOrder.is_deleted == False,
+            TicketWorkOrder.space_id == space_id,
             ~TicketWorkOrder.id.in_(
-                db.query(Invoice.billable_item_id)
+                db.query(InvoiceLine.item_id).join(Invoice)
                 .filter(
-                    Invoice.org_id == org_id,
-                    Invoice.billable_item_type == "work order",
-                    Invoice.is_deleted == False,
-                    Invoice.status != "void"
-                )
-            ),
-            TicketWorkOrder.ticket_id.in_(
-                db.query(Ticket.id).filter(
-                    Ticket.site_id == site_id,
-                    func.lower(Ticket.status) == "open"
+                    Invoice.space_id == space_id,
+                    InvoiceLine.code == "work_order",
+                    Invoice.status.notin_(["void", "paid"]),
+                    Invoice.is_deleted == False
                 )
             )
         ).all()
 
         for wo in work_orders:
-            ticket = db.query(Ticket).filter(
-                Ticket.id == wo.ticket_id,
-                Ticket.status == "open"
-            ).first()
+            cust_id = wo.user_id
+            cust_name = wo.user_name
+            customers[cust_id]["customer_id"] = cust_id
+            customers[cust_id]["customer_name"] = cust_name
+            customers[cust_id]["charges"].append({
+                "type": "work_order",
+                "id": str(wo.id),
+                "work_order_no": wo.wo_no
+            })
 
-            if ticket and ticket.ticket_no:
-                formatted_name = f"{wo.wo_no} | Ticket {ticket.ticket_no}"
-            else:
-                formatted_name = wo.wo_no
-
-            entities.append(Lookup(
-                id=str(wo.id),
-                name=formatted_name
-            ))
-
-    elif billable_item_type == "rent":
-        leases = db.query(Lease).filter(
-            Lease.is_deleted == False,
-
-            # Exclude leases already invoiced for rent
-            ~Lease.id.in_(
-                db.query(Invoice.billable_item_id).filter(
-                    Invoice.org_id == org_id,
-                    Invoice.billable_item_type == "rent charge",
-                    Invoice.is_deleted == False,
-                    Invoice.status != "void"
-                )
-            ),
-
-            Lease.site_id == site_id,
-            Lease.org_id == org_id
-        ).all()
-
-        for lease in leases:
-            if lease.start_date and lease.end_date:
-                formatted_name = (
-                    f"RENT | Lease {lease.lease_number} | "
-                    f"{lease.start_date:%d %b %Y} - {lease.end_date:%d %b %Y}"
-                )
-            else:
-                formatted_name = f"RENT | Lease {lease.lease_number}"
-
-            entities.append(
-                Lookup(
-                    id=str(lease.id),
-                    name=formatted_name
-                )
-            )
-
-    elif billable_item_type == "parking pass":
-        parking_passes = db.query(ParkingPass).filter(
-            ParkingPass.is_deleted == False,
-            ~ParkingPass.id.in_(
-                db.query(Invoice.billable_item_id)
-                .filter(
-                    Invoice.org_id == org_id,
-                    Invoice.billable_item_type == "parking pass",
-                    Invoice.is_deleted == False,
-                    Invoice.status != "void"
-                )
-            ),
-            ParkingPass.site_id == site_id,
-            ParkingPass.org_id == org_id
-        ).all()
-
-        for pp in parking_passes:
-            if pp.start_date and pp.end_date:
-                start_str = pp.start_date.strftime("%d %b %Y")
-                end_str = pp.end_date.strftime("%d %b %Y")
-                formatted_name = (
-                    f"Parking Pass | {pp.pass_no} | {start_str}–{end_str}"
-                )
-            else:
-                formatted_name = f"Parking Pass | {pp.pass_no}"
-
-            entities.append(Lookup(
-                id=str(pp.id),
-                name=formatted_name
-            ))
-    elif billable_item_type == "owner maintenance":
-        owner_maintenances = db.query(OwnerMaintenanceCharge).filter(
-            OwnerMaintenanceCharge.is_deleted == False,
-            ~OwnerMaintenanceCharge.id.in_(
-                db.query(Invoice.billable_item_id)
-                .filter(
-                    Invoice.org_id == org_id,
-                    Invoice.billable_item_type == "owner maintenance",
-                    Invoice.is_deleted == False,
-                    Invoice.status != "void"
-                )
-            ),
-            OwnerMaintenanceCharge.space.has(site_id=site_id),
-            OwnerMaintenanceCharge.space.has(org_id=org_id)
-        ).all()
-
-        for om in owner_maintenances:
-            space = db.query(Space).filter(Space.id == om.space_id).first()
-            space_name = space.name
-            if om.period_start and om.period_end:
-                start_str = om.period_start.strftime("%d %b %Y")
-                end_str = om.period_end.strftime("%d %b %Y")
-                formatted_name = (
-                    f"OM | {space_name} | {start_str} - {end_str} |{om.maintenance_no}")
-            else:
-                formatted_name = f"OM | {om.maintenance_no}"
-
-            entities.append(Lookup(
-                id=str(om.id),
-                name=formatted_name
-            ))
-
-    return entities
+    # Convert defaultdict to list
+    return list(customers.values())
 
 
 def get_work_order_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> InvoicesResponse:

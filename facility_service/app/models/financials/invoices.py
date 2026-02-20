@@ -19,6 +19,10 @@ class Invoice(Base):
         UUID(as_uuid=True), ForeignKey("sites.id"), nullable=False)
     space_id: UUID = Column(
         UUID(as_uuid=True), ForeignKey("spaces.id"), nullable=False)
+    user_id: UUID = Column(
+        UUID(as_uuid=True),
+        nullable=False
+    ),
     is_paid = Column(Boolean, default=False, nullable=False)
     invoice_no: str = Column(String(64), nullable=False)
     date: Date = Column(Date, nullable=False)

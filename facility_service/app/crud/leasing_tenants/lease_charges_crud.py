@@ -345,15 +345,16 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate, current_user_id
     total_amount = payload.amount + \
         (payload.amount * tax_rate / Decimal("100"))
 
-    obj = LeaseCharge(**payload.model_dump())
-    obj.total_amount = total_amount
-
-    db.add(obj)
     #  Get lease details for notification
     lease = db.query(Lease).filter(
         Lease.id == payload.lease_id,
         Lease.is_deleted == False
     ).first()
+
+    obj = LeaseCharge(**payload.model_dump())
+    obj.total_amount = total_amount
+    obj.payer_id = lease.tenant_id
+    db.add(obj)
 
     if lease:
         notification = Notification(
@@ -612,16 +613,6 @@ def auto_generate_lease_rent_charges(
     period_end = next_month.replace(day=1) - timedelta(days=1)
 
     rent_code = "RENT"
-    # # 🔹 Fetch RENT charge code dynamically (NO hardcoding)
-    # rent_code = db.query(LeaseChargeCode).filter(
-    #     LeaseChargeCode.org_id == current_user.org_id,
-    #     LeaseChargeCode.is_deleted == False,
-    #     LeaseChargeCode.code.ilike("%RENT%")
-    # ).first()
-
-    # if not rent_code:
-    #     raise HTTPException(
-    #         status_code=400, detail="RENT charge code not configured")
 
     # 🔹 Default tax (optional)
     default_tax = db.query(TaxCode).filter(

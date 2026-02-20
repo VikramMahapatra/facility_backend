@@ -19,7 +19,7 @@ from facility_service.app.models.space_sites.space_owners import SpaceOwner
 from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType
 from shared.core.database import AuthSessionLocal
-from shared.helpers.json_response_helper import error_response
+from shared.helpers.json_response_helper import error_response, success_response
 from shared.models.users import Users
 
 from ...enum.revenue_enum import InvoicePayementMethod, InvoiceType
@@ -145,7 +145,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
             code = line.code
 
             # -------- WORK ORDER --------
-            if line.code == "WORKORDER":
+            if line.code == InvoiceType.work_order.value:
                 wo = db.query(TicketWorkOrder).filter(
                     TicketWorkOrder.id == line.item_id,
                     TicketWorkOrder.is_deleted == False
@@ -156,7 +156,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
                     user_name = get_user_name(wo.bill_to_id)
 
             # -------- RENT --------
-            elif line.code == "RENT":
+            elif line.code == InvoiceType.rent.value:
                 lease = (
                     db.query(Lease)
                     .join(LeaseCharge, LeaseCharge.lease_id == Lease.id)
@@ -173,7 +173,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
                     user_name = get_user_name(lease.tenant.user_id)
 
             # -------- OWNER MAINTENANCE --------
-            elif line.code == "OWNER_MAINTENANCE":
+            elif line.code == InvoiceType.owner_maintenance.value:
                 om = db.query(OwnerMaintenanceCharge).filter(
                     OwnerMaintenanceCharge.id == line.item_id,
                     OwnerMaintenanceCharge.is_deleted == False
@@ -184,7 +184,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
                     user_name = get_user_name(om.owner_user_id)
 
             # -------- PARKING PASS --------
-            elif line.code == "PARKING_PASS":
+            elif line.code == InvoiceType.parking_pass.value:
                 pass_obj = db.query(ParkingPass).filter(
                     ParkingPass.id == line.item_id,
                     ParkingPass.is_deleted == False
@@ -686,19 +686,23 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
     # RENT
     # ---------------------------
     if code == "rent":
-        lease_charges = db.query(LeaseCharge).filter(
-            LeaseCharge.is_deleted == False,
-            LeaseCharge.space.has(id=space_id),
-            ~LeaseCharge.id.in_(
-                db.query(InvoiceLine.item_id).join(Invoice)
-                .filter(
-                    Invoice.space_id == space_id,
-                    InvoiceLine.code == "rent",
-                    Invoice.status.notin_(["void", "paid"]),
-                    Invoice.is_deleted == False,
+        lease_charges = (
+            db.query(LeaseCharge)
+            .join(Lease, LeaseCharge.lease_id == Lease.id)
+            .filter(
+                LeaseCharge.is_deleted == False,
+                Lease.space_id == space_id,
+                ~LeaseCharge.id.in_(
+                    db.query(InvoiceLine.item_id).join(Invoice)
+                    .filter(
+                        Invoice.space_id == space_id,
+                        InvoiceLine.code == "rent",
+                        Invoice.status.notin_(["void", "paid"]),
+                        Invoice.is_deleted == False,
+                    )
                 )
-            )
-        ).all()
+            ).all()
+        )
 
         for lc in lease_charges:
             tenant = db.query(Tenant).filter(Tenant.id == lc.payer_id).first()
@@ -709,7 +713,7 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
             customers[cust_id]["charges"].append({
                 "type": "rent",
                 "id": str(lc.id),
-                "period": f"{lc.start_date:%d %b %Y} - {lc.end_date:%d %b %Y}"
+                "period": f"{lc.period_start:%d %b %Y} - {lc.period_end:%d %b %Y}"
             })
 
     # ---------------------------
@@ -1119,7 +1123,7 @@ def get_invoice_detail(
         code = line.code
 
         # -------- WORK ORDER --------
-        if line.code == "WORKORDER":
+        if line.code == InvoiceType.work_order.value:
             wo = db.query(TicketWorkOrder).filter(
                 TicketWorkOrder.id == line.item_id,
                 TicketWorkOrder.is_deleted == False
@@ -1130,7 +1134,7 @@ def get_invoice_detail(
                 user_name = get_user_name(wo.bill_to_id)
 
         # -------- RENT --------
-        elif line.code == "RENT":
+        elif line.code == InvoiceType.rent.value:
             lease = (
                 db.query(Lease)
                 .join(LeaseCharge, Lease.id == LeaseCharge.lease_id)
@@ -1147,7 +1151,7 @@ def get_invoice_detail(
                     user_name = get_user_name(lease.tenant.user_id)
 
         # -------- OWNER MAINTENANCE --------
-        elif line.code == "OWNER_MAINTENANCE":
+        elif line.code == InvoiceType.owner_maintenance.value:
             om = db.query(OwnerMaintenanceCharge).filter(
                 OwnerMaintenanceCharge.id == line.item_id,
                 OwnerMaintenanceCharge.is_deleted == False
@@ -1160,7 +1164,7 @@ def get_invoice_detail(
                     user_name = get_user_name(lease.tenant.user_id)
 
         # -------- PARKING PASS --------
-        elif line.code == "PARKING_PASS":
+        elif line.code == InvoiceType.parking_pass.value:
             pass_obj = db.query(ParkingPass).filter(
                 ParkingPass.id == line.item_id,
                 ParkingPass.is_deleted == False
@@ -1272,7 +1276,7 @@ def get_invoice_payment_history(
         code = line.code
 
         # -------- WORK ORDER --------
-        if line.code == "WORKORDER":
+        if line.code == InvoiceType.work_order.value:
             wo = db.query(TicketWorkOrder).filter(
                 TicketWorkOrder.id == line.item_id,
                 TicketWorkOrder.is_deleted == False
@@ -1293,7 +1297,7 @@ def get_invoice_payment_history(
                     user_name = user.full_name if user else None
 
         # -------- RENT --------
-        elif line.code == "RENT":
+        elif line.code == InvoiceType.rent.value:
             lease = db.query(Lease).filter(
                 Lease.id == line.item_id,
                 Lease.is_deleted == False
@@ -1314,7 +1318,7 @@ def get_invoice_payment_history(
                     user_name = user.full_name if user else None
 
         # -------- PARKING PASS --------
-        elif line.code == "PARKING_PASS":
+        elif line.code == InvoiceType.parking_pass.value:
             pp = db.query(ParkingPass).filter(
                 ParkingPass.id == line.item_id,
                 ParkingPass.is_deleted == False
@@ -1335,7 +1339,7 @@ def get_invoice_payment_history(
                     user_name = user.full_name if user else None
 
         # -------- OWNER MAINTENANCE --------
-        elif line.code == "OWNER_MAINTENANCE":
+        elif line.code == InvoiceType.owner_maintenance.value:
             om = db.query(OwnerMaintenanceCharge).filter(
                 OwnerMaintenanceCharge.id == line.item_id,
                 OwnerMaintenanceCharge.is_deleted == False
@@ -1410,12 +1414,13 @@ def save_invoice_payment_detail(
     current_user: UserToken
 ):
     try:
-        # 0 Validate invoice_id
+        # ---------------------------
+        # 0. Validate invoice_id
+        # ---------------------------
         if not payload.invoice_id:
             return error_response(message="Invoice is required")
 
-        # 1 Fetch & validate invoice
-        invoice = db.query(Invoice).filter(
+        invoice: Invoice = db.query(Invoice).filter(
             Invoice.id == payload.invoice_id,
             Invoice.is_deleted == False
         ).first()
@@ -1423,188 +1428,173 @@ def save_invoice_payment_detail(
         if not invoice:
             return error_response(message="Invalid invoice")
 
-        # 2 Allow only valid lease states
+        # ---------------------------
+        # 1. Validate invoice status
+        # ---------------------------
         if invoice.status not in ("issued", "draft", "partial"):
             return error_response(
-                message="Payment details can only be added to issued,partial or draft invoices"
+                message="Payment details can only be added to issued, partial, or draft invoices"
             )
 
-        # ref_no is mandatory
+        # ---------------------------
+        # 2. Validate ref_no
+        # ---------------------------
         if not payload.ref_no:
-            error_response(
-                message="ref_no is mandatory and must be unique per invoice")
+            return error_response(message="ref_no is mandatory and must be unique per invoice")
 
-        # Duplicate in DB for SAME invoice
-        existing_payment = db.query(PaymentAR).filter(
-            PaymentAR.invoice_id == payload.invoice_id,
-            PaymentAR.ref_no == payload.ref_no
-        ).first()
-
-        if existing_payment:
-            error_response(
-                message=f"Payment ref_no '{payload.ref_no}' already exists")
-
+        # ---------------------------
+        # 3. Determine existing payment
+        # ---------------------------
+        payment: PaymentAR | None = None
         if payload.id:
-            existing_payment = db.query(PaymentAR).filter(
+            # Update mode
+            payment = db.query(PaymentAR).filter(
                 PaymentAR.id == payload.id,
                 PaymentAR.is_deleted == False
             ).first()
+            if not payment:
+                return error_response(message="Payment with selected ID not found")
 
-            if not existing_payment:
-                return error_response(
-                    message=f"Payment with selected ID not found"
-                )
-
-            # ✅ DB duplicate check ONLY for updates
+            # Duplicate ref_no check (exclude self)
             duplicate = db.query(PaymentAR).filter(
-                PaymentAR.invoice_id == payload.id,
+                PaymentAR.invoice_id == invoice.id,
                 PaymentAR.ref_no == payload.ref_no,
-                PaymentAR.id != payload.id
+                PaymentAR.id != payload.id,
+                PaymentAR.is_deleted == False
             ).first()
-
             if duplicate:
                 return error_response(
                     message=f"Duplicate payment ref_no '{payload.ref_no}' for this invoice"
                 )
 
             # Update fields
-            existing_payment.method = payload.method or existing_payment.method
-            existing_payment.ref_no = payload.ref_no
+            payment.method = payload.method or payment.method
+            payment.ref_no = payload.ref_no
             if payload.amount is not None:
-                existing_payment.amount = float(payload.amount)
+                payment.amount = float(payload.amount)
             if payload.paid_at:
-                existing_payment.paid_at = payload.paid_at
+                payment.paid_at = payload.paid_at
             if payload.meta is not None:
-                existing_payment.meta = payload.meta or {}
+                payment.meta = payload.meta or {}
 
         else:
-            # 🔍 Check if payment already exists by ref_no for this invoice
-            existing_payment = db.query(PaymentAR).filter(
-                PaymentAR.invoice_id == payload.invoice_id,
-                PaymentAR.ref_no == payload.ref_no
+            # Create mode: check if payment with same ref_no exists
+            payment = db.query(PaymentAR).filter(
+                PaymentAR.invoice_id == invoice.id,
+                PaymentAR.ref_no == payload.ref_no,
+                PaymentAR.is_deleted == False
             ).first()
 
-            if existing_payment:
-                # 🔁 Treat as UPDATE (not create)
-                existing_payment.method = payload.method or existing_payment.method
+            if payment:
+                # Treat as update
+                payment.method = payload.method or payment.method
                 if payload.amount is not None:
-                    existing_payment.amount = float(payload.amount)
+                    payment.amount = float(payload.amount)
                 if payload.paid_at:
-                    existing_payment.paid_at = payload.paid_at
+                    payment.paid_at = payload.paid_at
                 if payload.meta is not None:
-                    existing_payment.meta = payload.meta or {}
-
+                    payment.meta = payload.meta or {}
             else:
-                # ➕ Truly NEW payment
-                payment_ar = PaymentAR(
+                # Truly new payment
+                payment = PaymentAR(
                     org_id=current_user.org_id,
-                    invoice_id=payload.invoice_id,
+                    invoice_id=invoice.id,
                     method=payload.method,
                     ref_no=payload.ref_no,
                     amount=float(payload.amount),
                     paid_at=payload.paid_at or datetime.utcnow(),
                     meta=payload.meta or {}
                 )
-
-                db.add(payment_ar)
+                db.add(payment)
                 db.flush()
 
-                if invoice.billable_item_type == "rent":
-                    # Notification for EACH payment (if any payments) in create mode
+                # ---------------------------
+                # 4. Notifications for new payment
+                # ---------------------------
+                line_codes = {line.code.lower() for line in invoice.lines}
+                for code in line_codes:
+                    if code == "rent":
+                        db.add(Notification(
+                            user_id=current_user.user_id,
+                            type=NotificationType.alert,
+                            title="Rent Payment Recorded",
+                            message=f"Payment of {payment.amount} recorded for invoice {invoice.invoice_no}",
+                            posted_date=datetime.utcnow(),
+                            priority=PriorityType.medium,
+                            read=False,
+                            is_deleted=False,
+                            is_email=False
+                        ))
+                    elif code in ("maintenance", "owner maintenance"):
+                        db.add(Notification(
+                            user_id=current_user.user_id,
+                            type=NotificationType.alert,
+                            title="Owner Maintenance Payment Recorded",
+                            message=f"Payment of {payment.amount} recorded for invoice {invoice.invoice_no}",
+                            posted_date=datetime.utcnow(),
+                            priority=PriorityType.medium,
+                            read=False,
+                            is_deleted=False,
+                            is_email=False
+                        ))
 
-                    payment_notification = Notification(
-                        user_id=current_user.user_id,
-                        type=NotificationType.alert,
-                        title="Rent Payment Recorded",
-                        message=f"Payment of {payment_ar.amount} recorded for invoice {invoice.invoice_no}",
-                        posted_date=datetime.utcnow(),
-                        priority=PriorityType.medium,
-                        read=False,
-                        is_deleted=False,
-                        is_email=False
-                    )
-                    db.add(payment_notification)
-                    # ADD THIS: Notification for owner maintenance invoice
-                elif invoice.billable_item_type == "owner maintenance":  # and space_owner:
-
-                    payment_notification = Notification(
-                        user_id=current_user.user_id,
-                        type=NotificationType.alert,
-                        title="Owner Maintenance Payment Recorded",
-                        message=f"Payment of {payment_ar.amount} recorded for invoice {invoice.invoice_no}",
-                        posted_date=datetime.utcnow(),
-                        priority=PriorityType.medium,
-                        read=False,
-                        is_deleted=False,
-                        is_email=False
-                    )
-                    db.add(payment_notification)
-
-        # Calculate invoice amount
-        invoice_amount = invoice.totals.get(
-            "grand") if invoice.totals else None
-
-        payments_created = db.query(PaymentAR).filter(
-            PaymentAR.invoice_id == payload.id,
+        # ---------------------------
+        # 5. Recalculate invoice status
+        # ---------------------------
+        payments = db.query(PaymentAR).filter(
+            PaymentAR.invoice_id == invoice.id,
             PaymentAR.is_deleted == False
         ).all()
 
-        total_payments = sum(float(p.amount) for p in payments_created)
+        total_paid = sum(float(p.amount) for p in payments)
+        invoice_total = float(invoice.totals.get("grand") or 0)
 
-        # Calculate status (payments are in session but not yet committed)
-        if payments_created:
-
-            # Use Decimal for comparison
-            invoice_decimal = Decimal(str(invoice_amount))
-            payments_decimal = Decimal(str(total_payments))
-
-            if payments_decimal >= invoice_decimal - Decimal('0.01'):
-                actual_status = "paid"
-            elif invoice.due_date and invoice.due_date < date.today():
-                actual_status = "overdue"
-            else:
-                actual_status = "partial"
+        if total_paid >= invoice_total - 0.01:
+            invoice.status = "paid"
+            invoice.is_paid = True
+        elif invoice.due_date and invoice.due_date < date.today():
+            invoice.status = "overdue"
+            invoice.is_paid = False
+        elif total_paid > 0:
+            invoice.status = "partial"
+            invoice.is_paid = False
         else:
-            actual_status = "issued"
+            invoice.status = "issued"
+            invoice.is_paid = False
 
-        # Update invoice with correct status
-        invoice.status = actual_status
-        invoice.is_paid = (actual_status == "paid")
-
-        if invoice.billable_item_type == "rent":
-
-            if actual_status == "paid":
-                full_payment_notification = Notification(
-                    user_id=current_user.user_id,
-                    type=NotificationType.alert,
-                    title="Rent Invoice Fully Paid",
-                    message=f"Invoice {invoice.invoice_no} has been fully paid. Total: {invoice_amount}",
-                    posted_date=datetime.utcnow(),
-                    priority=PriorityType.medium,
-                    read=False,
-                    is_deleted=False,
-                    is_email=False
-                )
-                db.add(full_payment_notification)
-
-                # ADD THIS: Notification for owner maintenance invoice
-        elif invoice.billable_item_type == "owner maintenance":  # and space_owner:
-            # 3. Notification for FULL PAYMENT
-            if actual_status == "paid":
-                full_payment_notification = Notification(
-                    user_id=current_user.user_id,
-                    type=NotificationType.alert,
-                    title="Owner Maintenance Invoice Fully Paid",
-                    message=f"Invoice {invoice.invoice_no} has been fully paid. Total: {invoice_amount}",
-                    posted_date=datetime.utcnow(),
-                    priority=PriorityType.medium,
-                    read=False,
-                    is_deleted=False,
-                    is_email=False
-                )
-                db.add(full_payment_notification)
+        # ---------------------------
+        # 6. Full payment notifications
+        # ---------------------------
+        if invoice.status == "paid":
+            line_codes = {line.code.lower() for line in invoice.lines}
+            for code in line_codes:
+                if code == "rent":
+                    db.add(Notification(
+                        user_id=current_user.user_id,
+                        type=NotificationType.alert,
+                        title="Rent Invoice Fully Paid",
+                        message=f"Invoice {invoice.invoice_no} has been fully paid. Total: {invoice_total}",
+                        posted_date=datetime.utcnow(),
+                        priority=PriorityType.medium,
+                        read=False,
+                        is_deleted=False,
+                        is_email=False
+                    ))
+                elif code in ("maintenance", "owner maintenance"):
+                    db.add(Notification(
+                        user_id=current_user.user_id,
+                        type=NotificationType.alert,
+                        title="Owner Maintenance Invoice Fully Paid",
+                        message=f"Invoice {invoice.invoice_no} has been fully paid. Total: {invoice_total}",
+                        posted_date=datetime.utcnow(),
+                        priority=PriorityType.medium,
+                        read=False,
+                        is_deleted=False,
+                        is_email=False
+                    ))
 
         db.commit()
+        return success_response(data={"payment_id": str(payment.id)})
 
     except Exception as e:
         db.rollback()

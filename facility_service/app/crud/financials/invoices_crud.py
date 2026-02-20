@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
+from facility_service.app.models.leasing_tenants.tenants import Tenant
 from facility_service.app.models.space_sites.owner_maintenances import OwnerMaintenanceCharge
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
 from facility_service.app.models.space_sites.spaces import Space
@@ -152,22 +153,24 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if wo:
                     item_no = wo.wo_no
-
-                    # assuming wo.requested_by is auth user id
-                    user_name = get_user_name(wo.requested_by)
+                    user_name = get_user_name(wo.bill_to_id)
 
             # -------- RENT --------
             elif line.code == "RENT":
-                lease = db.query(Lease).filter(
-                    Lease.id == line.item_id,
-                    Lease.is_deleted == False
-                ).first()
+                lease = (
+                    db.query(Lease)
+                    .join(LeaseCharge, LeaseCharge.lease_id == Lease.id)
+                    .filter(
+                        LeaseCharge.id == line.item_id,
+                        Lease.is_deleted == False
+                    ).first()
+                )
 
                 if lease:
                     item_no = lease.lease_number
 
                     # assuming lease.tenant_user_id
-                    user_name = get_user_name(lease.tenant_user_id)
+                    user_name = get_user_name(lease.tenant.user_id)
 
             # -------- OWNER MAINTENANCE --------
             elif line.code == "OWNER_MAINTENANCE":
@@ -322,19 +325,19 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
                 if wo:
                     item_no = wo.wo_no
 
-                    ticket = db.query(Ticket).filter(
-                        Ticket.id == wo.ticket_id
-                    ).first()
-
-                    if ticket and ticket.tenant:
-                        customer_name = ticket.tenant.name
+                    if wo.bill_to_id:
+                        customer_name = get_user_name(wo.bill_to_id)
 
             # -------- RENT --------
             elif line.code == "RENT":
-                lease = db.query(Lease).filter(
-                    Lease.id == line.item_id,
-                    Lease.is_deleted == False
-                ).first()
+                lease = (
+                    db.query(Lease)
+                    .join(LeaseCharge, LeaseCharge.lease_id == Lease.id)
+                    .filter(
+                        LeaseCharge.id == line.item_id,
+                        Lease.is_deleted == False
+                    ).first()
+                )
 
                 if lease:
                     item_no = lease.lease_number
@@ -351,11 +354,8 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
 
                 if parking_pass:
                     item_no = parking_pass.pass_no
-
-                    if parking_pass.pass_holder_name:
-                        customer_name = parking_pass.pass_holder_name
-                    elif parking_pass.space and parking_pass.space.tenant:
-                        customer_name = parking_pass.space.tenant.name
+                    if parking_pass.partner_id:
+                        customer_name = get_user_name(parking_pass.partner_id)
 
             # -------- OWNER MAINTENANCE --------
             elif line.code == "OWNER_MAINTENANCE":
@@ -368,18 +368,7 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
                     item_no = om.maintenance_no
 
                     if om.space_owner_id:
-                        space_owner = db.query(SpaceOwner).filter(
-                            SpaceOwner.id == om.space_owner_id
-                        ).first()
-
-                        if space_owner and space_owner.owner_user_id:
-                            user = auth_db.query(Users).filter(
-                                Users.id == space_owner.owner_user_id,
-                                Users.is_deleted == False
-                            ).first()
-
-                            if user:
-                                customer_name = user.full_name
+                        customer_name = get_user_name(om.space_owner_id)
 
         # -----------------------------------------
         # Build Response
@@ -685,38 +674,36 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
             "customer_name": str,
             "charges": [
                 {"type": "rent", "id": ..., "period": "..."},
-                {"type": "maintenance", "id": ..., "period": "..."},
                 ...
             ]
-        },
-        ...
+        }
     ]
     """
     customers = defaultdict(
         lambda: {"customer_id": None, "customer_name": None, "charges": []})
 
-    if code == InvoiceType.rent.value:
-
-        # ---------------------------
-        # Rent Charges
-        # ---------------------------
-        rent_charges = db.query(LeaseCharge).filter(
+    # ---------------------------
+    # RENT
+    # ---------------------------
+    if code == "rent":
+        lease_charges = db.query(LeaseCharge).filter(
             LeaseCharge.is_deleted == False,
-            LeaseCharge.space_id == space_id,
+            LeaseCharge.space.has(id=space_id),
             ~LeaseCharge.id.in_(
                 db.query(InvoiceLine.item_id).join(Invoice)
                 .filter(
                     Invoice.space_id == space_id,
                     InvoiceLine.code == "rent",
                     Invoice.status.notin_(["void", "paid"]),
-                    Invoice.is_deleted == False
+                    Invoice.is_deleted == False,
                 )
             )
         ).all()
 
-        for lc in rent_charges:
-            cust_id = lc.tenant_id
-            cust_name = lc.tenant_name
+        for lc in lease_charges:
+            tenant = db.query(Tenant).filter(Tenant.id == lc.payer_id).first()
+            cust_id = tenant.user_id if tenant else None
+            cust_name = tenant.name if tenant else None
             customers[cust_id]["customer_id"] = cust_id
             customers[cust_id]["customer_name"] = cust_name
             customers[cust_id]["charges"].append({
@@ -724,10 +711,11 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
                 "id": str(lc.id),
                 "period": f"{lc.start_date:%d %b %Y} - {lc.end_date:%d %b %Y}"
             })
-    elif code == InvoiceType.owner_maintenance.value:
-        # ---------------------------
-        # Maintenance Charges
-        # ---------------------------
+
+    # ---------------------------
+    # MAINTENANCE
+    # ---------------------------
+    elif code == "maintenance":
         maint_charges = db.query(OwnerMaintenanceCharge).filter(
             OwnerMaintenanceCharge.is_deleted == False,
             OwnerMaintenanceCharge.space_id == space_id,
@@ -737,25 +725,26 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
                     Invoice.space_id == space_id,
                     InvoiceLine.code == "maintenance",
                     Invoice.status.notin_(["void", "paid"]),
-                    Invoice.is_deleted == False
+                    Invoice.is_deleted == False,
                 )
             )
         ).all()
 
         for om in maint_charges:
-            cust_id = om.user_id
-            cust_name = om.user_name
-            customers[cust_id]["customer_id"] = cust_id
-            customers[cust_id]["customer_name"] = cust_name
-            customers[cust_id]["charges"].append({
+            owner_user_id = om.space_owner.owner_user_id if om.space_owner else None
+            cust_name = get_user_name(owner_user_id) if owner_user_id else None
+            customers[owner_user_id]["customer_id"] = owner_user_id
+            customers[owner_user_id]["customer_name"] = cust_name
+            customers[owner_user_id]["charges"].append({
                 "type": "maintenance",
                 "id": str(om.id),
                 "period": f"{om.period_start:%d %b %Y} - {om.period_end:%d %b %Y}"
             })
-    elif code == InvoiceType.parking_pass.value:
-        # ---------------------------
-        # Parking Passes
-        # ---------------------------
+
+    # ---------------------------
+    # PARKING PASS
+    # ---------------------------
+    elif code == "parking pass":
         passes = db.query(ParkingPass).filter(
             ParkingPass.is_deleted == False,
             ParkingPass.space_id == space_id,
@@ -765,14 +754,15 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
                     Invoice.space_id == space_id,
                     InvoiceLine.code == "parking pass",
                     Invoice.status.notin_(["void", "paid"]),
-                    Invoice.is_deleted == False
+                    Invoice.is_deleted == False,
                 )
             )
         ).all()
 
         for pp in passes:
-            cust_id = pp.user_id
-            cust_name = pp.user_name
+            cust_id = pp.partner_id
+            cust_name = get_user_name(
+                cust_id) if cust_id else pp.pass_holder_name
             customers[cust_id]["customer_id"] = cust_id
             customers[cust_id]["customer_name"] = cust_name
             customers[cust_id]["charges"].append({
@@ -781,27 +771,28 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
                 "period": f"{pp.valid_from:%d %b %Y} - {pp.valid_to:%d %b %Y}",
                 "pass_no": pp.pass_no
             })
-    elif code == InvoiceType.work_order.value:
-        # ---------------------------
-        # Work Orders
-        # ---------------------------
+
+    # ---------------------------
+    # WORK ORDER
+    # ---------------------------
+    elif code == "work_order":
         work_orders = db.query(TicketWorkOrder).filter(
             TicketWorkOrder.is_deleted == False,
-            TicketWorkOrder.space_id == space_id,
+            TicketWorkOrder.space.has(id=space_id),
             ~TicketWorkOrder.id.in_(
                 db.query(InvoiceLine.item_id).join(Invoice)
                 .filter(
                     Invoice.space_id == space_id,
                     InvoiceLine.code == "work_order",
                     Invoice.status.notin_(["void", "paid"]),
-                    Invoice.is_deleted == False
+                    Invoice.is_deleted == False,
                 )
             )
         ).all()
 
         for wo in work_orders:
-            cust_id = wo.user_id
-            cust_name = wo.user_name
+            cust_id = wo.bill_to_id
+            cust_name = get_user_name(cust_id) if cust_id else None
             customers[cust_id]["customer_id"] = cust_id
             customers[cust_id]["customer_name"] = cust_name
             customers[cust_id]["charges"].append({
@@ -1115,38 +1106,24 @@ def get_invoice_detail(
 
             if wo:
                 item_no = wo.wo_no
-
-                if wo.requested_by:
-                    user = (
-                        auth_db.query(Users)
-                        .filter(
-                            Users.id == wo.requested_by,
-                            Users.is_deleted == False
-                        )
-                        .first()
-                    )
-                    user_name = user.full_name if user else None
+                user_name = get_user_name(wo.bill_to_id)
 
         # -------- RENT --------
         elif line.code == "RENT":
-            lease = db.query(Lease).filter(
-                Lease.id == line.item_id,
-                Lease.is_deleted == False
-            ).first()
+            lease = (
+                db.query(Lease)
+                .join(LeaseCharge, Lease.id == LeaseCharge.lease_id)
+                .filter(
+                    Lease.id == line.item_id,
+                    Lease.is_deleted == False
+                ).first()
+            )
 
             if lease:
                 item_no = lease.lease_number
 
-                if lease.tenant_user_id:
-                    user = (
-                        auth_db.query(Users)
-                        .filter(
-                            Users.id == lease.tenant_user_id,
-                            Users.is_deleted == False
-                        )
-                        .first()
-                    )
-                    user_name = user.full_name if user else None
+                if lease.tenant:
+                    user_name = get_user_name(lease.tenant.user_id)
 
         # -------- OWNER MAINTENANCE --------
         elif line.code == "OWNER_MAINTENANCE":
@@ -1159,15 +1136,7 @@ def get_invoice_detail(
                 item_no = om.maintenance_no
 
                 if om.owner_user_id:
-                    user = (
-                        auth_db.query(Users)
-                        .filter(
-                            Users.id == om.owner_user_id,
-                            Users.is_deleted == False
-                        )
-                        .first()
-                    )
-                    user_name = user.full_name if user else None
+                    user_name = get_user_name(lease.tenant.user_id)
 
         # -------- PARKING PASS --------
         elif line.code == "PARKING_PASS":
@@ -1179,16 +1148,8 @@ def get_invoice_detail(
             if pass_obj:
                 item_no = pass_obj.pass_no
 
-                if pass_obj.user_id:
-                    user = (
-                        auth_db.query(Users)
-                        .filter(
-                            Users.id == pass_obj.user_id,
-                            Users.is_deleted == False
-                        )
-                        .first()
-                    )
-                    user_name = user.full_name if user else None
+                if pass_obj.partner_id:
+                    user_name = get_user_name(pass_obj.partner_id)
 
     # -------------------------------------------------
     # PAYMENTS

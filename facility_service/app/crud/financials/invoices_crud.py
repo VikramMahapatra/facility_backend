@@ -985,12 +985,12 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
 
 def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[str, Any]:
     item_type = params.billable_item_type.lower().strip()
-    billable_item_id = params.billable_item_id
+    item_id = params.billable_item_id
 
-    if item_type == "work order":
+    if item_type == InvoiceType.work_order:
         # Get work order
         work_order = db.query(TicketWorkOrder).filter(
-            TicketWorkOrder.id == billable_item_id,
+            TicketWorkOrder.id == item_id,
             TicketWorkOrder.is_deleted == False
         ).first()
 
@@ -1006,12 +1006,16 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
         tax = Decimal('0.00')
         grand_total = subtotal + tax
 
-    elif item_type == "rent":
+    elif item_type == InvoiceType.rent:
         # Get lease
-        lease = db.query(Lease).filter(
-            Lease.id == billable_item_id,
-            Lease.is_deleted == False
-        ).first()
+        lease = (
+            db.query(Lease)
+            .join(LeaseCharge, Lease.id == LeaseCharge.lease_id)
+            .filter(
+                LeaseCharge.id == item_id,
+                Lease.is_deleted == False
+            ).first()
+        )
 
         if not lease:
             raise HTTPException(status_code=404, detail="Lease not found")
@@ -1021,9 +1025,9 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
         tax = Decimal('0')
         grand_total = subtotal
 
-    elif item_type == "owner maintenance":
+    elif item_type == InvoiceType.owner_maintenance:
         maintenance = db.query(OwnerMaintenanceCharge).filter(
-            OwnerMaintenanceCharge.id == billable_item_id,
+            OwnerMaintenanceCharge.id == item_id,
             OwnerMaintenanceCharge.is_deleted == False
         ).first()
 
@@ -1035,6 +1039,23 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
 
         # ✅ USE STORED AMOUNT (CAM already calculated)
         subtotal = maintenance.amount or Decimal("0")
+
+        tax = Decimal("0.00")  # GST can be added later
+        grand_total = subtotal + tax
+    elif item_type == InvoiceType.parking_pass:
+        parking_pass = db.query(ParkingPass).filter(
+            ParkingPass.id == item_id,
+            ParkingPass.is_deleted == False
+        ).first()
+
+        if not parking_pass:
+            raise HTTPException(
+                status_code=404,
+                detail="Parking pass not found"
+            )
+
+        # ✅ USE STORED AMOUNT (CAM already calculated)
+        subtotal = parking_pass.charge_amount or Decimal("0")
 
         tax = Decimal("0.00")  # GST can be added later
         grand_total = subtotal + tax
@@ -1591,24 +1612,27 @@ def save_invoice_payment_detail(
 
 
 def generate_invoice_number(db: Session, org_id: UUID):
-
+    # Get the maximum existing number
     last_number = (
         db.query(
             func.max(
-                cast(
-                    func.replace(Invoice.invoice_no, "INV", ""),
-                    Integer
-                )
+                cast(func.replace(Invoice.invoice_no, "INV-", ""), Integer)
             )
         )
         .filter(Invoice.org_id == org_id)
-        .with_for_update()
         .scalar()
     )
 
-    next_number = (last_number or 100) + 1
+    # Start from 1 if no invoices exist
+    next_number = (last_number or 0) + 1
 
-    return f"INV{next_number}"
+    # Zero-pad only up to 4 digits
+    if next_number <= 9999:
+        invoice_no = f"INV-{next_number:04d}"
+    else:
+        invoice_no = f"INV-{next_number}"
+
+    return invoice_no
 
 
 def get_user_name(user_id: UUID):

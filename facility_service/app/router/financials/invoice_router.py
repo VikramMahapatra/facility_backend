@@ -87,7 +87,7 @@ def get_payments(
 
 
 @router.get("/customer-pending-charges")
-def get_invoice_lookup(
+def get_pending_charges_by_customer(
     space_id: UUID = Query(...),
     code: str = Query(...),
     db: Session = Depends(get_db),

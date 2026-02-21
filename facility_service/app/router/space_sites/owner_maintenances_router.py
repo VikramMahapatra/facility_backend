@@ -17,7 +17,7 @@ router = APIRouter(
 )
 
 
-@router.post("/auto-generate-maintenance", response_model=OwnerMaintenanceListResponse)
+@router.post("/auto-generate-maintenance", response_model=None)
 def auto_generate_maintenance(
     date: date = Query(...,
                        description="Any date of the month to generate maintenance for"),

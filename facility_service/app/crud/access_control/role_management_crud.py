@@ -1,17 +1,22 @@
 from operator import or_
+from uuid import UUID
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import Enum, desc, func
+from sqlalchemy import Enum, desc, func, select
 from sqlalchemy.dialects.postgresql import insert
 from typing import Dict, List, Optional
 
+from auth_service.app.models.user_org_role_association import user_org_roles
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.associations import RoleAccountType
+from auth_service.app.models.user_organizations import UserOrganization
 from shared.models.users import Users
 from shared.core.schemas import Lookup
+from shared.utils.enums import UserAccountType
 
 from ...schemas.access_control.role_management_schemas import (
     RoleCreate, RoleOut, RoleRequest, RoleUpdate
 )
+from sqlalchemy.dialects.postgresql import insert
 
 
 def get_roles(db: Session, org_id: str, params: RoleRequest):
@@ -88,6 +93,12 @@ def create_role(db: Session, role: RoleCreate):
     db.commit()
     db.refresh(db_role)
 
+    sync_role_user_org_assignments(
+        db,
+        db_role.id,
+        role.account_types
+    )
+
     return RoleOut.model_validate({
         **db_role.__dict__,
         "account_types": [
@@ -144,6 +155,12 @@ def update_role(db: Session, role: RoleUpdate):
             )
             db.execute(stmt)
 
+    sync_role_user_org_assignments(
+        db,
+        db_role.id,
+        account_types
+    )
+
     db.commit()
     db.refresh(db_role)
     return RoleOut.model_validate({
@@ -168,14 +185,117 @@ def delete_role(db: Session, role_id: str) -> Dict:
 
 
 def get_role_lookup(db: Session, org_id: str):
-    role_query = (
+
+    roles = (
         db.query(
+            Roles.id,
+            Roles.name,
+            Roles.description,
+            func.coalesce(
+                func.array_agg(
+                    RoleAccountType.account_type
+                ).filter(RoleAccountType.account_type != None),
+                []
+            ).label("account_types")
+        )
+        .outerjoin(
+            RoleAccountType,
+            RoleAccountType.role_id == Roles.id
+        )
+        .filter(
+            Roles.org_id == org_id,
+            Roles.is_deleted == False
+        )
+        .group_by(
             Roles.id,
             Roles.name,
             Roles.description
         )
-        .filter(Roles.org_id == org_id, Roles.is_deleted == False)
         .order_by(Roles.name.asc())
+        .all()
     )
 
-    return role_query.all()
+    return roles
+
+
+def sync_role_user_org_assignments(
+    db: Session,
+    role_id: UUID,
+    account_types: list[UserAccountType] | None
+):
+
+    # If None → do nothing (means not updating)
+    if account_types is None:
+        return
+
+    # Empty list = remove role from ALL user_orgs
+    if account_types == []:
+        db.execute(
+            user_org_roles.delete().where(
+                user_org_roles.c.role_id == role_id
+            )
+        )
+        return
+
+    # -------------------------
+    # 1️⃣ GET MATCHING USERS
+    # -------------------------
+
+    matching_user_org_ids = set(
+        u.id for u in db.query(UserOrganization.id).filter(
+            UserOrganization.account_type.in_(account_types),
+            UserOrganization.is_deleted == False
+        )
+    )
+
+    # -------------------------
+    # 2️⃣ GET CURRENT ASSIGNMENTS
+    # -------------------------
+
+    current_user_org_ids = set(
+        r.user_org_id for r in db.execute(
+            select(
+                user_org_roles.c.user_org_id
+            ).where(
+                user_org_roles.c.role_id == role_id
+            )
+        )
+    )
+
+    # -------------------------
+    # 3️⃣ CALCULATE DIFF
+    # -------------------------
+
+    to_add = matching_user_org_ids - current_user_org_ids
+    to_remove = current_user_org_ids - matching_user_org_ids
+
+    # -------------------------
+    # 4️⃣ BULK ADD
+    # -------------------------
+
+    if to_add:
+
+        mappings = [
+            {"user_org_id": uid, "role_id": role_id}
+            for uid in to_add
+        ]
+
+        stmt = insert(user_org_roles).values(mappings)
+
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=["user_org_id", "role_id"]
+        )
+
+        db.execute(stmt)
+
+    # -------------------------
+    # 5️⃣ BULK REMOVE
+    # -------------------------
+
+    if to_remove:
+        db.execute(
+            user_org_roles.delete().where(
+                user_org_roles.c.role_id == role_id,
+                user_org_roles.c.user_org_id.in_(to_remove)
+            )
+        )

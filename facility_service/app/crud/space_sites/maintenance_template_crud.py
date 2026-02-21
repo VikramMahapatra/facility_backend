@@ -1,6 +1,6 @@
 # site_crud.py
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, and_, distinct, case
+from sqlalchemy import func, cast, and_, distinct, case, or_
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 from facility_service.app.models.financials.tax_codes import TaxCode
 from facility_service.app.models.space_sites.maintenance_templates import MaintenanceTemplate
 from facility_service.app.models.space_sites.sites import Site
+from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.schemas.space_sites.maintenance_template_schemas import MaintenanceTemplateCreate, MaintenanceTemplateRequest, MaintenanceTemplateResponse, MaintenanceTemplateUpdate
 from shared.core.schemas import UserToken
 from shared.helpers.property_helper import get_allowed_sites
@@ -102,6 +103,7 @@ def create_maintenance_template(
         )
 
     data = maintenance_template.model_dump()
+    override_existing = data.pop("override_existing", False)
     data["org_id"] = org_id
 
     db_template = MaintenanceTemplate(**data)
@@ -109,6 +111,13 @@ def create_maintenance_template(
     db.add(db_template)
     db.commit()
     db.refresh(db_template)
+
+    # ⭐ Assign template to matching spaces
+    assign_template_to_matching_spaces(
+        db=db,
+        template=db_template,
+        override_existing=override_existing
+    )
 
     return db_template
 
@@ -216,14 +225,65 @@ def get_maintenance_template_lookup(
 
     if params.category:
         query = query.filter(
-            MaintenanceTemplate.category == params.category
+            or_(
+                MaintenanceTemplate.category == params.category,
+                MaintenanceTemplate.category.is_(None)
+            )
         )
 
     if params.kind:
         query = query.filter(
-            MaintenanceTemplate.kind == params.kind
+            or_(
+                MaintenanceTemplate.kind == params.kind,
+                MaintenanceTemplate.kind.is_(None)
+            )
+        )
+
+    if params.sub_kind:
+        query = query.filter(
+            or_(
+                MaintenanceTemplate.sub_kind == params.sub_kind,
+                MaintenanceTemplate.sub_kind.is_(None)
+            )
         )
 
     query = query.order_by(MaintenanceTemplate.created_at.desc())
 
     return query.all()
+
+
+def assign_template_to_matching_spaces(
+    db: Session,
+    template: MaintenanceTemplate,
+    override_existing: bool = False
+):
+
+    query = db.query(Space).filter(
+        Space.org_id == template.org_id,
+        Space.is_deleted == False
+    )
+
+    # Match category
+    if template.category:
+        query = query.filter(Space.category == template.category)
+
+    # Match kind
+    if template.kind:
+        query = query.filter(Space.kind == template.kind)
+
+    # Match site
+    if template.site_id:
+        query = query.filter(Space.site_id == template.site_id)
+
+    # ⭐ Respect override flag
+    if not override_existing:
+        query = query.filter(
+            Space.maintenance_template_id.is_(None)
+        )
+
+    matching_spaces = query.all()
+
+    for space in matching_spaces:
+        space.maintenance_template_id = template.id
+
+    db.commit()

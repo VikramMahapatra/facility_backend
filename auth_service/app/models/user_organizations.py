@@ -38,7 +38,11 @@ class UserOrganization(AuthBase):
         "Users",
         back_populates="organizations"
     )
-
+    roles = relationship(
+        "Roles",
+        secondary="user_org_roles",
+        back_populates="user_orgs"
+    )
     __table_args__ = (
         # user cannot have more than ONE default org
         Index(

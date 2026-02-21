@@ -4,9 +4,6 @@ from uuid import UUID
 from fastapi import HTTPException, UploadFile, status, Request
 from requests import Session
 from sqlalchemy import func, and_
-
-from auth_service.app.models.associations import RoleAccountType
-
 from ..models.user_sites_safe import UserSiteSafe
 from shared.utils.enums import OwnershipStatus, UserAccountType
 from ..models.space_owners_safe import SpaceOwnerSafe
@@ -342,15 +339,12 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
 
     # ✅ Extract unique role policies
     role_policies = []
-    roles = (
-        auth_db.query(Roles)
-        .join(Roles.account_types)
-        .filter(
-            Roles.org_id == default_org.org_id,
-            RoleAccountType.account_type == default_org.account_type
-        )
-        .all()
-    )
+    role_list = []
+
+    roles = [
+        r for r in default_org.roles
+        if not r.is_deleted
+    ]
 
     for role in roles:
         for policy in role.policies:
@@ -358,6 +352,12 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
                 "resource": policy.resource,
                 "action": policy.action
             })
+        role_list.append(RoleOut.model_validate({
+            **role.__dict__,
+            "account_types": [
+                rat.account_type.value for rat in role.account_types
+            ]
+        }))
 
     # ✅ Remove duplicates (optional)
     role_policies = [dict(t)
@@ -383,15 +383,6 @@ def get_user_by_id(facility_db: Session, auth_db: Session, user_data: Users):
         })
         for org in user_orgs
     ]
-
-    role_list = []
-    for role in roles:
-        role_list.append(RoleOut.model_validate({
-            **role.__dict__,
-            "account_types": [
-                rat.account_type.value for rat in role.account_types
-            ]
-        }))
 
     user_dict = {
         "id": str(user_data.id),

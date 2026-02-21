@@ -21,8 +21,16 @@ class OccupancyEventType(str, PyEnum):
     owner_removed = "owner_removed"
     lease_created = "lease_created"
     lease_ended = "lease_ended"
+    moved_in_requested = "moved_in_requested"
+    moved_in_scheduled = "moved_in_scheduled"
+    moved_in_rejected = "moved_in_rejected"
     moved_in = "moved_in"
+    moved_out_requested = "moved_out_requested"
+    moved_out_scheduled = "moved_out_scheduled"
+    moved_out_rejected = "moved_out_rejected"
     moved_out = "moved_out"
+    handover_awaited = "handover_awaited"
+    handover_completed = "handover_completed"
 
 
 class SpaceOccupancyEvent(Base):

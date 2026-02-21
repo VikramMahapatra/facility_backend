@@ -39,6 +39,7 @@ class RoleListResponse(BaseModel):
 
 class RoleLookup(Lookup):
     description: str
+    account_types: Optional[list[UserAccountType]] = []
 
     class Config:
         from_attributes = True

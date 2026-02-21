@@ -119,29 +119,23 @@ def get_user_by_id(db: Session, user_id: str, org_id: str):
         if uo.account_type
     })
 
-    roles_query = (
-        db.query(Roles)
-        .join(Roles.account_types)
-        .filter(
-            Roles.org_id == org_id,
-            Roles.is_deleted == False,
-            RoleAccountType.account_type.in_(account_types)
-        )
-        .distinct()
-        .all()
-    )
-
     roles = []
-    for role in roles_query:
-        role_data = RoleOut.model_validate({
-            **role.__dict__,
-            "account_types": [
-                rat.account_type.value if isinstance(
-                    rat.account_type, Enum) else rat.account_type
-                for rat in role.account_types
-            ]
-        })
-        roles.append(role_data)
+    for uo in user_orgs:
+        roles_query = [
+            r for r in uo.roles
+            if not r.is_deleted and r.org_id == org_id
+        ]
+
+        for role in roles_query:
+            role_data = RoleOut.model_validate({
+                **role.__dict__,
+                "account_types": [
+                    rat.account_type.value if isinstance(
+                        rat.account_type, Enum) else rat.account_type
+                    for rat in role.account_types
+                ]
+            })
+            roles.append(role_data)
 
     return UserOut.model_validate({
         **user.__dict__,
@@ -149,154 +143,9 @@ def get_user_by_id(db: Session, user_id: str, org_id: str):
         "roles": roles
     })
 
-
-def get_user(db: Session, user_id: str, org_id: str, facility_db: Session):
-    user = db.query(Users).filter(
-        Users.id == user_id,
-        Users.is_deleted == False
-    ).first()
-
-    if not user:
-        return None
-
-    # 🔴 CHANGED: FETCH USER_ORG
-    user_org = (
-        db.query(UserOrganization)
-        .filter(
-            UserOrganization.user_id == user.id,
-            UserOrganization.org_id == org_id
-        )
-        .first()
-    )
-    if not user_org:
-        return None
-
-    # GET ADDITIONAL DETAILS
-    site_id = None
-    space_id = None
-    building_block_id = None
-    site_ids = []
-    tenant_spaces = []
-
-    staff_role = None
-
-    # Normalize account_type for case-insensitive comparison
-    account_type = user_org.account_type
-
-    # FOR TENANT USERS - USE FACILITY_DB
-    if account_type == UserAccountType.TENANT:
-        # Check individual tenant: Tenant → Space (no Building join)
-        tenant_with_space = (facility_db.query(Tenant, Space)
-                             .select_from(Tenant)
-                             .join(TenantSpace, TenantSpace.tenant_id == Tenant.id)
-                             # ✅ ADD THIS LINE
-                             .join(Space, Space.id == TenantSpace.space_id)
-                             .filter(
-            Tenant.user_id == user.id,
-            Tenant.is_deleted == False,
-            Space.is_deleted == False
-        )
-            .first())
-
-        if tenant_with_space:
-            tenant, space = tenant_with_space
-            site_id = space.site_id  # Get site_id from Space
-            space_id = space.id  # Get space_id from Space
-            building_block_id = space.building_block_id  # Get building_block_id from Space
-
-            # ✅ ONLY ADDITION (THIS WAS MISSING)
-            tenant_spaces_db = (
-                facility_db.query(TenantSpace)
-                .filter(
-                    TenantSpace.tenant_id == tenant.id,
-                    TenantSpace.is_deleted == False
-                )
-                .all()
-            )
-
-            tenant_spaces = []
-            for ts in tenant_spaces_db:
-                space = facility_db.query(Space).filter(
-                    Space.id == ts.space_id,
-                    Space.is_deleted == False
-                ).first()
-
-                tenant_spaces.append({
-                    "site_id": ts.site_id,
-                    "space_id": ts.space_id,
-                    "building_block_id": space.building_block_id if space else None,
-                })
-
-    # FOR STAFF USERS - USE FACILITY_DB
-    elif account_type == "staff":
-        # Get staff site assignments
-        staff_sites = facility_db.query(StaffSite).filter(
-            StaffSite.user_id == user.id,
-            StaffSite.is_deleted == False
-        ).all()
-
-        if staff_sites:
-            site_ids = [staff_site.site_id for staff_site in staff_sites]
-            # ADD THIS: Get staff_role from the first staff site assignment
-            if staff_sites and staff_sites[0].staff_role:
-                staff_role = staff_sites[0].staff_role
-
-    # FOR VENDOR USERS - USE FACILITY_DB
-    elif account_type == "vendor":
-        # Get vendor details
-        vendor = facility_db.query(Vendor).filter(
-            Vendor.contact['user_id'].astext == str(user.id),
-            Vendor.is_deleted == False
-        ).first()
-
-    roles_query = (
-        db.query(Roles)
-        .join(Roles.account_types)
-        .filter(
-            Roles.org_id == org_id,
-            Roles.is_deleted == False,
-            RoleAccountType.account_type == UserAccountType(account_type)
-        )
-        .distinct()
-        .all()
-    )
-
-    roles = []
-    for role in roles_query:
-        role_data = RoleOut.model_validate({
-            **role.__dict__,
-            "account_types": [
-                rat.account_type.value if isinstance(
-                    rat.account_type, Enum) else rat.account_type
-                for rat in role.account_types
-            ]
-        })
-        roles.append(role_data)
-
-    # Create UserOut manually instead of using from_orm
-    return UserOut(
-        id=user.id,
-        org_id=user_org.org_id,
-        full_name=user.full_name,
-        email=user.email,
-        phone=user.phone,
-        picture_url=user.picture_url,
-        account_type=user_org.account_type,
-        status=user.status,
-        roles=roles,
-        created_at=user.created_at,
-        updated_at=user.updated_at,
-        # ADD NEW FIELDS
-        site_id=site_id,
-        space_id=space_id,
-        building_block_id=building_block_id,
-        site_ids=site_ids,
-        staff_role=staff_role,
-        tenant_spaces=tenant_spaces   # ✅ ADD THIS LINE ONLY
-    )
-
-
 # email template function
+
+
 def send_user_credentials_email(background_tasks, db, email, username, password, full_name):
     """Send email with user credentials"""
     email_helper = EmailHelper()
@@ -730,16 +579,10 @@ def get_user_detail(
 
         # ---------------- ROLES ----------------
 
-        roles = (
-            db.query(Roles)
-            .join(Roles.account_types)
-            .filter(
-                Roles.org_id == org_id,
-                Roles.is_deleted == False,
-                RoleAccountType.account_type == uo.account_type
-            )
-            .all()
-        )
+        roles = [
+            r for r in uo.roles
+            if not r.is_deleted and r.org_id == org_id
+        ]
 
         account["roles"] = [
             RoleOut.model_validate({
@@ -1657,9 +1500,9 @@ def validate_unique_account(
     existing = db.query(UserOrganization).filter(
         UserOrganization.user_id == user_id,
         UserOrganization.org_id == org_id,
-        func.lower(UserOrganization.account_type) == account_type.lower(),
+        UserOrganization.account_type == UserAccountType(account_type),
         UserOrganization.is_deleted == False,
-        UserOrganization.status.in_(["active"])
+        UserOrganization.status == "active"
     ).first()
 
     if existing:

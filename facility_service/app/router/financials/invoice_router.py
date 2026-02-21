@@ -86,14 +86,14 @@ def get_payments(
     return crud.get_payments(db=db, auth_db=auth_db, org_id=current_user.org_id, params=params)
 
 
-@router.get("/entity-lookup", response_model=List[Lookup])
-def get_invoice_lookup(
-    site_id: UUID = Query(...),
-    billable_item_type: str = Query(...),
+@router.get("/customer-pending-charges")
+def get_pending_charges_by_customer(
+    space_id: UUID = Query(...),
+    code: str = Query(...),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_invoice_entities_lookup(db, current_user.org_id, site_id, billable_item_type)
+    return crud.get_pending_charges_by_customer(db, space_id, code)
 
 # ✅ FIXED: Match CRUD parameters
 
@@ -102,7 +102,7 @@ def get_invoice_lookup(
 def create_invoice(
         invoice: InvoiceCreate,
         db: Session = Depends(get_db),
-        auth_db : Session =Depends(get_auth_db),
+        auth_db: Session = Depends(get_auth_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.create_invoice(
         db=db,
@@ -210,3 +210,12 @@ def save_invoice_payment_detail(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.save_invoice_payment_detail(db, payload, current_user)
+
+
+@router.get("/preview-number")
+def preview_invoice_number(
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    invoice_no = crud.generate_invoice_number(db, current_user.org_id)
+    return {"invoice_no": invoice_no}

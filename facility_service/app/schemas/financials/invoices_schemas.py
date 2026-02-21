@@ -22,16 +22,32 @@ class PaymentCreateWithInvoice(BaseModel):
         }
 
 
+class InvoiceLineBase(BaseModel):
+    code: str  # RENT | WORKORDER | OWNER_MAINTENANCE | PARKING_PASS
+    item_id: UUID
+    description: Optional[str] = None
+    amount: Decimal
+    tax_pct: Optional[Decimal] = 0
+
+    class Config:
+        from_attributes = True
+        arbitrary_types_allowed = True
+
+
+class InvoiceLineCreate(InvoiceLineBase):
+    pass
+
+
 class InvoiceBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
-    billable_item_type: Optional[str] = None
-    billable_item_id: Optional[UUID] = None
+    space_id: UUID
     date: date_type
     due_date: Optional[date_type] = None
     currency: str
     totals: Optional[Any] = None
     meta: Optional[Any] = None
+    status: str
 
     class Config:
         from_attributes = True
@@ -39,7 +55,7 @@ class InvoiceBase(BaseModel):
 
 
 class InvoiceCreate(InvoiceBase):
-    pass
+    lines: List[InvoiceLineCreate]
 
 
 class PaymentUpdateItem(BaseModel):
@@ -51,21 +67,17 @@ class PaymentUpdateItem(BaseModel):
     meta: Optional[Any] = None
 
 
-class InvoiceUpdate(BaseModel):
+class InvoiceUpdate(InvoiceBase):
     id: str
-    date: Optional[date_type] = None
-    due_date: Optional[date_type] = None
-    currency: Optional[str] = None
-    totals: Optional[Any] = None
-    meta: Optional[Any] = None
 
 
 class PaymentOut(BaseModel):
     id: UUID
     org_id: Optional[UUID] = None
     invoice_id: UUID
-    invoice_no: str
-    billable_item_name: Optional[str] = None
+    invoice_no: Optional[str] = None
+    code: Optional[str] = None
+    item_no: Optional[str] = None
     method: str
     ref_no: str
     amount: Decimal
@@ -77,27 +89,48 @@ class PaymentOut(BaseModel):
         from_attributes = True
 
 
-class InvoiceOut(InvoiceBase):
+class InvoiceLineOut(BaseModel):
     id: UUID
-    org_id: Optional[UUID] = None
-    site_id: UUID
-    billable_item_type:  Optional[str] = None
-    billable_item_id:  Optional[UUID] = None
-    billable_item_name: Optional[str] = None
-    invoice_no: str
-    date: Optional[str]
-    due_date: Optional[str]
-    status: str
-    currency: str
-    totals: Optional[Any] = None
-    meta: Optional[Any] = None
-    is_paid: Optional[bool] = None
-    site_name:  Optional[str] = None
-    payments: Optional[List[PaymentOut]] = None  # ADD THIS LINE
+    invoice_id: UUID
+    code: str
+    item_id: UUID
+    description: Optional[str] = None
+    amount: Decimal
+    tax_pct: Optional[Decimal] = 0
 
     class Config:
         from_attributes = True
-        arbitrary_types_allowed = True
+
+
+class InvoiceOut(BaseModel):
+    id: UUID
+    org_id: UUID
+    site_id: UUID
+    space_id: UUID
+    invoice_no: str
+    date: Optional[str]
+    due_date: Optional[str]
+    currency: str
+    totals: Optional[Any] = None
+    meta: Optional[Any] = None
+    status: str
+    is_paid: bool
+
+    # Derived / Extra fields
+    site_name: Optional[str] = None
+    code: Optional[str] = None
+    item_no: Optional[str] = None
+    user_name: Optional[str] = None
+
+    # Relationships
+    lines: List[InvoiceLineOut] = []
+    payments: List[PaymentOut] = []
+
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class InvoicesRequest(CommonQueryParams):
@@ -153,6 +186,11 @@ class InvoiceDetailRequest(BaseModel):
 class InvoicePaymentHistoryOut(BaseModel):
     invoice_id: UUID
     invoice_no: str
-    total_amount: float
+    total_amount: Decimal
     status: str
-    payments: Optional[List[PaymentOut]] = None
+
+    code: Optional[str] = None
+    item_no: Optional[str] = None
+    user_name: Optional[str] = None
+
+    payments: List[PaymentOut]

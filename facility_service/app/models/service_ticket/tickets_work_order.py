@@ -20,25 +20,28 @@ class TicketWorkOrder(Base):
     description = Column(Text)
     assigned_to = Column(UUID(as_uuid=True))
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True),
+                        server_default=func.now(), onupdate=func.now())
     is_deleted = Column(Boolean, default=False)
     status = Column(String(50), default="PENDING")
-    
+
     # Auto-generated work order number
     wo_no = Column(String(20), unique=True, nullable=False)
 
-    # ✅ NEW COLUMNS ADDED 
+    # ✅ NEW COLUMNS ADDED
     labour_cost = Column(Numeric(10, 2), nullable=True)  # Labour cost
     material_cost = Column(Numeric(10, 2), nullable=True)  # Material Cost
     other_expenses = Column(Numeric(10, 2), nullable=True)  # Other Expenses
-    estimated_time = Column(Integer, nullable=True)  # Estimated time in minutes
+    # Estimated time in minutes
+    estimated_time = Column(Integer, nullable=True)
     special_instructions = Column(Text, nullable=True)  # Special Instructions
     total_amount = Column(Numeric(14, 2), nullable=False)
     tax_code_id = Column(UUID(as_uuid=True), ForeignKey("tax_codes.id"))
 
+    bill_to_id = Column(UUID(as_uuid=True), nullable=True)
+
     ticket = relationship("Ticket", back_populates="work_orders")
     tax_code = relationship("TaxCode", back_populates="ticket_work_orders")
-
 
 
 # Auto-generate wo_no before insert

@@ -9,7 +9,8 @@ from sqlalchemy import String, and_, func, extract, or_, cast, Date
 from sqlalchemy import desc
 from decimal import Decimal, ROUND_HALF_UP
 
-from facility_service.app.models.financials.invoices import Invoice
+from facility_service.app.enum.revenue_enum import InvoiceType
+from facility_service.app.models.financials.invoices import Invoice, InvoiceLine
 from facility_service.app.models.space_sites.buildings import Building
 
 from ...models.system.notifications import Notification, NotificationType, PriorityType
@@ -106,15 +107,6 @@ def get_lease_charges_overview(db: Session, user: UserToken):
     total_val = float(base.with_entities(func.coalesce(
         func.sum(LeaseCharge.amount), 0)).scalar() or 0.0)
 
-    tax_val = float(
-        base.with_entities(
-            func.coalesce(
-                func.sum(LeaseCharge.amount * (TaxCode.rate / 100.0)),
-                0
-            )
-        ).scalar() or 0.0
-    )
-
     this_month_count = int(
         base.with_entities(func.count(LeaseCharge.id))
         .filter(
@@ -129,7 +121,6 @@ def get_lease_charges_overview(db: Session, user: UserToken):
 
     return {
         "total_charges": total_val,
-        "tax_amount": tax_val,
         "this_month": this_month_count,
         "avg_charge": avg_val,
     }
@@ -207,11 +198,18 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
                     ).scalar()
 
          # ✅ SIMPLE CHECK: Get invoice status for this lease charge
-        invoice = db.query(Invoice).filter(
-            Invoice.billable_item_type == "lease charge",
-            Invoice.billable_item_id == lc.id,
-            Invoice.is_deleted == False
-        ).first()
+        invoice = (
+            db.query(Invoice)
+            .join(
+                InvoiceLine, Invoice.id == InvoiceLine.invoice_id
+            )
+            .filter(
+                InvoiceLine.item_id == lc.id,
+                InvoiceLine.code == InvoiceType.rent.value,
+                Invoice.due_date >= date.today(),
+                Invoice.is_deleted == False
+            ).first()
+        )
 
         invoice_status = invoice.status if invoice else None
 
@@ -220,7 +218,6 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
             "lease_start": lease.start_date,
             "lease_end": lease.end_date,
             "rent_amount": lease.rent_amount,
-            "tax_amount": tax_amount,
             "period_days": period_days,
             "site_id": lease.site_id,
             "tenant_name": display_name,
@@ -228,11 +225,88 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
             "space_name": lease.space.name if lease.space else None,
             "tax_pct": tax_rate,
             "invoice_status": invoice_status,
-            "building_name": building_name,  # Add this
+            "building_block": building_name,  # Add this
             "building_block_id": building_block_id,  # Add this
         }))
 
     return {"items": items, "total": total}
+
+
+def get_lease_charge_detail(db: Session, charge_id: UUID):
+    # Fetch the lease charge
+    lc: LeaseCharge | None = db.query(LeaseCharge).filter(
+        LeaseCharge.id == charge_id,
+        LeaseCharge.is_deleted == False
+    ).first()
+
+    if not lc:
+        # Or raise HTTPException(status_code=404, detail="Lease charge not found")
+        return None
+
+    lease = lc.lease  # relationship
+
+    # Tenant display name
+    tenant_name = lease.tenant.legal_name if lease.tenant and lease.tenant.legal_name else (
+        lease.tenant.name if lease.tenant else None)
+
+    # Period days
+    period_days = (
+        lc.period_end - lc.period_start).days if lc.period_start and lc.period_end else None
+
+    # Tax rate
+    tax_rate = lc.tax_code.rate if lc.tax_code else Decimal("0")
+
+    # Invoice status
+    invoice = (
+        db.query(Invoice)
+        .join(
+            InvoiceLine, Invoice.id == InvoiceLine.invoice_id
+        )
+        .filter(
+            InvoiceLine.item_id == lc.id,
+            InvoiceLine.code == InvoiceType.rent.value,
+            Invoice.is_deleted == False
+        ).first()
+    )
+    invoice_status = invoice.status if invoice else None
+
+    # Building / space info
+    building_name = None
+    building_block_id = None
+    space_name = lease.space.name if lease.space else None
+
+    if lease.space_id:
+        space_details = db.query(Space.name, Space.building_block_id).filter(
+            Space.id == lease.space_id,
+            Space.is_deleted == False
+        ).first()
+
+        if space_details:
+            building_block_id = space_details.building_block_id
+            if building_block_id:
+                building_name = db.query(Building.name).filter(
+                    Building.id == building_block_id,
+                    Building.is_deleted == False
+                ).scalar()
+
+    # Build response
+    lease_charge_out = LeaseChargeOut.model_validate({
+        **lc.__dict__,
+        "lease_start": lease.start_date,
+        "lease_end": lease.end_date,
+        "rent_amount": lease.rent_amount,
+        "period_days": period_days,
+        "site_id": lease.site_id,
+        "tenant_name": tenant_name,
+        "site_name": lease.site.name if lease.site else None,
+        "space_name": space_name,
+        "tax_pct": tax_rate,
+        "invoice_status": invoice_status,
+        "building_block": building_name,
+        "building_block_id": building_block_id,
+    })
+
+    return lease_charge_out
 
 
 def get_lease_charge_by_id(db: Session, charge_id: UUID):
@@ -285,15 +359,16 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate, current_user_id
     total_amount = payload.amount + \
         (payload.amount * tax_rate / Decimal("100"))
 
-    obj = LeaseCharge(**payload.model_dump())
-    obj.total_amount = total_amount
-
-    db.add(obj)
     #  Get lease details for notification
     lease = db.query(Lease).filter(
         Lease.id == payload.lease_id,
         Lease.is_deleted == False
     ).first()
+
+    obj = LeaseCharge(**payload.model_dump())
+    obj.total_amount = total_amount
+    obj.payer_id = lease.tenant_id
+    db.add(obj)
 
     if lease:
         notification = Notification(
@@ -380,7 +455,7 @@ def update_lease_charge(
 
     db.commit()
     db.refresh(obj)
-    return obj
+    return get_lease_charge_detail(db, obj.id)
 
 
 def delete_lease_charge(db: Session, charge_id: UUID, org_id: UUID) -> Dict:
@@ -552,16 +627,6 @@ def auto_generate_lease_rent_charges(
     period_end = next_month.replace(day=1) - timedelta(days=1)
 
     rent_code = "RENT"
-    # # 🔹 Fetch RENT charge code dynamically (NO hardcoding)
-    # rent_code = db.query(LeaseChargeCode).filter(
-    #     LeaseChargeCode.org_id == current_user.org_id,
-    #     LeaseChargeCode.is_deleted == False,
-    #     LeaseChargeCode.code.ilike("%RENT%")
-    # ).first()
-
-    # if not rent_code:
-    #     raise HTTPException(
-    #         status_code=400, detail="RENT charge code not configured")
 
     # 🔹 Default tax (optional)
     default_tax = db.query(TaxCode).filter(
@@ -602,12 +667,18 @@ def auto_generate_lease_rent_charges(
 
         # 🔹 If exists → check invoice
         if existing:
-            invoice_item = db.query(Invoice).filter(
-                Invoice.billable_item_id == existing.id,
-                Invoice.billable_item_type == "lease_charge",
-                Invoice.due_date >= date.today(),
-                Invoice.is_deleted == False
-            ).first()
+            invoice_item = (
+                db.query(Invoice)
+                .join(
+                    InvoiceLine, Invoice.id == InvoiceLine.invoice_id
+                )
+                .filter(
+                    InvoiceLine.item_id == existing.id,
+                    InvoiceLine.code == InvoiceType.rent.value,
+                    Invoice.due_date >= date.today(),
+                    Invoice.is_deleted == False
+                ).first()
+            )
 
             if invoice_item:
                 continue  # Already billed → NEVER recreate
@@ -645,14 +716,6 @@ def auto_generate_lease_rent_charges(
 
     db.commit()
 
-    # 🔹 Response with full objects
-    charges = []
-    for cid in created_ids:
-        charge = get_lease_charge_by_id(db, str(cid))
-        if charge:
-            charges.append(charge)
-
     return {
-        "charges": charges,
-        "total": len(charges)
+        "total_charge_created": len(created_ids)
     }

@@ -1,6 +1,6 @@
 # app/crud/leasing_tenants/tenants_crud.py
 from sqlalchemy import and_
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, Optional, List
 import uuid
 from sqlalchemy.dialects.postgresql import JSONB
@@ -8,12 +8,13 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, desc, func, literal, or_, select, case, tuple_
 from uuid import UUID
 from auth_service.app.models.user_organizations import UserOrganization
+from facility_service.app.enum.revenue_enum import InvoiceType
 from facility_service.app.schemas.access_control.user_management_schemas import UserAccountCreate, UserTenantSpace
 from ...crud.access_control.user_management_crud import handle_account_type_update, upsert_user_sites_preserve_primary
 from ...models.space_sites.space_occupancies import OccupantType
 from ...models.space_sites.space_occupancy_events import OccupancyEventType
 from ...crud.space_sites.space_occupancy_crud import log_occupancy_event
-from ...models.financials.invoices import Invoice, PaymentAR
+from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
 from ...models.parking_access.parking_pass import ParkingPass
 from ...models.service_ticket.tickets import Ticket
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
@@ -883,11 +884,17 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> Li
 
     for lease_charge in lease_charges:
         # Find invoices for this lease charge
-        invoices = db.query(Invoice).filter(
-            Invoice.billable_item_type == "lease charge",
-            Invoice.billable_item_id == lease_charge.id,
-            Invoice.is_deleted == False
-        ).all()
+        invoice = (
+            db.query(Invoice)
+            .join(
+                InvoiceLine, Invoice.id == InvoiceLine.invoice_id
+            )
+            .filter(
+                InvoiceLine.item_id == lease_charge.id,
+                InvoiceLine.code == InvoiceType.rent.value,
+                Invoice.is_deleted == False
+            ).first()
+        )
 
         for invoice in invoices:
             # Get payments for this invoice

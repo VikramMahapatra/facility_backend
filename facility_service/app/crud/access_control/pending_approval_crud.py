@@ -83,15 +83,10 @@ def get_all_users_for_approval(
     for user_org in user_orgs:
         user = user_org.user
 
-        roles = (
-            db.query(Roles)
-            .join(Roles.account_types)
-            .filter(
-                Roles.org_id == user_org.org_id,
-                RoleAccountType.account_type == user_org.account_type
-            )
-            .all()
-        )
+        roles = [
+            r for r in user_org.roles
+            if not r.is_deleted
+        ]
 
         role_list = []
         for role in roles:

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
 from ...schemas.leases_schemas import (
-    LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseOut, LeaseCreate, LeaseOverview, LeasePaymentTermCreate, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut,
+    LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseLookup, LeaseOut, LeaseCreate, LeaseOverview, LeasePaymentTermCreate, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut,
 )
 from ...crud.leasing_tenants import leases_crud as crud
 from shared.core.auth import allow_admin, validate_current_token
@@ -66,7 +66,7 @@ def delete_lease(
     return crud.delete(db, lease_id, current_user.org_id)
 
 
-@router.get("/lease-lookup", response_model=List[Lookup])
+@router.get("/lease-lookup", response_model=List[LeaseLookup])
 def lease_lookup(
     site_id: Optional[str] = Query(None),
     building_id: Optional[str] = Query(None),

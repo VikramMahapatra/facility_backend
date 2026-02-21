@@ -7,10 +7,6 @@ from sqlalchemy.orm import relationship
 from shared.core.database import Base
 from sqlalchemy import Sequence
 from sqlalchemy import event
-# -------------------
-# Invoices
-# -------------------
-invoice_seq = Sequence('invoice_number_seq', start=101, increment=1)
 
 
 class Invoice(Base):
@@ -21,10 +17,13 @@ class Invoice(Base):
                           ForeignKey("orgs.id"), nullable=False)
     site_id: UUID = Column(
         UUID(as_uuid=True), ForeignKey("sites.id"), nullable=False)
-    billable_item_type: str = Column(String(16), nullable=False) 
-    billable_item_id: UUID = Column(UUID(as_uuid=True), nullable=False)
+    space_id: UUID = Column(
+        UUID(as_uuid=True), ForeignKey("spaces.id"), nullable=False)
+    user_id: UUID = Column(
+        UUID(as_uuid=True),
+        nullable=False
+    )
     is_paid = Column(Boolean, default=False, nullable=False)
-    
     invoice_no: str = Column(String(64), nullable=False)
     date: Date = Column(Date, nullable=False)
     due_date: Date = Column(Date)
@@ -52,20 +51,23 @@ class Invoice(Base):
     payments = relationship(
         "PaymentAR", back_populates="invoice", cascade="all, delete-orphan")
     site = relationship("Site", backref="invoices")
+    space = relationship("Space", backref="invoices")
 
 # -------------------
 # Invoice Lines
 # -------------------
+
+
 class InvoiceLine(Base):
     __tablename__ = "invoice_lines"
 
     id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     invoice_id: UUID = Column(UUID(as_uuid=True), ForeignKey(
         "invoices.id", ondelete="CASCADE"))
-    code: str = Column(String(32))  # RENT|CAM|ENERGY|SERVICE|ROOM
+    code: str = Column(String(32))  # RENT|MAINTENANCE|WORKORDER
+    item_id: UUID = Column(UUID(as_uuid=True), nullable=False)
     description: str = Column(Text)
-    qty: float = Column(Numeric(14, 3), default=1)
-    price: float = Column(Numeric(14, 2), nullable=False)
+    amount: float = Column(Numeric(14, 2), nullable=False)
     tax_pct: float = Column(Numeric(5, 2), default=0)
 
     # Relationship
@@ -93,13 +95,3 @@ class PaymentAR(Base):
 
     # Relationship
     invoice = relationship("Invoice", back_populates="payments")
-    
-    
-
-@event.listens_for(Invoice, "before_insert")
-def generate_invoice_no(mapper, connection, target):
-    if target.invoice_no:
-        return
-
-    next_val = connection.scalar(invoice_seq.next_value())
-    target.invoice_no = f"INV{next_val}"

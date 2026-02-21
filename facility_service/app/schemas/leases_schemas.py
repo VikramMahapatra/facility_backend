@@ -7,6 +7,34 @@ from pydantic import BaseModel
 from ..schemas.leasing_tenants.lease_charges_schemas import LeaseChargeOut
 from shared.core.schemas import CommonQueryParams
 
+# LEASE PAYMENT TERM
+
+
+class LeasePaymentTermCreate(BaseModel):
+    id: Optional[UUID] = None
+    lease_id: Optional[UUID] = None
+    description: Optional[str] = None
+    reference_no: Optional[str] = None
+    due_date: date
+    amount: Decimal
+    status: Optional[str] = "pending"
+    payment_method: Optional[str] = None
+
+
+class LeasePaymentTermOut(BaseModel):
+    id: UUID
+    lease_id: Optional[UUID] = None
+    description: Optional[str]
+    reference_no: Optional[str]
+    due_date: date
+    amount: float
+    status: str
+    payment_method: Optional[str]
+    paid_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
 
 class LeaseBase(BaseModel):
     org_id: Optional[UUID] = None
@@ -22,20 +50,23 @@ class LeaseBase(BaseModel):
     utilities: Optional[Any] = None
     status: Optional[str] = None
     documents: Optional[Any] = None
+    lease_frequency: Optional[str] = None
     frequency: Optional[str] = None
-    lease_term_months: Optional[int] = None
+    lease_term_duration: Optional[int] = None
 
 
 class LeaseCreate(LeaseBase):
     tenant_id: UUID
     site_id: UUID
     space_id: UUID
-    start_date: date
     auto_move_in: Optional[bool] = False
+    payment_terms: Optional[List[LeasePaymentTermCreate]] = None
 
 
 class LeaseUpdate(LeaseBase):
     id: UUID
+    payment_terms: Optional[List[LeasePaymentTermCreate]] = None
+    pass
 
 
 class LeaseOut(LeaseBase):
@@ -51,8 +82,8 @@ class LeaseOut(LeaseBase):
     building_name: Optional[str] = None  # This must be here
     building_block_id: Optional[UUID] = None  # This must be here
     auto_move_in: bool | None = None
-    derived_frequency: Optional[str] = None
-    model_config = {"from_attributes": True}
+    no_of_installments: Optional[int] = None
+    payment_terms: Optional[List[LeasePaymentTermOut]] = None
 
 
 class LeaseRequest(CommonQueryParams):
@@ -152,33 +183,15 @@ class TenantSpaceDetailOut(BaseModel):
     tenant_data: List[TenantSpaceItemOut]
 
 
-# LEASE PAYMENT TERM
-
-class LeasePaymentTermCreate(BaseModel):
-    id: Optional[UUID] = None
-    lease_id: UUID
-    description: Optional[str] = None
-    reference_no: Optional[str] = None
-    due_date: date
-    amount: Decimal
-    status: Optional[str] = "pending"
-    payment_method: Optional[str] = None
-
-
-class LeasePaymentTermOut(BaseModel):
-    id: UUID
-    lease_id: UUID
-    description: Optional[str]
-    reference_no: Optional[str]
-    due_date: date
-    amount: float
-    status: str
-    payment_method: Optional[str]
-    paid_at: Optional[datetime] = None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
 class LeasePaymentTermRequest(CommonQueryParams):
     lease_id: UUID
+
+
+class LeaseLookup(BaseModel):
+    id: UUID  # accepts both UUID and str
+    name: str
+    tenant_name: str
+    lease_no: str
+
+    class Config:
+        from_attributes = True

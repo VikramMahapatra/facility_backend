@@ -29,7 +29,9 @@ class Lease(Base):
 
     rent_amount = Column(Numeric(14, 2), nullable=True)
     deposit_amount = Column(Numeric(14, 2), nullable=True)
-    frequency = Column(String(16), default="monthly", nullable=True)
+    lease_frequency = Column(String(16), default="monthly", nullable=True)
+    frequency = Column(String(16), default="monthly",
+                       nullable=True)  # rent biling frequency
 
     escalation = Column(JSONB)
     revenue_share = Column(JSONB)
@@ -38,6 +40,7 @@ class Lease(Base):
     utilities = Column(JSONB)
     status = Column(String(16), default="active")
     documents = Column(JSONB)
+    termination_date = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True),
                         server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -50,8 +53,10 @@ class Lease(Base):
         "LeaseCharge", back_populates="lease", cascade="all, delete")
     site = relationship("Site", back_populates="leases")
     space = relationship("Space", back_populates="leases")
-        # ✅ ADD THIS
-    payment_terms = relationship("LeasePaymentTerm",back_populates="lease", cascade="all, delete-orphan")
+    # ✅ ADD THIS
+    payment_terms = relationship(
+        "LeasePaymentTerm", back_populates="lease", cascade="all, delete-orphan")
+
 
 @event.listens_for(Lease, "before_insert")
 def generate_lease_number(mapper, connection, target):

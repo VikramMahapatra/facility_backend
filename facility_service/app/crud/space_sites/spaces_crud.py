@@ -6,9 +6,11 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, cast, or_, case, literal
 from sqlalchemy.dialects.postgresql import UUID
-
+from sqlalchemy.orm import selectinload
 from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.models.financials.tax_codes import TaxCode
+from facility_service.app.models.parking_access.parking_slots import ParkingSlot
+from facility_service.app.models.parking_access.parking_zones import ParkingZone
 from facility_service.app.models.space_sites.maintenance_templates import MaintenanceTemplate
 from ...crud.space_sites.space_occupancy_crud import log_occupancy_event
 from ...models.space_sites.accessories import Accessory
@@ -195,6 +197,26 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
                 "name": acc.name
             })
 
+    # PARKING SLOTS
+    parking_slots_map = {}
+
+    if space_ids:
+        parking_slots = (
+            db.query(
+                ParkingSlot.space_id,
+                ParkingSlot.id
+            )
+            .filter(
+                ParkingSlot.space_id.in_(space_ids),
+                ParkingSlot.is_deleted == False
+            )
+            .all()
+        )
+
+        for slot in parking_slots:
+            parking_slots_map.setdefault(
+                slot.space_id, []).append(str(slot.id))
+
     # BUILD RESPONSE
     results = []
 
@@ -209,7 +231,8 @@ def get_spaces(db: Session, user: UserToken, params: SpaceRequest) -> SpaceListR
             "building_block": building_name,
             "site_name": site_name,
             "maintenance_amount": maintenance_amount,
-            "accessories": accessories_map.get(space.id, [])
+            "accessories": accessories_map.get(space.id, []),
+            "parking_slot_ids": parking_slots_map.get(space.id, [])
         }
 
         results.append(SpaceOut.model_validate(data))
@@ -256,7 +279,7 @@ def create_space(db: Session, space: SpaceCreate):
 
         space.building_block_id = space.building_block_id if space.building_block_id else None
         space_data = space.model_dump(
-            exclude={"building_block", "accessories"})
+            exclude={"building_block", "accessories", "parking_slots"})
         db_space = Space(**space_data)
         db.add(db_space)
         db.flush()
@@ -272,6 +295,12 @@ def create_space(db: Session, space: SpaceCreate):
                 quantity=item.quantity
             )
             db.add(db_accessory)
+
+        manage_parking_slots_of_space(
+            db,
+            space_id=db_space.id,
+            parking_slots=space.parking_slot_ids
+        )
 
         db.commit()
         db.refresh(db_space)
@@ -384,6 +413,12 @@ def update_space(db: Session, space: SpaceUpdate):
                 )
                 db.add(db_accessory)
 
+        manage_parking_slots_of_space(
+            db,
+            space_id=db_space.id,
+            parking_slots=space.parking_slot_ids
+        )
+
         db.commit()
         db.refresh(db_space)
 
@@ -441,6 +476,10 @@ def get_space_details_by_id(
             TaxCode,
             TaxCode.id == MaintenanceTemplate.tax_code_id
         )
+        .options(
+            selectinload(Space.parking_slots)
+            .selectinload(ParkingSlot.zone)
+        )
         .add_columns(
             Building.name.label("building_block_name"),
             Site.name.label("site_name"),
@@ -453,11 +492,6 @@ def get_space_details_by_id(
                 (
                     MaintenanceTemplate.calculation_type == "per_sqft",
                     func.coalesce(Space.area_sqft, 0) *
-                    MaintenanceTemplate.amount
-                ),
-                (
-                    MaintenanceTemplate.calculation_type == "per_bed",
-                    func.coalesce(Space.beds, 0) *
                     MaintenanceTemplate.amount
                 ),
                 else_=None
@@ -502,15 +536,28 @@ def get_space_details_by_id(
         for acc in accessory_items
     ]
 
-    parking_slots = [
+    parking_slots = (
+        db.query(ParkingSlot)
+        .join(ParkingZone, ParkingZone.id == ParkingSlot.zone_id)
+        .filter(
+            ParkingSlot.space_id == space.id,
+            ParkingSlot.is_deleted == False
+        )
+        .all()
+    )
+
+    parking_slot_list = [
         {
             "id": slot.id,
             "slot_no": slot.slot_no,
             "slot_type": slot.slot_type,
-            "zone_id": slot.zone_id
+            "zone_id": slot.zone_id,
+            "zone_name": slot.zone.name
         }
-        for slot in space.parking_slots
+        for slot in parking_slots
     ]
+
+    parking_slot_ids = [slot.id for slot in parking_slots]
 
     data = {
         **space.__dict__,
@@ -519,7 +566,8 @@ def get_space_details_by_id(
         "maintenance_amount": maintenance_amount,
         "accessories": accessories,
         "tax_rate": tax_rate,
-        "parking_slots": parking_slots
+        "parking_slots": parking_slot_list,
+        "parking_slot_ids": parking_slot_ids
     }
 
     return SpaceOut.model_validate(data)
@@ -1375,4 +1423,60 @@ def update_space_owner_approval(
             message=str(e),
             status_code=str(AppStatusCode.OPERATION_ERROR),
             http_status=400
+        )
+
+
+def manage_parking_slots_of_space(
+    db: Session,
+    space_id,
+    parking_slots: Optional[List[str]]
+):
+
+    # None = do nothing
+    if parking_slots is None:
+        return
+
+    # Incoming slot ids
+    incoming_slot_ids = set(map(str, parking_slots))
+
+    # Fetch existing slots mapped to this space
+    existing_slots = (
+        db.query(ParkingSlot)
+        .filter(
+            ParkingSlot.space_id == space_id,
+            ParkingSlot.is_deleted == False
+        )
+        .all()
+    )
+
+    existing_slot_ids = {str(slot.id) for slot in existing_slots}
+
+    # Find differences
+    slots_to_add = incoming_slot_ids - existing_slot_ids
+    slots_to_remove = existing_slot_ids - incoming_slot_ids
+
+    # -----------------------------
+    # REMOVE slots
+    # -----------------------------
+    if slots_to_remove:
+        (
+            db.query(ParkingSlot)
+            .filter(ParkingSlot.id.in_(slots_to_remove))
+            .update(
+                {"space_id": None},
+                synchronize_session=False
+            )
+        )
+
+    # -----------------------------
+    # ADD slots
+    # -----------------------------
+    if slots_to_add:
+        (
+            db.query(ParkingSlot)
+            .filter(ParkingSlot.id.in_(slots_to_add))
+            .update(
+                {"space_id": space_id},
+                synchronize_session=False
+            )
         )

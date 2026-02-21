@@ -60,7 +60,7 @@ def approve_move_in(move_in_id: UUID, db: Session = Depends(get_db)):
     return crud.reject_move_in(db, move_in_id)
 
 
-@router.post("/move_out_request")
+@router.post("/move-out-request")
 def move_out_request(
     params: SpaceMoveOutRequest,
     db: Session = Depends(get_db),

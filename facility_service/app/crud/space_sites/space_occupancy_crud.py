@@ -1,5 +1,5 @@
 # services/space_occupancy_service.py
-from datetime import datetime, timezone, date
+from datetime import datetime, time, timezone, date
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -9,14 +9,16 @@ from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.space_sites.buildings import Building
 from facility_service.app.models.space_sites.sites import Site
 from facility_service.app.models.space_sites.space_handover import HandoverStatus, SpaceHandover
+from facility_service.app.models.space_sites.space_inspections import SpaceInspection
+from shared.core.schemas import UserToken
 from shared.utils.app_status_code import AppStatusCode
-from shared.utils.enums import OwnershipStatus
+from shared.utils.enums import OwnershipStatus, UserAccountType
 
 from ...models.space_sites.space_occupancy_events import OccupancyEventType, SpaceOccupancyEvent
 from ...models.space_sites.spaces import Space
 from shared.helpers.json_response_helper import error_response, success_response
 
-from ...schemas.space_sites.space_occupany_schemas import MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, SpaceMoveOutRequest, SpaceOccupancyRequestOut
+from ...schemas.space_sites.space_occupany_schemas import HandoverCreate, InspectionCreate, MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, SpaceMoveOutRequest, SpaceOccupancyRequestOut
 from shared.models.users import Users
 
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
@@ -30,62 +32,136 @@ from sqlalchemy import or_
 def get_current_occupancy(db: Session, auth_db: Session, space_id: UUID):
     today = date.today()
 
-    # ---------------------------
-    # 1️⃣ Current active occupancy
-    # ---------------------------
+    # --------------------------------------------------
+    # 1️⃣ Get latest move-in (current or past)
+    # --------------------------------------------------
     occ = (
         db.query(SpaceOccupancy)
         .filter(
             SpaceOccupancy.space_id == space_id,
-            SpaceOccupancy.status == "active",
-            SpaceOccupancy.move_in_date <= today,  # Already started
-            or_(
-                SpaceOccupancy.move_out_date == None,
-                SpaceOccupancy.move_out_date > today  # Not yet moved out
-            )
+            SpaceOccupancy.request_type == RequestType.move_in,
+            SpaceOccupancy.status == OccupancyStatus.active
         )
+        .order_by(SpaceOccupancy.move_in_date.desc())
         .first()
     )
 
-    # If no current occupant
     if not occ:
-        current_occupancy = {"status": "vacant"}
-    else:
         current_occupancy = {
-            "status": "occupied",
+            "status": "vacant",
+            "can_request_move_in": True,
+            "can_request_move_out": False
+        }
+    else:
+        move_out = (
+            db.query(SpaceOccupancy)
+            .filter(
+                SpaceOccupancy.space_id == space_id,
+                SpaceOccupancy.request_type == RequestType.move_out,
+                SpaceOccupancy.status.in_(
+                    [OccupancyStatus.scheduled, OccupancyStatus.active]
+                )
+            )
+            .order_by(SpaceOccupancy.move_out_date.desc())
+            .first()
+        )
+
+        # Latest handover
+        handover = (
+            db.query(SpaceHandover)
+            .filter(SpaceHandover.occupancy_id == occ.id)
+            .order_by(SpaceHandover.handover_date.desc())
+            .first()
+        )
+
+        handover_completed = (
+            handover and handover.status == HandoverStatus.completed
+        )
+
+        # --------------------------------------------------
+        # STATUS ENGINE
+        # --------------------------------------------------
+
+        if not move_out:
+            status = "occupied"
+
+        elif move_out.move_out_date > today:
+            status = "move_out_scheduled"
+
+        elif not handover_completed:
+            status = "handover_awaited"
+
+        else:
+            status = "recently_vacated"
+
+        # --------------------------------------------------
+        # Build response
+        # --------------------------------------------------
+
+        current_occupancy = {
+            "status": status,
             "occupant_type": occ.occupant_type,
             "occupant_name": get_user_name(auth_db, occ.occupant_user_id),
             "move_in_date": occ.move_in_date,
-            "move_out_date": occ.move_out_date,
+            "move_out_date": move_out.move_out_date if move_out else None,
             "time_slot": occ.time_slot,
-            "heavy_items": occ.heavy_items,
-            "elevator_required": occ.elevator_required,
-            "parking_required": occ.parking_required,
-            "reference_no": str(occ.source_id) if occ.source_id else None,
         }
 
-        # Check if a handover exists for this occupancy
-        handover = db.query(SpaceHandover).filter(
-            SpaceHandover.occupancy_id == occ.id
-        ).order_by(SpaceHandover.handover_date.desc()).first()
-
+        # Handover details
         if handover:
             current_occupancy["handover"] = {
                 "handover_date": handover.handover_date,
                 "handover_by": get_user_name(auth_db, handover.handover_by_user_id),
-                "handover_to": get_user_name(auth_db, handover.handover_to_user_id) if handover.handover_to_user_id else None,
-                "condition_notes": handover.condition_notes,
+                "handover_to": get_user_name(auth_db, handover.handover_to_user_id)
+                if handover.handover_to_user_id else None,
+                "condition_notes": handover.remarks,
+                "status": handover.status,
+                "keys_returned": handover.keys_returned,
+                "damage_checked": handover.damage_checked,
+                "accessories_returned": handover.accessories_returned,
             }
 
-    # ---------------------------
+        # --------------------------------------------------
+        # Action permissions
+        # --------------------------------------------------
+
+        existing_move_in_request = db.query(SpaceOccupancy).filter(
+            SpaceOccupancy.space_id == space_id,
+            SpaceOccupancy.request_type == RequestType.move_in,
+            SpaceOccupancy.status.in_(
+                [OccupancyStatus.pending, OccupancyStatus.active]
+            )
+        ).first()
+
+        existing_move_out_request = db.query(SpaceOccupancy).filter(
+            SpaceOccupancy.space_id == space_id,
+            SpaceOccupancy.request_type == RequestType.move_out,
+            SpaceOccupancy.status.in_(
+                [OccupancyStatus.pending, OccupancyStatus.active]
+            )
+        ).first()
+
+        current_occupancy["can_request_move_in"] = (
+            existing_move_in_request is None
+            or status in ["vacant", "recently_vacated"]
+        )
+
+        current_occupancy["can_request_move_out"] = (
+            status == "occupied"
+            and existing_move_out_request is None
+        )
+
+    # --------------------------------------------------
     # 2️⃣ Upcoming move-ins
-    # ---------------------------
+    # --------------------------------------------------
+
     upcoming = (
         db.query(SpaceOccupancy)
         .filter(
             SpaceOccupancy.space_id == space_id,
-            SpaceOccupancy.status == "active",
-            SpaceOccupancy.move_in_date > today,  # Future move-ins
+            SpaceOccupancy.request_type == RequestType.move_in,
+            SpaceOccupancy.status == OccupancyStatus.active,
+            SpaceOccupancy.move_in_date > today
         )
         .order_by(SpaceOccupancy.move_in_date.asc())
         .all()
@@ -106,9 +182,10 @@ def get_current_occupancy(db: Session, auth_db: Session, space_id: UUID):
         for u in upcoming
     ]
 
-    # ---------------------------
-    # 3️⃣ Occupancy history
-    # ---------------------------
+    # --------------------------------------------------
+    # 3️⃣ History
+    # --------------------------------------------------
+
     history = get_occupancy_timeline(db, auth_db, space_id)
 
     return {
@@ -116,182 +193,6 @@ def get_current_occupancy(db: Session, auth_db: Session, space_id: UUID):
         "upcoming": upcoming_list,
         "history": history
     }
-
-
-def move_in(
-    db: Session,
-    user_id: UUID,
-    params: MoveInRequest
-):
-    try:
-        # 1️⃣ Check if space already occupied
-        active = (
-            db.query(SpaceOccupancy)
-            .filter(
-                SpaceOccupancy.space_id == params.space_id,
-                SpaceOccupancy.status == OccupancyStatus.active
-            )
-            .first()
-        )
-
-        if active:
-            return error_response(message="Space is already occupied")
-
-        if params.occupant_type == "tenant":
-            if not params.tenant_id:
-                params.tenant_id = (
-                    db.query(Tenant.id)
-                    .filter(
-                        Tenant.user_id == user_id,
-                        SpaceOccupancy.status == OccupancyStatus.active
-                    )
-                    .first()
-                )
-
-            if params.tenant_id and not params.lease_id:
-                params.lease_id = (
-                    db.query(Lease.id)
-                    .filter(
-                        Lease.space_id == params.space_id,
-                        Lease.tenant_id == params.tenant_id,
-                        Lease.status == "active",
-                        Lease.is_deleted == False
-                    )
-                    .first()
-                )
-
-        # 2️⃣ Create occupancy
-        occ = SpaceOccupancy(
-            space_id=params.space_id,
-            occupant_type=params.occupant_type,
-            occupant_user_id=params.occupant_user_id,
-            lease_id=params.lease_id,
-            source_id=params.tenant_id,
-            move_in_date=params.move_in_date,
-            heavy_items=params.heavy_items,
-            elevator_required=params.elevator_required,
-            parking_required=params.parking_required,
-            status=params.status,
-            request_type=RequestType.move_in
-        )
-
-        db.add(occ)
-
-        # 3️⃣ Optional: sync related tables
-        db.query(Space).filter(
-            Space.id == params.space_id,
-        ).update({
-            "status": "occupied"
-        })
-
-        log_occupancy_event(
-            db,
-            space_id=params.space_id,
-            event_type=OccupancyEventType.moved_in,
-            occupant_type=params.occupant_type,
-            occupant_user_id=params.occupant_user_id,
-            source_id=params.tenant_id,
-            lease_id=params.lease_id
-        )
-
-        db.commit()
-        db.refresh(occ)
-
-        return occ
-    except Exception as e:
-        # ✅ ROLLBACK everything if any error occurs
-        db.rollback()
-        return error_response(
-            message=str(e),
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=400
-        )
-
-
-def move_out(db: Session, params: MoveOutRequest):
-    try:
-        now = datetime.now(timezone.utc)
-        occ = db.query(SpaceOccupancy).filter(
-            SpaceOccupancy.space_id == params.space_id,
-            SpaceOccupancy.status == "active"
-        ).first()
-
-        if not occ:
-            return error_response(message="Space already vacant")
-
-        occ.status = "moved_out"
-        occ.move_out_date = func.now()
-
-        db.query(Space).filter(
-            Space.id == params.space_id,
-        ).update({
-            "status": "available"
-        })
-
-        # 3️⃣ Create handover record
-        handover = SpaceHandover(
-            occupancy_id=occ.id,
-            handover_by=occ.occupant_user_id,
-            keys_returned=params.keys_returned,
-            accessories_returned=params.accessories_returned,
-            damage_checked=params.damage_checked,
-            remarks=params.remarks,
-            status=HandoverStatus.completed
-            if (
-                params.keys_returned
-                and params.damage_checked
-                and params.accessories_returned
-            )
-            else HandoverStatus.pending
-        )
-
-        db.add(handover)
-
-        if occ.occupant_type == OccupantType.tenant:
-            # End active lease
-            lease = db.query(Lease).filter(
-                Lease.id == occ.lease_id,
-                Lease.is_deleted == False,
-                Lease.status == "active"
-            ).first()
-
-            if lease:
-                lease.status = "terminated"   # or "terminated"
-                lease.termination_date = now
-                lease.end_date = now
-
-            # End tenant-space mapping
-            db.query(TenantSpace).join(
-                Tenant, Tenant.id == TenantSpace.tenant_id, Tenant.is_deleted == False
-            ).filter(
-                TenantSpace.space_id == params.space_id,
-                Tenant.user_id == occ.occupant_user_id,
-                TenantSpace.is_deleted == False,
-                TenantSpace.status == OwnershipStatus.leased
-            ).update({
-                "status": OwnershipStatus.ended,
-                "updated_at": now
-            })
-
-        log_occupancy_event(
-            db,
-            space_id=params.space_id,
-            event_type=OccupancyEventType.moved_out,
-            occupant_type=occ.occupant_type,
-            occupant_user_id=occ.occupant_user_id,
-            source_id=occ.source_id,
-            lease_id=occ.lease_id
-        )
-
-        db.commit()
-    except Exception as e:
-        # ✅ ROLLBACK everything if any error occurs
-        db.rollback()
-        return error_response(
-            message=str(e),
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=400
-        )
 
 
 def get_occupancy_history(db: Session, space_id: UUID):
@@ -449,7 +350,107 @@ def get_space_occupancy_requests(
     return {"requests": result, "total": total}
 
 
+def move_in(
+    db: Session,
+    current_user: UserToken,
+    params: MoveInRequest
+):
+    try:
+        # Check if space already occupied
+        active = (
+            db.query(SpaceOccupancy)
+            .filter(
+                SpaceOccupancy.space_id == params.space_id,
+                SpaceOccupancy.status == OccupancyStatus.active
+            )
+            .first()
+        )
+
+        if active:
+            return error_response(message="Space is already occupied")
+
+        if current_user.account_type != UserAccountType.ORGANIZATION.value:
+            params.occupant_user_id = current_user.id
+
+        if params.occupant_type == "tenant":
+            if not params.tenant_id:
+                params.tenant_id = (
+                    db.query(Tenant.id)
+                    .filter(
+                        Tenant.user_id == current_user.user_id,
+                        SpaceOccupancy.status == OccupancyStatus.active
+                    )
+                    .first()
+                )
+
+            if params.tenant_id and not params.lease_id:
+                lease = (
+                    db.query(Lease.id)
+                    .filter(
+                        Lease.space_id == params.space_id,
+                        Lease.tenant_id == params.tenant_id,
+                        Lease.status == "active",
+                        Lease.is_deleted == False
+                    )
+                    .first()
+                )
+                params.lease_id = lease.id
+
+                if lease.start_date:
+                    if params.move_in_date < lease.start_date:
+                        return error_response(
+                            message=f"Move-in date must be on or after lease start date ({lease.end_date})"
+                        )
+                    if params.move_in_date.date() > lease.end_date:
+                        return error_response(
+                            message=f"Move-in date cannot exceed lease end date({lease.end_date})"
+                        )
+
+        # Create occupancy
+        occ = SpaceOccupancy(
+            space_id=params.space_id,
+            occupant_type=params.occupant_type,
+            occupant_user_id=params.occupant_user_id,
+            lease_id=params.lease_id,
+            source_id=params.tenant_id,
+            move_in_date=params.move_in_date,
+            heavy_items=params.heavy_items,
+            elevator_required=params.elevator_required,
+            parking_required=params.parking_required,
+            request_type=RequestType.move_in,
+            status=OccupancyStatus.pending
+        )
+
+        db.add(occ)
+
+        log_occupancy_event(
+            db,
+            space_id=params.space_id,
+            event_type=OccupancyEventType.moved_in_requested,
+            occupant_type=params.occupant_type,
+            occupant_user_id=params.occupant_user_id,
+            source_id=params.tenant_id,
+            lease_id=params.lease_id
+        )
+
+        db.commit()
+        db.refresh(occ)
+
+        if current_user.account_type == UserAccountType.ORGANIZATION.value:
+            approve_move_in(db, occ.id)
+
+        return occ
+    except Exception as e:
+        db.rollback()
+        return error_response(
+            message=str(e),
+            status_code=str(AppStatusCode.OPERATION_ERROR),
+            http_status=400
+        )
+
+
 def approve_move_in(db: Session, move_in_id: UUID):
+    today = datetime.combine(date.today(), time.min)
     move_in_request = db.query(SpaceOccupancy).filter(
         SpaceOccupancy.id == move_in_id,
         SpaceOccupancy.status == OccupancyStatus.pending,
@@ -459,10 +460,28 @@ def approve_move_in(db: Session, move_in_id: UUID):
     if not move_in_request:
         raise Exception("Move-in request not found or already processed")
 
+    if move_in_request.move_in_date <= today:
+        occ_status = OccupancyStatus.active
+        occ_event = OccupancyEventType.moved_in
+    else:
+        occ_status = OccupancyStatus.scheduled
+        occ_event = OccupancyEventType.moved_in_scheduled
+
     # Activate move-in
-    move_in_request.status = OccupancyStatus.active
+    move_in_request.status = occ_status
     db.commit()
     db.refresh(move_in_request)
+
+    log_occupancy_event(
+        db,
+        space_id=move_in_request.space_id,
+        event_type=occ_event,
+        occupant_type=move_in_request.occupant_type,
+        occupant_user_id=move_in_request.occupant_user_id,
+        source_id=move_in_request.source_id,
+        lease_id=move_in_request.lease_id
+    )
+
     return move_in_request
 
 
@@ -479,23 +498,32 @@ def reject_move_in(db: Session, move_in_id: UUID):
     move_in_request.status = OccupancyStatus.rejected
     db.commit()
     db.refresh(move_in_request)
+
+    log_occupancy_event(
+        db,
+        space_id=move_in_request.space_id,
+        event_type=OccupancyEventType.moved_in_rejected,
+        occupant_type=move_in_request.occupant_type,
+        occupant_user_id=move_in_request.occupant_user_id,
+        source_id=move_in_request.source_id,
+        lease_id=move_in_request.lease_id
+    )
+
     return move_in_request
 
 
 def request_move_out(
     db: Session,
-    user_id: UUID,
+    current_user: UserToken,
     params: SpaceMoveOutRequest
 ):
-
     # -------------------------------------------------
-    # 1️⃣ Find ACTIVE occupancy automatically
+    # Find ACTIVE occupancy automatically
     # -------------------------------------------------
     move_in = (
         db.query(SpaceOccupancy)
         .filter(
             SpaceOccupancy.space_id == params.space_id,
-            SpaceOccupancy.occupant_user_id == user_id,
             SpaceOccupancy.status == OccupancyStatus.active,
             SpaceOccupancy.request_type == RequestType.move_in
         )
@@ -503,15 +531,15 @@ def request_move_out(
     )
 
     if not move_in:
-        raise Exception("Active occupancy not found")
+        return error_response(message="Active occupancy not found")
 
     # -------------------------------------------------
-    # 2️⃣ Prevent duplicate move-out requests
+    #  Prevent duplicate move-out requests
     # -------------------------------------------------
     existing_request = (
         db.query(SpaceOccupancy)
         .filter(
-            SpaceOccupancy.original_occupancy_id == params.move_in.id,
+            SpaceOccupancy.original_occupancy_id == move_in.id,
             SpaceOccupancy.request_type == RequestType.move_out,
             SpaceOccupancy.status == OccupancyStatus.pending
         )
@@ -519,7 +547,29 @@ def request_move_out(
     )
 
     if existing_request:
-        raise Exception("Move-out already requested")
+        return error_response(message="Move-out already requested")
+
+    # validate lease end date
+    lease = None
+    if move_in.lease_id:
+        lease = (
+            db.query(Lease)
+            .filter(
+                Lease.id == move_in.lease_id,
+                Lease.is_deleted == False
+            )
+            .first()
+        )
+
+    if lease and lease.end_date:
+        if params.move_out_date.date() > lease.end_date:
+            return error_response(
+                message=f"Move-out date cannot exceed lease end date({lease.end_date})"
+            )
+        elif params.move_out_date.date() < lease.start_date:
+            return error_response(
+                message=f"Move-out date cannot be before lease start date({lease.start_date})"
+            )
 
     # -------------------------------------------------
     # 3️⃣ Create move-out request
@@ -549,6 +599,19 @@ def request_move_out(
     db.commit()
     db.refresh(move_out_request)
 
+    log_occupancy_event(
+        db,
+        space_id=move_out_request.space_id,
+        event_type=OccupancyEventType.moved_out_requested,
+        occupant_type=move_out_request.occupant_type,
+        occupant_user_id=move_out_request.occupant_user_id,
+        source_id=move_out_request.source_id,
+        lease_id=move_out_request.lease_id
+    )
+
+    if current_user.account_type == UserAccountType.ORGANIZATION.value:
+        approve_move_out(db, move_out_request.id)
+
     return move_out_request
 
 
@@ -565,10 +628,22 @@ def reject_move_out(db: Session, move_out_id: UUID):
     move_out_request.status = OccupancyStatus.rejected
     db.commit()
     db.refresh(move_out_request)
+
+    log_occupancy_event(
+        db,
+        space_id=move_out_request.space_id,
+        event_type=OccupancyEventType.moved_out_rejected,
+        occupant_type=move_out_request.occupant_type,
+        occupant_user_id=move_out_request.occupant_user_id,
+        source_id=move_out_request.source_id,
+        lease_id=move_out_request.lease_id
+    )
+
     return move_out_request
 
 
 def approve_move_out(db: Session, move_out_id: UUID, admin_user_id: UUID):
+    today = datetime.combine(date.today(), time.min)
     move_out = db.query(SpaceOccupancy).filter(
         SpaceOccupancy.id == move_out_id,
         SpaceOccupancy.status == OccupancyStatus.pending,
@@ -577,8 +652,25 @@ def approve_move_out(db: Session, move_out_id: UUID, admin_user_id: UUID):
     if not move_out:
         raise Exception("Move-out request not found")
 
-    move_out.status = OccupancyStatus.active  # approved
+    if move_out.move_out_date <= today:
+        occ_status = OccupancyStatus.active
+        occ_event = OccupancyEventType.moved_out
+    else:
+        occ_status = OccupancyStatus.scheduled
+        occ_event = OccupancyEventType.moved_out_scheduled
+
+    move_out.status = occ_status
     db.commit()
+
+    log_occupancy_event(
+        db,
+        space_id=move_out.space_id,
+        event_type=occ_event,
+        occupant_type=move_out.occupant_type,
+        occupant_user_id=move_out.occupant_user_id,
+        source_id=move_out.source_id,
+        lease_id=move_out.lease_id
+    )
 
     # If move-out date <= today, create handover
     if move_out.move_out_date and move_out.move_out_date <= date.today():
@@ -595,24 +687,50 @@ def approve_move_out(db: Session, move_out_id: UUID, admin_user_id: UUID):
     return move_out
 
 
+def create_handover(db: Session, current_user: UserToken, payload: HandoverCreate):
+    existing = db.query(SpaceHandover).filter(
+        SpaceHandover.occupancy_id == payload.occupancy_id,
+        SpaceHandover.status == HandoverStatus.pending
+    ).first()
+
+    if existing:
+        raise HTTPException(400, "Handover already started")
+
+    handover = SpaceHandover(
+        occupancy_id=payload.occupancy_id,
+        handover_by_user_id=current_user.id,
+        **payload.model_dump(exclude={"occupancy_id"})
+    )
+
+    db.add(handover)
+    db.commit()
+    db.refresh(handover)
+
+    return handover
+
+
 def complete_handover(
     db: Session,
     handover_id: UUID,
-    keys_returned=False,
-    accessories_returned=False,
-    damage_checked=False,
-    remarks: str | None = None
 ):
-
     handover = db.query(SpaceHandover).filter(
         SpaceHandover.id == handover_id).first()
     if not handover:
         raise Exception("Handover not found")
 
-    handover.keys_returned = keys_returned
-    handover.accessories_returned = accessories_returned
-    handover.damage_checked = damage_checked
-    handover.remarks = remarks
+    if not handover:
+        raise HTTPException(404, "Handover not found")
+
+    if not handover.inspection_completed:
+        raise HTTPException(400, "Inspection required")
+
+    if not handover.keys_returned:
+        raise HTTPException(400, "Keys not returned")
+
+    if not handover.accessories_returned:
+        raise HTTPException(400, "Accessories not returned")
+
+    handover.status = HandoverStatus.completed
     db.commit()
 
     # Update original move-in record to moved_out
@@ -627,6 +745,20 @@ def complete_handover(
             db.commit()
     return handover
 
+
+def create_inspection(db: Session, payload: InspectionCreate):
+    inspection = SpaceInspection(**payload.model_dump())
+    db.add(inspection)
+
+    handover = db.query(SpaceHandover).get(payload.handover_id)
+    handover.damaged_checked = True
+
+    db.commit()
+    db.refresh(inspection)
+    return inspection
+
+
+# VALIDATION METHODS
 
 def validate_space_available_for_assignment(db: Session, space_id: UUID):
 

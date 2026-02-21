@@ -961,24 +961,17 @@ def apply_tax(amount: Decimal, tax_code: TaxCode | None) -> tuple[Decimal, Decim
 
 def generate_maintenance_no(db: Session, org_id: UUID):
 
-    last_number = (
-        db.query(
-            func.max(
-                cast(
-                    func.replace(
-                        OwnerMaintenanceCharge.maintenance_no,
-                        "MNT",
-                        ""
-                    ),
-                    Integer
-                )
-            )
-        )
-        .filter(OwnerMaintenanceCharge.org_id == org_id)
-        .with_for_update()
-        .scalar()
-    )
+    last_row = db.query(OwnerMaintenanceCharge).filter(
+        OwnerMaintenanceCharge.org_id == org_id
+    ).order_by(
+        OwnerMaintenanceCharge.created_at.desc()
+    ).with_for_update().first()
 
-    next_number = (last_number or 100) + 1
+    # then calculate the new maintenance_no in Python
+    if last_row:
+        last_no = int(last_row.maintenance_no.replace("MNT-", ""))
+        new_no = last_no + 1
+    else:
+        new_no = 1
 
-    return f"MNT{next_number}"
+    return f"MNT-{new_no}"

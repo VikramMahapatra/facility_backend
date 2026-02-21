@@ -59,7 +59,6 @@ class LeaseCreate(LeaseBase):
     tenant_id: UUID
     site_id: UUID
     space_id: UUID
-    start_date: date
     auto_move_in: Optional[bool] = False
     payment_terms: Optional[List[LeasePaymentTermCreate]] = None
 

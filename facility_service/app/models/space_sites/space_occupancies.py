@@ -16,8 +16,9 @@ class OccupantType(str, PyEnum):
 
 
 class OccupancyStatus(str, PyEnum):
-    pending = "pending"
-    active = "active"
+    pending = "pending"       # waiting approval
+    scheduled = "scheduled"   # approved but future move-in
+    active = "active"         # currently occupying
     moved_out = "moved_out"
     rejected = "rejected"
 

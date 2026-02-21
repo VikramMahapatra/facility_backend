@@ -780,19 +780,23 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
     # WORK ORDER
     # ---------------------------
     elif code == "work_order":
-        work_orders = db.query(TicketWorkOrder).filter(
-            TicketWorkOrder.is_deleted == False,
-            TicketWorkOrder.space.has(id=space_id),
-            ~TicketWorkOrder.id.in_(
-                db.query(InvoiceLine.item_id).join(Invoice)
-                .filter(
-                    Invoice.space_id == space_id,
-                    InvoiceLine.code == "work_order",
-                    Invoice.status.notin_(["void", "paid"]),
-                    Invoice.is_deleted == False,
+        work_orders = (
+            db.query(TicketWorkOrder)
+            .join(Ticket, Ticket.id == TicketWorkOrder.ticket_id)
+            .filter(
+                TicketWorkOrder.is_deleted == False,
+                Ticket.space_id == space_id,
+                ~TicketWorkOrder.id.in_(
+                    db.query(InvoiceLine.item_id).join(Invoice)
+                    .filter(
+                        Invoice.space_id == space_id,
+                        InvoiceLine.code == "work_order",
+                        Invoice.status.notin_(["void", "paid"]),
+                        Invoice.is_deleted == False,
+                    )
                 )
-            )
-        ).all()
+            ).all()
+        )
 
         for wo in work_orders:
             cust_id = wo.bill_to_id
@@ -991,7 +995,7 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
     item_type = params.billable_item_type.lower().strip()
     item_id = params.billable_item_id
 
-    if item_type == InvoiceType.work_order:
+    if item_type == InvoiceType.work_order.value:
         # Get work order
         work_order = db.query(TicketWorkOrder).filter(
             TicketWorkOrder.id == item_id,
@@ -1010,7 +1014,7 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
         tax = Decimal('0.00')
         grand_total = subtotal + tax
 
-    elif item_type == InvoiceType.rent:
+    elif item_type == InvoiceType.rent.value:
         # Get lease
         lease = (
             db.query(Lease)
@@ -1029,7 +1033,7 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
         tax = Decimal('0')
         grand_total = subtotal
 
-    elif item_type == InvoiceType.owner_maintenance:
+    elif item_type == InvoiceType.owner_maintenance.value:
         maintenance = db.query(OwnerMaintenanceCharge).filter(
             OwnerMaintenanceCharge.id == item_id,
             OwnerMaintenanceCharge.is_deleted == False
@@ -1046,7 +1050,7 @@ def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[
 
         tax = Decimal("0.00")  # GST can be added later
         grand_total = subtotal + tax
-    elif item_type == InvoiceType.parking_pass:
+    elif item_type == InvoiceType.parking_pass.value:
         parking_pass = db.query(ParkingPass).filter(
             ParkingPass.id == item_id,
             ParkingPass.is_deleted == False

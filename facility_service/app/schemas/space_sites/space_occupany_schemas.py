@@ -91,10 +91,22 @@ class HandoverUpdate(BaseModel):
     status: HandoverStatus | None = None
 
 
-class InspectionCreate(BaseModel):
+class InspectionComplete(BaseModel):
     handover_id: UUID
     walls_condition: str
     flooring_condition: str
     electrical_condition: str
+    plumbing_condition: str
+    damage_notes: str
     damage_found: bool
     remarks: str | None = None
+
+
+class HandoverReturnItemRequest(BaseModel):
+    item: str
+
+
+class InspectionItemCreate(BaseModel):
+    item_name: str
+    condition: str
+    remarks: Optional[str]

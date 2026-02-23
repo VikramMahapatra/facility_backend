@@ -20,6 +20,7 @@ from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType
 from shared.core.database import AuthSessionLocal
 from shared.helpers.json_response_helper import error_response, success_response
+from shared.helpers.user_helper import get_user_name
 from shared.models.users import Users
 
 from ...enum.revenue_enum import InvoicePayementMethod, InvoiceType
@@ -1627,12 +1628,3 @@ def generate_invoice_number(db: Session, org_id: UUID):
         invoice_no = f"INV-{next_number}"
 
     return invoice_no
-
-
-def get_user_name(user_id: UUID):
-    auth_db = AuthSessionLocal()
-    try:
-        user = auth_db.query(Users).filter(Users.id == user_id).first()
-        return user.full_name if user else None
-    finally:
-        auth_db.close()

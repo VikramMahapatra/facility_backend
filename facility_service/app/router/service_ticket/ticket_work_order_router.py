@@ -9,7 +9,7 @@ from shared.core.schemas import Lookup
 
 from ...schemas.service_ticket.ticket_work_order_schemas import (
     TicketWorkOrderCreate,
-    TicketWorkOrderUpdate, 
+    TicketWorkOrderUpdate,
     TicketWorkOrderOut,
     TicketWorkOrderRequest,
     TicketWorkOrderListResponse,
@@ -24,22 +24,16 @@ router = APIRouter(
 )
 
 
-
 # ---------------- Create ----------------
 @router.post("/", response_model=TicketWorkOrderOut)
 def create_ticket_work_order_endpoint(
-    work_order:TicketWorkOrderCreate,
+    work_order: TicketWorkOrderCreate,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     """Create a new work order from a ticket"""
-    return crud.create_ticket_work_order(db,auth_db, work_order, current_user)
-
-
-
-
-
+    return crud.create_ticket_work_order(db, auth_db, work_order, current_user)
 
 
 # ---------------- Get All (with filters) ----------------
@@ -78,6 +72,7 @@ def get_ticket_work_orders_overview_endpoint(
         site_id=site_id
     )
 
+
 @router.get("/filter-status-lookup", response_model=List[Lookup])
 def ticket_work_orders_filter_status_lookup_endpoint(
     db: Session = Depends(get_db),
@@ -85,6 +80,8 @@ def ticket_work_orders_filter_status_lookup_endpoint(
 ):
     return crud.ticket_work_orders_filter_status_lookup(db, current_user.org_id)
 # ---------------- Get By ID ----------------
+
+
 @router.get("/{work_order_id}", response_model=TicketWorkOrderOut)
 def get_ticket_work_order_by_id_endpoint(
     work_order_id: UUID = Path(..., description="Work Order ID (UUID)"),
@@ -100,9 +97,6 @@ def get_ticket_work_order_by_id_endpoint(
     return work_order
 
 
-
-
-
 # ---------------- Update ----------------
 @router.put("/", response_model=TicketWorkOrderOut)  # No ID in path
 def update_ticket_work_order_endpoint(
@@ -115,7 +109,7 @@ def update_ticket_work_order_endpoint(
     Update a ticket work order
     """
     return crud.update_ticket_work_order(
-        db=db, 
+        db=db,
         auth_db=auth_db,
         work_order_update=work_order_update,
         org_id=current_user.org_id
@@ -135,9 +129,6 @@ def delete_ticket_work_order_endpoint(
     return crud.delete_ticket_work_order_soft(db, work_order_id)
 
 
-
-
-
 # ---------------- Status Lookup ----------------
 @router.get("/lookup/status", response_model=List[Lookup])
 def ticket_work_order_status_lookup_endpoint(
@@ -145,7 +136,6 @@ def ticket_work_order_status_lookup_endpoint(
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.ticket_work_order_status_lookup(db, current_user.org_id)
-
 
 
 @router.get("/lookup/tickets", response_model=List[Lookup])
@@ -158,9 +148,6 @@ def ticket_lookup_for_work_orders_endpoint(
     Shows all open/in-progress tickets
     """
     return crud.ticket_lookup_for_work_orders(db, current_user.org_id)
-
-
-
 
 
 # ---------------- Site Lookup ----------------
@@ -194,4 +181,4 @@ def read_ticket_assignments(
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_names_for_ticket_id(db=db,auth_db=auth_db, ticket_id=ticket_id)
+    return crud.get_names_for_ticket_id(db=db, auth_db=auth_db, ticket_id=ticket_id)

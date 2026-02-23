@@ -1,15 +1,18 @@
 # services/space_occupancy_service.py
 from datetime import datetime, time, timezone, date
+import shutil
+from typing import List
+import uuid
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from uuid import UUID
 
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.space_sites.buildings import Building
 from facility_service.app.models.space_sites.sites import Site
 from facility_service.app.models.space_sites.space_handover import HandoverStatus, SpaceHandover
-from facility_service.app.models.space_sites.space_inspections import SpaceInspection
+from facility_service.app.models.space_sites.space_inspections import SpaceInspection, SpaceInspectionImage, SpaceInspectionItem
 from shared.core.schemas import UserToken
 from shared.utils.app_status_code import AppStatusCode
 from shared.utils.enums import OwnershipStatus, UserAccountType
@@ -18,7 +21,7 @@ from ...models.space_sites.space_occupancy_events import OccupancyEventType, Spa
 from ...models.space_sites.spaces import Space
 from shared.helpers.json_response_helper import error_response, success_response
 
-from ...schemas.space_sites.space_occupany_schemas import HandoverCreate, InspectionCreate, MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, SpaceMoveOutRequest, SpaceOccupancyRequestOut
+from ...schemas.space_sites.space_occupany_schemas import HandoverCreate, InspectionComplete, InspectionItemCreate, MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, SpaceMoveOutRequest, SpaceOccupancyRequestOut
 from shared.models.users import Users
 
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
@@ -69,7 +72,7 @@ def get_current_occupancy(db: Session, auth_db: Session, space_id: UUID):
         # Latest handover
         handover = (
             db.query(SpaceHandover)
-            .filter(SpaceHandover.occupancy_id == occ.id)
+            .filter(SpaceHandover.occupancy_id == move_out.id)
             .order_by(SpaceHandover.handover_date.desc())
             .first()
         )
@@ -117,7 +120,7 @@ def get_current_occupancy(db: Session, auth_db: Session, space_id: UUID):
                 "condition_notes": handover.remarks,
                 "status": handover.status,
                 "keys_returned": handover.keys_returned,
-                "damage_checked": handover.damage_checked,
+                "inspection_completed": handover.inspection_completed,
                 "accessories_returned": handover.accessories_returned,
             }
 
@@ -674,37 +677,29 @@ def approve_move_out(db: Session, move_out_id: UUID, admin_user_id: UUID):
 
     # If move-out date <= today, create handover
     if move_out.move_out_date and move_out.move_out_date <= date.today():
-        handover = SpaceHandover(
-            occupancy_id=move_out.id,
-            handover_date=datetime.now(),
-            handover_by_user_id=move_out.occupant_user_id,
-            handover_to_user_id=admin_user_id
-        )
-        db.add(handover)
-        db.commit()
-        db.refresh(handover)
-        return handover
+        start_handover_process(db, move_out, admin_user_id)
     return move_out
 
 
-def create_handover(db: Session, current_user: UserToken, payload: HandoverCreate):
-    existing = db.query(SpaceHandover).filter(
-        SpaceHandover.occupancy_id == payload.occupancy_id,
-        SpaceHandover.status == HandoverStatus.pending
-    ).first()
-
-    if existing:
-        raise HTTPException(400, "Handover already started")
-
+def start_handover_process(db: Session, move_out, admin_user_id):
     handover = SpaceHandover(
-        occupancy_id=payload.occupancy_id,
-        handover_by_user_id=current_user.id,
-        **payload.model_dump(exclude={"occupancy_id"})
+        occupancy_id=move_out.id,
+        handover_by_user_id=move_out.occupant_user_id,
+        handover_to_user_id=admin_user_id
     )
 
     db.add(handover)
     db.commit()
     db.refresh(handover)
+
+    inspection = SpaceInspection(
+        occupancy_id=move_out.id,
+        handover_id=handover.id,
+        status="pending"
+    )
+
+    db.add(inspection)
+    db.commit()
 
     return handover
 
@@ -746,16 +741,128 @@ def complete_handover(
     return handover
 
 
-def create_inspection(db: Session, payload: InspectionCreate):
-    inspection = SpaceInspection(**payload.model_dump())
-    db.add(inspection)
+def get_inspection(db: Session, inspection_id: UUID):
+    inspection = db.query(SpaceInspection).filter(
+        SpaceInspection.id == inspection_id
+    ).first()
 
-    handover = db.query(SpaceHandover).get(payload.handover_id)
-    handover.damaged_checked = True
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+
+    return inspection
+
+
+def add_inspection_items(
+    db: Session,
+    inspection_id: UUID,
+    items: List[InspectionItemCreate],
+
+):
+    for item in items:
+        db.add(SpaceInspectionItem(
+            inspection_id=inspection_id,
+            item_name=item.item_name,
+            condition=item.condition,
+            remarks=item.remarks
+        ))
 
     db.commit()
-    db.refresh(inspection)
-    return inspection
+
+    return {"message": "Inspection items saved"}
+
+
+def upload_inspection_image(
+    db: Session,
+    inspection_id: UUID,
+    file: UploadFile,
+    current_user: UserToken
+):
+    file_location = f"uploads/inspections/{uuid.uuid4()}_{file.filename}"
+
+    with open(file_location, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    image = SpaceInspectionImage(
+        inspection_id=inspection_id,
+        image_url=file_location,
+        uploaded_by=current_user.user_id
+    )
+
+    db.add(image)
+    db.commit()
+
+    return {"image_url": file_location}
+
+
+def complete_inspection(
+    db: Session,
+    inspection_id: UUID,
+    payload: InspectionComplete,
+    current_user: UserToken
+):
+    inspection = db.query(SpaceInspection).filter(
+        SpaceInspection.id == inspection_id
+    ).first()
+
+    if not inspection:
+        raise HTTPException(404, "Inspection not found")
+
+    inspection.walls_condition = payload.walls_condition
+    inspection.flooring_condition = payload.flooring_condition
+    inspection.electrical_condition = payload.electrical_condition
+    inspection.plumbing_condition = payload.plumbing_condition
+    inspection.damage_found = payload.damage_found
+    inspection.damage_notes = payload.damage_notes
+
+    handover = db.query(SpaceHandover).filter(
+        SpaceHandover.id == inspection.handover_id
+    ).first()
+
+    if not handover:
+        raise HTTPException(404, "Handover not found")
+
+    # -------------------------
+    # Mark inspection completed
+    # -------------------------
+    handover.inspection_completed = True
+
+    # If admin performing inspection
+    if not handover.handover_to_user_id:
+        handover.handover_to_user_id = current_user.user_id
+
+    # -------------------------
+    # Check if handover complete
+    # -------------------------
+    if (
+        handover.inspection_completed
+        and handover.keys_returned
+        and handover.accessories_returned
+    ):
+        complete_handover(db, handover.id)
+
+    db.commit()
+
+    return {
+        "message": "Inspection completed",
+        "handover_status": handover.status
+    }
+
+
+def update_handover_checklist(db: Session, occupancy_id: UUID, item: str):
+    handover = db.query(SpaceHandover).filter(
+        SpaceHandover.occupancy_id == occupancy_id
+    ).first()
+
+    if not handover:
+        raise HTTPException(status_code=404, detail="Handover not found")
+
+    if item == "keys":
+        handover.keys_returned = True
+    elif item == "accesories":
+        handover.accessories_returned = True
+    db.commit()
+
+    return {"message": "Keys returned"}
 
 
 # VALIDATION METHODS

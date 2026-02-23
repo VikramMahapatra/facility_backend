@@ -18,15 +18,14 @@ class SpaceHandover(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     occupancy_id = Column(UUID(as_uuid=True), ForeignKey(
         "space_occupancies.id"), nullable=False)
-    handover_date = Column(DateTime, default=func.now(), nullable=False)
+    handover_date = Column(DateTime, default=func.now(), nullable=True)
     handover_by_user_id = Column(
         UUID(as_uuid=True), nullable=False)  # tenant/owner
     handover_to_user_id = Column(
         UUID(as_uuid=True), nullable=True)   # admin/facility
     remarks = Column(String(500), nullable=True)
-
+    inspection_completed = Column(Boolean, default=False)
     keys_returned = Column(Boolean, default=False)
-    damage_checked = Column(Boolean, default=False)
     accessories_returned = Column(Boolean, default=False)
 
     status = Column(

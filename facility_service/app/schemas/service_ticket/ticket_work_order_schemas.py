@@ -21,6 +21,8 @@ class TicketWorkOrderBase(BaseModel):
     estimated_time: Optional[int] = None
     special_instructions: Optional[str] = None
     tax_code_id: Optional[UUID] = None   # ✅ ADD
+    bill_to_id: UUID
+    bill_to_type: str
 
 
 class TicketWorkOrderCreate(TicketWorkOrderBase):

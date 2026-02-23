@@ -2,6 +2,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from facility_service.app.crud.space_sites.space_occupancy_crud import start_handover_process
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from facility_service.app.models.space_sites.space_handover import HandoverStatus, SpaceHandover
@@ -119,3 +120,19 @@ def process_scheduled_occupancies(db: Session):
     except Exception as e:
         db.rollback()
         print("Scheduler error:", str(e))
+
+    def process_scheduled_moveouts(db: Session):
+        today = date.today()
+
+        move_outs = db.query(SpaceOccupancy).filter(
+            SpaceOccupancy.request_type == RequestType.move_out,
+            SpaceOccupancy.status == OccupancyStatus.scheduled,
+            SpaceOccupancy.move_out_date <= today
+        ).all()
+
+        for move_out in move_outs:
+            start_handover_process(db, move_out, admin_user_id=None)
+            move_out.status = OccupancyStatus.moved_out
+
+        db.commit()
+        db.close()

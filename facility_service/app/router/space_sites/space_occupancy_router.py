@@ -1,11 +1,11 @@
 # app/routers/space_groups.py
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus, RequestType
-from ...schemas.space_sites.space_occupany_schemas import HandoverCreate, InspectionCreate, MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, SpaceMoveOutRequest
+from ...schemas.space_sites.space_occupany_schemas import HandoverCreate, HandoverReturnItemRequest, InspectionComplete, InspectionItemCreate, MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, SpaceMoveOutRequest
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import success_response
 from shared.core.schemas import Lookup, UserToken
@@ -82,11 +82,49 @@ def reject_move_out(move_out_id: UUID, db: Session = Depends(get_db)):
     return crud.reject_move_out(db, move_out_id)
 
 
-@router.post("/handover")
-def create_handover(payload: HandoverCreate, db: Session = Depends(get_db)):
-    return crud.create_handover(db, payload)
+@router.post("/handover/{occupancy_id}/update-checklist")
+def mark_handover_returned(
+    occupancy_id: UUID,
+    params: HandoverReturnItemRequest = Depends(),
+    db: Session = Depends(get_db)
+):
+    return crud.update_handover_checklist(db, occupancy_id, params.item)
 
 
-@router.post("/inspection")
-def create_inspection(payload: InspectionCreate, db: Session = Depends(get_db)):
-    return crud.create_inspection(db, payload)
+@router.put("/handover/{occupancy_id}/complete")
+def complete_handover(occupancy_id: UUID, db: Session = Depends(get_db)):
+    return crud.complete_handover(db, complete_handover)
+
+
+@router.get("/inspection/{inspection_id}")
+def get_inspection(inspection_id: UUID, db: Session = Depends(get_db)):
+    return crud.get_inspection(db, inspection_id)
+
+
+@router.put("/inspection/complete/{inspection_id}")
+def complete_inspection(
+    inspection_id: UUID,
+    payload: InspectionComplete,
+    current_user: UserToken = Depends(validate_current_token),
+    db: Session = Depends(get_db)
+):
+    return crud.complete_inspection(db, inspection_id, payload, current_user)
+
+
+@router.post("/inspection/{inspection_id}/items")
+def add_inspection_items(
+    inspection_id: UUID,
+    items: List[InspectionItemCreate],
+    db: Session = Depends(get_db)
+):
+    return crud.add_inspection_items(db, inspection_id, items)
+
+
+@router.post("/inspection/{inspection_id}/upload-image")
+def upload_inspection_image(
+    inspection_id: UUID,
+    file: UploadFile = File(...),
+    current_user: UserToken = Depends(validate_current_token),
+    db: Session = Depends(get_db)
+):
+    return crud.upload_inspection_image(db, inspection_id, file, current_user)

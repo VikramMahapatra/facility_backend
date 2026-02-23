@@ -1,5 +1,6 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from facility_service.app.crud.space_sites.space_occupancy_crud import start_handover_process
@@ -135,4 +136,60 @@ def process_scheduled_occupancies(db: Session):
             move_out.status = OccupancyStatus.moved_out
 
         db.commit()
+        db.close()
+
+
+def lease_lifecycle_job(db: Session):
+    now = datetime.now(timezone.utc)
+
+    try:
+        # ACTIVATE LEASES
+        leases_to_activate = db.query(Lease).filter(
+            Lease.status == "scheduled",
+            Lease.start_date <= now,
+            Lease.is_deleted == False
+        ).all()
+
+        for lease in leases_to_activate:
+
+            tenant_space = db.query(TenantSpace).filter(
+                TenantSpace.space_id == lease.space_id,
+                TenantSpace.tenant_id == lease.tenant_id,
+                TenantSpace.is_deleted == False
+            ).first()
+
+            if tenant_space:
+                tenant_space.status = OwnershipStatus.leased
+                tenant_space.updated_at = func.now()
+
+            lease.status = "active"
+
+        # EXPIRE LEASES
+        leases_to_expire = db.query(Lease).filter(
+            Lease.status == "active",
+            Lease.end_date < now,
+            Lease.is_deleted == False
+        ).all()
+
+        for lease in leases_to_expire:
+
+            tenant_space = db.query(TenantSpace).filter(
+                TenantSpace.space_id == lease.space_id,
+                TenantSpace.tenant_id == lease.tenant_id,
+                TenantSpace.status == OwnershipStatus.leased,
+                TenantSpace.is_deleted == False
+            ).first()
+
+            if tenant_space:
+                tenant_space.status = OwnershipStatus.ended
+
+            lease.status = "expired"
+
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+        print("Lease lifecycle error:", e)
+
+    finally:
         db.close()

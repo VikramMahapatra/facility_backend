@@ -249,6 +249,7 @@ def get_by_id(db: Session, lease_id: str) -> Optional[Lease]:
 
 def create(db: Session, payload: LeaseCreate) -> Lease:
     try:
+        now = datetime.now(timezone.utc)
         # 0 Validate tenant_id
         if not payload.tenant_id:
             return error_response(message="tenant_id is required")
@@ -355,24 +356,28 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                 notes=f"Lease created for tenant"
             )
 
-            #  Update TenantSpace → leased
-            tenant_space.status = OwnershipStatus.leased
-            tenant_space.updated_at = func.now()
+            # Lease becomes active only if start_date <= now
+            is_effectively_active = payload.start_date <= now
 
-            #  Auto move-in (SAFE access)
-            # ✅ AUTO MOVE-IN
-            if payload.auto_move_in is True:
-                move_in(
-                    db=db,
-                    params=MoveInRequest(
-                        space_id=payload.space_id,
-                        occupant_type="tenant",
-                        occupant_user_id=payload.tenant_id,
-                        lease_id=lease.id,
-                        tenant_id=payload.tenant_id,
-                        move_in_date=datetime.now(timezone.utc)
+            if is_effectively_active:
+                #  Update TenantSpace → leased
+                tenant_space.status = OwnershipStatus.leased
+                tenant_space.updated_at = func.now()
+
+                #  Auto move-in (SAFE access)
+                # ✅ AUTO MOVE-IN
+                if payload.auto_move_in is True:
+                    move_in(
+                        db=db,
+                        params=MoveInRequest(
+                            space_id=payload.space_id,
+                            occupant_type="tenant",
+                            occupant_user_id=payload.tenant_id,
+                            lease_id=lease.id,
+                            tenant_id=payload.tenant_id,
+                            move_in_date=datetime.now(timezone.utc)
+                        )
                     )
-                )
 
         # =========================
         # CREATE PAYMENT TERMS
@@ -411,6 +416,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 # Update lease with space validation
 def update(db: Session, payload: LeaseUpdate):
     try:
+        now = datetime.now(timezone.utc)
         obj = get_by_id(db, payload.id)
         if not obj:
             return None
@@ -483,9 +489,17 @@ def update(db: Session, payload: LeaseUpdate):
         data["end_date"] = end_date
 
         old_status = obj.status
-        # ---------- SIDE EFFECTS ----------
-        # Activate lease (draft → active)
-        if old_status != "active" and data.get("status") == "active":
+
+        new_status = data.get("status", obj.status)
+        new_start_date = data.get("start_date", obj.start_date)
+
+        should_activate_now = (
+            new_status == "active" and
+            new_start_date <= now
+        )
+
+        if old_status != "active" and new_status == "active":
+
             tenant_space = db.query(TenantSpace).filter(
                 TenantSpace.space_id == target_space_id,
                 TenantSpace.tenant_id == tenant_id,
@@ -495,23 +509,28 @@ def update(db: Session, payload: LeaseUpdate):
             if not tenant_space:
                 return error_response("Tenant is not linked to this space")
 
-            if tenant_space.status != OwnershipStatus.approved:
+            if tenant_space.status not in [
+                OwnershipStatus.approved,
+                OwnershipStatus.ended
+            ]:
                 return error_response(
                     message="Tenant must be approved before activating lease"
                 )
 
-            tenant_space.status = OwnershipStatus.leased
-            tenant_space.updated_at = func.now()
+            # Only lease if start date has arrived
+            if should_activate_now:
+                tenant_space.status = OwnershipStatus.leased
+                tenant_space.updated_at = func.now()
 
-            log_occupancy_event(
-                db=db,
-                space_id=payload.space_id,
-                occupant_type=OccupantType.tenant,
-                occupant_user_id=tenant.user_id,
-                event_type=OccupancyEventType.lease_created,
-                source_id=obj.id,
-                notes=f"Lease created for tenant"
-            )
+                log_occupancy_event(
+                    db=db,
+                    space_id=target_space_id,
+                    occupant_type=OccupantType.tenant,
+                    occupant_user_id=tenant.user_id,
+                    event_type=OccupancyEventType.lease_created,
+                    source_id=obj.id,
+                    notes="Lease activated"
+                )
 
         payment_terms_payload = data.pop("payment_terms", None)
 

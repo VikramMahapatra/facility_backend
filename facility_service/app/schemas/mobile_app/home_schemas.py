@@ -78,8 +78,12 @@ class SpaceDetailsResponse(EmptyStringModel):
     status: Optional[str] = None
     is_owner: bool = False
     lease_contract_exist: bool = False
-    lease_contract_detail: LeaseContractDetail
-    maintenance_detail: MaintenanceDetail
+    lease_contract_detail: LeaseContractDetail = None
+    maintenance_detail: MaintenanceDetail = None
+
+    current_status: str | None = None
+    can_request_move_in: bool = False
+    can_request_move_out: bool = False
 
 
 class HomeDetailsWithSpacesResponse(EmptyStringModel):

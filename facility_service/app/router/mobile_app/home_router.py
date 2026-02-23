@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from facility_service.app.schemas.mobile_app.user_profile_schemas import MySpacesResponse
 
 from ...schemas.mobile_app.home_schemas import AddSpaceRequest, HomeDetailsWithSpacesResponse, MasterDetailResponse, SpaceDetailsResponse
 from shared.core.database import get_facility_db as get_db, get_auth_db
@@ -41,7 +40,7 @@ def get_home_details(
     return home_crud.get_home_details(db, auth_db, params, current_user)
 
 
-@router.post("/register_space", response_model=MySpacesResponse)
+@router.post("/register_space", response_model=SpaceDetailsResponse)
 def register_space(
     params: AddSpaceRequest = None,
     db: Session = Depends(get_db),

@@ -10,7 +10,9 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
 from sqlalchemy.dialects.postgresql import JSONB
+from facility_service.app.crud.financials.invoice_email_service import InvoiceEmailService
 from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
+from facility_service.app.models.financials.customer_advances import AdvanceAdjustment, CustomerAdvance
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from facility_service.app.models.leasing_tenants.tenants import Tenant
@@ -22,6 +24,7 @@ from shared.core.database import AuthSessionLocal
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.helpers.user_helper import get_user_name
 from shared.models.users import Users
+from shared.utils.invoice_pdf import generate_invoice_pdf, get_invoice_email_template
 
 from ...enum.revenue_enum import InvoicePayementMethod, InvoiceType
 
@@ -396,44 +399,45 @@ def get_invoice_by_id(db: Session, invoice_id: UUID):
     return invoice
 
 
-def calculate_invoice_status(db: Session, invoice_id: UUID, invoice_amount: float, due_date: Date = None):
+def calculate_invoice_status(
+    db: Session,
+    invoice: Invoice
+):
     """
-    Calculate invoice status based on payments and due date
-
-    Logic:
-    1. If total payments == invoice amount → 'paid'
-    2. If total payments < invoice amount and due_date is past → 'overdue'
-    3. If total payments < invoice amount and due_date is not past → 'partial'
-    4. If no payments → 'issued'
+    Status rules:
+    draft -> not yet issued
+    issued -> no payments yet
+    partial -> some payment but not full
+    paid -> fully settled
+    overdue -> due date passed and still balance
     """
-    # Get total payments for this invoice
-    total_payments_result = db.query(func.sum(PaymentAR.amount)).filter(
-        PaymentAR.invoice_id == invoice_id
-    ).scalar()
 
-    total_payments = float(
-        total_payments_result) if total_payments_result else 0.0
+    if invoice.status == "draft":
+        return "draft"
 
-    # Check if there are any payments at all
-    has_payments = db.query(PaymentAR).filter(
-        PaymentAR.invoice_id == invoice_id
-    ).first() is not None
+    invoice_total = Decimal(str(invoice.totals.get("grand", 0)))
 
-    # Apply logic
-    if not has_payments:
+    total_paid = db.query(func.sum(PaymentAR.amount)).filter(
+        PaymentAR.invoice_id == invoice.id,
+        PaymentAR.is_deleted == False
+    ).scalar() or 0
+
+    total_paid = Decimal(str(total_paid))
+    balance = invoice_total - total_paid
+
+    # No payment yet
+    if total_paid == 0:
         return "issued"
 
-    # Use Decimal for precise comparison to avoid floating point issues
-    invoice_decimal = Decimal(str(invoice_amount))
-    payments_decimal = Decimal(str(total_payments))
-
-    # Check if fully paid (allow small tolerance for floating point)
-    if payments_decimal >= invoice_decimal - Decimal('0.01'):  # Fully paid
+    # Fully paid (advance or payment)
+    if balance <= Decimal("0.01"):
         return "paid"
-    elif due_date and due_date < date.today():  # Past due and not fully paid
+
+    # Past due
+    if invoice.due_date and invoice.due_date < date.today():
         return "overdue"
-    else:  # Has payments but not fully paid and not overdue
-        return "partial"
+
+    return "partial"
 
 
 def create_invoice(
@@ -450,6 +454,7 @@ def create_invoice(
     invoice_data = request.model_dump(exclude={"org_id", "lines"})
     invoice_data.update({
         "org_id": org_id,
+        "status": request.status,
         "is_paid": False,
     })
 
@@ -491,21 +496,36 @@ def create_invoice(
 
             invoice_amount += float(line.amount or 0)
 
-        # ===============================
-        # GENERIC INVOICE NOTIFICATION
-        # ===============================
-        notification = Notification(
-            user_id=current_user.user_id,
-            type=NotificationType.alert,
-            title="Invoice Created",
-            message=f"Invoice {db_invoice.invoice_no} created. Amount: {invoice_amount}",
-            posted_date=datetime.utcnow(),
-            priority=PriorityType.medium,
-            read=False,
-            is_deleted=False,
-            is_email=False
-        )
-        db.add(notification)
+        db_invoice.totals = {
+            "grand": invoice_amount
+        }
+
+        if request.status == "issued":
+            apply_advance_to_invoice(db, db_invoice)
+
+            # ===============================
+            # GENERIC INVOICE NOTIFICATION
+            # ===============================
+            notification = Notification(
+                user_id=current_user.user_id,
+                type=NotificationType.alert,
+                title="Invoice Created",
+                message=f"Invoice {db_invoice.invoice_no} created. Amount: {invoice_amount}",
+                posted_date=datetime.utcnow(),
+                priority=PriorityType.medium,
+                read=False,
+                is_deleted=False,
+                is_email=False
+            )
+            db.add(notification)
+
+            # send email
+            service = InvoiceEmailService()
+            service.send_invoice_to_customer(
+                db=db,
+                invoice=db_invoice,
+                customer_email=db_invoice.customer_email
+            )
 
         db.commit()
 
@@ -543,6 +563,8 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
 
     if not db_invoice:
         return error_response(message="Invoice not found")
+
+    old_invoice_status = db_invoice.status
 
     # Check if payments exist
     has_existing_payments = db.query(PaymentAR).filter(
@@ -609,6 +631,17 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     db_invoice.totals = {
         "grand": invoice_amount
     }
+
+    if invoice_update.status == "issued" and old_invoice_status == "draft":
+        apply_advance_to_invoice(db, db_invoice)
+
+        # send email
+        service = InvoiceEmailService()
+        service.send_invoice_to_customer(
+            db=db,
+            invoice=db_invoice,
+            customer_email=db_invoice.customer_email
+        )
 
     # -------------------------
     # STATUS RECALCULATION
@@ -1628,3 +1661,49 @@ def generate_invoice_number(db: Session, org_id: UUID):
         invoice_no = f"INV-{next_number}"
 
     return invoice_no
+
+
+def apply_advance_to_invoice(db: Session, invoice: Invoice):
+    invoice_amount = float(invoice.totals.get("grand", 0))
+
+    advances = db.query(CustomerAdvance).filter(
+        CustomerAdvance.user_id == invoice.user_id,
+        CustomerAdvance.balance > 0
+    ).order_by(CustomerAdvance.created_at).all()
+
+    remaining = invoice_amount
+
+    for adv in advances:
+        if remaining <= 0:
+            break
+
+        use_amount = min(float(adv.balance), remaining)
+
+        # Record adjustment
+        adjustment = AdvanceAdjustment(
+            advance_id=adv.id,
+            invoice_id=invoice.id,
+            amount=use_amount
+        )
+        db.add(adjustment)
+
+        # Record as payment entry
+        payment = PaymentAR(
+            org_id=invoice.org_id,
+            invoice_id=invoice.id,
+            method="advance",
+            ref_no=f"ADV-{adv.id}",
+            amount=use_amount
+        )
+        db.add(payment)
+
+        adv.balance -= use_amount
+        remaining -= use_amount
+
+    # Update invoice status
+    if remaining <= 0:
+        invoice.status = "paid"
+        invoice.is_paid = True
+    elif remaining < invoice_amount:
+        invoice.status = "partial"
+        invoice.is_paid = False

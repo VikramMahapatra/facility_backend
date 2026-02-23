@@ -8,7 +8,95 @@ from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib import colors
 
 
-def generate_invoice_pdf(invoice):
+def generate_invoice_pdf(invoice, organization_name):
+    file_path = f"/tmp/invoice_{invoice.invoice_no}.pdf"
+
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph(f"<b>{organization_name}</b>", styles["Title"]))
+    story.append(Spacer(1, 10))
+
+    story.append(
+        Paragraph(f"Invoice No: {invoice.invoice_no}", styles["Normal"]))
+    story.append(
+        Paragraph(f"Customer: {invoice.customer_name}", styles["Normal"]))
+    story.append(Paragraph(f"Date: {invoice.created_at}", styles["Normal"]))
+    story.append(Spacer(1, 20))
+
+    data = [
+        ["Description", "Amount"],
+    ]
+
+    for item in invoice.items:
+        data.append([item.name, f"₹{item.amount}"])
+
+    data.append(["Total", f"₹{invoice.total_amount}"])
+
+    table = Table(data)
+    story.append(table)
+
+    doc = SimpleDocTemplate(file_path)
+    doc.build(story)
+
+    return file_path
+
+
+def get_invoice_email_template(
+    customer_name,
+    invoice_no,
+    organization_name,
+    total,
+    advance_used,
+    balance,
+    due_date
+):
+    if balance <= 0:
+        message = f"""
+        <p>Advance has been fully adjusted against this invoice.</p>
+        <p><strong>No payment is required.</strong></p>
+        """
+    elif advance_used > 0:
+        message = f"""
+        <p>Invoice Total: <strong>₹{total}</strong></p>
+        <p>Advance Adjusted: <strong>₹{advance_used}</strong></p>
+        <p>Remaining Balance: <strong>₹{balance}</strong></p>
+        """
+    else:
+        message = f"""
+        <p>Total Amount Due: <strong>₹{total}</strong></p>
+        """
+
+    return f"""
+    <html>
+    <body style="font-family: Arial; background:#f5f7fb; padding:20px;">
+        <div style="max-width:600px;background:white;padding:30px;border-radius:10px;">
+            
+            <h2 style="color:#2b2f36;">{organization_name}</h2>
+
+            <p>Hi <strong>{customer_name}</strong>,</p>
+
+            <p>Your invoice <strong>{invoice_no}</strong> has been issued.</p>
+
+            {message}
+
+            <p>Due Date: <strong>{due_date}</strong></p>
+
+            <p>Please find the attached invoice PDF.</p>
+
+            <hr/>
+
+            <p style="color:gray;font-size:12px;">
+            This is an automated message from {organization_name}
+            </p>
+
+        </div>
+    </body>
+    </html>
+    """
+
+
+def generate_invoice_pdf_old(invoice):
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(
@@ -29,7 +117,8 @@ def generate_invoice_pdf(invoice):
     # ==================================================
     header = Table(
         [[
-            Paragraph("<b>COMPANY NAME</b><br/>Property Management", styles["Normal"]),
+            Paragraph("<b>COMPANY NAME</b><br/>Property Management",
+                      styles["Normal"]),
             Paragraph(
                 f"<b>INVOICE</b><br/>"
                 f"Invoice No: {invoice.invoice_no}<br/>"
@@ -80,7 +169,8 @@ def generate_invoice_pdf(invoice):
             ["Description", "Period", "Amount"],
             [
                 "Rent",
-                invoice.billable_item_name.replace("Rent | ", "") if invoice.billable_item_name else "-",
+                invoice.billable_item_name.replace(
+                    "Rent | ", "") if invoice.billable_item_name else "-",
                 f"₹ {invoice.totals.get('sub', 0):,.2f}",
             ],
         ],

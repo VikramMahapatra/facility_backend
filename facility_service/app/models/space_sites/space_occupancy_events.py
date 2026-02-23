@@ -30,6 +30,8 @@ class OccupancyEventType(str, PyEnum):
     moved_out_rejected = "moved_out_rejected"
     moved_out = "moved_out"
     handover_awaited = "handover_awaited"
+    inspection_started = "inspection_started"   # NEW
+    inspection_completed = "inspection_completed"  # NEW
     handover_completed = "handover_completed"
 
 

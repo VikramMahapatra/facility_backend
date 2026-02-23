@@ -1,8 +1,11 @@
 from datetime import date, datetime
 from uuid import UUID
+from facility_service.app.crud.mobile_app.home_crud import get_space_detail
+from facility_service.app.crud.space_sites.space_occupancy_crud import get_current_occupancy, get_current_occupancy_bulk
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
 from facility_service.app.models.space_sites.user_sites import UserSite
+from facility_service.app.schemas.mobile_app.home_schemas import SpaceDetailsResponse
 from shared.models.users import Users
 from shared.utils.enums import OwnershipStatus, UserAccountType
 from ...models.leasing_tenants.tenants import Tenant
@@ -10,7 +13,7 @@ from ...models.space_sites.spaces import Space
 from ...models.space_sites.buildings import Building
 # ✅ Import the Lease model (not Document)
 from ...models.leasing_tenants.leases import Lease
-from ...schemas.mobile_app.user_profile_schemas import MySpacesResponse, UserProfileResponse
+from ...schemas.mobile_app.user_profile_schemas import UserProfileResponse
 
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional
@@ -201,9 +204,19 @@ def get_my_spaces(db: Session, auth_db: Session, user: UserToken, site_id: UUID)
             Tenant.is_deleted == False
         ).first()
 
+        space_ids = [space.id for space in spaces]
+        occupancy_map = get_current_occupancy_bulk(db, auth_db, space_ids)
+
         # Process each space
         for space in spaces:
+            occ = occupancy_map.get(space.id, {})
             space_detail = get_space_detail(db, user, space)
+
+            space_detail.current_status = occ.get("status")
+            space_detail.can_request_move_in = occ.get(
+                "can_request_move_in", False)
+            space_detail.can_request_move_out = occ.get(
+                "can_request_move_out", False)
 
             # Add space to response
             spaces_response.append(space_detail)
@@ -223,7 +236,8 @@ def get_my_spaces(db: Session, auth_db: Session, user: UserToken, site_id: UUID)
         spaces = spaces_query.all()
 
         for space in spaces:
-            spaces_response.append(MySpacesResponse(
+
+            spaces_response.append(SpaceDetailsResponse(
                 space_id=space.id,
                 space_name=space.name,
                 building_id=space.building_block_id,
@@ -231,76 +245,7 @@ def get_my_spaces(db: Session, auth_db: Session, user: UserToken, site_id: UUID)
                 is_owner=False,
                 lease_contract_exist=False,
                 site_id=space.site.id,
-                site_name=space.site.name,
+                site_name=space.site.name
             ))
 
     return spaces_response
-
-
-def get_space_detail(
-    db: Session,
-    user: UserToken,
-    space: Space
-):
-    space_is_owner = False
-    space_lease_contract_exist = False
-
-    # 1. CHECK IF USER IS SPACE OWNER
-    space_owner = db.query(SpaceOwner).filter(
-        SpaceOwner.space_id == space.id,
-        SpaceOwner.owner_user_id == user.user_id
-    ).first()
-
-    tenant = db.query(Tenant).filter(
-        Tenant.user_id == user.user_id,
-        Tenant.is_deleted == False
-    ).first()
-
-    if space_owner:
-        space_is_owner = True
-
-        # 2. CHECK IF USER IS TENANT (for lease contract)
-    if tenant and not space_is_owner:
-        # Check if tenant has access to this space
-        tenant_space = db.query(TenantSpace).filter(
-            TenantSpace.tenant_id == tenant.id,
-            TenantSpace.space_id == space.id,
-            TenantSpace.is_deleted == False
-        ).first()
-
-        if tenant_space:
-            # Get lease for this space
-            lease_query = db.query(Lease).filter(
-                Lease.space_id == space.id,
-                Lease.tenant_id == tenant.id,
-                Lease.is_deleted == False,
-                Lease.end_date >= date.today()
-            )
-
-            lease = lease_query.order_by(Lease.end_date.desc()).first()
-
-            # Fallback to most recent if no active lease
-            if not lease:
-                lease_query = db.query(Lease).filter(
-                    Lease.space_id == space.id,
-                    Lease.tenant_id == tenant.id,
-                    Lease.is_deleted == False
-                )
-                lease = lease_query.order_by(
-                    Lease.end_date.desc()).first()
-
-            if lease:
-                space_lease_contract_exist = True
-
-        # Add space to response
-    return MySpacesResponse(
-        space_id=space.id,
-        space_name=space.name,
-        site_id=space.site.id,
-        site_name=space.site.name,
-        building_id=space.building_block_id,
-        status=space_owner.status if space_is_owner else tenant_space.status,
-        building_name=space.building.name if space.building else None,
-        is_owner=space_is_owner,
-        lease_contract_exist=space_lease_contract_exist,
-    )

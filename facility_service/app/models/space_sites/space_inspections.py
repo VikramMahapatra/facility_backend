@@ -47,6 +47,10 @@ class SpaceInspection(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    handover = relationship("SpaceHandover", back_populates="inspection")
+    maintenance = relationship(
+        "SpaceMaintenance", back_populates="inspection", uselist=False)
+
 
 class SpaceInspectionItem(Base):
     __tablename__ = "space_inspection_items"

@@ -30,9 +30,13 @@ class OccupancyEventType(str, PyEnum):
     moved_out_rejected = "moved_out_rejected"
     moved_out = "moved_out"
     handover_awaited = "handover_awaited"
-    inspection_started = "inspection_started"   # NEW
-    inspection_completed = "inspection_completed"  # NEW
     handover_completed = "handover_completed"
+    inspection_requested = "inspection_requested"   # NEW
+    inspection_completed = "inspection_completed"  # NEW
+    maintenance_requested = "maintenance_requested"
+    maintenance_completed = "maintenance_completed"  # NEW
+    settlement_pending = "settlement_pending"
+    settlement_completed = "settlement_completed"
 
 
 class SpaceOccupancyEvent(Base):

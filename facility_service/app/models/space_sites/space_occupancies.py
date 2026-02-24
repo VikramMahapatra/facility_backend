@@ -5,6 +5,7 @@ from sqlalchemy import (
     Boolean, Column, Date, DateTime, Enum, ForeignKey, String, Text
 )
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from shared.core.database import Base
@@ -59,3 +60,14 @@ class SpaceOccupancy(Base):
 
     original_occupancy_id = Column(UUID(as_uuid=True), ForeignKey(
         "space_occupancies.id"), nullable=True)
+
+    # relationships
+    move_out = relationship(
+        "SpaceOccupancy",
+        remote_side=[id],
+        backref="move_in"
+    )
+    handover = relationship(
+        "SpaceHandover", back_populates="occupancy", uselist=False)
+    settlement = relationship(
+        "SpaceSettlement", back_populates="occupancy", uselist=False)

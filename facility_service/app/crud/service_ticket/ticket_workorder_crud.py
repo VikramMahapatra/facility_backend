@@ -344,7 +344,9 @@ def create_ticket_work_order(
         ticket_no=ticket.ticket_no,
         site_name=site_name,
         assigned_to_name=None,  # You can fetch these if needed
-        vendor_name=None
+        vendor_name=None,
+        bill_to_id=db_work_order.bill_to_id,
+        bill_to_type=db_work_order.bill_to_type
     )
     return work_order_out
 

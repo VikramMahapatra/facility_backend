@@ -29,3 +29,5 @@ class SpaceSettlement(Base):
     settled_at = Column(DateTime)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    occupancy = relationship("SpaceOccupancy", back_populates="settlement")

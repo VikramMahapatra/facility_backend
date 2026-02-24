@@ -28,3 +28,5 @@ class SpaceMaintenance(Base):
     completed_at = Column(DateTime)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    inspection = relationship("SpaceInspection", back_populates="maintenance")

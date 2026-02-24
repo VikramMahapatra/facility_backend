@@ -42,3 +42,7 @@ class SpaceHandover(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True),
                         default=func.now(), onupdate=func.now())
+
+    occupancy = relationship("SpaceOccupancy", back_populates="handover")
+    inspection = relationship(
+        "SpaceInspection", back_populates="handover", uselist=False)

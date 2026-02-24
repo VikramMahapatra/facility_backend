@@ -18,7 +18,7 @@ from .router.maintenance_assets import (
     asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, pm_template_router, service_request_router, work_order_router)
 from .router.crm import contact_router
 from .router.financials import (
-    invoice_router, tax_codes_router, revenue_router)
+    invoice_router, tax_codes_router, revenue_router,bills_router)
 from .router.overview import (dashboard_router, analytics_router)
 from .router.space_sites import (
     orgs_router,
@@ -116,6 +116,7 @@ app.include_router(building_block_router.router)
 app.include_router(space_filter_router.router)
 app.include_router(tenants_router.router)
 app.include_router(invoice_router.router)
+app.include_router(bills_router.router)
 app.include_router(contact_router.router)
 app.include_router(tax_codes_router.router)
 app.include_router(assets_router.router)

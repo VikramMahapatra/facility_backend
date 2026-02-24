@@ -14,6 +14,7 @@ class Bill(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False)
+    work_order_id = Column(UUID(as_uuid=True), ForeignKey("work_orders.id"), nullable=False)
 
     vendor_id = Column(UUID(as_uuid=True), nullable=False)
 

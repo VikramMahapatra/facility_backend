@@ -90,10 +90,11 @@ def get_payments(
 def get_pending_charges_by_customer(
     space_id: UUID = Query(...),
     code: str = Query(...),
+    invoice_id: UUID = Query(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_pending_charges_by_customer(db, space_id, code)
+    return crud.get_pending_charges_by_customer(db, space_id, code, invoice_id)
 
 # ✅ FIXED: Match CRUD parameters
 

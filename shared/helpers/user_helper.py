@@ -11,3 +11,12 @@ def get_user_name(user_id: UUID):
         return user.full_name if user else None
     finally:
         auth_db.close()
+
+
+def get_user_detail(user_id: UUID):
+    auth_db = AuthSessionLocal()
+    try:
+        user = auth_db.query(Users).filter(Users.id == user_id).first()
+        return user if user else None
+    finally:
+        auth_db.close()

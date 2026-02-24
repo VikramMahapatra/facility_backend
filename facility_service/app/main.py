@@ -52,7 +52,8 @@ from .models.financials import invoices
 from .models.leasing_tenants import leases, lease_charges, tenant_spaces, tenants, lease_charge_code, lease_payment_term
 from .models.space_sites import (
     buildings, orgs, sites, space_filter_models, space_group_members, space_groups, space_owners, owner_maintenances,
-    user_sites, space_occupancies, space_occupancy_events, maintenance_templates, space_handover, space_inspections
+    user_sites, space_occupancies, space_occupancy_events, maintenance_templates, space_handover, space_inspections,
+    space_maintenances, space_settlements
 )
 from .models.system import notifications, notification_settings, system_settings
 from .models.common import comments, attachments, staff_sites

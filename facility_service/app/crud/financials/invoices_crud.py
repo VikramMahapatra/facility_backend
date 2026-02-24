@@ -22,7 +22,7 @@ from facility_service.app.models.space_sites.spaces import Space
 from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType
 from shared.core.database import AuthSessionLocal
 from shared.helpers.json_response_helper import error_response, success_response
-from shared.helpers.user_helper import get_user_name
+from shared.helpers.user_helper import get_user_detail, get_user_name
 from shared.models.users import Users
 from shared.utils.invoice_pdf import generate_invoice_pdf, get_invoice_email_template
 
@@ -36,7 +36,7 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket
 from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
+from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceLineOut, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
 from facility_service.app.models.parking_access import parking_pass
 
 
@@ -221,9 +221,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
         actual_status = calculate_invoice_status(
             db=db,
-            invoice_id=invoice.id,
-            invoice_amount=invoice_amount,
-            due_date=invoice.due_date
+            invoice=invoice
         )
 
         is_paid = (actual_status == "paid")
@@ -520,12 +518,12 @@ def create_invoice(
             db.add(notification)
 
             # send email
-            service = InvoiceEmailService()
-            service.send_invoice_to_customer(
-                db=db,
-                invoice=db_invoice,
-                customer_email=db_invoice.customer_email
-            )
+            # service = InvoiceEmailService()
+            # service.send_invoice_to_customer(
+            #     db=db,
+            #     invoice=db_invoice,
+            #     customer_email=db_invoice.customer_email
+            # )
 
         db.commit()
 
@@ -648,9 +646,7 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
     # -------------------------
     new_status = calculate_invoice_status(
         db=db,
-        invoice_id=db_invoice.id,
-        invoice_amount=invoice_amount,
-        due_date=db_invoice.due_date
+        db_invoice=db_invoice
     )
 
     db_invoice.status = new_status
@@ -699,22 +695,32 @@ def delete_invoice_soft(db: Session, invoice_id: str, org_id: UUID) -> bool:
     }
 
 
-def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> List[Dict]:
-    """
-    Returns a list of dicts:
-    [
-        {
-            "customer_id": UUID,
-            "customer_name": str,
-            "charges": [
-                {"type": "rent", "id": ..., "period": "..."},
-                ...
-            ]
-        }
-    ]
-    """
+def get_pending_charges_by_customer(
+    db: Session,
+    space_id: UUID,
+    code: str,
+    invoice_id: UUID | None = None
+) -> List[Dict]:
+
     customers = defaultdict(
-        lambda: {"customer_id": None, "customer_name": None, "charges": []})
+        lambda: {"customer_id": None, "customer_name": None, "charges": []}
+    )
+
+    # Common subquery
+    invoice_filter = (
+        db.query(InvoiceLine.item_id)
+        .join(Invoice)
+        .filter(
+            Invoice.space_id == space_id,
+            InvoiceLine.code == code,
+            Invoice.status.notin_(["void", "paid"]),
+            Invoice.is_deleted == False,
+        )
+    )
+
+    # Important part for EDIT mode
+    if invoice_id:
+        invoice_filter = invoice_filter.filter(Invoice.id != invoice_id)
 
     # ---------------------------
     # RENT
@@ -726,25 +732,20 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
             .filter(
                 LeaseCharge.is_deleted == False,
                 Lease.space_id == space_id,
-                ~LeaseCharge.id.in_(
-                    db.query(InvoiceLine.item_id).join(Invoice)
-                    .filter(
-                        Invoice.space_id == space_id,
-                        InvoiceLine.code == "rent",
-                        Invoice.status.notin_(["void", "paid"]),
-                        Invoice.is_deleted == False,
-                    )
-                )
-            ).all()
+                ~LeaseCharge.id.in_(invoice_filter)
+            )
+            .all()
         )
 
         for lc in lease_charges:
             tenant = db.query(Tenant).filter(Tenant.id == lc.payer_id).first()
-            cust_id = tenant.user_id if tenant else None
-            cust_name = tenant.name if tenant else None
-            customers[cust_id]["customer_id"] = cust_id
-            customers[cust_id]["customer_name"] = cust_name
-            customers[cust_id]["charges"].append({
+            tenant_user = get_user_detail(tenant.user_id)
+
+            customers[tenant.user_id]["customer_id"] = tenant_user.id
+            customers[tenant.user_id]["customer_name"] = tenant_user.full_name
+            customers[tenant.user_id]["customer_email"] = tenant_user.email
+            customers[tenant.user_id]["customer_phone"] = tenant_user.phone
+            customers[tenant.user_id]["charges"].append({
                 "type": "rent",
                 "id": str(lc.id),
                 "period": f"{lc.period_start:%d %b %Y} - {lc.period_end:%d %b %Y}"
@@ -754,26 +755,25 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
     # MAINTENANCE
     # ---------------------------
     elif code == "maintenance":
-        maint_charges = db.query(OwnerMaintenanceCharge).filter(
-            OwnerMaintenanceCharge.is_deleted == False,
-            OwnerMaintenanceCharge.space_id == space_id,
-            ~OwnerMaintenanceCharge.id.in_(
-                db.query(InvoiceLine.item_id).join(Invoice)
-                .filter(
-                    Invoice.space_id == space_id,
-                    InvoiceLine.code == "maintenance",
-                    Invoice.status.notin_(["void", "paid"]),
-                    Invoice.is_deleted == False,
-                )
+        maint_charges = (
+            db.query(OwnerMaintenanceCharge)
+            .filter(
+                OwnerMaintenanceCharge.is_deleted == False,
+                OwnerMaintenanceCharge.space_id == space_id,
+                ~OwnerMaintenanceCharge.id.in_(invoice_filter)
             )
-        ).all()
+            .all()
+        )
 
         for om in maint_charges:
-            owner_user_id = om.space_owner.owner_user_id if om.space_owner else None
-            cust_name = get_user_name(owner_user_id) if owner_user_id else None
-            customers[owner_user_id]["customer_id"] = owner_user_id
-            customers[owner_user_id]["customer_name"] = cust_name
-            customers[owner_user_id]["charges"].append({
+            cust_id = om.space_owner.owner_user_id if om.space_owner else None
+            owner_user = get_user_detail(cust_id)
+
+            customers[cust_id]["customer_id"] = owner_user.id
+            customers[cust_id]["customer_name"] = owner_user.full_name
+            customers[cust_id]["customer_email"] = owner_user.email
+            customers[cust_id]["customer_phone"] = owner_user.phone
+            customers[cust_id]["charges"].append({
                 "type": "maintenance",
                 "id": str(om.id),
                 "period": f"{om.period_start:%d %b %Y} - {om.period_end:%d %b %Y}"
@@ -783,26 +783,24 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
     # PARKING PASS
     # ---------------------------
     elif code == "parking pass":
-        passes = db.query(ParkingPass).filter(
-            ParkingPass.is_deleted == False,
-            ParkingPass.space_id == space_id,
-            ~ParkingPass.id.in_(
-                db.query(InvoiceLine.item_id).join(Invoice)
-                .filter(
-                    Invoice.space_id == space_id,
-                    InvoiceLine.code == "parking pass",
-                    Invoice.status.notin_(["void", "paid"]),
-                    Invoice.is_deleted == False,
-                )
+        passes = (
+            db.query(ParkingPass)
+            .filter(
+                ParkingPass.is_deleted == False,
+                ParkingPass.space_id == space_id,
+                ~ParkingPass.id.in_(invoice_filter)
             )
-        ).all()
+            .all()
+        )
 
         for pp in passes:
             cust_id = pp.partner_id
-            cust_name = get_user_name(
-                cust_id) if cust_id else pp.pass_holder_name
-            customers[cust_id]["customer_id"] = cust_id
-            customers[cust_id]["customer_name"] = cust_name
+            owner_user = get_user_detail(cust_id)
+
+            customers[cust_id]["customer_id"] = owner_user.id
+            customers[cust_id]["customer_name"] = owner_user.full_name
+            customers[cust_id]["customer_email"] = owner_user.email
+            customers[cust_id]["customer_phone"] = owner_user.phone
             customers[cust_id]["charges"].append({
                 "type": "parking pass",
                 "id": str(pp.id),
@@ -820,30 +818,25 @@ def get_pending_charges_by_customer(db: Session, space_id: UUID, code: str) -> L
             .filter(
                 TicketWorkOrder.is_deleted == False,
                 Ticket.space_id == space_id,
-                ~TicketWorkOrder.id.in_(
-                    db.query(InvoiceLine.item_id).join(Invoice)
-                    .filter(
-                        Invoice.space_id == space_id,
-                        InvoiceLine.code == "work_order",
-                        Invoice.status.notin_(["void", "paid"]),
-                        Invoice.is_deleted == False,
-                    )
-                )
-            ).all()
+                ~TicketWorkOrder.id.in_(invoice_filter)
+            )
+            .all()
         )
 
         for wo in work_orders:
             cust_id = wo.bill_to_id
-            cust_name = get_user_name(cust_id) if cust_id else None
-            customers[cust_id]["customer_id"] = cust_id
-            customers[cust_id]["customer_name"] = cust_name
+            owner_user = get_user_detail(cust_id)
+
+            customers[cust_id]["customer_id"] = owner_user.id
+            customers[cust_id]["customer_name"] = owner_user.full_name
+            customers[cust_id]["customer_email"] = owner_user.email
+            customers[cust_id]["customer_phone"] = owner_user.phone
             customers[cust_id]["charges"].append({
                 "type": "work_order",
                 "id": str(wo.id),
                 "work_order_no": wo.wo_no
             })
 
-    # Convert defaultdict to list
     return list(customers.values())
 
 
@@ -912,9 +905,7 @@ def get_work_order_invoices(db: Session, org_id: UUID, params: InvoicesRequest) 
 
         actual_status = calculate_invoice_status(
             db=db,
-            invoice_id=invoice.id,
-            invoice_amount=invoice_amount,
-            due_date=invoice.due_date
+            invoice=invoice
         )
 
         is_paid = (actual_status == "paid")
@@ -1000,9 +991,7 @@ def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest
 
         actual_status = calculate_invoice_status(
             db=db,
-            invoice_id=invoice.id,
-            invoice_amount=invoice_amount,
-            due_date=invoice.due_date
+            invoice=invoice
         )
 
         is_paid = (actual_status == "paid")
@@ -1146,18 +1135,20 @@ def get_invoice_detail(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
+    space_name = invoice.space.name if invoice.space else None
     site_name = invoice.site.name if invoice.site else None
 
     code = None
-    item_no = None
-    user_name = None
+    user_name = get_user_name(invoice.user_id)
+
+    invoice_lines = []
 
     # -------------------------------------------------
     # GET FROM FIRST LINE (same logic as list API)
     # -------------------------------------------------
-    if invoice.lines:
-
-        line = invoice.lines[0]
+    for line in invoice.lines:
+        item_no = None
+        item_label = None
         code = line.code
 
         # -------- WORK ORDER --------
@@ -1169,24 +1160,22 @@ def get_invoice_detail(
 
             if wo:
                 item_no = wo.wo_no
-                user_name = get_user_name(wo.bill_to_id)
+                item_label = f"#{wo.wo_no}"
 
         # -------- RENT --------
         elif line.code == InvoiceType.rent.value:
-            lease = (
-                db.query(Lease)
-                .join(LeaseCharge, Lease.id == LeaseCharge.lease_id)
+            lc = (
+                db.query(LeaseCharge)
+                .join(Lease, Lease.id == LeaseCharge.lease_id)
                 .filter(
-                    Lease.id == line.item_id,
+                    LeaseCharge.id == line.item_id,
                     Lease.is_deleted == False
                 ).first()
             )
 
-            if lease:
-                item_no = lease.lease_number
-
-                if lease.tenant:
-                    user_name = get_user_name(lease.tenant.user_id)
+            if lc:
+                item_no = lc.lease.lease_number
+                item_label = f"{lc.period_start:%d %b %Y} - {lc.period_end:%d %b %Y}"
 
         # -------- OWNER MAINTENANCE --------
         elif line.code == InvoiceType.owner_maintenance.value:
@@ -1197,9 +1186,7 @@ def get_invoice_detail(
 
             if om:
                 item_no = om.maintenance_no
-
-                if om.owner_user_id:
-                    user_name = get_user_name(lease.tenant.user_id)
+                item_label = f"{om.period_start:%d %b %Y} - {om.period_end:%d %b %Y}"
 
         # -------- PARKING PASS --------
         elif line.code == InvoiceType.parking_pass.value:
@@ -1210,9 +1197,13 @@ def get_invoice_detail(
 
             if pass_obj:
                 item_no = pass_obj.pass_no
+                item_label = f"{pass_obj.valid_from:%d %b %Y} - {pass_obj.valid_to:%d %b %Y}"
 
-                if pass_obj.partner_id:
-                    user_name = get_user_name(pass_obj.partner_id)
+        invoice_lines.append(InvoiceLineOut.model_validate({
+            **line.__dict__,
+            "item_no": item_no,
+            "item_label": item_label,
+        }))
 
     # -------------------------------------------------
     # PAYMENTS
@@ -1244,9 +1235,7 @@ def get_invoice_detail(
 
     actual_status = calculate_invoice_status(
         db=db,
-        invoice_id=invoice.id,
-        invoice_amount=invoice_amount,
-        due_date=invoice.due_date
+        invoice=invoice
     )
 
     # -------------------------------------------------
@@ -1256,14 +1245,15 @@ def get_invoice_detail(
         **invoice.__dict__,
         "date": invoice.date.isoformat() if invoice.date else None,
         "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+        "space_name": space_name,
         "site_name": site_name,
         "code": code,
-        "item_no": item_no,
         "user_name": user_name,
         "status": actual_status,
         "is_paid": actual_status == "paid",
         "payments": payments_list,
-        "currency": invoice.currency
+        "currency": invoice.currency,
+        "lines": invoice_lines
     })
 
 

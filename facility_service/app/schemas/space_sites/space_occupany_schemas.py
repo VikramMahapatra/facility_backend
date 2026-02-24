@@ -1,7 +1,7 @@
 # schemas/space_occupancy.py
 from datetime import date, datetime
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal, Optional
 from facility_service.app.models.space_sites.space_handover import HandoverStatus
 from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus, RequestType
@@ -102,8 +102,35 @@ class InspectionComplete(BaseModel):
     remarks: str | None = None
 
 
-class HandoverReturnItemRequest(BaseModel):
-    item: str
+class HandoverUpdateSchema(BaseModel):
+    handover_date: Optional[datetime] = Field(
+        None, description="Date and time of handover")
+    handover_to_person: Optional[str] = Field(
+        None, max_length=200, description="Name of person receiving the handover")
+    handover_to_contact: Optional[str] = Field(
+        None, max_length=20, description="Contact number of person receiving")
+    remarks: Optional[str] = Field(
+        None, max_length=500, description="Additional notes / condition notes")
+
+    # Keys and Accessories
+    keys_returned: Optional[bool] = Field(
+        None, description="Whether keys are returned")
+    number_of_keys: Optional[int] = Field(
+        None, description="Number of keys returned")
+
+    accessories_returned: Optional[bool] = Field(
+        None, description="Whether accessories are returned")
+    access_card_returned: Optional[bool] = Field(
+        None, description="Whether access cards are returned")
+    number_of_access_cards: Optional[int] = Field(
+        None, description="Number of access cards returned")
+    parking_card_returned: Optional[bool] = Field(
+        None, description="Whether parking cards are returned")
+    number_of_parking_cards: Optional[int] = Field(
+        None, description="Number of parking cards returned")
+
+    status: Optional[HandoverStatus] = Field(
+        None, description="Handover status")
 
 
 class InspectionItemCreate(BaseModel):

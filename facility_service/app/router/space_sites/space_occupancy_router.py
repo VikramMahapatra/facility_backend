@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus, RequestType
-from ...schemas.space_sites.space_occupany_schemas import HandoverCreate, HandoverReturnItemRequest, InspectionComplete, InspectionItemCreate, MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, SpaceMoveOutRequest
+from ...schemas.space_sites.space_occupany_schemas import HandoverCreate, HandoverUpdateSchema, InspectionComplete, InspectionItemCreate, MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, SpaceMoveOutRequest
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import success_response
 from shared.core.schemas import Lookup, UserToken
@@ -25,9 +25,19 @@ def current_occupancy(
     return crud.get_current_occupancy(db, auth_db, space_id)
 
 
-@router.get("/{space_id}/occupancy/history")
+@router.get("/{space_id:uuid}/occupancy/history")
 def occupancy_history(space_id: UUID, db: Session = Depends(get_db)):
     return crud.get_occupancy_history(db, space_id)
+
+
+@router.post("/{space_id:uuid}/occupancy/timeline")
+def occupancy_timeline(
+    space_id: UUID,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_occupancy_timeline(db, space_id, current_user.user_id)
 
 
 @router.get("/occupancy-requests")
@@ -82,13 +92,13 @@ def reject_move_out(move_out_id: UUID, db: Session = Depends(get_db)):
     return crud.reject_move_out(db, move_out_id)
 
 
-@router.post("/handover/{occupancy_id}/update-checklist")
+@router.post("/handover/{occupancy_id}/update-handover")
 def mark_handover_returned(
     occupancy_id: UUID,
-    params: HandoverReturnItemRequest = Depends(),
+    params: HandoverUpdateSchema = Depends(),
     db: Session = Depends(get_db)
 ):
-    return crud.update_handover_checklist(db, occupancy_id, params.item)
+    return crud.update_handover(db, occupancy_id, params)
 
 
 @router.put("/handover/{occupancy_id}/complete")

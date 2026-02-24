@@ -42,6 +42,7 @@ class InvoiceBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
     space_id: UUID
+    user_id: UUID
     date: date_type
     due_date: Optional[date_type] = None
     currency: str
@@ -94,6 +95,8 @@ class InvoiceLineOut(BaseModel):
     invoice_id: UUID
     code: str
     item_id: UUID
+    item_no: Optional[str] = None
+    item_label: Optional[str] = None
     description: Optional[str] = None
     amount: Decimal
     tax_pct: Optional[Decimal] = 0
@@ -118,16 +121,16 @@ class InvoiceOut(BaseModel):
 
     # Derived / Extra fields
     site_name: Optional[str] = None
+    space_name: Optional[str] = None
     code: Optional[str] = None
-    item_no: Optional[str] = None
     user_name: Optional[str] = None
 
     # Relationships
     lines: List[InvoiceLineOut] = []
     payments: List[PaymentOut] = []
 
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

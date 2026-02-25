@@ -142,7 +142,7 @@ def get_current_occupancy(db: Session, space_id: UUID):
         status = "inspection_pending"
     elif inspection.status != InspectionStatus.completed:
         status = "inspection_scheduled"
-    elif maintenance and not maintenance.completed:
+    elif not maintenance or (maintenance and not maintenance.completed):
         status = "maintenance_pending"
     elif not settlement or (settlement and not settlement.settled):
         status = "settlement_pending"
@@ -1032,7 +1032,7 @@ def reject_move_out(db: Session, move_out_id: UUID):
 
 
 def approve_move_out(db: Session, move_out_id: UUID, admin_user_id: UUID):
-    today = datetime.combine(date.today(), time.min)
+    today = date.today()
     move_out = db.query(SpaceOccupancy).filter(
         SpaceOccupancy.id == move_out_id,
         SpaceOccupancy.status == OccupancyStatus.pending,
@@ -1172,7 +1172,7 @@ def complete_handover(
             tenant_space = db.query(TenantSpace).filter(
                 TenantSpace.space_id == original_move_in.space_id,
                 TenantSpace.tenant_id == original_move_in.source_id,
-                TenantSpace.status == OwnershipStatus.active
+                TenantSpace.status == OwnershipStatus.leased
             ).first()
 
             if tenant_space:
@@ -1553,64 +1553,6 @@ def request_settlement(
     return settlement
 
 
-def create_settlement(
-    db: Session,
-    params: SettlementRequest
-):
-    """
-    Create settlement for an occupancy after maintenance stage.
-    """
-
-    occupancy = db.query(SpaceOccupancy).filter(
-        SpaceOccupancy.id == params.occupancy_id
-    ).first()
-
-    if not occupancy:
-        raise HTTPException(status_code=404, detail="Occupancy not found")
-
-    # Check existing settlement
-    existing = db.query(SpaceSettlement).filter(
-        SpaceSettlement.occupancy_id == params.occupancy_id
-    ).first()
-
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail="Settlement already created"
-        )
-
-    final_amount = (
-        (params.damage_charges or 0)
-        + (params.pending_dues or 0)
-    )
-
-    settlement = SpaceSettlement(
-        occupancy_id=params.occupancy_id,
-        damage_charges=params.damage_charges or 0,
-        pending_dues=params.pending_dues or 0,
-        final_amount=final_amount,
-    )
-
-    db.add(settlement)
-    db.commit()
-    db.refresh(settlement)
-
-    log_occupancy_event(
-        db,
-        space_id=occupancy.space_id,
-        event_type=OccupancyEventType.settlement_completed,
-        occupant_type=occupancy.occupant_type,
-        occupant_user_id=occupancy.occupant_user_id,
-        source_id=occupancy.source_id,
-        lease_id=occupancy.lease_id
-    )
-
-    return {
-        "message": "Settlement created successfully",
-        "settlement_id": str(settlement.id)
-    }
-
-
 def complete_settlement(
     db: Session,
     settlement_id: UUID,
@@ -1665,6 +1607,16 @@ def complete_settlement(
     db.commit()
     db.refresh(settlement)
 
+    log_occupancy_event(
+        db,
+        space_id=occupancy.space_id,
+        event_type=OccupancyEventType.settlement_completed,
+        occupant_type=occupancy.occupant_type,
+        occupant_user_id=occupancy.occupant_user_id,
+        source_id=occupancy.source_id,
+        lease_id=occupancy.lease_id
+    )
+
     return {
         "message": "Settlement completed successfully",
         "settlement_id": str(settlement.id)
@@ -1672,8 +1624,19 @@ def complete_settlement(
 # VALIDATION METHODS
 
 
-def validate_space_available_for_assignment(db: Session, space_id: UUID):
+def validate_space_available_for_assignment(
+    db: Session,
+    space_id: UUID,
+    lease_start_date: datetime
+):
 
+    now = datetime.now(timezone.utc)
+
+    # 🔹 FUTURE LEASE → skip occupancy checks
+    if lease_start_date > now:
+        return True
+
+    # 🔹 CURRENT lease requires space readiness
     last_occupancy = (
         db.query(SpaceOccupancy)
         .filter(
@@ -1684,19 +1647,25 @@ def validate_space_available_for_assignment(db: Session, space_id: UUID):
         .first()
     )
 
-    if not last_occupancy:
-        return True
+    if last_occupancy:
+        handover = (
+            db.query(SpaceHandover)
+            .filter(SpaceHandover.occupancy_id == last_occupancy.id)
+            .first()
+        )
 
-    handover = (
-        db.query(SpaceHandover)
-        .filter(SpaceHandover.occupancy_id == last_occupancy.id)
-        .first()
-    )
+        if not handover or handover.status != HandoverStatus.completed:
+            return error_response(
+                message="Handover process not completed."
+            )
 
-    if not handover or handover.status != HandoverStatus.completed:
-        raise HTTPException(
-            status_code=400,
-            detail="Handover process not completed. Space cannot be assigned."
+    space = db.query(Space).filter(
+        Space.id == space_id
+    ).first()
+
+    if not space or space.status != "available":
+        return error_response(
+            message="Space is not available for assignment."
         )
 
     return True

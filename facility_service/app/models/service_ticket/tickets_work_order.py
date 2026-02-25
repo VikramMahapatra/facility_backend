@@ -40,7 +40,7 @@ class TicketWorkOrder(Base):
     total_amount = Column(Numeric(14, 2), nullable=False)
     tax_code_id = Column(UUID(as_uuid=True), ForeignKey("tax_codes.id"))
 
-    bill_to_type = Column(String(20))
+    bill_to_type = Column(String(20))  # tenant | vendor | owner | org
     bill_to_id = Column(UUID(as_uuid=True), nullable=True)
 
     ticket = relationship("Ticket", back_populates="work_orders")

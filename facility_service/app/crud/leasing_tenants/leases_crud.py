@@ -6,7 +6,7 @@ from sqlalchemy import func, or_, NUMERIC, and_
 from sqlalchemy.dialects.postgresql import UUID
 
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists
-from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event, move_in
+from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event, move_in, validate_space_available_for_assignment
 from facility_service.app.enum.revenue_enum import InvoiceType
 from facility_service.app.models.leasing_tenants.lease_payment_term import LeasePaymentTerm
 from facility_service.app.models.space_sites.space_occupancies import OccupantType, SpaceOccupancy
@@ -289,6 +289,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             return error_response(
                 message="Tenant must be approved before creating a lease"
             )
+
         #  Determine lease status
         lease_status = payload.status or "draft"
 
@@ -330,7 +331,20 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                 - relativedelta(days=1)
             )
 
-         # Create the lease record (always)
+        validate_no_overlapping_lease(
+            db=db,
+            space_id=payload.space_id,
+            start_date=payload.start_date,
+            end_date=end_date
+        )
+
+        validate_space_available_for_assignment(
+            db=db,
+            space_id=payload.space_id,
+            lease_start_date=payload.start_date
+        )
+
+        # Create the lease record (always)
         lease_data = payload.model_dump(
             exclude={"reference", "space_name", "auto_move_in", "lease_term_duration", "payment_terms"})
         lease_data.update({
@@ -495,7 +509,7 @@ def update(db: Session, payload: LeaseUpdate):
 
         should_activate_now = (
             new_status == "active" and
-            new_start_date <= now
+            new_start_date <= now.date()
         )
 
         if old_status != "active" and new_status == "active":
@@ -516,6 +530,14 @@ def update(db: Session, payload: LeaseUpdate):
                 return error_response(
                     message="Tenant must be approved before activating lease"
                 )
+
+            validate_no_overlapping_lease(
+                db=db,
+                space_id=target_space_id,
+                start_date=payload.start_date,
+                end_date=end_date,
+                exclude_lease_id=obj.id
+            )
 
             # Only lease if start date has arrived
             if should_activate_now:
@@ -1311,3 +1333,31 @@ def calculate_lease_term_duration(
     else:
         raise ValueError(
             "Invalid lease_frequency. Must be 'monthly' or 'annually'")
+
+
+def validate_no_overlapping_lease(
+    db: Session,
+    space_id: UUID,
+    start_date: datetime,
+    end_date: datetime,
+    exclude_lease_id: UUID | None = None,
+):
+    query = db.query(Lease).filter(
+        Lease.space_id == space_id,
+        Lease.is_deleted == False,
+        Lease.status.notin_(["expired", "terminated", "inactive"]),
+        Lease.start_date <= end_date,
+        Lease.end_date >= start_date,
+    )
+
+    # useful for update API
+    if exclude_lease_id:
+        query = query.filter(Lease.id != exclude_lease_id)
+
+    overlapping = query.first()
+
+    if overlapping:
+        raise error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message="Lease dates overlap with an existing lease."
+        )

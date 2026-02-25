@@ -817,8 +817,10 @@ def get_pending_charges_by_customer(
             .join(Ticket, Ticket.id == TicketWorkOrder.ticket_id)
             .filter(
                 TicketWorkOrder.is_deleted == False,
+                TicketWorkOrder.bill_to_type.in_(["tenant", "owner"]),
                 Ticket.space_id == space_id,
                 ~TicketWorkOrder.id.in_(invoice_filter)
+
             )
             .all()
         )

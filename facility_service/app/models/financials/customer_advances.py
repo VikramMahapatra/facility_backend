@@ -15,12 +15,13 @@ class CustomerAdvance(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False)
     user_id = Column(UUID(as_uuid=True), nullable=False)
-
+    method: str = Column(String(24))  # upi|card|bank|cash|cheque|gateway
+    ref_no: str = Column(String(64))
     amount = Column(Numeric(14, 2), nullable=False)
     balance = Column(Numeric(14, 2), nullable=False)
-
     currency = Column(String(8), default="INR")
-
+    paid_at = Column(DateTime(timezone=True), nullable=False)
+    notes = Column(String(500))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import cast, func, or_, Numeric, Integer
 
 from facility_service.app.models.procurement.vendors import Vendor
+from facility_service.app.schemas.financials.invoices_schemas import InvoicesRequest, PaymentOut
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.helpers.user_helper import get_user_name, get_users_bulk
 from shared.core.schemas import UserToken
@@ -41,17 +42,10 @@ def build_bills_filters(db: Session, auth_db: Session, org_id: UUID, params: Bil
     if params.search:
         search_term = f"%{params.search}%"
 
-        # Step 1: Find any matching Vendor UUIDs from the Auth DB
-        matching_users = auth_db.query(Users.id).filter(
-            Users.full_name.ilike(search_term)
-        ).all()
-        matching_user_ids = [u.id for u in matching_users]
-
         # Step 2: Filter Bills by Bill No OR the found Vendor UUIDs
         filters.append(or_(
             Bill.bill_no.ilike(search_term),
-            Bill.vendor_id.in_(
-                matching_user_ids) if matching_user_ids else False
+            Vendor.name.ilike(search_term)
         ))
 
     return filters
@@ -101,9 +95,11 @@ def get_site_name_from_work_order(db: Session, work_order_id: UUID) -> str | Non
 
 
 def get_bills_overview(db: Session, auth_db: Session, org_id: UUID, params: BillsRequest) -> BillsOverview:
-    filters = build_bills_filters(db, auth_db, org_id, params)
 
-    total = db.query(func.count(Bill.id)).filter(*filters).scalar()
+    total = (
+        db.query(func.count(Bill.id)).join(
+            Vendor, Bill.vendor_id == Vendor.id)
+    ).filter(Bill.org_id == org_id, Bill.is_deleted == False).scalar()
 
     grand_amount = cast(
         func.jsonb_extract_path_text(Bill.totals, "grand"),
@@ -112,14 +108,14 @@ def get_bills_overview(db: Session, auth_db: Session, org_id: UUID, params: Bill
 
     total_amount = db.query(
         func.coalesce(func.sum(grand_amount), 0)
-    ).filter(*filters).scalar()
+    ).filter(Bill.org_id == org_id, Bill.is_deleted == False).scalar()
 
     paid_amount = (
         db.query(
             func.coalesce(func.sum(cast(BillPayment.amount, Numeric)), 0)
         )
         .join(Bill, BillPayment.bill_id == Bill.id)
-        .filter(*filters)
+        .filter(Bill.org_id == org_id, Bill.is_deleted == False)
         .scalar()
     )
 
@@ -353,6 +349,7 @@ def workorder_vendor_lookup(db: Session, space_id: UUID):
         .filter(
             Ticket.space_id == space_id,
             TicketWorkOrder.bill_to_type == "vendor",
+            TicketWorkOrder.status == "completed",
             TicketWorkOrder.is_deleted == False,
             Vendor.is_deleted == False,
             Vendor.status == "active",
@@ -433,3 +430,79 @@ def generate_bill_number(db: Session, org_id: UUID) -> str:
 
     next_number = (last_number or 0) + 1
     return f"BILL-{next_number:04d}" if next_number <= 9999 else f"BILL-{next_number}"
+
+
+def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesRequest):
+
+    # -----------------------------------------
+    # Total Count
+    # -----------------------------------------
+    total = (
+        db.query(func.count(BillPayment.id))
+        .join(Bill, BillPayment.bill_id == Bill.id)
+        .filter(
+            BillPayment.org_id == org_id,
+            Bill.is_deleted == False
+        )
+        .scalar()
+    )
+
+    # -----------------------------------------
+    # Base Query with eager loading
+    # -----------------------------------------
+    base_query = (
+        db.query(BillPayment)
+        .options(
+            joinedload(BillPayment.bill)
+            .joinedload(Bill.lines),
+            joinedload(BillPayment.bill)
+            .joinedload(Bill.site)
+        )
+        .join(Bill, BillPayment.bill_id == Bill.id)
+        .join(Vendor, Vendor.id == Bill.vendor_id)
+        .filter(
+            BillPayment.org_id == org_id,
+            Bill.is_deleted == False
+        )
+    )
+
+    # Text Search Bar (bill number OR vendor name)
+    if params.search:
+        search_term = f"%{params.search}%"
+
+        # Step 2: Filter Bills by Bill No OR the found Vendor UUIDs
+        base_query = base_query.filter(or_(
+            Bill.bill_no.ilike(search_term),
+            Vendor.name.ilike(search_term)
+        ))
+
+    payments = (
+        base_query
+        .order_by(BillPayment.paid_at.desc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+
+    results = []
+
+    for payment in payments:
+
+        bill = payment.bill
+        vendor_name = bill.vendor.name if bill.vendor else None
+        space_name = bill.space.name if bill.space else None
+        site_name = bill.site.name if bill.site else None
+
+        results.append(PaymentOut.model_validate({
+            **payment.__dict__,
+            "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
+            "bill_no": bill.bill_no,
+            "space_name": space_name,
+            "site_name": site_name,
+            "customer_name": vendor_name
+        }))
+
+    return {
+        "payments": results,
+        "total": total
+    }

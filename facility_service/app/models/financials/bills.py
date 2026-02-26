@@ -31,12 +31,15 @@ class Bill(Base):
     totals = Column(JSONB)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     site = relationship("Site", backref="bills")
     space = relationship("Space", backref="bills")
     vendor = relationship("Vendor", backref="bills")
     lines = relationship(
         "BillLine", back_populates="bill", cascade="all, delete-orphan")
+    payments = relationship(
+        "BillPayment", back_populates="bill", cascade="all, delete-orphan")
 
 
 class BillLine(Base):
@@ -57,7 +60,11 @@ class BillPayment(Base):
     __tablename__ = "bill_payments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: UUID = Column(UUID(as_uuid=True),
+                          ForeignKey("orgs.id"), nullable=False)
     bill_id = Column(UUID(as_uuid=True), ForeignKey("bills.id"))
     amount = Column(Numeric(14, 2))
     method = Column(String(24))
     paid_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    bill = relationship("Bill", back_populates="payments")

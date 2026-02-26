@@ -3,6 +3,8 @@ from typing import List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from uuid import UUID
+
+from facility_service.app.schemas.financials.invoices_schemas import InvoicesRequest, PaymentResponse
 # from shared.helpers.json_response_helper import success_response
 from ...crud.financials import bills_crud as crud
 from ...schemas.financials.bills_schemas import (
@@ -152,3 +154,12 @@ def preview_bill_number(
     """Generate the next sequential bill number."""
     bill_no = crud.generate_bill_number(db, current_user.org_id)
     return {"bill_no": bill_no}
+
+
+@router.get("/payments", response_model=PaymentResponse)
+def get_payments(
+        params: InvoicesRequest = Depends(),
+        db: Session = Depends(get_db),
+        auth_db: Session = Depends(get_auth_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_payments(db=db, auth_db=auth_db, org_id=current_user.org_id, params=params)

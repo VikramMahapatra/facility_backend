@@ -36,7 +36,7 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket
 from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceLineOut, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceLineOut, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
 from facility_service.app.models.parking_access import parking_pass
 
 
@@ -72,8 +72,8 @@ def get_invoices_query(db: Session, org_id: UUID, params: InvoicesRequest):
 
 def get_invoices_overview(db: Session, org_id: UUID, params: InvoicesRequest):
     # ✅ This now includes is_deleted == False
-    filters = build_invoices_filters(org_id, params)
-    total = db.query(func.count(Invoice.id)).filter(*filters).scalar()
+    total = db.query(func.count(Invoice.id)).filter(
+        Invoice.org_id == org_id, Invoice.is_deleted == False).scalar()
 
     grand_amount = cast(
         func.jsonb_extract_path_text(Invoice.totals, "grand"),
@@ -82,7 +82,7 @@ def get_invoices_overview(db: Session, org_id: UUID, params: InvoicesRequest):
 
     total_amount = db.query(
         func.coalesce(func.sum(grand_amount), 0)
-    ).filter(*filters).scalar()
+    ).filter(Invoice.org_id == org_id, Invoice.is_deleted == False).scalar()
 
     paid_amount = (
         db.query(
@@ -90,7 +90,7 @@ def get_invoices_overview(db: Session, org_id: UUID, params: InvoicesRequest):
         )
         .join(Invoice, PaymentAR.invoice_id == Invoice.id)
         # Ensure we only sum payments for non-deleted invoices
-        .filter(*filters, PaymentAR.org_id == org_id, Invoice.is_deleted == False)
+        .filter(Invoice.org_id == org_id, PaymentAR.org_id == org_id, Invoice.is_deleted == False)
         .scalar()
     )
 
@@ -103,7 +103,7 @@ def get_invoices_overview(db: Session, org_id: UUID, params: InvoicesRequest):
 
 
 def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> InvoicesResponse:
-
+    filters = build_invoices_filters(org_id, params)
     base_query = (
         db.query(Invoice)
         .options(
@@ -111,11 +111,8 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
             joinedload(Invoice.site),
             joinedload(Invoice.payments)
         )
-        .filter(
-            Invoice.org_id == org_id,
-            Invoice.is_deleted == False
-        )
     )
+    base_query.filter(*filters)
 
     total = base_query.with_entities(func.count(Invoice.id)).scalar()
 
@@ -289,6 +286,22 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
             Invoice.is_deleted == False
         )
     )
+
+    if params.search:
+        search_term = f"%{params.search}%"
+
+        # Step 1: Find any matching Vendor UUIDs from the Auth DB
+        matching_users = auth_db.query(Users.id).filter(
+            Users.full_name.ilike(search_term)
+        ).all()
+        matching_user_ids = [u.id for u in matching_users]
+
+        # Step 2: Filter Bills by Bill No OR the found Vendor UUIDs
+        base_query = base_query.filter(or_(
+            Invoice.invoice_no.ilike(search_term),
+            Invoice.user_id.in_(
+                matching_user_ids) if matching_user_ids else False
+        ))
 
     payments = (
         base_query
@@ -818,6 +831,7 @@ def get_pending_charges_by_customer(
             .filter(
                 TicketWorkOrder.is_deleted == False,
                 TicketWorkOrder.bill_to_type.in_(["tenant", "owner"]),
+                TicketWorkOrder.status == "completed",
                 Ticket.space_id == space_id,
                 ~TicketWorkOrder.id.in_(invoice_filter)
 
@@ -1469,7 +1483,7 @@ def save_invoice_payment_detail(
         # ---------------------------
         # 2. Validate ref_no
         # ---------------------------
-        if not payload.ref_no:
+        if payload.method != "cash" and not payload.ref_no:
             return error_response(message="ref_no is mandatory and must be unique per invoice")
 
         # ---------------------------
@@ -1545,7 +1559,7 @@ def save_invoice_payment_detail(
                 for code in line_codes:
                     if code == "rent":
                         db.add(Notification(
-                            user_id=current_user.user_id,
+                            user_id=invoice.user_id,
                             type=NotificationType.alert,
                             title="Rent Payment Recorded",
                             message=f"Payment of {payment.amount} recorded for invoice {invoice.invoice_no}",
@@ -1557,7 +1571,7 @@ def save_invoice_payment_detail(
                         ))
                     elif code in ("maintenance", "owner maintenance"):
                         db.add(Notification(
-                            user_id=current_user.user_id,
+                            user_id=invoice.user_id,
                             type=NotificationType.alert,
                             title="Owner Maintenance Payment Recorded",
                             message=f"Payment of {payment.amount} recorded for invoice {invoice.invoice_no}",
@@ -1600,7 +1614,7 @@ def save_invoice_payment_detail(
             for code in line_codes:
                 if code == "rent":
                     db.add(Notification(
-                        user_id=current_user.user_id,
+                        user_id=invoice.user_id,
                         type=NotificationType.alert,
                         title="Rent Invoice Fully Paid",
                         message=f"Invoice {invoice.invoice_no} has been fully paid. Total: {invoice_total}",
@@ -1612,7 +1626,7 @@ def save_invoice_payment_detail(
                     ))
                 elif code in ("maintenance", "owner maintenance"):
                     db.add(Notification(
-                        user_id=current_user.user_id,
+                        user_id=invoice.user_id,
                         type=NotificationType.alert,
                         title="Owner Maintenance Invoice Fully Paid",
                         message=f"Invoice {invoice.invoice_no} has been fully paid. Total: {invoice_total}",
@@ -1656,22 +1670,42 @@ def generate_invoice_number(db: Session, org_id: UUID):
 
 
 def apply_advance_to_invoice(db: Session, invoice: Invoice):
-    invoice_amount = float(invoice.totals.get("grand", 0))
 
-    advances = db.query(CustomerAdvance).filter(
-        CustomerAdvance.user_id == invoice.user_id,
-        CustomerAdvance.balance > 0
-    ).order_by(CustomerAdvance.created_at).all()
-
+    invoice_amount = Decimal(str(invoice.totals.get("grand", 0)))
     remaining = invoice_amount
 
+    if remaining <= 0:
+        return
+
+    advances = (
+        db.query(CustomerAdvance)
+        .filter(
+            CustomerAdvance.user_id == invoice.user_id,
+            CustomerAdvance.org_id == invoice.org_id,
+            CustomerAdvance.balance > 0
+        )
+        .order_by(CustomerAdvance.created_at.asc())  # ⭐ FIFO
+        .with_for_update()  # ⭐ prevent race condition
+        .all()
+    )
+
     for adv in advances:
+
         if remaining <= 0:
             break
 
-        use_amount = min(float(adv.balance), remaining)
+        adv_balance = Decimal(str(adv.balance))
 
-        # Record adjustment
+        if adv_balance <= 0:
+            continue
+
+        # FIFO deduction
+        use_amount = min(adv_balance, remaining)
+
+        # Safety guard
+        if use_amount <= 0:
+            continue
+
         adjustment = AdvanceAdjustment(
             advance_id=adv.id,
             invoice_id=invoice.id,
@@ -1679,7 +1713,6 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         )
         db.add(adjustment)
 
-        # Record as payment entry
         payment = PaymentAR(
             org_id=invoice.org_id,
             invoice_id=invoice.id,
@@ -1689,13 +1722,133 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         )
         db.add(payment)
 
-        adv.balance -= use_amount
+        adv.balance = adv_balance - use_amount
+
         remaining -= use_amount
 
-    # Update invoice status
     if remaining <= 0:
         invoice.status = "paid"
         invoice.is_paid = True
+
     elif remaining < invoice_amount:
         invoice.status = "partial"
         invoice.is_paid = False
+
+    else:
+        invoice.status = "unpaid"
+        invoice.is_paid = False
+
+
+def add_payment_detail(
+    db: Session,
+    payload: AdvancePaymentCreate,
+    current_user: UserToken
+):
+    try:
+        if payload.amount <= 0:
+            return error_response(message="Amount must be greater than zero")
+
+        if payload.method != "cash" and not payload.ref_no:
+            return error_response(message="ref_no is mandatory and must be unique per invoice")
+
+        payment: CustomerAdvance | None = None
+
+        payment = CustomerAdvance(
+            org_id=current_user.org_id,
+            user_id=payload.user_id,
+            method=payload.method,
+            ref_no=payload.ref_no,
+            amount=float(payload.amount),
+            balance=float(payload.amount),
+            paid_at=payload.paid_at or datetime.utcnow(),
+            notes=payload.notes,
+            currency=payload.currency
+        )
+        db.add(payment)
+        db.flush()
+
+        db.add(Notification(
+            user_id=payload.user_id,
+            type=NotificationType.alert,
+            title="Payment Recorded",
+            message=f"Advance Payment of {payment.amount} recorded",
+            posted_date=datetime.utcnow(),
+            priority=PriorityType.medium,
+            read=False,
+            is_deleted=False,
+            is_email=False
+        ))
+
+        db.commit()
+        return success_response(data={"payment_id": str(payment.id)})
+
+    except Exception as e:
+        db.rollback()
+        raise e
+
+
+def get_advance_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesRequest):
+
+    # -----------------------------------------
+    # Total Count
+    # -----------------------------------------
+    total = (
+        db.query(func.count(CustomerAdvance.id))
+        .filter(
+            CustomerAdvance.org_id == org_id,
+        )
+        .scalar()
+    )
+
+    # -----------------------------------------
+    # Base Query with eager loading
+    # -----------------------------------------
+    base_query = (
+        db.query(CustomerAdvance)
+        .filter(
+            CustomerAdvance.org_id == org_id
+        )
+    )
+
+    if params.search:
+        search_term = f"%{params.search}%"
+
+        # Step 1: Find any matching Vendor UUIDs from the Auth DB
+        matching_users = auth_db.query(Users.id).filter(
+            Users.full_name.ilike(search_term)
+        ).all()
+        matching_user_ids = [u.id for u in matching_users]
+
+        # Step 2: Filter Bills by Bill No OR the found Vendor UUIDs
+        base_query = base_query.filter(or_(
+            CustomerAdvance.method.ilike(search_term),
+            CustomerAdvance.user_id.in_(
+                matching_user_ids) if matching_user_ids else False
+        ))
+
+    payments = (
+        base_query
+        .order_by(CustomerAdvance.paid_at.desc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+
+    results = []
+
+    for payment in payments:
+        customer_name = get_user_name(payment.user_id)
+
+        # -----------------------------------------
+        # Build Response
+        # -----------------------------------------
+        results.append(AdvancePaymentOut.model_validate({
+            **payment.__dict__,
+            "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
+            "customer_name": customer_name,
+        }))
+
+    return {
+        "advances": results,
+        "total": total
+    }

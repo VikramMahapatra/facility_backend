@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from shared.helpers.json_response_helper import success_response
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import Lookup, UserToken
@@ -220,3 +220,26 @@ def preview_invoice_number(
 ):
     invoice_no = crud.generate_invoice_number(db, current_user.org_id)
     return {"invoice_no": invoice_no}
+
+
+@router.post("/add-payment", response_model=None)
+def add_payment(
+    payload: AdvancePaymentCreate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """Record a payment against a bill."""
+    return crud.add_payment_detail(
+        db=db,
+        payload=payload,
+        current_user=current_user
+    )
+
+
+@router.get("/customer-advance-payments", response_model=AdvancePaymentResponse)
+def get_advance_payments(
+        params: InvoicesRequest = Depends(),
+        db: Session = Depends(get_db),
+        auth_db: Session = Depends(get_auth_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_advance_payments(db=db, auth_db=auth_db, org_id=current_user.org_id, params=params)

@@ -18,7 +18,7 @@ from .router.maintenance_assets import (
     asset_category_router, assets_router, inventory_items_router, inventory_stocks_router, pm_template_router, service_request_router, work_order_router)
 from .router.crm import contact_router
 from .router.financials import (
-    invoice_router, tax_codes_router, revenue_router,bills_router)
+    invoice_router, tax_codes_router, revenue_router, bills_router)
 from .router.overview import (dashboard_router, analytics_router)
 from .router.space_sites import (
     orgs_router,
@@ -48,7 +48,7 @@ from shared.core.database import facility_engine, Base
 from .models.energy_iot import meters, meter_readings
 from .models.parking_access import parking_zones, parking_pass, access_events, visitors, parking_slots
 from .models.crm import contacts, companies
-from .models.financials import invoices
+from .models.financials import invoices, bills, customer_advances, tax_codes, tax_reports
 from .models.leasing_tenants import leases, lease_charges, tenant_spaces, tenants, lease_charge_code, lease_payment_term
 from .models.space_sites import (
     buildings, orgs, sites, space_filter_models, space_group_members, space_groups, space_owners, owner_maintenances,

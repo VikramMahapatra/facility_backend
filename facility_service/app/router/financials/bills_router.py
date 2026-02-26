@@ -114,7 +114,7 @@ def delete_bill(
 # Payments
 
 
-@router.post("/save-payment", response_model=BillPaymentOut)
+@router.post("/save-payment", response_model=None)
 def save_bill_payment(
     payload: BillPaymentCreate,
     db: Session = Depends(get_db),

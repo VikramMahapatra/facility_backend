@@ -215,6 +215,24 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
             "work_order_no": item_no,
         }))
 
+    # -------------------------------------------------
+    # PAYMENTS
+    # -------------------------------------------------
+
+    payments_list = [
+        {
+            "id": p.id,
+            "org_id": p.org_id,
+            "bill_id": p.bill_id,
+            "bill_no": bill.invoice_no,
+            "method": p.method,
+            "ref_no": p.ref_no,
+            "amount": Decimal(str(p.amount)),
+            "paid_at": p.paid_at.date().isoformat() if p.paid_at else None,
+        }
+        for p in payments
+    ]
+
     return BillOut.model_validate({
         **bill.__dict__,
         "vendor_name": vendor_name,
@@ -224,7 +242,7 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
         "total_amount": bill_total,
         "paid_amount": paid_amount,
         "lines": bill_lines,
-        "payments": payments
+        "payments": payments_list
     })
 
 
@@ -301,8 +319,10 @@ def save_bill_payment(db: Session, payload: BillPaymentCreate, current_user: Use
 
         payment = BillPayment(
             bill_id=bill.id,
+            org_id=current_user.org_id,
             amount=float(payload.amount),
             method=payload.method,
+            ref_no=payload.ref_no,
             paid_at=payload.paid_at or datetime.utcnow(),
         )
         db.add(payment)

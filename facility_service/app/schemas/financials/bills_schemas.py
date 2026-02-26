@@ -33,6 +33,7 @@ class BillLineOut(BillLineBase):
 class BillPaymentBase(BaseModel):
     amount: Decimal
     method: Optional[str] = None
+    ref_no: Optional[str] = None
     paid_at: Optional[datetime] = None
 
     class Config:

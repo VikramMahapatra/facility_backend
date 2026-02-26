@@ -4,11 +4,14 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from facility_service.app.crud.space_sites.space_occupancy_crud import start_handover_process
+from facility_service.app.models.leasing_tenants.lease_termination_request import LeaseTerminationRequest
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from facility_service.app.models.space_sites.space_handover import HandoverStatus, SpaceHandover
 from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus, RequestType, SpaceOccupancy
+from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
 from facility_service.app.models.space_sites.spaces import Space
+from facility_service.app.models.system.notifications import Notification, NotificationType
 from shared.utils.enums import OwnershipStatus
 
 
@@ -193,3 +196,80 @@ def lease_lifecycle_job(db: Session):
 
     finally:
         db.close()
+
+
+def process_scheduled_terminations(db: Session):
+
+    today = date.today()
+
+    leases = (
+        db.query(Lease)
+        .join(LeaseTerminationRequest, Lease.id == LeaseTerminationRequest.lease_id)
+        .filter(
+            LeaseTerminationRequest.status == "scheduled",
+            Lease.status == "active",
+            Lease.termination_date <= today,
+            Lease.is_deleted.is_(False)
+        ).all()
+    )
+
+    for lease in leases:
+
+        # -----------------------------
+        # 1️⃣ Check existing move-out
+        # -----------------------------
+        existing_moveout = db.query(SpaceOccupancy).filter(
+            SpaceOccupancy.lease_id == lease.id,
+            SpaceOccupancy.request_type == RequestType.move_out,
+            SpaceOccupancy.status.in_(["pending", "approved", "in_progress"])
+        ).first()
+
+        # -----------------------------
+        # 2️⃣ Create move-out if missing
+        # -----------------------------
+        if not existing_moveout:
+
+            move_in = (
+                db.query(SpaceOccupancy)
+                .filter(
+                    SpaceOccupancy.space_id == lease.space_id,
+                    SpaceOccupancy.status == OccupancyStatus.active,
+                    SpaceOccupancy.request_type == RequestType.move_in
+                )
+                .first()
+            )
+
+            if not move_in:
+                return
+
+            move_out_request = SpaceOccupancy(
+                space_id=move_in.space_id,
+                occupant_user_id=move_in.occupant_user_id,
+                occupant_type=move_in.occupant_type,
+                source_id=move_in.source_id,
+                lease_id=move_in.lease_id,
+
+                request_type=RequestType.move_out,
+                status=OccupancyEventType.moved_out,
+
+                move_in_date=move_in.move_in_date,
+                move_out_date=lease.termination_date,
+
+                heavy_items=move_in.heavy_items,
+                elevator_required=move_in.elevator_required,
+                parking_required=move_in.parking_required,
+                original_occupancy_id=move_in.id
+            )
+
+            db.add(move_out_request)
+
+            # notify tenant
+            db.add(Notification(
+                user_id=lease.tenant_id,
+                title="Move-out Required",
+                message="Your lease termination is effective. Please schedule move-out.",
+                type=NotificationType.alert,
+                posted_date=datetime.utcnow()
+            ))
+
+    db.commit()

@@ -3,7 +3,7 @@ from uuid import UUID
 from typing import Optional, List, Any
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
-from ...schemas.leases_schemas import LeaseOut
+from .leases_schemas import LeaseOut
 from shared.core.schemas import CommonQueryParams
 
 

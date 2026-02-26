@@ -4,7 +4,7 @@ from typing import Optional, List, Any
 from decimal import Decimal
 from pydantic import BaseModel, field_validator
 
-from ..schemas.leasing_tenants.lease_charges_schemas import LeaseChargeOut
+from .lease_charges_schemas import LeaseChargeOut
 from shared.core.schemas import CommonQueryParams
 
 # LEASE PAYMENT TERM
@@ -202,3 +202,18 @@ class LeaseLookup(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TerminationListRequest(CommonQueryParams):
+    site_id: Optional[str] = None
+    status: Optional[str] = None
+
+
+class TerminationRequestCreate(BaseModel):
+    space_id: UUID
+    requested_date: date
+    reason: str | None = None
+
+
+class ApproveTerminationRequest(BaseModel):
+    request_id: UUID

@@ -65,6 +65,7 @@ class BillPayment(Base):
     bill_id = Column(UUID(as_uuid=True), ForeignKey("bills.id"))
     amount = Column(Numeric(14, 2))
     method = Column(String(24))
+    ref_no: str = Column(String(64))
     paid_at = Column(DateTime(timezone=True), server_default=func.now())
 
     bill = relationship("Bill", back_populates="payments")

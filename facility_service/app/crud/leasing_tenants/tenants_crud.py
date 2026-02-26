@@ -35,7 +35,7 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.space_sites.spaces import Space
 from ...models.space_sites.buildings import Building
 
-from ...schemas.leases_schemas import LeaseOut
+from ...schemas.leasing_tenants.leases_schemas import LeaseOut
 from ...enum.leasing_tenants_enum import LeaseStatus, TenantSpaceStatus, TenantStatus, TenantType
 from shared.core.schemas import Lookup, UserToken
 from ...models.leasing_tenants.commercial_partners import CommercialPartner

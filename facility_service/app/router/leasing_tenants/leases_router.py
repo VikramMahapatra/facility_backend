@@ -2,7 +2,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
 from ...schemas.leasing_tenants.leases_schemas import (
-    ApproveRejectTerminationRequest, LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseLookup,
+    RejectTerminationRequest, LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseLookup,
     LeaseOut, LeaseCreate, LeaseOverview, LeasePaymentTermCreate, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut, TerminationListRequest, TerminationRequestCreate,
 )
 from ...crud.leasing_tenants import leases_crud as crud
@@ -166,7 +166,7 @@ def get_termination_requests(
     return crud.get_termination_requests(db, current_user.org_id, params)
 
 
-@router.post("/create-termination-request")
+@router.post("/termination-requests/create")
 def create_termination_request(
     payload: TerminationRequestCreate = Body(...),
     db: Session = Depends(get_db),
@@ -175,19 +175,21 @@ def create_termination_request(
     return crud.create_termination_request(db, current_user.user_id, payload)
 
 
-@router.post("/approve-termination-request")
+@router.post("/termination-requests/${request_id:uuid}/approve")
 def approve_termination_request(
-    params: ApproveRejectTerminationRequest = Body(...),
+    request_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.approve_termination(db, params.request_id, current_user.user_id)
+    return crud.approve_termination(db, request_id, current_user.user_id)
 
 
-@router.post("/reject-termination-request")
+@router.post("/termination-requests/${request_id:uuid}/reject")
 def reject_termination(
-    params: ApproveRejectTerminationRequest = Body(...),
+    request_id: UUID,
+    params: RejectTerminationRequest = Body(...),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
+    params.request_id = request_id
     return crud.reject_termination(db, current_user.user_id, params)

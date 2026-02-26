@@ -838,7 +838,24 @@ def approve_move_in(db: Session, move_in_id: UUID):
     ).first()
 
     if not move_in_request:
-        raise Exception("Move-in request not found or already processed")
+        return error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message="Move-in request not found or already processed"
+        )
+
+    occupancy_state = get_current_occupancy(
+        db,
+        move_in_request.space_id
+    )["current"]
+
+    if occupancy_state["status"] != "completed" and \
+       occupancy_state["status"] != "vacant":
+        return error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message=f"Cannot approve move-in. Current space status: "
+            f"{occupancy_state['status']}. "
+            "Previous move-out process not completed."
+        )
 
     if move_in_request.move_in_date <= today:
         occ_status = OccupancyStatus.active

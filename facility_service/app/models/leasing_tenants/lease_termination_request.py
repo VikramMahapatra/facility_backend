@@ -26,6 +26,9 @@ class LeaseTerminationRequest(Base):
     approved_by = Column(UUID(as_uuid=True))
     approved_at = Column(DateTime(timezone=True))
 
+    rejected_by = Column(UUID(as_uuid=True))
+    rejected_at = Column(DateTime(timezone=True))
+
     rejection_reason = Column(Text)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

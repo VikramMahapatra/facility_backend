@@ -32,7 +32,7 @@ from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...schemas.leasing_tenants.leases_schemas import (
-    ApproveRejectTerminationRequest, LeaseCreate, LeaseListResponse, LeaseLookup, LeaseOut, LeasePaymentTermCreate, LeasePaymentTermOut, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, TerminationListRequest, TerminationRequestCreate
+    RejectTerminationRequest, LeaseCreate, LeaseListResponse, LeaseLookup, LeaseOut, LeasePaymentTermCreate, LeasePaymentTermOut, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, TerminationListRequest, TerminationRequestCreate
 )
 from uuid import UUID
 from dateutil.relativedelta import relativedelta
@@ -1542,7 +1542,7 @@ def approve_termination(db, request_id, approver_id):
 def reject_termination(
     db: Session,
     approver_id: UUID,
-    params: ApproveRejectTerminationRequest
+    params: RejectTerminationRequest
 ):
 
     req = db.get(LeaseTerminationRequest, params.request_id)

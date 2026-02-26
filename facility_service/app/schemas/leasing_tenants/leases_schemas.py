@@ -215,6 +215,6 @@ class TerminationRequestCreate(BaseModel):
     reason: str | None = None
 
 
-class ApproveRejectTerminationRequest(BaseModel):
-    request_id: UUID
+class RejectTerminationRequest(BaseModel):
+    request_id: Optional[UUID] = None
     reason: str | None = None

@@ -278,8 +278,9 @@ def create_space(db: Session, space: SpaceCreate):
         accessories_data = space.accessories or []
 
         space.building_block_id = space.building_block_id if space.building_block_id else None
+        space.maintenance_template_id = space.maintenance_template_id if space.maintenance_template_id else None
         space_data = space.model_dump(
-            exclude={"building_block", "accessories", "parking_slots"})
+            exclude={"building_block", "accessories", "parking_slot_ids"})
         db_space = Space(**space_data)
         db.add(db_space)
         db.flush()
@@ -325,7 +326,7 @@ def update_space(db: Session, space: SpaceUpdate):
         )
     accessories_data = space.accessories
     update_data = space.model_dump(
-        exclude_unset=True, exclude={"building_block", "accessories"})
+        exclude_unset=True, exclude={"building_block", "accessories", "parking_slot_ids"})
     # Convert empty UUID strings to None---------------------changed
     for field in ["building_block_id"]:
         if update_data.get(field) == "":
@@ -622,7 +623,13 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
         )
 
 
-def get_space_lookup(db: Session, site_id: str, building_id: str, user: UserToken):
+def get_space_lookup(
+    db: Session,
+    site_id: str,
+    building_id: str,
+    user: UserToken,
+    request_type: str | None = "unit"  # unit | community
+):
     allowed_space_ids = None
 
     if user.account_type.lower() == UserAccountType.TENANT:
@@ -643,7 +650,6 @@ def get_space_lookup(db: Session, site_id: str, building_id: str, user: UserToke
             Site.is_deleted == False,
             Site.status == "active"
         )
-        .order_by(Space.name.asc())
     )
 
     if allowed_space_ids is not None:
@@ -658,7 +664,16 @@ def get_space_lookup(db: Session, site_id: str, building_id: str, user: UserToke
         space_query = space_query.filter(
             Space.building_block_id == building_id)
 
-    return space_query.all()
+    if request_type == "community":
+        space_query = space_query.filter(
+            Space.category == "common_area"
+        )
+    else:  # default = unit
+        space_query = space_query.filter(
+            Space.category.in_(["residential", "commercial"])
+        )
+
+    return space_query.order_by(Space.name.asc()).all()
 
 
 def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
@@ -669,11 +684,18 @@ def get_space_with_building_lookup(db: Session, site_id: str, org_id: str):
                 " - "), Space.name).label("name")
         )
         .join(Site, Space.site_id == Site.id)
-        .outerjoin(Building, Space.building_block_id == Building.id)
+        .outerjoin(Building,
+                   and_(
+                       Space.building_block_id == Building.id,
+                       Building.is_deleted == False,
+                       Building.status == "active"
+                   ))
         # Updated filter
-        .filter(Site.is_deleted == False, Site.status == "active",
-                Space.org_id == org_id, Space.is_deleted == False,
-                Building.is_deleted == False, Building.status == "active")
+        .filter(
+            Site.is_deleted == False, Site.status == "active",
+            Space.org_id == org_id, Space.is_deleted == False,
+            Space.category.in_(["residential", "commercial"])
+        )
         .order_by(Space.name.asc())
     )
 

@@ -17,6 +17,7 @@ class OwnerMaintenanceStatus(str, Enum):
 class SpaceCategory(str, Enum):
     RESIDENTIAL = "residential"
     COMMERCIAL = "commercial"
+    COMMON_AREA = "common_area"
 
 
 SPACE_KINDS = [
@@ -26,7 +27,6 @@ SPACE_KINDS = [
     "warehouse",
     "meeting_room",
     "hall",
-    "common_area",
     "parking",
     "villa",
     "row_house",
@@ -34,6 +34,15 @@ SPACE_KINDS = [
     "duplex",
     "penthouse",
     "farm_house",
+    "lobby",
+    "garden",
+    "swimming_pool",
+    "gym",
+    "clubhouse",
+    "corridor",
+    "lift",
+    "parking",
+    "security_gate",
 ]
 
 KIND_TO_CATEGORY = {
@@ -49,8 +58,15 @@ KIND_TO_CATEGORY = {
     "warehouse": "commercial",
     "meeting_room": "commercial",
     "hall": "commercial",
-    "common_area": "commercial",
-    "parking": "commercial",
+    "lobby": "common_area",
+    "garden": "common_area",
+    "swimming_pool": "common_area",
+    "gym": "common_area",
+    "clubhouse": "common_area",
+    "corridor": "common_area",
+    "lift": "common_area",
+    "parking": "common_area",
+    "security_gate": "common_area"
 }
 
 

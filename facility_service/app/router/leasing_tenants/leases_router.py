@@ -2,7 +2,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
 from ...schemas.leasing_tenants.leases_schemas import (
-    ApproveTerminationRequest, LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseLookup, LeaseOut, LeaseCreate, LeaseOverview, LeasePaymentTermCreate, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut, TerminationListRequest, TerminationRequestCreate,
+    ApproveRejectTerminationRequest, LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseLookup,
+    LeaseOut, LeaseCreate, LeaseOverview, LeasePaymentTermCreate, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut, TerminationListRequest, TerminationRequestCreate,
 )
 from ...crud.leasing_tenants import leases_crud as crud
 from shared.core.auth import allow_admin, validate_current_token
@@ -176,8 +177,17 @@ def create_termination_request(
 
 @router.post("/approve-termination-request")
 def approve_termination_request(
-    params: ApproveTerminationRequest = Body(...),
+    params: ApproveRejectTerminationRequest = Body(...),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.approve_termination(db, params.request_id, current_user.user_id)
+
+
+@router.post("/reject-termination-request")
+def reject_termination(
+    params: ApproveRejectTerminationRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.reject_termination(db, current_user.user_id, params)

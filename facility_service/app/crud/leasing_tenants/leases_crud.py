@@ -32,7 +32,7 @@ from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...schemas.leasing_tenants.leases_schemas import (
-    LeaseCreate, LeaseListResponse, LeaseLookup, LeaseOut, LeasePaymentTermCreate, LeasePaymentTermOut, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, TerminationListRequest, TerminationRequestCreate
+    ApproveRejectTerminationRequest, LeaseCreate, LeaseListResponse, LeaseLookup, LeaseOut, LeasePaymentTermCreate, LeasePaymentTermOut, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, TerminationListRequest, TerminationRequestCreate
 )
 from uuid import UUID
 from dateutil.relativedelta import relativedelta
@@ -1537,6 +1537,37 @@ def approve_termination(db, request_id, approver_id):
         create_move_out_request(db, lease)
 
     db.commit()
+
+
+def reject_termination(
+    db: Session,
+    approver_id: UUID,
+    params: ApproveRejectTerminationRequest
+):
+
+    req = db.get(LeaseTerminationRequest, params.request_id)
+
+    if not req:
+        raise Exception("Termination request not found")
+
+    # Prevent double action
+    if req.status not in ["pending", "scheduled"]:
+        raise Exception("Termination request already processed")
+
+    # Update request
+    req.status = "rejected"
+    req.rejected_by = approver_id
+    req.rejected_at = datetime.utcnow()
+    req.rejection_reason = params.reason
+
+    # IMPORTANT:
+    # Do NOT modify lease termination_date
+    # since request is rejected
+
+    db.commit()
+    db.refresh(req)
+
+    return req
 
 
 def create_move_out_request(db, lease):

@@ -224,7 +224,7 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
             "id": p.id,
             "org_id": p.org_id,
             "bill_id": p.bill_id,
-            "bill_no": bill.invoice_no,
+            "bill_no": bill.bill_no,
             "method": p.method,
             "ref_no": p.ref_no,
             "amount": Decimal(str(p.amount)),

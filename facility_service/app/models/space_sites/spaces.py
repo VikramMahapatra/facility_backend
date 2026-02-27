@@ -20,6 +20,7 @@ class Space(Base):
     maintenance_template_id = Column(UUID(as_uuid=True), ForeignKey(
         "maintenance_templates.id", ondelete="SET NULL"), nullable=True)
     name = Column(String(128))
+    # residential | commercial | common_area
     category = Column(String(32), nullable=False)
     kind = Column(String(32), nullable=False)
     sub_kind = Column(String(32))

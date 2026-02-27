@@ -9,6 +9,7 @@ from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_adm
 from facility_service.app.models.financials.tax_codes import TaxCode
 from facility_service.app.models.maintenance_assets import work_order
 from facility_service.app.models.system.notifications import Notification, NotificationType, PriorityType
+from shared.helpers.user_helper import get_user_name
 
 from ...models.procurement.vendors import Vendor
 from shared.helpers.json_response_helper import error_response
@@ -343,7 +344,9 @@ def create_ticket_work_order(
         ticket_no=ticket.ticket_no,
         site_name=site_name,
         assigned_to_name=None,  # You can fetch these if needed
-        vendor_name=None
+        vendor_name=None,
+        bill_to_id=db_work_order.bill_to_id,
+        bill_to_type=db_work_order.bill_to_type
     )
     return work_order_out
 
@@ -550,5 +553,42 @@ def get_names_for_ticket_id(
         "assigned_to_id": assigned_to_id,
         "assigned_to_name": assigned_to_name,
         "vendor_id": vendor_id,
-        "vendor_name": vendor_name
+        "vendor_name": vendor_name,
+        "bill_to_options": get_bill_to_options(ticket)
     }
+
+
+def get_bill_to_options(ticket: Ticket):
+    options = []
+
+    if not ticket:
+        return error_response(message="Ticket not found")
+
+    if ticket.tenant:
+        options.append({
+            "type": "tenant",
+            "id": ticket.tenant.id,
+            "name": ticket.tenant.name
+        })
+    elif not ticket.tenant_id and ticket.user_id:
+        options.append({
+            "type": "owner",
+            "id": ticket.user_id,
+            "name": get_user_name(ticket.user_id)
+        })
+
+    if ticket.vendor:
+        options.append({
+            "type": "vendor",
+            "id": ticket.vendor.id,
+            "name": ticket.vendor.name
+        })
+
+    # Always allow org billing
+    options.append({
+        "type": "org",
+        "id": ticket.org_id,
+        "name": "Organization"
+    })
+
+    return options

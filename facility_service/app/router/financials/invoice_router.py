@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from shared.helpers.json_response_helper import success_response
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import Lookup, UserToken
@@ -90,10 +90,11 @@ def get_payments(
 def get_pending_charges_by_customer(
     space_id: UUID = Query(...),
     code: str = Query(...),
+    invoice_id: UUID = Query(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_pending_charges_by_customer(db, space_id, code)
+    return crud.get_pending_charges_by_customer(db, space_id, code, invoice_id)
 
 # ✅ FIXED: Match CRUD parameters
 
@@ -155,21 +156,6 @@ def invoice_payement_method_lookup(
     return crud.invoice_payement_method_lookup(db, current_user.org_id)
 
 
-@router.get("/payment-history/{invoice_id}", response_model=InvoicePaymentHistoryOut)
-def invoice_payment_history(
-    invoice_id: UUID,
-    db: Session = Depends(get_db),
-    auth_db: Session = Depends(get_auth_db),
-    current_user: UserToken = Depends(validate_current_token)
-):
-    return crud.get_invoice_payment_history(
-        db=db,
-        auth_db=auth_db,
-        org_id=current_user.org_id,
-        invoice_id=invoice_id
-    )
-
-
 @router.get("/{invoice_id}/download")
 def download_invoice_pdf(
     invoice_id: UUID,
@@ -219,3 +205,26 @@ def preview_invoice_number(
 ):
     invoice_no = crud.generate_invoice_number(db, current_user.org_id)
     return {"invoice_no": invoice_no}
+
+
+@router.post("/add-payment", response_model=None)
+def add_payment(
+    payload: AdvancePaymentCreate,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    """Record a payment against a bill."""
+    return crud.add_payment_detail(
+        db=db,
+        payload=payload,
+        current_user=current_user
+    )
+
+
+@router.get("/customer-advance-payments", response_model=AdvancePaymentResponse)
+def get_advance_payments(
+        params: InvoicesRequest = Depends(),
+        db: Session = Depends(get_db),
+        auth_db: Session = Depends(get_auth_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_advance_payments(db=db, auth_db=auth_db, org_id=current_user.org_id, params=params)

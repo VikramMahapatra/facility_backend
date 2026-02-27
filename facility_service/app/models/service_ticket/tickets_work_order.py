@@ -1,11 +1,13 @@
-from sqlalchemy import TIMESTAMP, Column, Numeric, Sequence, Text, func
+from sqlalchemy import TIMESTAMP, Column, Numeric, Sequence, Text, func, select, cast, Integer, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Boolean, Column, Integer, String, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 import uuid
+from facility_service.app.models.service_ticket.tickets import Ticket
+from facility_service.app.models.space_sites.sites import Site
 from shared.core.database import Base
-from sqlalchemy import event
+import re
 
 # Create a sequence for work order numbers
 workorder_seq = Sequence('workorder_number_seq', start=1, increment=1)
@@ -38,6 +40,7 @@ class TicketWorkOrder(Base):
     total_amount = Column(Numeric(14, 2), nullable=False)
     tax_code_id = Column(UUID(as_uuid=True), ForeignKey("tax_codes.id"))
 
+    bill_to_type = Column(String(20))  # tenant | vendor | owner | org
     bill_to_id = Column(UUID(as_uuid=True), nullable=True)
 
     ticket = relationship("Ticket", back_populates="work_orders")
@@ -47,7 +50,23 @@ class TicketWorkOrder(Base):
 # Auto-generate wo_no before insert
 @event.listens_for(TicketWorkOrder, "before_insert")
 def generate_wo_no(mapper, connection, target):
-    # Get next number from sequence
-    next_number = connection.execute(workorder_seq)
-    # Format as WO-001, WO-002, ...
+
+    org_id = connection.execute(
+        select(Ticket.org_id)
+        .select_from(Ticket)
+        .where(Ticket.id == target.ticket_id)
+    ).scalar()
+
+    result = connection.execute(
+        select(func.max(TicketWorkOrder.wo_no))
+        .select_from(TicketWorkOrder)
+        .join(Ticket, TicketWorkOrder.ticket_id == Ticket.id)
+        .where(Ticket.org_id == org_id)
+    ).scalar()
+
+    if result:
+        next_number = int(result.split("-")[1]) + 1
+    else:
+        next_number = 1
+
     target.wo_no = f"WO-{next_number:03}"

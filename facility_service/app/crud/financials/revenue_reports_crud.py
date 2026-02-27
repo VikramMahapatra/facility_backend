@@ -10,7 +10,7 @@ from facility_service.app.models.leasing_tenants.leases import Lease
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 
 from ...schemas.financials.revenue_schemas import RevenueReportsRequest
-from ...models.financials.invoices import Invoice
+from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
 from ...enum.revenue_enum import RevenueMonth
 from ...models.space_sites.sites import Site
 from uuid import UUID
@@ -42,7 +42,6 @@ def revenue_reports_site_month_lookup(db: Session, org_id: str, status: Optional
     ]
 
 
-
 def build_revenue_filters(org_id: UUID, params: RevenueReportsRequest):
     filters = [
         Invoice.org_id == org_id,
@@ -52,7 +51,6 @@ def build_revenue_filters(org_id: UUID, params: RevenueReportsRequest):
     if params.site_id:
         filters.append(Invoice.site_id == params.site_id)
 
-  
     if params.month:
         today = datetime.now().date()
 
@@ -70,7 +68,6 @@ def build_revenue_filters(org_id: UUID, params: RevenueReportsRequest):
 
         filters.append(Invoice.date >= start_date)
 
-   
     if params.status and params.status.lower() != "all":
         filters.append(Invoice.status == params.status)
 
@@ -79,180 +76,137 @@ def build_revenue_filters(org_id: UUID, params: RevenueReportsRequest):
 
 def get_revenue_overview(db: Session, org_id: UUID, params: RevenueReportsRequest):
     filters = build_revenue_filters(org_id, params)
-    
-    # Get all unique charge codes for the organization
-    charge_codes_query = (
-        db.query(LeaseChargeCode.code)
-        .join(LeaseCharge, LeaseCharge.charge_code_id == LeaseChargeCode.id)
-        .join(Lease, LeaseCharge.lease_id == Lease.id)
-        .join(
-            Invoice,
-            and_(
-                Invoice.billable_item_type == "lease charge",
-                Invoice.billable_item_id == LeaseCharge.id
-            )
+
+    # ---------------------------------------------------------
+    # Revenue by line code (rent / maintenance / parking_pass)
+    # ---------------------------------------------------------
+    revenue_rows = (
+        db.query(
+            InvoiceLine.code,
+            func.coalesce(func.sum(InvoiceLine.amount), 0).label("revenue")
         )
+        .join(Invoice, Invoice.id == InvoiceLine.invoice_id)
         .filter(
             *filters,
-            Lease.org_id == org_id,
-            LeaseCharge.is_deleted.is_(False),
-            LeaseChargeCode.is_deleted.is_(False),
-            LeaseChargeCode.code.isnot(None)
+            Invoice.org_id == org_id,
+            InvoiceLine.code.in_(["rent", "maintenance", "parking_pass"])
         )
-        .distinct()
+        .group_by(InvoiceLine.code)
         .all()
     )
 
-    
-    charge_codes = [code[0] for code in charge_codes_query if code[0]]  # Extract codes from tuple
-    
-    # TOTAL & PAID REVENUE (Invoice) - Keep this as is
-    invoice_totals = db.query(
-        func.coalesce(
-            func.sum(
-                case(
-                    (Invoice.status.in_(["draft", "issued", "partial", "paid"]),
-                     cast(func.jsonb_extract_path_text(Invoice.totals, "grand"), Numeric)),
-                    else_=0
-                )
-            ), 0
-        ).label("total_revenue"),
+    revenue_map = {
+        row.code: float(row.revenue)
+        for row in revenue_rows
+    }
 
-        func.coalesce(
-            func.sum(
-                case(
-                    (Invoice.status == "paid",
-                     cast(func.jsonb_extract_path_text(Invoice.totals, "grand"), Numeric)),
-                    else_=0
-                )
-            ), 0
-        ).label("paid_revenue")
-    ).filter(*filters,
-            Invoice.billable_item_type == "lease charge"  ).one()
-    
-    # Dynamic calculation for all charge codes
-    charge_code_revenues = {}
-    
-    if charge_codes:
-        base_query = (
-            db.query(
-                LeaseChargeCode.code.label("charge_code"),
-                func.coalesce(
-                    func.sum(
-                        cast(
-                            func.jsonb_extract_path_text(Invoice.totals, 'grand'),
-                            Numeric
-                        )
-                    ), 0
-                ).label("revenue")
-            )
-            .select_from(LeaseCharge)
-            .join(LeaseChargeCode, LeaseCharge.charge_code_id == LeaseChargeCode.id)
-            .join(Lease, LeaseCharge.lease_id == Lease.id)
-            .join(
-                Invoice,
-                and_(
-                    Invoice.billable_item_type == "lease charge",
-                    Invoice.billable_item_id == LeaseCharge.id
-                )
-            )
-            .filter(
-                *filters,
-                LeaseCharge.is_deleted.is_(False),
-                LeaseChargeCode.is_deleted.is_(False),
-                LeaseChargeCode.code.in_(charge_codes),
-                Lease.org_id == org_id
-            )
-            .group_by(LeaseChargeCode.code)
+    rent_revenue = revenue_map.get("rent", 0.0)
+    maintenance_revenue = revenue_map.get("maintenance", 0.0)
+    parking_revenue = revenue_map.get("parking_pass", 0.0)
+
+    # ---------------------------------------------------------
+    # TOTAL & COLLECTION RATE (Invoice level)
+    # ---------------------------------------------------------
+    grand_total = cast(
+        func.jsonb_extract_path_text(Invoice.totals, "grand"),
+        Numeric
+    )
+
+    invoice_totals = (
+        db.query(
+            func.coalesce(func.sum(grand_total), 0).label("total_revenue"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Invoice.status == "paid", grand_total),
+                        else_=0
+                    )
+                ), 0
+            ).label("paid_revenue")
         )
+        .filter(
+            *filters,
+            Invoice.org_id == org_id
+        )
+        .one()
+    )
 
-        results = base_query.all()
-
-        charge_code_revenues = {
-            row.charge_code: float(row.revenue) for row in results
-        }
-    # Ensure all charge codes have an entry (even if 0)
-    for code in charge_codes:
-        if code not in charge_code_revenues:
-            charge_code_revenues[code] = 0.0
-    
-    # Calculate collection rate
     total_revenue = float(invoice_totals.total_revenue or 0)
     paid_revenue = float(invoice_totals.paid_revenue or 0)
-    
-    collection_rate = (paid_revenue / total_revenue * 100) if total_revenue > 0 else 0
-    
-    # Prepare response with dynamic charge codes
-    response = {
+
+    collection_rate = (
+        (paid_revenue / total_revenue) * 100
+        if total_revenue > 0 else 0
+    )
+
+    # ---------------------------------------------------------
+    # RESPONSE
+    # ---------------------------------------------------------
+    return {
         "TotalRevenue": f"{total_revenue:.1f}",
-        "CollectionRate": f"{collection_rate:.1f}"
+        "CollectionRate": f"{collection_rate:.1f}",
+        "RentRevenue": f"{rent_revenue:.1f}",
+        "MaintenanceRevenue": f"{maintenance_revenue:.1f}",
+        "ParkingPassRevenue": f"{parking_revenue:.1f}",
     }
-    
-    # Add each charge code revenue to the response
-    for code, revenue in charge_code_revenues.items():
-        response[f"{code}Revenue"] = f"{revenue:.1f}"
-    
-    return response
-
-
 
 
 def get_revenue_trend(db: Session, org_id: UUID, params: RevenueReportsRequest):
     filters = build_revenue_filters(org_id, params)
 
-    # Get all unique charge codes
-    charge_codes = [
-        row[0] for row in db.query(
-            func.upper(LeaseChargeCode.code)
+    REVENUE_CODES = ["rent", "maintenance", "parking_pass"]
+
+    # ---------------------------------------------------------
+    # Revenue grouped by Month + Code
+    # ---------------------------------------------------------
+    rows = (
+        db.query(
+            func.to_char(Invoice.date, "YYYY-MM").label("month"),
+            InvoiceLine.code.label("code"),
+
+            # revenue
+            func.coalesce(func.sum(InvoiceLine.amount), 0).label("total"),
+
+            # collected revenue
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Invoice.status == "paid", InvoiceLine.amount),
+                        else_=0
+                    )
+                ), 0
+            ).label("collected"),
+
+            # penalties (invoice level)
+            func.coalesce(
+                func.sum(
+                    cast(
+                        func.jsonb_extract_path_text(
+                            Invoice.meta, "penalties"
+                        ),
+                        Numeric
+                    )
+                ), 0
+            ).label("penalties")
         )
-        .join(LeaseCharge, LeaseCharge.charge_code_id == LeaseChargeCode.id)
-        .join(Invoice,
-              and_(
-                  Invoice.billable_item_type == "lease charge",
-                  Invoice.billable_item_id == LeaseCharge.id
-              ))
+        .join(Invoice, Invoice.id == InvoiceLine.invoice_id)
         .filter(
             *filters,
-            LeaseCharge.is_deleted.is_(False),
-            LeaseChargeCode.is_deleted.is_(False),
-            LeaseChargeCode.code.isnot(None),
-            Invoice.org_id == org_id
+            Invoice.org_id == org_id,
+            InvoiceLine.code.in_(REVENUE_CODES)
         )
-        .distinct()
+        .group_by(
+            func.to_char(Invoice.date, "YYYY-MM"),
+            InvoiceLine.code
+        )
+        .order_by("month")
         .all()
-    ]
+    )
 
+    # ---------------------------------------------------------
+    # Build Trend Structure
+    # ---------------------------------------------------------
     trend = {}
-
-    rows = db.query(
-        func.to_char(Invoice.date, "YYYY-MM").label("month"),
-        LeaseChargeCode.code.label("code"),
-        func.coalesce(
-            cast(func.jsonb_extract_path_text(Invoice.totals, "grand"), Numeric),
-            0
-        ).label("total"),
-        func.coalesce(
-            case(
-                (Invoice.status == "paid",
-                 cast(func.jsonb_extract_path_text(Invoice.totals, "grand"), Numeric)),
-                else_=0
-            ),
-            0
-        ).label("collected"),
-        func.coalesce(
-            cast(func.jsonb_extract_path_text(Invoice.meta, "penalties"), Numeric),
-            0
-        ).label("penalties")
-    )\
-    .join(LeaseCharge, Invoice.billable_item_id == LeaseCharge.id)\
-    .join(LeaseChargeCode, LeaseCharge.charge_code_id == LeaseChargeCode.id)\
-    .filter(
-        *filters,
-        Invoice.billable_item_type == "lease charge",
-        Invoice.org_id == org_id,
-        LeaseCharge.is_deleted.is_(False)
-    )\
-    .all()
 
     for r in rows:
         month = r.month
@@ -263,7 +217,7 @@ def get_revenue_trend(db: Session, org_id: UUID, params: RevenueReportsRequest):
                 "total": 0,
                 "collected": 0,
                 "penalties": 0,
-                **{c.lower(): 0 for c in charge_codes}
+                **{c: 0 for c in REVENUE_CODES}
             }
 
         trend[month]["total"] += float(r.total)
@@ -271,23 +225,25 @@ def get_revenue_trend(db: Session, org_id: UUID, params: RevenueReportsRequest):
         trend[month]["penalties"] += float(r.penalties)
         trend[month][code] += float(r.total)
 
+    # ---------------------------------------------------------
+    # Final Response
+    # ---------------------------------------------------------
     result = []
+
     for month in sorted(trend.keys()):
         data = trend[month]
         outstanding = data["total"] - data["collected"]
 
-        row = {
+        result.append({
             "month": month,
             "total": f"{data['total']:.0f}",
             "collected": f"{data['collected']:.0f}",
             "outstanding": f"{outstanding:.0f}",
             "penalties": f"{data['penalties']:.0f}",
-        }
-
-        for code in charge_codes:
-            row[code.lower()] = f"{data[code.lower()]:.0f}"
-
-        result.append(row)
+            "rent": f"{data['rent']:.0f}",
+            "maintenance": f"{data['maintenance']:.0f}",
+            "parking_pass": f"{data['parking_pass']:.0f}",
+        })
 
     return result
 
@@ -295,42 +251,50 @@ def get_revenue_trend(db: Session, org_id: UUID, params: RevenueReportsRequest):
 def get_revenue_by_source(db: Session, org_id: UUID, params: RevenueReportsRequest):
     filters = build_revenue_filters(org_id, params)
 
-    rows = db.query(
-        LeaseChargeCode.code.label("code"),
-        func.coalesce(
-            func.sum(
-                cast(func.jsonb_extract_path_text(Invoice.totals, "grand"), Numeric)
-            ), 0
-        ).label("revenue")
-    )\
-    .join(LeaseCharge, LeaseCharge.charge_code_id == LeaseChargeCode.id)\
-    .join(
-        Invoice,
-        and_(
-            Invoice.billable_item_type == "lease charge",
-            Invoice.billable_item_id == LeaseCharge.id
-        )
-    )\
-    .filter(
-        *filters,
-        Invoice.org_id == org_id,
-        LeaseCharge.is_deleted.is_(False),
-        LeaseChargeCode.is_deleted.is_(False),
-        LeaseChargeCode.code.isnot(None)
-    )\
-    .group_by(LeaseChargeCode.code)\
-    .all()
+    REVENUE_CODES = ["rent", "maintenance", "parking_pass"]
 
-    totals = {row.code: float(row.revenue) for row in rows}
+    # ---------------------------------------------------------
+    # Revenue grouped by source (invoice lines)
+    # ---------------------------------------------------------
+    rows = (
+        db.query(
+            InvoiceLine.code.label("code"),
+            func.coalesce(
+                func.sum(InvoiceLine.amount),
+                0
+            ).label("revenue")
+        )
+        .join(Invoice, Invoice.id == InvoiceLine.invoice_id)
+        .filter(
+            *filters,
+            Invoice.org_id == org_id,
+            InvoiceLine.code.in_(REVENUE_CODES)
+        )
+        .group_by(InvoiceLine.code)
+        .all()
+    )
+
+    totals = {
+        row.code.lower(): float(row.revenue)
+        for row in rows
+    }
 
     grand_total = sum(totals.values())
 
+    # ---------------------------------------------------------
+    # Convert to percentage distribution
+    # ---------------------------------------------------------
     result = []
+
     for code, value in totals.items():
         if value <= 0:
             continue
 
-        percentage = (value / grand_total * 100) if grand_total > 0 else 0
+        percentage = (
+            (value / grand_total) * 100
+            if grand_total > 0 else 0
+        )
+
         result.append({
             "name": code,
             "value": round(percentage, 1)
@@ -339,7 +303,6 @@ def get_revenue_by_source(db: Session, org_id: UUID, params: RevenueReportsReque
     result.sort(key=lambda x: x["value"], reverse=True)
 
     return result
-
 
 
 def get_outstanding_receivables(db: Session, org_id: UUID, params: RevenueReportsRequest):
@@ -354,24 +317,47 @@ def get_outstanding_receivables(db: Session, org_id: UUID, params: RevenueReport
         "90+ days": 0
     }
 
-    rows = db.query(
-        Invoice.date.label("invoice_date"),
+    # ---------------------------------------------------------
+    # Invoice Outstanding Calculation
+    # ---------------------------------------------------------
+    grand_total = cast(
+        func.jsonb_extract_path_text(Invoice.totals, "grand"),
+        Numeric
+    )
 
-        func.coalesce(
-            cast(func.jsonb_extract_path_text(Invoice.totals, "grand"), Numeric),
-            0
-        ).label("amount")
-    ).filter(
-        *filters,
-        Invoice.status != "paid"
-    ).all()
+    paid_amount = func.coalesce(func.sum(PaymentAR.amount), 0)
 
+    rows = (
+        db.query(
+            Invoice.date.label("invoice_date"),
+            (grand_total - paid_amount).label("outstanding")
+        )
+        .outerjoin(
+            PaymentAR,
+            PaymentAR.invoice_id == Invoice.id
+        )
+        .filter(
+            *filters,
+            Invoice.org_id == org_id
+        )
+        .group_by(
+            Invoice.id,
+            Invoice.date,
+            grand_total
+        )
+        .having((grand_total - paid_amount) > 0)
+        .all()
+    )
+
+    # ---------------------------------------------------------
+    # Aging Bucket Logic
+    # ---------------------------------------------------------
     for r in rows:
         if not r.invoice_date:
             continue
 
         days_due = (today - r.invoice_date).days
-        amount = float(r.amount)
+        amount = float(r.outstanding or 0)
 
         if days_due <= 30:
             buckets["0-30 days"] += amount
@@ -382,13 +368,13 @@ def get_outstanding_receivables(db: Session, org_id: UUID, params: RevenueReport
         else:
             buckets["90+ days"] += amount
 
-    result = []
-    for period, amount in buckets.items():
-        result.append({
+    # ---------------------------------------------------------
+    # Response
+    # ---------------------------------------------------------
+    return [
+        {
             "period": period,
             "amount": round(amount)
-        })
-
-    return result
-
-
+        }
+        for period, amount in buckets.items()
+    ]

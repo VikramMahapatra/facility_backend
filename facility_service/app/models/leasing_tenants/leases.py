@@ -1,17 +1,16 @@
 import uuid
-from sqlalchemy import Boolean, Column, Sequence, String, Date, Numeric, ForeignKey, DateTime, event, select
+from sqlalchemy import Boolean, Column, Sequence, String, Date, Numeric, ForeignKey, DateTime, UniqueConstraint, event, select
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from shared.core.database import Base
 
 
-# sequence is present in db lease_number_seq
-lease_seq = Sequence("lease_number_seq")
-
-
 class Lease(Base):
     __tablename__ = "leases"
+    __table_args__ = (
+        UniqueConstraint("org_id", "lease_number"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lease_number = Column(String(20), unique=True, index=True)
@@ -56,13 +55,3 @@ class Lease(Base):
     # ✅ ADD THIS
     payment_terms = relationship(
         "LeasePaymentTerm", back_populates="lease", cascade="all, delete-orphan")
-
-
-@event.listens_for(Lease, "before_insert")
-def generate_lease_number(mapper, connection, target):
-    if not target.lease_number:
-        next_number = connection.execute(
-            select(func.nextval("lease_number_seq"))
-        ).scalar_one()
-
-        target.lease_number = f"LSE-{next_number:04d}"

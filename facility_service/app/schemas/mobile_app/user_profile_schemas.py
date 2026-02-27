@@ -25,15 +25,3 @@ class UserProfileResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class MySpacesResponse(EmptyStringModel):
-    space_id: UUID
-    space_name: Optional[str] = None
-    building_id: Optional[UUID] = None
-    building_name: Optional[str] = None
-    site_id: UUID
-    site_name: Optional[str] = None
-    status: Optional[str] = None
-    is_owner: bool = False
-    lease_contract_exist: bool = False

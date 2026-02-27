@@ -7,8 +7,8 @@ from typing import Dict, Optional
 
 from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.crud.access_control.user_management_crud import assign_owner_spaces, assign_tenant_spaces, handle_account_type_update
+from facility_service.app.crud.space_sites.space_occupancy_crud import get_current_occupancy_bulk
 from facility_service.app.models.space_sites.user_sites import UserSite
-from facility_service.app.schemas.mobile_app.user_profile_schemas import MySpacesResponse
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
 from ...schemas.access_control.user_management_schemas import UserAccountCreate, UserOrganizationOut, UserTenantSpace
@@ -276,9 +276,19 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             Tenant.is_deleted == False
         ).first()
 
+        space_ids = [space.id for space in spaces]
+        occupancy_map = get_current_occupancy_bulk(db, auth_db, space_ids)
+
         # Process each space
         for space in spaces:
+            occ = occupancy_map.get(space.id, {})
             space_detail = get_space_detail(db, user, space)
+
+            space_detail.current_status = occ.get("status")
+            space_detail.can_request_move_in = occ.get(
+                "can_request_move_in", False)
+            space_detail.can_request_move_out = occ.get(
+                "can_request_move_out", False)
 
             # Add space to response
             spaces_response.append(space_detail)
@@ -511,7 +521,7 @@ def register_space(
                 space_status = tenant_space.status
 
             # Add space to response
-        return MySpacesResponse(
+        return SpaceDetailsResponse(
             space_id=space.id,
             space_name=space.name,
             site_id=space.site.id,
@@ -633,7 +643,7 @@ def get_space_detail(
                 rent_query = db.query(LeaseCharge).filter(
                     LeaseCharge.lease_id == lease.id,
                     LeaseCharge.is_deleted == False,
-                    LeaseCharge.charge_code.has(code="RENT")
+                    LeaseCharge.charge_code == "RENT"
                 )
 
                 rent_charges = rent_query.all()

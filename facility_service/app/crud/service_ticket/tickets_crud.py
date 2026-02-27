@@ -1595,7 +1595,9 @@ def get_ticket_details_by_Id(db: Session, auth_db: Session, ticket_id: str):
             "other_expenses": float(wo.other_expenses) if wo.other_expenses else None,
             "estimated_time": wo.estimated_time,  # in minutes
             "special_instructions": wo.special_instructions,
-            "total_amount": float(wo.total_amount) if wo.total_amount else None
+            "total_amount": float(wo.total_amount) if wo.total_amount else None,
+            "bill_to_id": wo.bill_to_id,
+            "bill_to_type": wo.bill_to_type
         })
 
         # GET ATTACHMENTS FROM ATTACHMENTS TABLE
@@ -2305,9 +2307,7 @@ def fetch_role_admin(session: Session, org_id):
               ))
         .filter(
             and_(
-                func.lower(
-                    UserOrganization.account_type
-                ) == UserAccountType.ORGANIZATION.value,
+                UserOrganization.account_type == UserAccountType.ORGANIZATION,
                 Users.is_deleted == False,
                 Users.status == "active"
             )

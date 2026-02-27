@@ -2,15 +2,17 @@ from decimal import Decimal
 from typing import List, Optional, Dict
 from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import func, or_, NUMERIC, and_
+from sqlalchemy import Integer, func, or_, NUMERIC, and_, cast
 from sqlalchemy.dialects.postgresql import UUID
 
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists
-from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event, move_in
+from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event, move_in, validate_space_available_for_assignment
 from facility_service.app.enum.revenue_enum import InvoiceType
 from facility_service.app.models.leasing_tenants.lease_payment_term import LeasePaymentTerm
-from facility_service.app.models.space_sites.space_occupancies import OccupantType, SpaceOccupancy
+from facility_service.app.models.leasing_tenants.lease_termination_request import LeaseTerminationRequest
+from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus, OccupantType, RequestType, SpaceOccupancy
 from facility_service.app.models.space_sites.space_occupancy_events import OccupancyEventType
+from facility_service.app.models.system.notifications import Notification, NotificationType
 from facility_service.app.schemas.space_sites.space_occupany_schemas import MoveInRequest
 from ...models.leasing_tenants.tenant_spaces import TenantSpace
 from ...models.space_sites.buildings import Building
@@ -29,8 +31,8 @@ from shared.core.schemas import Lookup, UserToken
 from ...models.leasing_tenants.leases import Lease
 from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
-from ...schemas.leases_schemas import (
-    LeaseCreate, LeaseListResponse, LeaseLookup, LeaseOut, LeasePaymentTermCreate, LeasePaymentTermOut, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate
+from ...schemas.leasing_tenants.leases_schemas import (
+    RejectTerminationRequest, LeaseCreate, LeaseListResponse, LeaseLookup, LeaseOut, LeasePaymentTermCreate, LeasePaymentTermOut, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, TerminationListRequest, TerminationRequestCreate
 )
 from uuid import UUID
 from dateutil.relativedelta import relativedelta
@@ -249,6 +251,7 @@ def get_by_id(db: Session, lease_id: str) -> Optional[Lease]:
 
 def create(db: Session, payload: LeaseCreate) -> Lease:
     try:
+        now = datetime.now(timezone.utc)
         # 0 Validate tenant_id
         if not payload.tenant_id:
             return error_response(message="tenant_id is required")
@@ -288,6 +291,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             return error_response(
                 message="Tenant must be approved before creating a lease"
             )
+
         #  Determine lease status
         lease_status = payload.status or "draft"
 
@@ -329,13 +333,28 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                 - relativedelta(days=1)
             )
 
-         # Create the lease record (always)
+        validate_no_overlapping_lease(
+            db=db,
+            space_id=payload.space_id,
+            start_date=payload.start_date,
+            end_date=end_date
+        )
+
+        validate_space_available_for_assignment(
+            db=db,
+            space_id=payload.space_id,
+            lease_start_date=payload.start_date
+        )
+
+        # Create the lease record (always)
         lease_data = payload.model_dump(
             exclude={"reference", "space_name", "auto_move_in", "lease_term_duration", "payment_terms"})
+        next_number = get_next_lease_number(db, lease.org_id)
         lease_data.update({
             "status": lease_status,
             "default_payer": "tenant",
-            "end_date": end_date
+            "end_date": end_date,
+            "lease_number": f"LSE-{next_number:04d}"
         })
 
         lease = Lease(**lease_data)
@@ -355,24 +374,28 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                 notes=f"Lease created for tenant"
             )
 
-            #  Update TenantSpace → leased
-            tenant_space.status = OwnershipStatus.leased
-            tenant_space.updated_at = func.now()
+            # Lease becomes active only if start_date <= now
+            is_effectively_active = payload.start_date <= now
 
-            #  Auto move-in (SAFE access)
-            # ✅ AUTO MOVE-IN
-            if payload.auto_move_in is True:
-                move_in(
-                    db=db,
-                    params=MoveInRequest(
-                        space_id=payload.space_id,
-                        occupant_type="tenant",
-                        occupant_user_id=payload.tenant_id,
-                        lease_id=lease.id,
-                        tenant_id=payload.tenant_id,
-                        move_in_date=datetime.now(timezone.utc)
+            if is_effectively_active:
+                #  Update TenantSpace → leased
+                tenant_space.status = OwnershipStatus.leased
+                tenant_space.updated_at = func.now()
+
+                #  Auto move-in (SAFE access)
+                # ✅ AUTO MOVE-IN
+                if payload.auto_move_in is True:
+                    move_in(
+                        db=db,
+                        params=MoveInRequest(
+                            space_id=payload.space_id,
+                            occupant_type="tenant",
+                            occupant_user_id=payload.tenant_id,
+                            lease_id=lease.id,
+                            tenant_id=payload.tenant_id,
+                            move_in_date=datetime.now(timezone.utc)
+                        )
                     )
-                )
 
         # =========================
         # CREATE PAYMENT TERMS
@@ -411,6 +434,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 # Update lease with space validation
 def update(db: Session, payload: LeaseUpdate):
     try:
+        now = datetime.now(timezone.utc)
         obj = get_by_id(db, payload.id)
         if not obj:
             return None
@@ -483,9 +507,17 @@ def update(db: Session, payload: LeaseUpdate):
         data["end_date"] = end_date
 
         old_status = obj.status
-        # ---------- SIDE EFFECTS ----------
-        # Activate lease (draft → active)
-        if old_status != "active" and data.get("status") == "active":
+
+        new_status = data.get("status", obj.status)
+        new_start_date = data.get("start_date", obj.start_date)
+
+        should_activate_now = (
+            new_status == "active" and
+            new_start_date <= now.date()
+        )
+
+        if old_status != "active" and new_status == "active":
+
             tenant_space = db.query(TenantSpace).filter(
                 TenantSpace.space_id == target_space_id,
                 TenantSpace.tenant_id == tenant_id,
@@ -495,23 +527,36 @@ def update(db: Session, payload: LeaseUpdate):
             if not tenant_space:
                 return error_response("Tenant is not linked to this space")
 
-            if tenant_space.status != OwnershipStatus.approved:
+            if tenant_space.status not in [
+                OwnershipStatus.approved,
+                OwnershipStatus.ended
+            ]:
                 return error_response(
                     message="Tenant must be approved before activating lease"
                 )
 
-            tenant_space.status = OwnershipStatus.leased
-            tenant_space.updated_at = func.now()
-
-            log_occupancy_event(
+            validate_no_overlapping_lease(
                 db=db,
-                space_id=payload.space_id,
-                occupant_type=OccupantType.tenant,
-                occupant_user_id=tenant.user_id,
-                event_type=OccupancyEventType.lease_created,
-                source_id=obj.id,
-                notes=f"Lease created for tenant"
+                space_id=target_space_id,
+                start_date=payload.start_date,
+                end_date=end_date,
+                exclude_lease_id=obj.id
             )
+
+            # Only lease if start date has arrived
+            if should_activate_now:
+                tenant_space.status = OwnershipStatus.leased
+                tenant_space.updated_at = func.now()
+
+                log_occupancy_event(
+                    db=db,
+                    space_id=target_space_id,
+                    occupant_type=OccupantType.tenant,
+                    occupant_user_id=tenant.user_id,
+                    event_type=OccupancyEventType.lease_created,
+                    source_id=obj.id,
+                    notes="Lease activated"
+                )
 
         payment_terms_payload = data.pop("payment_terms", None)
 
@@ -1292,3 +1337,310 @@ def calculate_lease_term_duration(
     else:
         raise ValueError(
             "Invalid lease_frequency. Must be 'monthly' or 'annually'")
+
+
+def validate_no_overlapping_lease(
+    db: Session,
+    space_id: UUID,
+    start_date: datetime,
+    end_date: datetime,
+    exclude_lease_id: UUID | None = None,
+):
+    query = db.query(Lease).filter(
+        Lease.space_id == space_id,
+        Lease.is_deleted == False,
+        Lease.status.notin_(["expired", "terminated", "inactive"]),
+        Lease.start_date <= end_date,
+        Lease.end_date >= start_date,
+    )
+
+    # useful for update API
+    if exclude_lease_id:
+        query = query.filter(Lease.id != exclude_lease_id)
+
+    overlapping = query.first()
+
+    if overlapping:
+        raise error_response(
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
+            message="Lease dates overlap with an existing lease."
+        )
+
+
+def get_next_lease_number(db, org_id):
+
+    last_number = (
+        db.query(
+            func.max(
+                cast(
+                    func.substring(Lease.lease_number, 5),  # remove "LSE-"
+                    Integer
+                )
+            )
+        )
+        .filter(Lease.org_id == org_id)
+        .scalar()
+    )
+
+    return (last_number or 0) + 1
+
+
+######################## LEASE TERMINATION REQUEST ###############################
+
+
+def get_termination_requests(
+    db: Session,
+    org_id: UUID,
+    params: TerminationListRequest
+):
+    today = date.today()
+
+    query = (
+        db.query(
+            LeaseTerminationRequest.id.label("request_id"),
+            LeaseTerminationRequest.status,
+            LeaseTerminationRequest.created_at,
+
+            Lease.id.label("lease_id"),
+            Lease.lease_number,
+            Lease.termination_date,
+
+            Tenant.id.label("tenant_id"),
+            Tenant.name.label("tenant_name"),
+        )
+        .join(Lease, Lease.id == LeaseTerminationRequest.lease_id)
+        .join(Tenant, Tenant.id == Lease.tenant_id)
+        .filter(
+            Lease.org_id == org_id,
+            Lease.termination_date.isnot(None),
+            Lease.is_deleted.is_(False)
+        )
+    )
+
+    # ----------------------------------
+    # STATUS FILTER
+    # ----------------------------------
+    if params.status == "requested":
+        query = query.filter(
+            LeaseTerminationRequest.termination_status == "requested"
+        )
+
+    elif params.status == "approved":
+        query = query.filter(
+            LeaseTerminationRequest.termination_status.in_(
+                ["approved", "scheduled"]
+            )
+        )
+
+    if params.search:
+        search_term = f"%{params.search}%"
+
+        query = query.filter(
+            or_(
+                Lease.lease_number.ilike(search_term),
+                Tenant.name.ilike(search_term)
+            )
+        )
+
+    total = query.with_entities(
+        func.count(LeaseTerminationRequest.id)
+    ).scalar()
+
+    rows = (
+        query
+        .order_by(Lease.termination_date.asc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+
+    result = []
+
+    for r in rows:
+        days_remaining = None
+        if r.termination_date:
+            days_remaining = (r.termination_date - today).days
+
+        result.append({
+            "request_id": r.request_id,
+            "lease_id": r.lease_id,
+            "lease_number": r.lease_number,
+            "tenant_id": r.tenant_id,
+            "tenant_name": r.tenant_name,
+            "termination_date": r.termination_date,
+            "status": r.status,
+            "days_remaining": days_remaining,
+            # UI helpers (VERY useful)
+            "is_future": days_remaining is not None and days_remaining > 0,
+            "is_due": days_remaining == 0,
+            "is_overdue": days_remaining is not None and days_remaining < 0,
+        })
+
+    return {
+        "total": total,
+        "requests": result
+    }
+
+
+def create_termination_request(
+        db: Session,
+        user_id: UUID,
+        data: TerminationRequestCreate):
+
+    tenant = (
+        db.query(Tenant)
+        .filter(Tenant.user_id == user_id, Tenant.is_deleted == False)
+        .first()
+    )
+
+    if not tenant:
+        return error_response(status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR), message="Tenant not found")
+
+    lease = db.query(Lease).filter(Lease, Lease.tenant_id ==
+                                   tenant.id, Lease.space_id == data.space_id)
+
+    if lease.status != "active":
+        return error_response(status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR), message="Lease not eligible")
+
+    req = LeaseTerminationRequest(
+        lease_id=lease.id,
+        org_id=lease.org_id,
+        requested_by=user_id,
+        requested_date=data.requested_date,
+        reason=data.reason,
+        status="pending"
+    )
+
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+
+    return req
+
+
+def approve_termination(db, request_id, approver_id):
+
+    req = db.get(LeaseTerminationRequest, request_id)
+    lease = db.get(Lease, req.lease_id)
+
+    today = date.today()
+
+    req.status = "approved"
+    req.approved_by = approver_id
+    req.approved_at = datetime.utcnow()
+
+    lease.termination_date = req.requested_date
+
+    if req.requested_date > today:
+        req.status = "scheduled"
+    else:
+        create_move_out_request(db, lease)
+
+    db.commit()
+
+
+def reject_termination(
+    db: Session,
+    approver_id: UUID,
+    params: RejectTerminationRequest
+):
+
+    req = db.get(LeaseTerminationRequest, params.request_id)
+
+    if not req:
+        raise Exception("Termination request not found")
+
+    # Prevent double action
+    if req.status not in ["pending", "scheduled"]:
+        raise Exception("Termination request already processed")
+
+    # Update request
+    req.status = "rejected"
+    req.rejected_by = approver_id
+    req.rejected_at = datetime.utcnow()
+    req.rejection_reason = params.reason
+
+    # IMPORTANT:
+    # Do NOT modify lease termination_date
+    # since request is rejected
+
+    db.commit()
+    db.refresh(req)
+
+    return req
+
+
+def create_move_out_request(db, lease):
+    # -----------------------------
+    # 1️⃣ Check existing move-out
+    # -----------------------------
+    existing_moveout = db.query(SpaceOccupancy).filter(
+        SpaceOccupancy.lease_id == lease.id,
+        SpaceOccupancy.request_type == RequestType.move_out,
+        SpaceOccupancy.status.in_(["pending", "approved", "in_progress"])
+    ).first()
+
+    # -----------------------------
+    # 2️⃣ Create move-out if missing
+    # -----------------------------
+    if not existing_moveout:
+
+        move_in = (
+            db.query(SpaceOccupancy)
+            .filter(
+                SpaceOccupancy.space_id == lease.space_id,
+                SpaceOccupancy.status == OccupancyStatus.active,
+                SpaceOccupancy.request_type == RequestType.move_in
+            )
+            .first()
+        )
+
+        if not move_in:
+            return
+
+        move_out_request = SpaceOccupancy(
+            space_id=move_in.space_id,
+            occupant_user_id=move_in.occupant_user_id,
+            occupant_type=move_in.occupant_type,
+            source_id=move_in.source_id,
+            lease_id=move_in.lease_id,
+
+            request_type=RequestType.move_out,
+            status=OccupancyEventType.moved_out,
+
+            move_in_date=move_in.move_in_date,
+            move_out_date=lease.termination_date,
+
+            heavy_items=move_in.heavy_items,
+            elevator_required=move_in.elevator_required,
+            parking_required=move_in.parking_required,
+            original_occupancy_id=move_in.id
+        )
+
+        db.add(move_out_request)
+
+        # notify tenant
+        db.add(Notification(
+            user_id=lease.tenant_id,
+            title="Move-out Required",
+            message="Your lease termination is effective. Please schedule move-out.",
+            type=NotificationType.alert,
+            posted_date=datetime.utcnow()
+        ))
+
+
+def complete_termination(db, lease_id):
+
+    lease = db.query(Lease).get(lease_id)
+
+    req = db.query(LeaseTerminationRequest).filter(
+        LeaseTerminationRequest.lease_id == lease_id,
+        LeaseTerminationRequest.status == "settlement_pending"
+    ).first()
+
+    lease.status = "terminated"
+    lease.end_date = lease.termination_date
+
+    req.status = "completed"
+
+    db.commit()

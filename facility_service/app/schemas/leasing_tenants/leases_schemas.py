@@ -2,9 +2,9 @@ from datetime import datetime, date
 from uuid import UUID
 from typing import Optional, List, Any
 from decimal import Decimal
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
-from ..schemas.leasing_tenants.lease_charges_schemas import LeaseChargeOut
+from .lease_charges_schemas import LeaseChargeOut
 from shared.core.schemas import CommonQueryParams
 
 # LEASE PAYMENT TERM
@@ -19,6 +19,13 @@ class LeasePaymentTermCreate(BaseModel):
     amount: Decimal
     status: Optional[str] = "pending"
     payment_method: Optional[str] = None
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, v):
+        if v == "":
+            return None
+        return v
 
 
 class LeasePaymentTermOut(BaseModel):
@@ -195,3 +202,19 @@ class LeaseLookup(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TerminationListRequest(CommonQueryParams):
+    site_id: Optional[str] = None
+    status: Optional[str] = None
+
+
+class TerminationRequestCreate(BaseModel):
+    space_id: UUID
+    requested_date: date
+    reason: str | None = None
+
+
+class RejectTerminationRequest(BaseModel):
+    request_id: Optional[UUID] = None
+    reason: str | None = None

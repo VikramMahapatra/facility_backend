@@ -7,9 +7,24 @@ from typing import List, Optional, Any
 from shared.core.schemas import CommonQueryParams
 
 
+class AdvancePaymentCreate(BaseModel):
+    user_id: Optional[UUID] = None
+    method: str
+    ref_no: Optional[str] = None
+    amount: Decimal
+    paid_at: Optional[date_type] = None
+    notes: Optional[str] = None
+    currency: Optional[str] = None
+
+    class Config:
+        json_encoders = {
+            Decimal: float
+        }
+
+
 class PaymentCreateWithInvoice(BaseModel):
     id: Optional[UUID] = None
-    invoice_id: UUID
+    invoice_id: Optional[UUID] = None
     method: str
     ref_no: Optional[str] = None
     amount: Decimal
@@ -42,6 +57,7 @@ class InvoiceBase(BaseModel):
     org_id: Optional[UUID] = None
     site_id: UUID
     space_id: UUID
+    user_id: UUID
     date: date_type
     due_date: Optional[date_type] = None
     currency: str
@@ -71,6 +87,22 @@ class InvoiceUpdate(InvoiceBase):
     id: str
 
 
+class AdvancePaymentOut(BaseModel):
+    id: UUID
+    org_id: Optional[UUID] = None
+    user_id: UUID
+    method: str
+    ref_no: str
+    amount: Decimal
+    balance: Decimal
+    paid_at: Optional[date_type] = None
+    notes: Optional[Any] = None
+    customer_name: Optional[str] = None  # Add this field
+
+    class Config:
+        from_attributes = True
+
+
 class PaymentOut(BaseModel):
     id: UUID
     org_id: Optional[UUID] = None
@@ -94,6 +126,8 @@ class InvoiceLineOut(BaseModel):
     invoice_id: UUID
     code: str
     item_id: UUID
+    item_no: Optional[str] = None
+    item_label: Optional[str] = None
     description: Optional[str] = None
     amount: Decimal
     tax_pct: Optional[Decimal] = 0
@@ -118,16 +152,16 @@ class InvoiceOut(BaseModel):
 
     # Derived / Extra fields
     site_name: Optional[str] = None
+    space_name: Optional[str] = None
     code: Optional[str] = None
-    item_no: Optional[str] = None
     user_name: Optional[str] = None
 
     # Relationships
     lines: List[InvoiceLineOut] = []
     payments: List[PaymentOut] = []
 
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -156,6 +190,13 @@ class InvoicesOverview(BaseModel):
 
 class PaymentResponse(BaseModel):
     payments: List[PaymentOut]
+    total: int
+
+    model_config = {"from_attributes": True}
+
+
+class AdvancePaymentResponse(BaseModel):
+    advances: List[AdvancePaymentOut]
     total: int
 
     model_config = {"from_attributes": True}

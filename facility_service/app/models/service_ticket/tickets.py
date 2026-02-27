@@ -26,9 +26,11 @@ class Ticket(Base):
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"))
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"))
     space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"))
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True)  # ✅ MADE NULLABLE
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey(
+        "tenants.id"), nullable=True)  # ✅ MADE NULLABLE
     # In your Ticket model, add this line after tenant_id
-    vendor_id = Column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=True)
+    vendor_id = Column(UUID(as_uuid=True), ForeignKey(
+        "vendors.id"), nullable=True)
     category_id = Column(UUID(as_uuid=True),
                          ForeignKey("ticket_categories.id"))
 
@@ -48,8 +50,9 @@ class Ticket(Base):
     created_by = Column(UUID(as_uuid=True))
     assigned_to = Column(UUID(as_uuid=True))
     request_type = Column(String(20), default="unit")
-    preferred_time = Column(String(255),nullable=False,default=func.time(func.now()))
-        # Add this:
+    preferred_time = Column(String(255), nullable=False,
+                            default=func.time(func.now()))
+    # Add this:
     preferred_date = Column(Date, nullable=False, default=date.today)
     user_id = Column(UUID(as_uuid=True))
 
@@ -57,9 +60,9 @@ class Ticket(Base):
     updated_at = Column(TIMESTAMP(timezone=True),
                         server_default=func.now(), onupdate=func.now())
     closed_date = Column(TIMESTAMP(timezone=True), nullable=True)
-    file_name = Column(String, nullable=False)
-    content_type = Column(String, nullable=False)
-    file_data = Column(LargeBinary, nullable=False)  # 👈 store bytes here
+    # file_name = Column(String, nullable=False)
+    # content_type = Column(String, nullable=False)
+    # file_data = Column(LargeBinary, nullable=False)  # 👈 store bytes here
 
     org = relationship("Org", back_populates="tickets")
     site = relationship("Site", back_populates="tickets")
@@ -72,7 +75,7 @@ class Ticket(Base):
     comments = relationship("TicketComment", back_populates="ticket")
     feedbacks = relationship("TicketFeedback", back_populates="ticket")
     work_orders = relationship("TicketWorkOrder", back_populates="ticket")
-     # Add this to your relationships in Ticket model
+    # Add this to your relationships in Ticket model
     vendor = relationship("Vendor", back_populates="tickets")
 
     __table_args__ = (
@@ -164,8 +167,8 @@ class Ticket(Base):
 
         # preferred_time  ---------changed
         if not self.preferred_time:
-            return False   
-        
+            return False
+
         time_range = self.preferred_time.strip().lower()
         end_part = time_range.split("-")[-1].strip()
 
@@ -185,9 +188,9 @@ class Ticket(Base):
         ).replace(tzinfo=timezone.utc)
 
         # Calculate elapsed minutes from preferred_datetime   preferred_date + end_time + SLA time
-        elapsed = (datetime.now(timezone.utc) - preferred_datetime).total_seconds() / 60
+        elapsed = (datetime.now(timezone.utc) -
+                   preferred_datetime).total_seconds() / 60
         return elapsed >= sla.escalation_time_mins
-
 
     @property
     def can_reopen(self) -> bool:

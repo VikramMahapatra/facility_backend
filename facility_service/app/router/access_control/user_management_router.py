@@ -109,6 +109,32 @@ def search_user(
     )
 
 
+@router.get("/search-tenant-owner-user", response_model=List[Lookup])
+def search_user(
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.search_tenant_owner_user(
+        db=db,
+        org_id=current_user.org_id,
+        search_users=search
+    )
+
+
+@router.get("/search-staff-user", response_model=List[Lookup])
+def search_user(
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.search_tenant_owner_user(
+        db=db,
+        org_id=current_user.org_id,
+        search_users=search
+    )
+
+
 @router.post("/check-global", response_model=CheckGlobalUserResponse)
 def check_global_user(
     payload: CheckGlobalUserRequest,

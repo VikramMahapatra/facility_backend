@@ -116,7 +116,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
             joinedload(Invoice.payments)
         )
     )
-    base_query.filter(*filters)
+    base_query = base_query.filter(*filters)
 
     total = base_query.with_entities(func.count(Invoice.id)).scalar()
 
@@ -228,6 +228,9 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
         is_paid = (actual_status == "paid")
 
+        attachment_list = AttachmentService.get_attachments(
+            db, ModuleName.invoices, invoice.id)
+
         # -----------------------------------------
         # Build Response
         # -----------------------------------------
@@ -248,7 +251,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
             "lines": invoice.lines,
             "created_at": invoice.created_at.isoformat() if isinstance(invoice.created_at, datetime) else invoice.created_at,
             "updated_at": invoice.updated_at.isoformat() if isinstance(invoice.updated_at, datetime) else invoice.updated_at,
-
+            "attachments": attachment_list
         })
 
         results.append(invoice_data)
@@ -478,10 +481,6 @@ async def create_invoice(
 
             invoice_amount += float(line.amount or 0)
 
-        db_invoice.totals = {
-            "grand": invoice_amount
-        }
-
         if request.status == "issued":
             apply_advance_to_invoice(db, db_invoice)
 
@@ -630,13 +629,6 @@ async def update_invoice(
 
         for line in existing_lines:
             invoice_amount += float(line.amount or 0)
-
-    # -------------------------
-    # UPDATE TOTALS
-    # -------------------------
-    db_invoice.totals = {
-        "grand": invoice_amount
-    }
 
     if invoice_update.status == "issued" and old_invoice_status == "draft":
         apply_advance_to_invoice(db, db_invoice)

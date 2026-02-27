@@ -113,8 +113,8 @@ def get_pending_charges_by_customer(
 # ✅ FIXED: Match CRUD parameters
 
 
-@router.post("/", response_model=InvoiceOut)
-def create_invoice(
+@router.post("/create", response_model=InvoiceOut)
+async def create_invoice(
         invoice: str = Form(...),   # 👈 JSON string
         attachments: Optional[List[UploadFile]] = File(None),
         db: Session = Depends(get_db),
@@ -123,7 +123,7 @@ def create_invoice(
 ):
     invoice_dict = json.loads(invoice)
     invoice_data = InvoiceCreate(**invoice_dict)
-    return crud.create_invoice(
+    return await crud.create_invoice(
         db=db,
         auth_db=auth_db,
         org_id=current_user.org_id,
@@ -135,8 +135,8 @@ def create_invoice(
 # ✅ FIXED: Match CRUD parameters
 
 
-@router.put("/", response_model=InvoiceOut)
-def update_invoice(
+@router.post("/update", response_model=InvoiceOut)
+async def update_invoice(
         invoice: str = Form(...),
         attachments: Optional[List[UploadFile]] = File(None),
         removed_attachment_ids: Optional[str] = Form(None),
@@ -151,7 +151,7 @@ def update_invoice(
         else []
     )
 
-    return crud.update_invoice(db, invoice_data, attachments, removed_ids, current_user)
+    return await crud.update_invoice(db, invoice_data, attachments, removed_ids, current_user)
 
 # ✅ FIXED: Convert UUID to string for CRUD
 # ---------------- Delete Invoice (Soft Delete) ----------------

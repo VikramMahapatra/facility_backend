@@ -24,7 +24,7 @@ router = APIRouter(
 
 
 @router.post("/create", response_model=BillOut)
-def create_bill(
+async def create_bill(
     bill: str = Form(...),   # 👈 JSON string
     attachments: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
@@ -32,7 +32,7 @@ def create_bill(
 ):
     bill_dict = json.loads(bill)
     bill_data = BillCreate(**bill_dict)
-    return crud.create_bill(
+    return await crud.create_bill(
         db=db,
         org_id=current_user.org_id,
         request=bill_data,
@@ -89,8 +89,8 @@ def get_bill_detail(
     )
 
 
-@router.put("/", response_model=BillOut)
-def update_bill(
+@router.post("/update", response_model=BillOut)
+async def update_bill(
     bill: str = Form(...),
     attachments: Optional[List[UploadFile]] = File(None),
     removed_attachment_ids: Optional[str] = Form(None),
@@ -107,7 +107,7 @@ def update_bill(
     )
 
     """Update an existing bill."""
-    return crud.update_bill(
+    return await crud.update_bill(
         db=db,
         request=bill_data,
         attachments=attachments,

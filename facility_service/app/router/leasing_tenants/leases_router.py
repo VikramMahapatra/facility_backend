@@ -38,8 +38,8 @@ def get_lease_overview(
     return crud.get_overview(db=db, user=current_user, params=params)
 
 
-@router.post("/", response_model=None)
-def create_lease(
+@router.post("/create", response_model=None)
+async def create_lease(
     payload: str = Form(...),
     attachments: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
@@ -50,11 +50,11 @@ def create_lease(
     lease_dict = json.loads(payload)
     lease_data = LeaseCreate(**lease_dict)
     lease_data.org_id = current_user.org_id
-    return crud.create(db, lease_data, attachments)
+    return await crud.create(db, lease_data, attachments, current_user)
 
 
-@router.put("/", response_model=None)
-def update_lease(
+@router.post("/update", response_model=None)
+async def update_lease(
     payload: str = Form(...),
     attachments: Optional[List[UploadFile]] = File(None),
     removed_attachment_ids: Optional[str] = Form(None),
@@ -71,7 +71,7 @@ def update_lease(
         else []
     )
 
-    return crud.update(db, lease_data, removed_ids)
+    return await crud.update(db, lease_data, attachments, removed_ids)
 
 
 @router.delete("/{lease_id}", response_model=None)

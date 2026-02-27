@@ -220,6 +220,9 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
             )
         ] if row.payment_terms else []
 
+        attachment_list = AttachmentService.get_attachments(
+            db, ModuleName.leases, row.id)
+
         leases.append(
             LeaseOut.model_validate(
                 {
@@ -231,7 +234,8 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                     "building_block_id": building_block_id,
                     "lease_term_duration": lease_term_duration,
                     "no_of_installments": len(payment_terms_list) if payment_terms_list else 0,
-                    "payment_terms": payment_terms_list  # ✅ Added here
+                    "payment_terms": payment_terms_list,
+                    "attachments": attachment_list
                 }
             )
         )
@@ -255,7 +259,8 @@ def get_by_id(db: Session, lease_id: str) -> Optional[Lease]:
 async def create(
     db: Session,
     payload: LeaseCreate,
-    attachments: list[UploadFile] | None
+    attachments: list[UploadFile] | None,
+    current_user: UserToken
 ) -> Lease:
     try:
         now = datetime.now(timezone.utc)
@@ -271,9 +276,6 @@ async def create(
 
         if not tenant:
             return error_response(message="This tenant does not exist")
-
-        if tenant.kind not in ("commercial", "residential"):
-            return error_response(message="Invalid tenant kind")
 
         #  Fetch & validate space
         space = db.query(Space).filter(
@@ -356,7 +358,7 @@ async def create(
         # Create the lease record (always)
         lease_data = payload.model_dump(
             exclude={"reference", "space_name", "auto_move_in", "lease_term_duration", "payment_terms"})
-        next_number = get_next_lease_number(db, lease.org_id)
+        next_number = get_next_lease_number(db, payload.org_id)
         lease_data.update({
             "status": lease_status,
             "default_payer": "tenant",
@@ -382,7 +384,7 @@ async def create(
             )
 
             # Lease becomes active only if start_date <= now
-            is_effectively_active = payload.start_date <= now
+            is_effectively_active = payload.start_date <= now.date()
 
             if is_effectively_active:
                 #  Update TenantSpace → leased
@@ -394,6 +396,7 @@ async def create(
                 if payload.auto_move_in is True:
                     move_in(
                         db=db,
+                        current_user=current_user,
                         params=MoveInRequest(
                             space_id=payload.space_id,
                             occupant_type="tenant",
@@ -431,7 +434,7 @@ async def create(
         # Lease Attachments
         await AttachmentService.save_attachments(
             db,
-            ModuleName.invoices,
+            ModuleName.leases,
             lease.id,
             attachments
         )
@@ -932,6 +935,9 @@ def get_lease_by_id(db: Session, lease_id: str):
         )
     ] if lease.payment_terms else []
 
+    attachments_out = AttachmentService.get_attachments(
+        db, ModuleName.leases, lease.id)
+
     return LeaseOut.model_validate(
         {
             **lease.__dict__,
@@ -942,7 +948,8 @@ def get_lease_by_id(db: Session, lease_id: str):
             "building_block_id": building_block_id,  # Add this
             "lease_term_duration": lease_term_duration,
             "no_of_installments": len(payment_terms_list) if payment_terms_list else 0,
-            "payment_terms": payment_terms_list
+            "payment_terms": payment_terms_list,
+            "attachments": attachments_out
         }
     )
 

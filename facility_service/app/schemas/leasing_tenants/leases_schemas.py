@@ -91,6 +91,7 @@ class LeaseOut(LeaseBase):
     auto_move_in: bool | None = None
     no_of_installments: Optional[int] = None
     payment_terms: Optional[List[LeasePaymentTermOut]] = None
+    attachments: Optional[List[AttachmentOut]] = None
 
 
 class LeaseRequest(CommonQueryParams):

@@ -248,7 +248,7 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
         "paid_amount": paid_amount,
         "lines": bill_lines,
         "payments": payments_list,
-        "attachments_out": attachments_out
+        "attachments": attachments_out
     })
 
 
@@ -291,7 +291,6 @@ async def create_bill(
             db.add(db_line)
             bill_amount += float(line.amount or 0)
 
-        db_bill.totals = {"grand": bill_amount}
         db.commit()
 
         # Bill Attachments
@@ -368,8 +367,6 @@ async def update_bill(
             )
             db.add(db_line)
             bill_amount += float(line.amount or 0)
-
-        db_bill.totals = {"grand": bill_amount}
 
         # -------------------------------------------------
         # 3️⃣ Remove Attachments (explicit delete)

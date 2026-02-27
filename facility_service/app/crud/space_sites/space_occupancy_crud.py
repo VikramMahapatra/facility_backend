@@ -1647,7 +1647,7 @@ def validate_space_available_for_assignment(
     lease_start_date: datetime
 ):
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).date()
 
     # 🔹 FUTURE LEASE → skip occupancy checks
     if lease_start_date > now:

@@ -18,15 +18,30 @@ class AttachmentService:
         files: Optional[List[UploadFile]]
     ):
         """
-        Save uploaded files as attachments.
+        Save uploaded files as attachments, avoiding duplicates by file name.
         """
         if not files:
             return []
+
+        # Fetch existing file names for this entity
+        existing_files = db.query(Attachment.file_name).filter(
+            Attachment.module_name == module,
+            Attachment.entity_id == entity_id,
+            Attachment.is_deleted == False
+        ).all()
+
+        existing_file_names = {f[0] for f in existing_files}
 
         saved_attachments = []
 
         for file in files:
             if not file or not file.filename:
+                continue
+            file_name = (file.filename[:255]) if len(
+                file.filename) > 255 else file.filename
+
+            # Skip duplicate file names
+            if file_name in existing_file_names:
                 continue
 
             file_bytes = await file.read()
@@ -34,7 +49,7 @@ class AttachmentService:
             attachment = Attachment(
                 module_name=module,
                 entity_id=entity_id,
-                file_name=file.filename,
+                file_name=file_name,
                 file_type=file.content_type or "application/octet-stream",
                 file_data=file_bytes,
                 created_at=datetime.utcnow(),
@@ -44,10 +59,13 @@ class AttachmentService:
             db.add(attachment)
             saved_attachments.append(attachment)
 
+            # Add to set to prevent duplicates in the same batch
+            existing_file_names.add(file_name)
+
         return saved_attachments
 
     @staticmethod
-    def delete_attachments(
+    async def delete_attachments(
         db: Session,
         module: str,
         entity_id,

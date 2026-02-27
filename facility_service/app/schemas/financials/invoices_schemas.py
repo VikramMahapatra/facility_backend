@@ -7,9 +7,24 @@ from typing import List, Optional, Any
 from shared.core.schemas import CommonQueryParams
 
 
+class AdvancePaymentCreate(BaseModel):
+    user_id: Optional[UUID] = None
+    method: str
+    ref_no: Optional[str] = None
+    amount: Decimal
+    paid_at: Optional[date_type] = None
+    notes: Optional[str] = None
+    currency: Optional[str] = None
+
+    class Config:
+        json_encoders = {
+            Decimal: float
+        }
+
+
 class PaymentCreateWithInvoice(BaseModel):
     id: Optional[UUID] = None
-    invoice_id: UUID
+    invoice_id: Optional[UUID] = None
     method: str
     ref_no: Optional[str] = None
     amount: Decimal
@@ -70,6 +85,22 @@ class PaymentUpdateItem(BaseModel):
 
 class InvoiceUpdate(InvoiceBase):
     id: str
+
+
+class AdvancePaymentOut(BaseModel):
+    id: UUID
+    org_id: Optional[UUID] = None
+    user_id: UUID
+    method: str
+    ref_no: str
+    amount: Decimal
+    balance: Decimal
+    paid_at: Optional[date_type] = None
+    notes: Optional[Any] = None
+    customer_name: Optional[str] = None  # Add this field
+
+    class Config:
+        from_attributes = True
 
 
 class PaymentOut(BaseModel):
@@ -159,6 +190,13 @@ class InvoicesOverview(BaseModel):
 
 class PaymentResponse(BaseModel):
     payments: List[PaymentOut]
+    total: int
+
+    model_config = {"from_attributes": True}
+
+
+class AdvancePaymentResponse(BaseModel):
+    advances: List[AdvancePaymentOut]
     total: int
 
     model_config = {"from_attributes": True}

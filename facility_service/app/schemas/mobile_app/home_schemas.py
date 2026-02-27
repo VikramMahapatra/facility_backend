@@ -8,7 +8,6 @@ from facility_service.app.schemas.access_control.user_management_schemas import 
 from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 
 from ...schemas.system.notifications_schemas import NotificationOut
-from ...schemas.leases_schemas import LeaseOut
 from shared.core.schemas import CommonQueryParams, MasterQueryParams
 
 

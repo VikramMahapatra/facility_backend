@@ -1,5 +1,6 @@
 # schemas/space_occupancy.py
 from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
@@ -74,6 +75,7 @@ class SpaceOccupancyRequestOut(BaseModel):
 class SpaceMoveOutRequest(BaseModel):
     space_id: UUID
     move_out_date: datetime
+    time_slot: Optional[str] = None
 
 
 class HandoverCreate(BaseModel):
@@ -91,49 +93,83 @@ class HandoverUpdate(BaseModel):
     status: HandoverStatus | None = None
 
 
-class InspectionComplete(BaseModel):
-    handover_id: UUID
-    walls_condition: str
-    flooring_condition: str
-    electrical_condition: str
-    plumbing_condition: str
-    damage_notes: str
-    damage_found: bool
-    remarks: str | None = None
-
-
 class HandoverUpdateSchema(BaseModel):
-    handover_date: Optional[datetime] = Field(
-        None, description="Date and time of handover")
-    handover_to_person: Optional[str] = Field(
-        None, max_length=200, description="Name of person receiving the handover")
-    handover_to_contact: Optional[str] = Field(
-        None, max_length=20, description="Contact number of person receiving")
-    remarks: Optional[str] = Field(
-        None, max_length=500, description="Additional notes / condition notes")
+    handover_date: Optional[datetime] = None
+    handover_to_person: Optional[str] = None
+    handover_to_contact: Optional[str] = None
+    remarks: Optional[str] = None
 
     # Keys and Accessories
-    keys_returned: Optional[bool] = Field(
-        None, description="Whether keys are returned")
-    number_of_keys: Optional[int] = Field(
-        None, description="Number of keys returned")
+    keys_returned: Optional[bool] = None
+    number_of_keys: Optional[int] = None
+    accessories_returned: Optional[bool] = None
+    access_card_returned: Optional[bool] = None
+    number_of_access_cards: Optional[int] = None
+    parking_card_returned: Optional[bool] = None
+    number_of_parking_cards: Optional[int] = None
+    status: Optional[HandoverStatus] = None
 
-    accessories_returned: Optional[bool] = Field(
-        None, description="Whether accessories are returned")
-    access_card_returned: Optional[bool] = Field(
-        None, description="Whether access cards are returned")
-    number_of_access_cards: Optional[int] = Field(
-        None, description="Number of access cards returned")
-    parking_card_returned: Optional[bool] = Field(
-        None, description="Whether parking cards are returned")
-    number_of_parking_cards: Optional[int] = Field(
-        None, description="Number of parking cards returned")
 
-    status: Optional[HandoverStatus] = Field(
-        None, description="Handover status")
+class InspectionRequest(BaseModel):
+    handover_id: UUID
+    inspected_by_user_id: UUID
+    scheduled_date: datetime
 
 
 class InspectionItemCreate(BaseModel):
     item_name: str
     condition: str
     remarks: Optional[str]
+
+
+class InspectionComplete(BaseModel):
+    handover_id: UUID
+    damage_found: bool = False
+    inspection_date: Optional[datetime] = None
+    damage_notes: Optional[str] = None
+    walls_condition: Optional[str] = None
+    flooring_condition: Optional[str] = None
+    electrical_condition: Optional[str] = None
+    plumbing_condition: Optional[str] = None
+
+
+class MaintenanceRequest(BaseModel):
+    inspection_id: UUID
+    maintenance_required: bool = True
+    notes: Optional[str] = None
+
+
+class MaintenanceComplete(BaseModel):
+    completed_at: Optional[datetime] = None
+
+
+class SettlementRequest(BaseModel):
+    occupancy_id: UUID
+    damage_charges: Optional[Decimal] = 0
+    pending_dues: Optional[Decimal] = 0
+
+
+class SettlementComplete(BaseModel):
+    damage_charges: Optional[Decimal] = 0
+    pending_dues: Optional[Decimal] = 0
+    settled_at: Optional[datetime] = None
+
+
+class OccupancyHistoryItem(BaseModel):
+    occupancy_id: UUID
+    occupant_name: Optional[str]
+    occupant_type: Optional[str]
+
+    move_in_date: Optional[date]
+    move_out_date: Optional[date]
+    status: str
+
+    handover_status: Optional[str]
+    inspection_status: Optional[str]
+    maintenance_required: Optional[bool]
+    maintenance_completed: Optional[bool]
+
+    settlement_status: Optional[str]
+    final_amount: Optional[float]
+
+    created_at: datetime

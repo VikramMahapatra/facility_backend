@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
-from ...schemas.leases_schemas import (
-    LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseLookup, LeaseOut, LeaseCreate, LeaseOverview, LeasePaymentTermCreate, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut,
+from ...schemas.leasing_tenants.leases_schemas import (
+    RejectTerminationRequest, LeaseDetailOut, LeaseDetailRequest, LeaseListResponse, LeaseLookup,
+    LeaseOut, LeaseCreate, LeaseOverview, LeasePaymentTermCreate, LeasePaymentTermRequest, LeaseRequest, LeaseUpdate, LeaseStatusResponse, LeaseSpaceResponse, TenantSpaceDetailOut, TerminationListRequest, TerminationRequestCreate,
 )
 from ...crud.leasing_tenants import leases_crud as crud
 from shared.core.auth import allow_admin, validate_current_token
@@ -154,3 +155,41 @@ def get_lease_payment_terms(
     db: Session = Depends(get_db)
 ):
     return crud.get_lease_payment_terms(db=db, params=params)
+
+
+@router.get("/termination-requests")
+def get_termination_requests(
+    params: TerminationListRequest = Depends(),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_termination_requests(db, current_user.org_id, params)
+
+
+@router.post("/termination-requests/create")
+def create_termination_request(
+    payload: TerminationRequestCreate = Body(...),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.create_termination_request(db, current_user.user_id, payload)
+
+
+@router.post("/termination-requests/${request_id:uuid}/approve")
+def approve_termination_request(
+    request_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.approve_termination(db, request_id, current_user.user_id)
+
+
+@router.post("/termination-requests/${request_id:uuid}/reject")
+def reject_termination(
+    request_id: UUID,
+    params: RejectTerminationRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    params.request_id = request_id
+    return crud.reject_termination(db, current_user.user_id, params)

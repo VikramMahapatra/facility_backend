@@ -23,7 +23,7 @@ class SpaceBase(EmptyStringModel):
     name: Optional[str] = None
     kind: str
     sub_kind: Optional[str] = None
-    category: Literal['residential', 'commercial', 'common_area']
+    category: SpaceCategory
     floor: Optional[int] = None
     building_block_id: Optional[UUID] = None
     building_block: Optional[str] = None

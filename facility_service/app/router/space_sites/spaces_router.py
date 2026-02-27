@@ -76,11 +76,24 @@ def delete_space(space_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/lookup", response_model=List[Lookup])
-def space_lookup(site_id: Optional[str] = Query(None),
-                 building_id: Optional[str] = Query(None),
-                 db: Session = Depends(get_db),
-                 current_user: UserToken = Depends(validate_current_token)):
+def space_lookup(
+        site_id: Optional[str] = Query(None),
+        building_id: Optional[str] = Query(None),
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)
+):
     return crud.get_space_lookup(db=db, site_id=site_id, building_id=building_id, user=current_user)
+
+
+@router.get("/filtered-lookup", response_model=List[Lookup])
+def filter_space_with_request_type_lookup(
+    site_id: Optional[str] = Query(None),
+    building_id: Optional[str] = Query(None),
+    request_type: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_space_lookup(db=db, site_id=site_id, building_id=building_id, user=current_user, request_type=request_type)
 
 
 @router.get("/space-building-lookup", response_model=List[Lookup])

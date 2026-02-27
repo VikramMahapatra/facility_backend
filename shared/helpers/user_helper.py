@@ -20,3 +20,17 @@ def get_user_detail(user_id: UUID):
         return user if user else None
     finally:
         auth_db.close()
+
+
+def get_users_bulk(user_ids):
+    auth_db = AuthSessionLocal()
+    try:
+        users = (
+            auth_db.query(Users)
+            .filter(Users.id.in_(user_ids))
+            .all()
+        )
+
+        return {u.id: u for u in users}
+    finally:
+        auth_db.close()

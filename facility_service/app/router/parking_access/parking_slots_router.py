@@ -2,7 +2,7 @@ from typing import List, Optional
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from ...schemas.parking_access.parking_slot_schemas import AssignParkingSlotsRequest, ParkingSlotCreate, ParkingSlotOverview, ParkingSlotRequest, ParkingSlotUpdate, ParkingSlotsResponse
+from ...schemas.parking_access.parking_slot_schemas import AssignParkingSlotsRequest, BulkParkingSlotRequest, BulkParkingSlotResponse, ParkingSlotCreate, ParkingSlotOverview, ParkingSlotRequest, ParkingSlotUpdate, ParkingSlotsResponse
 from shared.helpers.json_response_helper import success_response
 from ...crud.parking_access import parking_slot_crud as crud
 from shared.core.database import get_facility_db as get_db
@@ -63,6 +63,13 @@ def delete_parking_slot(
         validate_current_token)  # ✅ Added authentication
 ): return crud.delete_parking_slot(db, current_user.org_id, slot_id)
 
+@router.post("/bulk-upload", response_model=BulkParkingSlotResponse)
+def bulk_upload_parking_slots(
+    request: BulkParkingSlotRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.bulk_update_parking_slots(db, request, current_user.org_id)
 
 @router.get("/available-slot-lookup")
 def available_parking_slot_lookup(

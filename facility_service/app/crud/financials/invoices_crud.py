@@ -624,7 +624,7 @@ async def update_invoice(
 
     await AttachmentService.delete_attachments(
         db,
-        "invoices",
+        ModuleName.invoices,
         db_invoice.id,
         removed_attachment_ids
     )

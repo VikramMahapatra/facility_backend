@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+import json
+
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db as get_db
 from ...schemas.leasing_tenants.leases_schemas import (
@@ -38,24 +40,38 @@ def get_lease_overview(
 
 @router.post("/", response_model=None)
 def create_lease(
-    payload: LeaseCreate,
+    payload: str = Form(...),
+    attachments: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
     _: UserToken = Depends(allow_admin)
 
 ):
-    payload.org_id = current_user.org_id
-    return crud.create(db, payload)
+    lease_dict = json.loads(payload)
+    lease_data = LeaseCreate(**lease_dict)
+    lease_data.org_id = current_user.org_id
+    return crud.create(db, lease_data, attachments)
 
 
 @router.put("/", response_model=None)
 def update_lease(
-    payload: LeaseUpdate,
+    payload: str = Form(...),
+    attachments: Optional[List[UploadFile]] = File(None),
+    removed_attachment_ids: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
     _: UserToken = Depends(allow_admin)
 ):
-    return crud.update(db, payload)
+    lease_dict = json.loads(payload)
+    lease_data = LeaseUpdate(**lease_dict)
+
+    removed_ids = (
+        json.loads(removed_attachment_ids)
+        if removed_attachment_ids
+        else []
+    )
+
+    return crud.update(db, lease_data, removed_ids)
 
 
 @router.delete("/{lease_id}", response_model=None)

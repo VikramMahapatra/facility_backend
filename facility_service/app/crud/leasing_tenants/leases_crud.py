@@ -1,12 +1,15 @@
 from decimal import Decimal
 from typing import List, Optional, Dict
 from datetime import date, datetime, timedelta, timezone
+from fastapi import UploadFile
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import Integer, func, or_, NUMERIC, and_, cast
 from sqlalchemy.dialects.postgresql import UUID
 
+from facility_service.app.crud.common.attachment_crud import AttachmentService
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists
 from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event, move_in, validate_space_available_for_assignment
+from facility_service.app.enum.module_enum import ModuleName
 from facility_service.app.enum.revenue_enum import InvoiceType
 from facility_service.app.models.leasing_tenants.lease_payment_term import LeasePaymentTerm
 from facility_service.app.models.leasing_tenants.lease_termination_request import LeaseTerminationRequest
@@ -249,7 +252,11 @@ def get_by_id(db: Session, lease_id: str) -> Optional[Lease]:
 # Create new lease with space validation
 
 
-def create(db: Session, payload: LeaseCreate) -> Lease:
+async def create(
+    db: Session,
+    payload: LeaseCreate,
+    attachments: list[UploadFile] | None
+) -> Lease:
     try:
         now = datetime.now(timezone.utc)
         # 0 Validate tenant_id
@@ -421,6 +428,14 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
             db.add_all(payment_terms)
 
+        # Lease Attachments
+        await AttachmentService.save_attachments(
+            db,
+            ModuleName.invoices,
+            lease.id,
+            attachments
+        )
+
         # Commit and return
         db.commit()
         db.refresh(lease)
@@ -432,7 +447,12 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
 
 # Update lease with space validation
-def update(db: Session, payload: LeaseUpdate):
+async def update(
+    db: Session,
+    payload: LeaseUpdate,
+    attachments: list[UploadFile] | None,
+    removed_attachment_ids: list[UUID] | None
+):
     try:
         now = datetime.now(timezone.utc)
         obj = get_by_id(db, payload.id)
@@ -658,6 +678,20 @@ def update(db: Session, payload: LeaseUpdate):
                     new_terms.append(payment_term)
 
                 db.add_all(new_terms)
+
+        await AttachmentService.delete_attachments(
+            db,
+            ModuleName.leases,
+            obj.id,
+            removed_attachment_ids
+        )
+
+        await AttachmentService.save_attachments(
+            db,
+            ModuleName.leases,
+            obj.id,
+            attachments
+        )
 
         db.commit()
         db.refresh(obj)
@@ -1070,6 +1104,9 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         )
     ] if lease.payment_terms else []
 
+    attachments_out = AttachmentService.get_attachments(
+        db, ModuleName.leases, lease.id)
+
     return {
 
         "id": lease.id,
@@ -1104,7 +1141,8 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
 
         "charges": charges_list,
         "no_of_installments": len(payment_terms_list) if payment_terms_list else 0,
-        "payment_terms": payment_terms_list
+        "payment_terms": payment_terms_list,
+        "attachments": attachments_out
     }
 
 

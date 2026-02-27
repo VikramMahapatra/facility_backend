@@ -247,7 +247,8 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
         "total_amount": bill_total,
         "paid_amount": paid_amount,
         "lines": bill_lines,
-        "payments": payments_list
+        "payments": payments_list,
+        "attachments_out": attachments_out
     })
 
 

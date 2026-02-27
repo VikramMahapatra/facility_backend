@@ -3,7 +3,7 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel
 from typing import List, Optional, Any
-from shared.core.schemas import CommonQueryParams
+from shared.core.schemas import AttachmentOut, CommonQueryParams
 
 # Bill Lines
 
@@ -94,6 +94,7 @@ class BillOut(BillBase):
     # Relationships
     lines: List[BillLineOut] = []
     payments: List[BillPaymentOut] = []
+    attachments: Optional[List[AttachmentOut]] = None
 
 # API Responses & Requests
 

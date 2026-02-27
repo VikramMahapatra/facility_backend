@@ -5,7 +5,7 @@ from decimal import Decimal
 from pydantic import BaseModel, field_validator
 
 from .lease_charges_schemas import LeaseChargeOut
-from shared.core.schemas import CommonQueryParams
+from shared.core.schemas import AttachmentOut, CommonQueryParams
 
 # LEASE PAYMENT TERM
 
@@ -167,6 +167,7 @@ class LeaseDetailOut(BaseModel):
     building_id: Optional[UUID] = None
 
     charges: List[LeaseChargeOut] = []
+    attachments: Optional[List[AttachmentOut]] = None
 
     model_config = {"from_attributes": True}
 

@@ -124,7 +124,7 @@ def create_invoice(
 
 @router.put("/", response_model=InvoiceOut)
 def update_invoice(
-        invoice: str = Form(...),   # 👈 JSON string
+        invoice: str = Form(...),
         attachments: Optional[List[UploadFile]] = File(None),
         removed_attachment_ids: Optional[str] = Form(None),
         db: Session = Depends(get_db),

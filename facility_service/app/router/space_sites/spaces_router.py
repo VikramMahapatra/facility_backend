@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.utils.app_status_code import AppStatusCode
-from ...schemas.space_sites.spaces_schemas import ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipApprovalListResponse, OwnershipApprovalRequest, OwnershipHistoryOut, RemoveOwnerRequest, RemoveSpaceTenantRequest, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, SpaceUpdate, TenantHistoryOut
+from ...schemas.space_sites.spaces_schemas import (
+    ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, 
+    OwnershipApprovalListResponse, OwnershipApprovalRequest, OwnershipHistoryOut, RemoveOwnerRequest, 
+    RemoveSpaceTenantRequest, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, 
+    SpaceUpdate, TenantHistoryOut, BulkSpaceRequest, BulkSpaceResponse)
 from ...crud.space_sites import spaces_crud as crud
 from shared.core.auth import allow_admin,  validate_current_token  # for dependicies
 from shared.core.schemas import CommonQueryParams, Lookup, UserToken
@@ -54,6 +58,16 @@ def update_space(
 ):
 
     return crud.update_space(db, space)
+
+
+@router.post("/bulk-upload", response_model=BulkSpaceResponse)
+def bulk_upload_spaces(
+    request: BulkSpaceRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token),
+    _: UserToken = Depends(allow_admin)
+):
+    return crud.bulk_update_spaces(db, request, org_id=current_user.org_id)
 
 
 @router.delete("/{space_id}", response_model=SpaceOut)

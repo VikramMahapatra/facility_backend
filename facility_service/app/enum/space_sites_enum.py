@@ -17,6 +17,7 @@ class OwnerMaintenanceStatus(str, Enum):
 class SpaceCategory(str, Enum):
     RESIDENTIAL = "residential"
     COMMERCIAL = "commercial"
+    COMMON_AREA = "common_area"
 
 
 SPACE_KINDS = [

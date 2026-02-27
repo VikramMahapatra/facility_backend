@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 from facility_service.app.models.parking_access.parking_zones import ParkingZone
 from facility_service.app.models.space_sites.sites import Site
 from facility_service.app.models.space_sites.spaces import Space
-from facility_service.app.schemas.parking_access.parking_slot_schemas import AssignParkingSlotsRequest, ParkingSlotCreate, ParkingSlotOut, ParkingSlotUpdate
+from facility_service.app.schemas.parking_access.parking_slot_schemas import(
+    AssignParkingSlotsRequest, BulkParkingSlotRequest, BulkUploadError,
+    ParkingSlotCreate, ParkingSlotOut, ParkingSlotUpdate)
 from shared.core.schemas import Lookup, UserToken
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.utils.app_status_code import AppStatusCode
@@ -184,6 +186,59 @@ def delete_parking_slot(db: Session, org_id: UUID, slot_id: UUID):
 
     return {"success": True}
 
+def bulk_update_parking_slots(db: Session, request: BulkParkingSlotRequest, org_id: UUID):
+    inserted = updated = 0
+    validations = []
+    
+    # 1. Cache dictionaries prevent asking the DB for the same IDs repeatedly
+    cache = {"site": {}, "zone": {}, "space": {}}
+
+    def fetch_id(model, cache_dict, name, parent_site_id=None):
+        if not name: return None
+        key = (name, parent_site_id)
+        if key not in cache_dict:
+            q = db.query(model.id).filter(model.name == name, model.is_deleted == False)
+            if parent_site_id: 
+                q = q.filter(model.site_id == parent_site_id)
+            cache_dict[key] = q.scalar()
+        return cache_dict[key]
+
+    # 2. Process rows using enumerate to automatically track the row number
+    for i, s in enumerate(request.slots, start=2):
+        errors = []
+        
+        site_id = fetch_id(Site, cache["site"], s.siteName)
+        if not site_id: errors.append(f"Site '{s.siteName}' not found")
+        
+        zone_id = fetch_id(ParkingZone, cache["zone"], s.zoneName, site_id)
+        if s.zoneName and not zone_id: errors.append(f"Zone '{s.zoneName}' not found")
+        
+        space_id = fetch_id(Space, cache["space"], s.spaceName, site_id)
+        if s.spaceName and not space_id: errors.append(f"Space '{s.spaceName}' not found")
+
+        if errors:
+            validations.append(BulkUploadError(row=i, errors=errors))
+            continue
+
+        # 3. Upsert Logic (Update if exists, Insert if new)
+        existing = db.query(ParkingSlot).filter_by(
+            slot_no=s.slot_no, site_id=site_id, zone_id=zone_id, is_deleted=False
+        ).first()
+
+        slot_data = {
+            "org_id": org_id, "site_id": site_id, "zone_id": zone_id, 
+            "space_id": space_id, "slot_type": s.slot_type
+        }
+
+        if existing:
+            for k, v in slot_data.items(): setattr(existing, k, v)
+            updated += 1
+        else:
+            db.add(ParkingSlot(slot_no=s.slot_no, **slot_data))
+            inserted += 1
+
+    db.commit()
+    return {"inserted": inserted, "updated": updated, "validations": validations}
 
 def available_parking_slot_lookup(
     db: Session,

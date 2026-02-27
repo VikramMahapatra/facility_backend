@@ -1,5 +1,6 @@
+import json
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from shared.helpers.json_response_helper import success_response
@@ -101,15 +102,20 @@ def get_pending_charges_by_customer(
 
 @router.post("/", response_model=InvoiceOut)
 def create_invoice(
-        invoice: InvoiceCreate,
+        invoice: str = Form(...),   # 👈 JSON string
+        attachments: Optional[List[UploadFile]] = File(None),
         db: Session = Depends(get_db),
         auth_db: Session = Depends(get_auth_db),
-        current_user: UserToken = Depends(validate_current_token)):
+        current_user: UserToken = Depends(validate_current_token)
+):
+    invoice_dict = json.loads(invoice)
+    invoice_data = InvoiceCreate(**invoice_dict)
     return crud.create_invoice(
         db=db,
         auth_db=auth_db,
         org_id=current_user.org_id,
-        request=invoice,
+        request=invoice_data,
+        attachments=attachments,
         current_user=current_user
     )
 
@@ -118,10 +124,21 @@ def create_invoice(
 
 @router.put("/", response_model=InvoiceOut)
 def update_invoice(
-        invoice: InvoiceUpdate,
+        invoice: str = Form(...),   # 👈 JSON string
+        attachments: Optional[List[UploadFile]] = File(None),
+        removed_attachment_ids: Optional[str] = Form(None),
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return crud.update_invoice(db, invoice, current_user)
+    invoice_dict = json.loads(invoice)
+    invoice_data = InvoiceUpdate(**invoice_dict)
+
+    removed_ids = (
+        json.loads(removed_attachment_ids)
+        if removed_attachment_ids
+        else []
+    )
+
+    return crud.update_invoice(db, invoice_data, attachments, removed_ids, current_user)
 
 # ✅ FIXED: Convert UUID to string for CRUD
 # ---------------- Delete Invoice (Soft Delete) ----------------

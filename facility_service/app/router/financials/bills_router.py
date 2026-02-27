@@ -1,6 +1,7 @@
-from typing import List
+import json
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy.orm import Session
 from uuid import UUID
 
@@ -24,14 +25,18 @@ router = APIRouter(
 
 @router.post("/create", response_model=BillOut)
 def create_bill(
-    bill: BillCreate,
+    bill: str = Form(...),   # 👈 JSON string
+    attachments: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
+    bill_dict = json.loads(bill)
+    bill_data = BillCreate(**bill_dict)
     return crud.create_bill(
         db=db,
         org_id=current_user.org_id,
-        request=bill,
+        request=bill_data,
+        attachments=attachments,
         current_user=current_user
     )
 
@@ -86,14 +91,27 @@ def get_bill_detail(
 
 @router.put("/", response_model=BillOut)
 def update_bill(
-    bill: BillUpdate,
+    bill: str = Form(...),
+    attachments: Optional[List[UploadFile]] = File(None),
+    removed_attachment_ids: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
+    bill_dict = json.loads(bill)
+    bill_data = BillUpdate(**bill_dict)
+
+    removed_ids = (
+        json.loads(removed_attachment_ids)
+        if removed_attachment_ids
+        else []
+    )
+
     """Update an existing bill."""
     return crud.update_bill(
         db=db,
-        request=bill,
+        request=bill_data,
+        attachments=attachments,
+        removed_attachment_ids=removed_ids,
         current_user=current_user
     )
 

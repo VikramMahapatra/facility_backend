@@ -1,3 +1,4 @@
+import base64
 from collections import defaultdict
 
 from sqlalchemy import Integer, func
@@ -6,12 +7,15 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List
 from uuid import UUID
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
 from sqlalchemy.dialects.postgresql import JSONB
+from facility_service.app.crud.common.attachment_crud import AttachmentService
 from facility_service.app.crud.financials.invoice_email_service import InvoiceEmailService
 from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
+from facility_service.app.enum.module_enum import ModuleName
+from facility_service.app.models.common.attachments import Attachment
 from facility_service.app.models.financials.customer_advances import AdvanceAdjustment, CustomerAdvance
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
@@ -451,11 +455,12 @@ def calculate_invoice_status(
     return "partial"
 
 
-def create_invoice(
+async def create_invoice(
     db: Session,
     auth_db: Session,
     org_id: UUID,
     request: InvoiceCreate,
+    attachments: list[UploadFile] | None,
     current_user
 ):
     if not request.lines or len(request.lines) == 0:
@@ -479,9 +484,15 @@ def create_invoice(
 
         invoice_amount = 0
 
-        # ===============================
-        # PROCESS INVOICE LINES
-        # ===============================
+        # Invoice Attachments
+        await AttachmentService.save_attachments(
+            db,
+            ModuleName.invoices,
+            db_invoice.id,
+            attachments
+        )
+
+        # Invoice Lines
         for line in request.lines:
 
             # --------------------------------
@@ -565,7 +576,12 @@ def create_invoice(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
+async def update_invoice(
+        db: Session,
+        invoice_update: InvoiceUpdate,
+        attachments: list[UploadFile] | None,
+        removed_attachment_ids: list[UUID] | None,
+        current_user):
     db_invoice = db.query(Invoice).filter(
         Invoice.id == invoice_update.id,
         Invoice.org_id == current_user.org_id,
@@ -598,8 +614,27 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
         if field in update_data:
             setattr(db_invoice, field, update_data[field])
 
-    billable_item_names = []
     invoice_amount = 0
+
+    if removed_attachment_ids:
+        db.query(Attachment).filter(
+            Attachment.entity_id == db_invoice.id,
+            Attachment.id.in_(removed_attachment_ids)
+        ).delete(synchronize_session=False)
+
+    await AttachmentService.delete_attachments(
+        db,
+        "invoices",
+        db_invoice.id,
+        removed_attachment_ids
+    )
+
+    await AttachmentService.save_attachments(
+        db,
+        ModuleName.invoices,
+        db_invoice.id,
+        attachments
+    )
 
     # -------------------------
     # UPDATE LINES
@@ -1254,6 +1289,9 @@ def get_invoice_detail(
         invoice=invoice
     )
 
+    attachments_out = AttachmentService.get_attachments(
+        db, ModuleName.invoices, invoice.id)
+
     # -------------------------------------------------
     # RESPONSE
     # -------------------------------------------------
@@ -1269,7 +1307,8 @@ def get_invoice_detail(
         "is_paid": actual_status == "paid",
         "payments": payments_list,
         "currency": invoice.currency,
-        "lines": invoice_lines
+        "lines": invoice_lines,
+        "attachments": attachments_out,
     })
 
 

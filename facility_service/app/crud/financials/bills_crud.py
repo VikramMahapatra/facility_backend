@@ -5,10 +5,12 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, List
 from uuid import UUID
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import cast, func, or_, Numeric, Integer
 
+from facility_service.app.crud.common.attachment_crud import AttachmentService
+from facility_service.app.enum.module_enum import ModuleName
 from facility_service.app.models.procurement.vendors import Vendor
 from facility_service.app.schemas.financials.invoices_schemas import InvoicesRequest, PaymentOut
 from shared.helpers.json_response_helper import error_response, success_response
@@ -233,6 +235,9 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
         for p in payments
     ]
 
+    attachments_out = AttachmentService.get_attachments(
+        db, ModuleName.bills, bill.id)
+
     return BillOut.model_validate({
         **bill.__dict__,
         "vendor_name": vendor_name,
@@ -242,11 +247,18 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
         "total_amount": bill_total,
         "paid_amount": paid_amount,
         "lines": bill_lines,
-        "payments": payments_list
+        "payments": payments_list,
+        "attachments_out": attachments_out
     })
 
 
-def create_bill(db: Session, org_id: UUID, request: BillCreate, current_user: UserToken) -> BillOut:
+async def create_bill(
+    db: Session,
+    org_id: UUID,
+    request: BillCreate,
+    attachments: list[UploadFile] | None,
+    current_user: UserToken
+) -> BillOut:
     if not request.lines or len(request.lines) == 0:
         raise HTTPException(
             status_code=400, detail="Bill must have at least one line")
@@ -282,6 +294,14 @@ def create_bill(db: Session, org_id: UUID, request: BillCreate, current_user: Us
         db_bill.totals = {"grand": bill_amount}
         db.commit()
 
+        # Bill Attachments
+        await AttachmentService.save_attachments(
+            db,
+            ModuleName.bills,
+            db_bill.id,
+            attachments
+        )
+
         return get_bill_detail(db, db, org_id, db_bill.id)
 
     except Exception as e:
@@ -289,8 +309,100 @@ def create_bill(db: Session, org_id: UUID, request: BillCreate, current_user: Us
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def update_bill(db: Session, request: BillUpdate, current_user: UserToken):
-    pass
+async def update_bill(
+    db: Session,
+    org_id: UUID,
+    bill_id: UUID,
+    request: BillCreate,
+    attachments: list[UploadFile] | None,
+    removed_attachment_ids: list[UUID] | None,
+    current_user: UserToken
+) -> BillOut:
+
+    db_bill = (
+        db.query(Bill)
+        .filter(
+            Bill.id == bill_id,
+            Bill.org_id == org_id,
+            Bill.is_deleted.is_(False)
+        )
+        .first()
+    )
+
+    if not db_bill:
+        raise HTTPException(status_code=404, detail="Bill not found")
+
+    if not request.lines or len(request.lines) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Bill must have at least one line"
+        )
+
+    try:
+        # -------------------------------------------------
+        # 1️⃣ Update Bill Fields (except immutable fields)
+        # -------------------------------------------------
+        update_data = request.model_dump(exclude={"lines", "bill_no"})
+
+        for key, value in update_data.items():
+            setattr(db_bill, key, value)
+
+        db_bill.updated_at = datetime.utcnow()
+
+        # -------------------------------------------------
+        # 2️⃣ Replace Bill Lines (safe approach)
+        # -------------------------------------------------
+        db.query(BillLine).filter(
+            BillLine.bill_id == db_bill.id
+        ).delete(synchronize_session=False)
+
+        bill_amount = 0.0
+
+        for line in request.lines:
+            db_line = BillLine(
+                bill_id=db_bill.id,
+                item_id=line.item_id,
+                description=line.description,
+                amount=line.amount,
+                tax_pct=line.tax_pct
+            )
+            db.add(db_line)
+            bill_amount += float(line.amount or 0)
+
+        db_bill.totals = {"grand": bill_amount}
+
+        # -------------------------------------------------
+        # 3️⃣ Remove Attachments (explicit delete)
+        # -------------------------------------------------
+        if removed_attachment_ids:
+            AttachmentService.delete_attachments(
+                db=db,
+                module=ModuleName.bills,
+                entity_id=db_bill.id,
+                attachment_ids=removed_attachment_ids
+            )
+
+        # -------------------------------------------------
+        # 4️⃣ Add New Attachments
+        # -------------------------------------------------
+        await AttachmentService.save_attachments(
+            db=db,
+            module=ModuleName.bills,
+            entity_id=db_bill.id,
+            files=attachments
+        )
+
+        # -------------------------------------------------
+        # 5️⃣ Commit Once
+        # -------------------------------------------------
+        db.commit()
+        db.refresh(db_bill)
+
+        return get_bill_detail(db, db, org_id, db_bill.id)
+
+    except Exception as e:
+        db.rollback()
+        raise e
 
 
 def delete_bill(db: Session, bill_id: str, org_id: UUID):

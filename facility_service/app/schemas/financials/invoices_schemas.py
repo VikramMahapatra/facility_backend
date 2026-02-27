@@ -4,7 +4,7 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel
 from typing import List, Optional, Any
-from shared.core.schemas import CommonQueryParams
+from shared.core.schemas import AttachmentOut, CommonQueryParams
 
 
 class AdvancePaymentCreate(BaseModel):
@@ -162,6 +162,8 @@ class InvoiceOut(BaseModel):
 
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    attachments: Optional[List[AttachmentOut]] = None
 
     class Config:
         from_attributes = True

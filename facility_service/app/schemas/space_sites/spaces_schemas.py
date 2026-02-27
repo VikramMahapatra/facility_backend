@@ -241,3 +241,33 @@ class RemoveOwnerRequest(BaseModel):
 class RemoveSpaceTenantRequest(BaseModel):
     space_id: UUID
     tenant_user_id: UUID
+
+
+# bulk upload related schemas
+
+class SpaceImport(BaseModel):
+    name: str
+    siteName: str
+    buildingBlockName: Optional[str] = None
+    category: Optional[str] = None
+    kind: Optional[str] = None
+    floor: str | int | None = None 
+    area_sqft: Optional[float] = None
+    beds: Optional[int] = None
+    baths: Optional[int] = None
+    status: Optional[str] = "available"
+    view: Optional[str] = None
+    furnished: Optional[str] = None
+    star_rating: Optional[int] = None
+
+class BulkSpaceRequest(BaseModel):
+    spaces: List[SpaceImport]
+
+class BulkUploadError(BaseModel):
+    row: int
+    errors: List[str]
+
+class BulkSpaceResponse(BaseModel):
+    inserted: Optional[int] = 0
+    updated: Optional[int] = 0
+    validations: List[BulkUploadError] = []

@@ -224,16 +224,3 @@ class InvoiceDetailRequest(BaseModel):
     limit: int = 10
     status: Optional[str] = None
     invoice_id: Optional[UUID] = None
-
-
-class InvoicePaymentHistoryOut(BaseModel):
-    invoice_id: UUID
-    invoice_no: str
-    total_amount: Decimal
-    status: str
-
-    code: Optional[str] = None
-    item_no: Optional[str] = None
-    user_name: Optional[str] = None
-
-    payments: List[PaymentOut]

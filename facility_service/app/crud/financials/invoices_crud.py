@@ -40,7 +40,7 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket
 from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceLineOut, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceLineOut, InvoiceOut,  InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
 from facility_service.app.models.parking_access import parking_pass
 
 
@@ -207,6 +207,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
         for payment in invoice.payments:
             payments_list.append({
                 "id": payment.id,
+                "invoice_id": payment.invoice_id,
                 "amount": Decimal(str(payment.amount)),
                 "method": payment.method,
                 "ref_no": payment.ref_no,
@@ -256,6 +257,34 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
         invoices=results,
         total=total
     )
+
+
+def get_payment_history(db: Session, invoice_id: UUID):
+
+    invoice = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.payments)
+        )
+        .filter(
+            Invoice.id == invoice_id
+        )
+        .first()
+    )
+
+    payments_list = []
+
+    for payment in invoice.payments:
+        payments_list.append({
+            "id": payment.id,
+            "invoice_id": payment.invoice_id,
+            "amount": Decimal(str(payment.amount)),
+            "method": payment.method,
+            "ref_no": payment.ref_no,
+            "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None
+        })
+
+    return payments_list
 
 
 def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesRequest):
@@ -321,73 +350,7 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
 
         invoice = payment.invoice
         site_name = invoice.site.name if invoice.site else None
-
-        code = None
-        item_no = None
-        customer_name = None
-
-        # -----------------------------------------
-        # Take first invoice line as summary
-        # -----------------------------------------
-        if invoice.lines:
-
-            line = invoice.lines[0]
-            code = line.code
-
-            # -------- WORKORDER --------
-            if line.code == "WORKORDER":
-                wo = db.query(TicketWorkOrder).filter(
-                    TicketWorkOrder.id == line.item_id,
-                    TicketWorkOrder.is_deleted == False
-                ).first()
-
-                if wo:
-                    item_no = wo.wo_no
-
-                    if wo.bill_to_id:
-                        customer_name = get_user_name(wo.bill_to_id)
-
-            # -------- RENT --------
-            elif line.code == "RENT":
-                lease = (
-                    db.query(Lease)
-                    .join(LeaseCharge, LeaseCharge.lease_id == Lease.id)
-                    .filter(
-                        LeaseCharge.id == line.item_id,
-                        Lease.is_deleted == False
-                    ).first()
-                )
-
-                if lease:
-                    item_no = lease.lease_number
-
-                    if lease.tenant:
-                        customer_name = lease.tenant.name or lease.tenant.legal_name
-
-            # -------- PARKING PASS --------
-            elif line.code == "PARKING_PASS":
-                parking_pass = db.query(ParkingPass).filter(
-                    ParkingPass.id == line.item_id,
-                    ParkingPass.is_deleted == False
-                ).first()
-
-                if parking_pass:
-                    item_no = parking_pass.pass_no
-                    if parking_pass.partner_id:
-                        customer_name = get_user_name(parking_pass.partner_id)
-
-            # -------- OWNER MAINTENANCE --------
-            elif line.code == "OWNER_MAINTENANCE":
-                om = db.query(OwnerMaintenanceCharge).filter(
-                    OwnerMaintenanceCharge.id == line.item_id,
-                    OwnerMaintenanceCharge.is_deleted == False
-                ).first()
-
-                if om:
-                    item_no = om.maintenance_no
-
-                    if om.space_owner_id:
-                        customer_name = get_user_name(om.space_owner_id)
+        customer_name = get_user_name(invoice.user_id)
 
         # -----------------------------------------
         # Build Response
@@ -396,11 +359,8 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
             **payment.__dict__,
             "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
             "invoice_no": invoice.invoice_no,
-            "code": code,
-            "item_no": item_no,
             "site_name": site_name,
             "customer_name": customer_name,
-            "line_count": len(invoice.lines)
         }))
 
     return {
@@ -1342,9 +1302,9 @@ def save_invoice_payment_detail(
         # ---------------------------
         # 1. Validate invoice status
         # ---------------------------
-        if invoice.status not in ("issued", "draft", "partial"):
+        if invoice.status not in ("issued", "overdue", "partial"):
             return error_response(
-                message="Payment details can only be added to issued, partial, or draft invoices"
+                message="Payment details can only be added to issued, partial or overdue invoices"
             )
 
         # ---------------------------
@@ -1352,6 +1312,33 @@ def save_invoice_payment_detail(
         # ---------------------------
         if payload.method != "cash" and not payload.ref_no:
             return error_response(message="ref_no is mandatory and must be unique per invoice")
+
+        invoice_total = float(invoice.totals.get("grand") or 0)
+
+        existing_payments = db.query(PaymentAR).filter(
+            PaymentAR.invoice_id == invoice.id,
+            PaymentAR.is_deleted == False
+        ).all()
+
+        already_paid = sum(float(p.amount) for p in existing_payments)
+
+        incoming_amount = float(payload.amount or 0)
+
+        if payload.id:
+            old_payment = next(
+                (p for p in existing_payments if str(p.id) == str(payload.id)),
+                None
+            )
+            if old_payment:
+                already_paid -= float(old_payment.amount)
+
+        new_total_paid = already_paid + incoming_amount
+
+        if new_total_paid > invoice_total + 0.01:
+            remaining = invoice_total - already_paid
+            return error_response(
+                message=f"Payment exceeds invoice total. Remaining payable amount is {round(remaining, 2)}"
+            )
 
         # ---------------------------
         # 3. Determine existing payment

@@ -47,6 +47,10 @@ class BillPaymentCreate(BillPaymentBase):
 class BillPaymentOut(BillPaymentBase):
     id: UUID
     bill_id: UUID
+    bill_no: Optional[str] = None
+    site_name: Optional[str] = None
+    space_name: Optional[str] = None
+    customer_name: Optional[str] = None
 
 # Bills
 

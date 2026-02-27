@@ -420,31 +420,118 @@ def delete_bill(db: Session, bill_id: str, org_id: UUID):
     return success_response(message="Bill deleted successfully")
 
 
-def save_bill_payment(db: Session, payload: BillPaymentCreate, current_user: UserToken):
+def save_bill_payment(
+    db: Session,
+    payload: BillPaymentCreate,
+    current_user: UserToken
+):
     try:
-        bill = db.query(Bill).filter(Bill.id == payload.bill_id).first()
+        # ---------------------------
+        # 0. Validate bill
+        # ---------------------------
+        if not payload.bill_id:
+            return error_response(message="Bill is required")
+
+        bill: Bill = db.query(Bill).filter(
+            Bill.id == payload.bill_id,
+            Bill.is_deleted == False
+        ).first()
+
         if not bill:
             return error_response(message="Invalid bill ID")
 
+        # ---------------------------
+        # 1. Validate bill status
+        # ---------------------------
         if bill.status == "draft":
-            return error_response(message="Cannot add payments to draft bills")
+            return error_response(
+                message="Cannot add payments to draft bills"
+            )
 
+        if bill.status == "paid":
+            return error_response(
+                message="Bill is already fully paid"
+            )
+
+        # ---------------------------
+        # 2. Validate ref_no
+        # ---------------------------
+        if payload.method != "cash" and not payload.ref_no:
+            return error_response(
+                message="ref_no is mandatory for non-cash payments"
+            )
+
+        # prevent duplicate ref_no per bill
+        if payload.ref_no:
+            duplicate = db.query(BillPayment).filter(
+                BillPayment.bill_id == bill.id,
+                BillPayment.ref_no == payload.ref_no,
+                BillPayment.is_deleted == False
+            ).first()
+
+            if duplicate:
+                return error_response(
+                    message=f"Duplicate payment ref_no '{payload.ref_no}' for this bill"
+                )
+
+        # ---------------------------
+        # 3. Prevent Overpayment
+        # ---------------------------
+        bill_total = float(bill.totals.get("grand") or 0)
+
+        existing_payments = db.query(BillPayment).filter(
+            BillPayment.bill_id == bill.id,
+            BillPayment.is_deleted == False
+        ).all()
+
+        already_paid = sum(float(p.amount) for p in existing_payments)
+        incoming_amount = float(payload.amount or 0)
+
+        new_total_paid = already_paid + incoming_amount
+
+        if new_total_paid > bill_total + 0.01:
+            remaining = bill_total - already_paid
+            return error_response(
+                message=f"Payment exceeds bill total. Remaining payable amount is {round(remaining, 2)}"
+            )
+
+        # ---------------------------
+        # 4. Create payment
+        # ---------------------------
         payment = BillPayment(
             bill_id=bill.id,
             org_id=current_user.org_id,
-            amount=float(payload.amount),
+            amount=incoming_amount,
             method=payload.method,
             ref_no=payload.ref_no,
             paid_at=payload.paid_at or datetime.utcnow(),
         )
+
         db.add(payment)
         db.flush()
 
-        # Recalculate and update bill status
+        # ---------------------------
+        # 5. Recalculate bill status
+        # ---------------------------
         new_status = calculate_bill_status(db, bill)
         bill.status = new_status
 
+        # ---------------------------
+        # 6. Safety check (race condition guard)
+        # ---------------------------
+        payments = db.query(BillPayment).filter(
+            BillPayment.bill_id == bill.id,
+            BillPayment.is_deleted == False
+        ).all()
+
+        total_paid = sum(float(p.amount) for p in payments)
+
+        if total_paid > bill_total + 0.01:
+            db.rollback()
+            return error_response(message="Overpayment detected")
+
         db.commit()
+
         return success_response(data={"payment_id": str(payment.id)})
 
     except Exception as e:
@@ -625,7 +712,7 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
         space_name = bill.space.name if bill.space else None
         site_name = bill.site.name if bill.site else None
 
-        results.append(PaymentOut.model_validate({
+        results.append(BillPaymentOut.model_validate({
             **payment.__dict__,
             "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
             "bill_no": bill.bill_no,

@@ -431,6 +431,8 @@ async def create(
 
             db.add_all(payment_terms)
 
+        sync_rent_charges(db, lease)
+
         # Lease Attachments
         await AttachmentService.save_attachments(
             db,
@@ -681,6 +683,8 @@ async def update(
                     new_terms.append(payment_term)
 
                 db.add_all(new_terms)
+
+        sync_rent_charges(db, obj)
 
         await AttachmentService.delete_attachments(
             db,
@@ -1689,3 +1693,71 @@ def complete_termination(db, lease_id):
     req.status = "completed"
 
     db.commit()
+
+
+def sync_rent_charges(db: Session, lease: Lease):
+
+    terms = (
+        db.query(LeasePaymentTerm)
+        .filter(LeasePaymentTerm.lease_id == lease.id)
+        .order_by(LeasePaymentTerm.due_date.asc())
+        .all()
+    )
+
+    existing_charges = {
+        c.source_term_id: c
+        for c in db.query(LeaseCharge).filter(
+            LeaseCharge.lease_id == lease.id,
+            LeaseCharge.charge_code == "RENT",
+            LeaseCharge.is_deleted == False
+        )
+    }
+
+    previous_end = lease.start_date
+    used_charge_ids = set()
+
+    for index, term in enumerate(terms):
+
+        # -------- PERIOD CALCULATION --------
+        if index == 0:
+            start = lease.start_date
+        else:
+            start = previous_end + timedelta(days=1)
+
+        if index == len(terms) - 1:
+            end = lease.end_date
+        else:
+            end = term.due_date
+
+        existing = existing_charges.get(term.id)
+
+        if existing:
+            # ✅ UPDATE EXISTING
+            existing.period_start = start
+            existing.period_end = end
+            existing.amount = term.amount
+            existing.total_amount = term.amount
+
+            used_charge_ids.add(existing.id)
+
+        else:
+            # ✅ CREATE NEW
+            db.add(
+                LeaseCharge(
+                    lease_id=lease.id,
+                    charge_code="RENT",
+                    source_term_id=term.id,
+                    period_start=start,
+                    period_end=end,
+                    amount=term.amount,
+                    total_amount=term.amount,
+                    payer_id=lease.tenant_id,
+                )
+            )
+
+        previous_end = term.due_date
+
+    # -------- SOFT DELETE REMOVED TERMS --------
+    for charge in existing_charges.values():
+        if charge.id not in used_charge_ids:
+            charge.is_deleted = True

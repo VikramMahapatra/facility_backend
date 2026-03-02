@@ -147,6 +147,7 @@ class ApprovalStatusRequest(BaseModel):
     user_id: UUID
     status: ApprovalStatus = Field(..., description="User approval status")
     role_ids: Optional[List[str]] = None
+    rejection_reason: Optional[str] = None
 
     model_config = {
         "use_enum_values": True

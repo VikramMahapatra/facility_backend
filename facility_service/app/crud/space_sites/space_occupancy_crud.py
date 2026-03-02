@@ -654,7 +654,6 @@ def get_space_occupancy_requests(
             Space.name.label("space_name"),
             Site.name.label("site_name"),
             Building.name.label("building_name"),
-            SpaceOccupancy.occupant_name,
             SpaceOccupancy.occupant_type,
             SpaceOccupancy.created_at,
             SpaceOccupancy.move_in_date,
@@ -882,7 +881,7 @@ def approve_move_in(db: Session, move_in_id: UUID):
     return move_in_request
 
 
-def reject_move_in(db: Session, move_in_id: UUID):
+def reject_move_in(db: Session, move_in_id: UUID, reason: str):
     move_in_request = db.query(SpaceOccupancy).filter(
         SpaceOccupancy.id == move_in_id,
         SpaceOccupancy.status == OccupancyStatus.pending,
@@ -893,6 +892,7 @@ def reject_move_in(db: Session, move_in_id: UUID):
         raise Exception("Move-in request not found or already processed")
 
     move_in_request.status = OccupancyStatus.rejected
+    move_in_request.rejection_reason = reason
     db.commit()
     db.refresh(move_in_request)
 
@@ -1021,7 +1021,7 @@ def request_move_out(
     return move_out_request
 
 
-def reject_move_out(db: Session, move_out_id: UUID):
+def reject_move_out(db: Session, move_out_id: UUID, reason: str):
     move_out_request = db.query(SpaceOccupancy).filter(
         SpaceOccupancy.id == move_out_id,
         SpaceOccupancy.status == OccupancyStatus.pending,
@@ -1032,6 +1032,7 @@ def reject_move_out(db: Session, move_out_id: UUID):
         raise Exception("Move-out request not found or already processed")
 
     move_out_request.status = OccupancyStatus.rejected
+    move_out_request.rejection_reason = reason
     db.commit()
     db.refresh(move_out_request)
 

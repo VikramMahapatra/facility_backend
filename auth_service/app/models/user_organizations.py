@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import (
-    Column, String, Boolean, ForeignKey, TIMESTAMP, Enum, func, UniqueConstraint, Index
+    Column, String, Boolean, ForeignKey, TIMESTAMP, Enum, Text, func, UniqueConstraint, Index
 )
 from shared.core.database import AuthBase
 from sqlalchemy.orm import relationship
@@ -33,6 +33,7 @@ class UserOrganization(AuthBase):
     is_default = Column(Boolean, default=False, nullable=False)  # ✅
     joined_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False, nullable=False)
+    rejection_reason = Column(Text, nullable=True)
 
     user = relationship(
         "Users",

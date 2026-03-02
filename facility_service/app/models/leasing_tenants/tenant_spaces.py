@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Boolean, Column, Enum, String, Date, Numeric, ForeignKey, DateTime
+from sqlalchemy import Boolean, Column, Enum, String, Date, Numeric, ForeignKey, DateTime, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -27,6 +27,7 @@ class TenantSpace(Base):
     approved_at = Column(DateTime(timezone=True))
     ended_at = Column(DateTime(timezone=True))
     rejected_at = Column(DateTime(timezone=True))
+    rejection_reason = Column(Text, nullable=True)
     approved_by = Column(UUID(as_uuid=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False)

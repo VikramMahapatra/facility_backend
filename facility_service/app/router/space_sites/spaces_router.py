@@ -5,9 +5,9 @@ from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.utils.app_status_code import AppStatusCode
 from ...schemas.space_sites.spaces_schemas import (
-    ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, 
-    OwnershipApprovalListResponse, OwnershipApprovalRequest, OwnershipHistoryOut, RemoveOwnerRequest, 
-    RemoveSpaceTenantRequest, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest, 
+    ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn,
+    OwnershipApprovalListResponse, OwnershipApprovalRequest, OwnershipHistoryOut, RemoveOwnerRequest,
+    RemoveSpaceTenantRequest, SpaceListResponse, SpaceOut, SpaceCreate, SpaceOverview, SpaceRequest,
     SpaceUpdate, TenantHistoryOut, BulkSpaceRequest, BulkSpaceResponse)
 from ...crud.space_sites import spaces_crud as crud
 from shared.core.auth import allow_admin,  validate_current_token  # for dependicies
@@ -233,4 +233,9 @@ def update_space_owner_approval(
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.update_space_owner_approval(db, auth_db, params.request_id, params.action, current_user.org_id)
+    return crud.update_space_owner_approval(
+        db,
+        auth_db,
+        params,
+        current_user.org_id
+    )

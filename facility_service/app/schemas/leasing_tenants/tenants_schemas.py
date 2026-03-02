@@ -1,6 +1,6 @@
 # app/schemas/leasing_tenants/tenants_schemas.py
 from uuid import UUID
-from typing import Optional, List, Any
+from typing import Dict, Optional, List, Any
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
 from .leases_schemas import LeaseOut
@@ -53,6 +53,12 @@ class TenantRequest(BaseModel):
     tenant_id: Optional[UUID] = None
 
 
+class TimelineEvent(BaseModel):
+    event: str
+    date: datetime
+    space_id: Optional[UUID] = None
+
+
 class TenantOut(BaseModel):
     id: UUID
     org_id: Optional[UUID] = None
@@ -68,7 +74,7 @@ class TenantOut(BaseModel):
     legal_name: Optional[str] = None
     # ADD THESE FIELDS FOR DISPLAY
     tenant_spaces: Optional[List[TenantSpaceOut]] = None
-
+    space_timelines: Dict[str, List[TimelineEvent]] = {}
     model_config = {"from_attributes": True}
 
 
@@ -105,6 +111,7 @@ class ManageTenantSpaceRequest(BaseModel):
 class SpaceTenantApprovalRequest(BaseModel):
     space_id: UUID
     tenant_id: UUID
+    reason: Optional[str] = None
 
 
 class SpaceTenantOut(BaseModel):

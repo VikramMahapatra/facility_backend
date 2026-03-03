@@ -10,11 +10,14 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import cast, func, or_, Numeric, Integer
 
 from facility_service.app.crud.common.attachment_crud import AttachmentService
+from facility_service.app.crud.system.system_settings_crud import get_system_settings
 from facility_service.app.enum.module_enum import ModuleName
 from facility_service.app.models.procurement.vendors import Vendor
+from facility_service.app.models.space_sites.orgs import Org
 from facility_service.app.schemas.financials.invoices_schemas import InvoicesRequest, PaymentOut
+from facility_service.app.utils.invoice_pdf import generate_bill_payment_pdf, generate_bill_pdf
 from shared.helpers.json_response_helper import error_response, success_response
-from shared.helpers.user_helper import get_user_name, get_users_bulk
+from shared.helpers.user_helper import get_user_detail, get_user_name, get_users_bulk
 from shared.core.schemas import UserToken
 
 from ...models.financials.bills import Bill, BillLine, BillPayment
@@ -722,3 +725,98 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
         "payments": results,
         "total": total
     }
+
+
+def download_bill_pdf(
+    db: Session,
+    bill_id: UUID,
+    current_user: UserToken
+):
+
+    bill = db.query(Bill).filter(
+        Bill.id == bill_id,
+        Bill.org_id == current_user.org_id,
+        Bill.is_deleted == False
+    ).first()
+
+    if not bill:
+        return error_response(message="Bill not found")
+
+    organization = (
+        db.query(Org)
+        .filter(Org.id == bill.org_id)
+        .first()
+    )
+
+    organization_name = organization.name if organization else "Organization"
+
+    vendor = db.query(Vendor).get(bill.vendor_id)
+    vendor_name = vendor.name if vendor else "Customer"
+
+    payments_total, balance = calculate_balance(db, bill)
+
+    system_settings = get_system_settings(db, bill.org_id)
+
+    file_path = generate_bill_pdf(
+        bill=bill,
+        organization_name=organization_name,
+        vendor_name=vendor_name,
+        payments_total=float(payments_total),
+        balance=float(balance),
+        system_settings=system_settings
+    )
+
+    filename = f"Bill_{bill.bill_no}.pdf"
+
+    return file_path, filename
+
+
+def download_payment_receipt_pdf(
+    db: Session,
+    payment_id: UUID,
+):
+
+    payment = db.query(BillPayment).get(payment_id)
+    bill = payment.bill
+
+    organization = (
+        db.query(Org)
+        .filter(Org.id == bill.org_id)
+        .first()
+    )
+
+    organization_name = organization.name if organization else "Organization"
+
+    vendor = db.query(Vendor).get(bill.vendor_id)
+    vendor_name = vendor.name if vendor else "Customer"
+    system_settings = get_system_settings(db, bill.org_id)
+
+    file_path = generate_bill_payment_pdf(
+        payment,
+        organization_name=organization_name,
+        vendor_name=vendor_name,
+        bill_no=bill.bill_no,
+        system_settings=system_settings
+    )
+
+    return file_path
+
+
+def calculate_balance(db: Session, bill: Bill):
+    bill_total = Decimal(bill.totals.get("grand", 0))
+
+    payments_total = (
+        db.query(func.coalesce(func.sum(BillPayment.amount), 0))
+        .filter(
+            BillPayment.bill_id == bill.id,
+            BillPayment.is_deleted == False
+        )
+        .scalar()
+    ) or Decimal("0")
+
+    balance = bill_total - payments_total
+
+    if balance < 0:
+        balance = Decimal("0")
+
+    return payments_total, balance

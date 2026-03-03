@@ -1,7 +1,9 @@
 import json
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from uuid import UUID
 
@@ -181,3 +183,30 @@ def get_payments(
         auth_db: Session = Depends(get_auth_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.get_payments(db=db, auth_db=auth_db, org_id=current_user.org_id, params=params)
+
+
+@router.get("/{bill_id}/download")
+def download_bill(
+    bill_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    file_path, filename = crud.download_bill_pdf(db, bill_id, current_user)
+
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=filename,
+    )
+
+
+@router.get("/payment-receipt/{payment_id}/download")
+def download_bill_payment(payment_id: UUID, db: Session = Depends(get_db)):
+
+    file_path = crud.download_payment_receipt_pdf(db, payment_id)
+
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=os.path.basename(file_path),
+    )

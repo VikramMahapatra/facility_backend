@@ -4,7 +4,8 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from ...crud.system import system_settings_crud as crud
-from ...schemas.system.system_settings_schema import (SystemSettingsOut,SystemSettingsUpdate )
+from ...schemas.system.system_settings_schema import (
+    SystemSettingsOut, SystemSettingsUpdate)
 from shared.core.database import get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import UserToken
@@ -20,9 +21,10 @@ def get_system_settings(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    data = crud.get_system_settings(db)
+    data = crud.get_system_settings(db, current_user.org_id)
     if not data:
-        raise HTTPException(status_code=404, detail="System settings not found")
+        raise HTTPException(
+            status_code=404, detail="System settings not found")
     return data
 
 
@@ -33,8 +35,8 @@ def update_system_settings(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    updated = crud.update_system_settings(db, setting_id, update_data)  
+    updated = crud.update_system_settings(db, setting_id, update_data)
     if not updated:
-        raise HTTPException(status_code=404, detail="System settings not found")
+        raise HTTPException(
+            status_code=404, detail="System settings not found")
     return updated
-

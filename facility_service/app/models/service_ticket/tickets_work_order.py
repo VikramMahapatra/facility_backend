@@ -43,6 +43,18 @@ class TicketWorkOrder(Base):
     bill_to_type = Column(String(20))  # tenant | vendor | owner | org
     bill_to_id = Column(UUID(as_uuid=True), nullable=True)
 
+    invoice_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("invoices.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    bill_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("bills.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
     ticket = relationship("Ticket", back_populates="work_orders")
     tax_code = relationship("TaxCode", back_populates="ticket_work_orders")
 

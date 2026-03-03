@@ -34,6 +34,8 @@ class ParkingPass(Base):
 
     status = Column(String(16), server_default=text("'active'"))
     is_deleted = Column(Boolean, default=False, nullable=False)
+    invoice_id = Column(UUID(as_uuid=True), ForeignKey(
+        "invoices.id"), nullable=True)
 
     # optional link to zone
     zone_id = Column(UUID(as_uuid=True), ForeignKey("parking_zones.id"))

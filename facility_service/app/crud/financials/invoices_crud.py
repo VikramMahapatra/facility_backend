@@ -14,12 +14,14 @@ from sqlalchemy.dialects.postgresql import JSONB
 from facility_service.app.crud.common.attachment_crud import AttachmentService
 from facility_service.app.crud.financials.invoice_email_service import InvoiceEmailService
 from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
+from facility_service.app.crud.system.system_settings_crud import get_system_settings
 from facility_service.app.enum.module_enum import ModuleName
 from facility_service.app.models.common.attachments import Attachment
 from facility_service.app.models.financials.customer_advances import AdvanceAdjustment, CustomerAdvance
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from facility_service.app.models.leasing_tenants.tenants import Tenant
+from facility_service.app.models.space_sites.orgs import Org
 from facility_service.app.models.space_sites.owner_maintenances import OwnerMaintenanceCharge
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
 from facility_service.app.models.space_sites.spaces import Space
@@ -28,7 +30,7 @@ from shared.core.database import AuthSessionLocal
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.helpers.user_helper import get_user_detail, get_user_name
 from shared.models.users import Users
-from shared.utils.invoice_pdf import generate_invoice_pdf, get_invoice_email_template
+from facility_service.app.utils.invoice_pdf import generate_invoice_pdf, generate_payment_receipt_pdf
 
 from ...enum.revenue_enum import InvoicePayementMethod, InvoiceType
 
@@ -501,12 +503,13 @@ async def create_invoice(
             db.add(notification)
 
             # send email
-            # service = InvoiceEmailService()
-            # service.send_invoice_to_customer(
-            #     db=db,
-            #     invoice=db_invoice,
-            #     customer_email=db_invoice.customer_email
-            # )
+            service = InvoiceEmailService()
+            customer = get_user_detail(db_invoice.user_id)
+            service.send_invoice_to_customer(
+                db=db,
+                invoice=db_invoice,
+                customer_email=customer.email
+            )
 
         db.commit()
 
@@ -635,10 +638,11 @@ async def update_invoice(
 
         # send email
         service = InvoiceEmailService()
+        customer = get_user_detail(db_invoice.user_id)
         service.send_invoice_to_customer(
             db=db,
             invoice=db_invoice,
-            customer_email=db_invoice.customer_email
+            customer_email=customer.email
         )
 
     # -------------------------
@@ -1698,3 +1702,110 @@ def get_advance_payments(db: Session, auth_db: Session, org_id: str, params: Inv
         "advances": results,
         "total": total
     }
+
+
+def download_invoice_pdf(
+    db: Session,
+    invoice_id: UUID,
+    current_user: UserToken
+):
+
+    invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.org_id == current_user.org_id,
+        Invoice.is_deleted == False
+    ).first()
+
+    if not invoice:
+        return error_response(message="Invoice not found")
+
+    organization = (
+        db.query(Org)
+        .filter(Org.id == invoice.org_id)
+        .first()
+    )
+
+    organization_name = organization.name if organization else "Organization"
+
+    customer = get_user_detail(invoice.user_id)
+    customer_name = customer.full_name if customer else "Customer"
+
+    advance_used, payments_total, balance = calculate_balance(db, invoice)
+
+    system_settings = get_system_settings(db, invoice.org_id)
+
+    file_path = generate_invoice_pdf(
+        invoice=invoice,
+        organization_name=organization_name,
+        customer_name=customer_name,
+        payments_total=float(payments_total),
+        advance_used=float(advance_used),
+        balance=float(balance),
+        system_settings=system_settings
+    )
+
+    filename = f"Invoice_{invoice.invoice_no}.pdf"
+
+    return file_path, filename
+
+
+def download_payment_recipt_pdf(
+    db: Session,
+    payment_id: UUID,
+    current_user: UserToken
+):
+
+    payment = db.query(PaymentAR).get(payment_id)
+    invoice = payment.invoice
+
+    organization = (
+        db.query(Org)
+        .filter(Org.id == invoice.org_id)
+        .first()
+    )
+
+    organization_name = organization.name if organization else "Organization"
+
+    customer = get_user_detail(invoice.user_id)
+    customer_name = customer.full_name if customer else "Customer"
+
+    advance_used, payments_total, balance = calculate_balance(db, invoice)
+
+    system_settings = get_system_settings(db, invoice.org_id)
+
+    file_path = generate_payment_receipt_pdf(
+        payment,
+        invoice,
+        organization_name=organization_name,
+        customer_name=customer_name,
+        balance_after_payment=balance,
+        system_settings=system_settings
+    )
+
+    return file_path
+
+
+def calculate_balance(db: Session, invoice: Invoice):
+    invoice_total = Decimal(invoice.totals.get("grand", 0))
+
+    advance_used = (
+        db.query(func.coalesce(func.sum(AdvanceAdjustment.amount), 0))
+        .filter(AdvanceAdjustment.invoice_id == invoice.id)
+        .scalar()
+    ) or Decimal("0")
+
+    payments_total = (
+        db.query(func.coalesce(func.sum(PaymentAR.amount), 0))
+        .filter(
+            PaymentAR.invoice_id == invoice.id,
+            PaymentAR.is_deleted == False
+        )
+        .scalar()
+    ) or Decimal("0")
+
+    balance = invoice_total - advance_used - payments_total
+
+    if balance < 0:
+        balance = Decimal("0")
+
+    return advance_used, payments_total, balance

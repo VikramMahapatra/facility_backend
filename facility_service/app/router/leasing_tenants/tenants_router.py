@@ -211,7 +211,7 @@ def reject_tenant(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token),
 ):
-    return crud.reject_tenant(params.space_id, params.tenant_id, db)
+    return crud.reject_tenant(db, params, current_user)
 
 
 @router.get("/approvals")

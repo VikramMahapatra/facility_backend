@@ -27,6 +27,8 @@ class LeaseCharge(Base):
     created_at = Column(DateTime(timezone=True),
                         server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
+    invoice_id = Column(UUID(as_uuid=True), ForeignKey(
+        "invoices.id"), nullable=True)
 
     lease = relationship("Lease", back_populates="charges")
     # # ✅ ADD THIS LINE

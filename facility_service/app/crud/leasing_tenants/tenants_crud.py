@@ -1,4 +1,6 @@
 # app/crud/leasing_tenants/tenants_crud.py
+from collections import defaultdict
+
 from sqlalchemy import and_
 from datetime import date, datetime
 from typing import Dict, Optional, List
@@ -12,7 +14,7 @@ from facility_service.app.enum.revenue_enum import InvoiceType
 from facility_service.app.schemas.access_control.user_management_schemas import UserAccountCreate, UserTenantSpace
 from ...crud.access_control.user_management_crud import handle_account_type_update, upsert_user_sites_preserve_primary
 from ...models.space_sites.space_occupancies import OccupantType
-from ...models.space_sites.space_occupancy_events import OccupancyEventType
+from ...models.space_sites.space_occupancy_events import OccupancyEventType, SpaceOccupancyEvent
 from ...crud.space_sites.space_occupancy_crud import log_occupancy_event
 from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
 from ...models.parking_access.parking_pass import ParkingPass
@@ -353,6 +355,14 @@ def get_tenant_detail(db: Session, org_id: UUID, tenant_id: str) -> TenantOut:
         record.get("id")
     )
 
+    timelines = get_tenant_space_timelines(
+        db,
+        org_id,
+        record["id"]
+    )
+
+    record["space_timelines"] = timelines
+
     return TenantOut.model_validate(record)
 
 
@@ -363,7 +373,6 @@ def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str) -> List[LeaseOu
             Lease.org_id == org_id,
             Lease.tenant_id == tenant_id,
             Lease.is_deleted == False,
-            Lease.status == "active"  # ONLY ACTIVE LEASES
         )
         .all()
     )
@@ -400,6 +409,40 @@ def get_tenant_leases(db: Session, org_id: UUID, tenant_id: str) -> List[LeaseOu
             )
     return leases
 
+
+def get_tenant_space_timelines(db: Session, org_id: UUID, tenant_id: UUID):
+
+    rows = (
+        db.query(
+            SpaceOccupancyEvent.space_id,
+            SpaceOccupancyEvent.event_type,
+            SpaceOccupancyEvent.event_date,
+            SpaceOccupancyEvent.lease_id
+        )
+        .join(Tenant, Tenant.user_id == SpaceOccupancyEvent.occupant_user_id)
+        .join(Space, Space.id == SpaceOccupancyEvent.space_id)
+        .join(Site, Site.id == Space.site_id)
+        .filter(
+            Site.org_id == org_id,
+            Site.is_deleted.is_(False),
+            # 👇 events belonging to this tenant
+            Tenant.id == tenant_id,
+            SpaceOccupancyEvent.occupant_type == "tenant"
+        )
+        .order_by(SpaceOccupancyEvent.event_date.asc())
+        .all()
+    )
+
+    timelines = defaultdict(list)
+
+    for r in rows:
+        timelines[str(r.space_id)].append({
+            "event": r.event_type.value,
+            "date": r.event_date,
+            "lease_id": str(r.lease_id) if r.lease_id else None,
+        })
+
+    return timelines
 # CRUD
 # ------------------------------------------------------------
 
@@ -896,7 +939,7 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> Li
             ).first()
         )
 
-        for invoice in invoices:
+        if invoice:
             # Get payments for this invoice
             payments = db.query(PaymentAR).filter(
                 PaymentAR.invoice_id == invoice.id,
@@ -1109,10 +1152,10 @@ def get_space_tenants(
             "created_at": r.created_at,
         }
 
-        if r.status == OwnershipStatus.pending:
+        if r.status == OwnershipStatus.approved:
             pending.append({
                 **base,
-                "status": "pending"
+                "status": "approved"
             })
 
         elif r.status == OwnershipStatus.leased and r.lease_status == "active":
@@ -1211,17 +1254,16 @@ def approve_tenant(
 
 
 def reject_tenant(
-    space_id: UUID,
-    tenant_id: UUID,
     db: Session,
+    params: SpaceTenantApprovalRequest,
     current_user: Users,
 ):
     try:
         tenant_space = (
             db.query(TenantSpace)
             .filter(
-                TenantSpace.space_id == space_id,
-                TenantSpace.tenant_id == tenant_id,
+                TenantSpace.space_id == params.space_id,
+                TenantSpace.tenant_id == params.tenant_id,
                 TenantSpace.status == TenantSpaceStatus.pending
             )
             .first()
@@ -1232,6 +1274,7 @@ def reject_tenant(
                 status_code=404, detail="Pending tenant request not found")
 
         tenant_space.status = TenantSpaceStatus.rejected
+        tenant_space.rejection_reason = params.reason
         tenant_space.rejected_at = func.now()
 
         db.commit()

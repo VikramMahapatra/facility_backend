@@ -78,6 +78,10 @@ class SpaceMoveOutRequest(BaseModel):
     time_slot: Optional[str] = None
 
 
+class RejectOccupancyRequest(BaseModel):
+    reason: str
+
+
 class HandoverCreate(BaseModel):
     occupancy_id: UUID
     handover_to_user_id: UUID | None = None

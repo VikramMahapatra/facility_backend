@@ -1,6 +1,6 @@
 # space_owner.py
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Column, Date, Boolean, DateTime, ForeignKey, Numeric, String, Index, Enum, func
+from sqlalchemy import Column, Date, Boolean, DateTime, ForeignKey, Numeric, String, Index, Enum, Text, func
 from sqlalchemy.orm import relationship
 import uuid
 from shared.core.database import Base
@@ -51,7 +51,7 @@ class SpaceOwner(Base):
         default=OwnershipStatus.pending,
         nullable=False
     )
-
+    rejection_reason = Column(Text, nullable=True)
     requested_at = Column(
         DateTime(timezone=True),
         server_default=func.now()

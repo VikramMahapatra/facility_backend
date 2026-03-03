@@ -1,16 +1,18 @@
+import json
+import os
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from shared.helpers.json_response_helper import success_response
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import Lookup, UserToken
 from uuid import UUID
-from fastapi.responses import StreamingResponse
-from shared.utils.invoice_pdf import generate_invoice_pdf
+from fastapi.responses import FileResponse, StreamingResponse
+from facility_service.app.utils.invoice_pdf import generate_invoice_pdf
 from ...crud.financials.invoices_crud import get_invoice_detail
 
 router = APIRouter(
@@ -86,6 +88,19 @@ def get_payments(
     return crud.get_payments(db=db, auth_db=auth_db, org_id=current_user.org_id, params=params)
 
 
+@router.get("/payment-history/{invoice_id}", response_model=List[PaymentOut])
+def invoice_payment_history(
+    invoice_id: UUID,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_payment_history(
+        db=db,
+        invoice_id=invoice_id
+    )
+
+
 @router.get("/customer-pending-charges")
 def get_pending_charges_by_customer(
     space_id: UUID = Query(...),
@@ -99,29 +114,45 @@ def get_pending_charges_by_customer(
 # ✅ FIXED: Match CRUD parameters
 
 
-@router.post("/", response_model=InvoiceOut)
-def create_invoice(
-        invoice: InvoiceCreate,
+@router.post("/create", response_model=InvoiceOut)
+async def create_invoice(
+        invoice: str = Form(...),   # 👈 JSON string
+        attachments: Optional[List[UploadFile]] = File(None),
         db: Session = Depends(get_db),
         auth_db: Session = Depends(get_auth_db),
-        current_user: UserToken = Depends(validate_current_token)):
-    return crud.create_invoice(
+        current_user: UserToken = Depends(validate_current_token)
+):
+    invoice_dict = json.loads(invoice)
+    invoice_data = InvoiceCreate(**invoice_dict)
+    return await crud.create_invoice(
         db=db,
         auth_db=auth_db,
         org_id=current_user.org_id,
-        request=invoice,
+        request=invoice_data,
+        attachments=attachments,
         current_user=current_user
     )
 
 # ✅ FIXED: Match CRUD parameters
 
 
-@router.put("/", response_model=InvoiceOut)
-def update_invoice(
-        invoice: InvoiceUpdate,
+@router.post("/update", response_model=InvoiceOut)
+async def update_invoice(
+        invoice: str = Form(...),
+        attachments: Optional[List[UploadFile]] = File(None),
+        removed_attachment_ids: Optional[str] = Form(None),
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return crud.update_invoice(db, invoice, current_user)
+    invoice_dict = json.loads(invoice)
+    invoice_data = InvoiceUpdate(**invoice_dict)
+
+    removed_ids = (
+        json.loads(removed_attachment_ids)
+        if removed_attachment_ids
+        else []
+    )
+
+    return await crud.update_invoice(db, invoice_data, attachments, removed_ids, current_user)
 
 # ✅ FIXED: Convert UUID to string for CRUD
 # ---------------- Delete Invoice (Soft Delete) ----------------
@@ -163,29 +194,43 @@ def download_invoice_pdf(
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    # 1️⃣ Fetch invoice data FIRST (DB used here)
-    invoice = get_invoice_detail(
-        db=db,
-        auth_db=auth_db,
-        org_id=current_user.org_id,
-        invoice_id=invoice_id
+
+    file_path, filename = crud.download_invoice_pdf(
+        db, invoice_id, current_user)
+
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=404,
+            detail="Invoice PDF not found"
+        )
+
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=filename
     )
 
-    # 2️⃣ Generate PDF in memory (NO DB here)
-    pdf_buffer = generate_invoice_pdf(invoice)
 
-    # 3️⃣ 🔥 VERY IMPORTANT: CLOSE DB BEFORE STREAMING
-    # db.close()
+@router.get("/payment-receipt/{payment_id:uuid}/download")
+def download_payment_recipt_pdf(
+    payment_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
 
-    print(type(pdf_buffer))
-    pdf_buffer.seek(0)
-    # 4️⃣ Stream PDF safely
-    return StreamingResponse(
-        pdf_buffer,
+    file_path = crud.download_payment_recipt_pdf(
+        db, payment_id, current_user)
+
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=404,
+            detail="Invoice PDF not found"
+        )
+
+    return FileResponse(
+        file_path,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="Invoice_{invoice.invoice_no}.pdf"'
-        }
+        filename=os.path.basename(file_path)
     )
 
 

@@ -156,11 +156,16 @@ def update_user_approval_status(
     if user_org.account_type.notin_([UserAccountType.TENANT, UserAccountType.FLAT_OWNER]):
         return error_response(message="Approval is only allowed for tenant or owner")
 
+    if request.status == ApprovalStatus.reject and not request.rejection_reason:
+        return error_response(message="Rejection reason is required")
+
     # 4️⃣ Update approval status
     if request.status == ApprovalStatus.approve:
         user_org.status = "active"
+        user_org.rejection_reason = None
     else:
         user_org.status = "rejected"
+        user_org.rejection_reason = request.rejection_reason
 
     # Optional: keep global user status in sync
     user.status = user_org.status

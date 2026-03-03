@@ -60,3 +60,13 @@ class MasterQueryParams(BaseModel):
     site_id: Optional[str] = None
     building_id: Optional[str] = None
     space_id: Optional[str] = None
+
+
+class AttachmentOut(BaseModel):
+    id: str  # ADD THIS LINE - Attachment ID from database
+    file_name: str
+    content_type: str
+    file_data_base64: Optional[str] = None
+
+    class Config:
+        from_attributes = True

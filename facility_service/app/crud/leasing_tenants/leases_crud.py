@@ -1,12 +1,15 @@
 from decimal import Decimal
 from typing import List, Optional, Dict
 from datetime import date, datetime, timedelta, timezone
+from fastapi import UploadFile
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import Integer, func, or_, NUMERIC, and_, cast
 from sqlalchemy.dialects.postgresql import UUID
 
+from facility_service.app.crud.common.attachment_crud import AttachmentService
 from facility_service.app.crud.leasing_tenants.tenants_crud import active_lease_exists
 from facility_service.app.crud.space_sites.space_occupancy_crud import log_occupancy_event, move_in, validate_space_available_for_assignment
+from facility_service.app.enum.module_enum import ModuleName
 from facility_service.app.enum.revenue_enum import InvoiceType
 from facility_service.app.models.leasing_tenants.lease_payment_term import LeasePaymentTerm
 from facility_service.app.models.leasing_tenants.lease_termination_request import LeaseTerminationRequest
@@ -217,6 +220,9 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
             )
         ] if row.payment_terms else []
 
+        attachment_list = AttachmentService.get_attachments(
+            db, ModuleName.leases, row.id)
+
         leases.append(
             LeaseOut.model_validate(
                 {
@@ -228,7 +234,8 @@ def get_list(db: Session, user: UserToken, params: LeaseRequest) -> LeaseListRes
                     "building_block_id": building_block_id,
                     "lease_term_duration": lease_term_duration,
                     "no_of_installments": len(payment_terms_list) if payment_terms_list else 0,
-                    "payment_terms": payment_terms_list  # ✅ Added here
+                    "payment_terms": payment_terms_list,
+                    "attachments": attachment_list
                 }
             )
         )
@@ -249,7 +256,12 @@ def get_by_id(db: Session, lease_id: str) -> Optional[Lease]:
 # Create new lease with space validation
 
 
-def create(db: Session, payload: LeaseCreate) -> Lease:
+async def create(
+    db: Session,
+    payload: LeaseCreate,
+    attachments: list[UploadFile] | None,
+    current_user: UserToken
+) -> Lease:
     try:
         now = datetime.now(timezone.utc)
         # 0 Validate tenant_id
@@ -264,9 +276,6 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
         if not tenant:
             return error_response(message="This tenant does not exist")
-
-        if tenant.kind not in ("commercial", "residential"):
-            return error_response(message="Invalid tenant kind")
 
         #  Fetch & validate space
         space = db.query(Space).filter(
@@ -349,7 +358,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
         # Create the lease record (always)
         lease_data = payload.model_dump(
             exclude={"reference", "space_name", "auto_move_in", "lease_term_duration", "payment_terms"})
-        next_number = get_next_lease_number(db, lease.org_id)
+        next_number = get_next_lease_number(db, payload.org_id)
         lease_data.update({
             "status": lease_status,
             "default_payer": "tenant",
@@ -375,7 +384,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
             )
 
             # Lease becomes active only if start_date <= now
-            is_effectively_active = payload.start_date <= now
+            is_effectively_active = payload.start_date <= now.date()
 
             if is_effectively_active:
                 #  Update TenantSpace → leased
@@ -387,6 +396,7 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
                 if payload.auto_move_in is True:
                     move_in(
                         db=db,
+                        current_user=current_user,
                         params=MoveInRequest(
                             space_id=payload.space_id,
                             occupant_type="tenant",
@@ -421,6 +431,16 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
             db.add_all(payment_terms)
 
+        sync_rent_charges(db, lease)
+
+        # Lease Attachments
+        await AttachmentService.save_attachments(
+            db,
+            ModuleName.leases,
+            lease.id,
+            attachments
+        )
+
         # Commit and return
         db.commit()
         db.refresh(lease)
@@ -432,7 +452,12 @@ def create(db: Session, payload: LeaseCreate) -> Lease:
 
 
 # Update lease with space validation
-def update(db: Session, payload: LeaseUpdate):
+async def update(
+    db: Session,
+    payload: LeaseUpdate,
+    attachments: list[UploadFile] | None,
+    removed_attachment_ids: list[UUID] | None
+):
     try:
         now = datetime.now(timezone.utc)
         obj = get_by_id(db, payload.id)
@@ -658,6 +683,22 @@ def update(db: Session, payload: LeaseUpdate):
                     new_terms.append(payment_term)
 
                 db.add_all(new_terms)
+
+        sync_rent_charges(db, obj)
+
+        await AttachmentService.delete_attachments(
+            db,
+            ModuleName.leases,
+            obj.id,
+            removed_attachment_ids
+        )
+
+        await AttachmentService.save_attachments(
+            db,
+            ModuleName.leases,
+            obj.id,
+            attachments
+        )
 
         db.commit()
         db.refresh(obj)
@@ -898,6 +939,9 @@ def get_lease_by_id(db: Session, lease_id: str):
         )
     ] if lease.payment_terms else []
 
+    attachments_out = AttachmentService.get_attachments(
+        db, ModuleName.leases, lease.id)
+
     return LeaseOut.model_validate(
         {
             **lease.__dict__,
@@ -908,7 +952,8 @@ def get_lease_by_id(db: Session, lease_id: str):
             "building_block_id": building_block_id,  # Add this
             "lease_term_duration": lease_term_duration,
             "no_of_installments": len(payment_terms_list) if payment_terms_list else 0,
-            "payment_terms": payment_terms_list
+            "payment_terms": payment_terms_list,
+            "attachments": attachments_out
         }
     )
 
@@ -1070,6 +1115,9 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         )
     ] if lease.payment_terms else []
 
+    attachments_out = AttachmentService.get_attachments(
+        db, ModuleName.leases, lease.id)
+
     return {
 
         "id": lease.id,
@@ -1104,7 +1152,8 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
 
         "charges": charges_list,
         "no_of_installments": len(payment_terms_list) if payment_terms_list else 0,
-        "payment_terms": payment_terms_list
+        "payment_terms": payment_terms_list,
+        "attachments": attachments_out
     }
 
 
@@ -1644,3 +1693,71 @@ def complete_termination(db, lease_id):
     req.status = "completed"
 
     db.commit()
+
+
+def sync_rent_charges(db: Session, lease: Lease):
+
+    terms = (
+        db.query(LeasePaymentTerm)
+        .filter(LeasePaymentTerm.lease_id == lease.id)
+        .order_by(LeasePaymentTerm.due_date.asc())
+        .all()
+    )
+
+    existing_charges = {
+        c.source_term_id: c
+        for c in db.query(LeaseCharge).filter(
+            LeaseCharge.lease_id == lease.id,
+            LeaseCharge.charge_code == "RENT",
+            LeaseCharge.is_deleted == False
+        )
+    }
+
+    previous_end = lease.start_date
+    used_charge_ids = set()
+
+    for index, term in enumerate(terms):
+
+        # -------- PERIOD CALCULATION --------
+        if index == 0:
+            start = lease.start_date
+        else:
+            start = previous_end + timedelta(days=1)
+
+        if index == len(terms) - 1:
+            end = lease.end_date
+        else:
+            end = term.due_date
+
+        existing = existing_charges.get(term.id)
+
+        if existing:
+            # ✅ UPDATE EXISTING
+            existing.period_start = start
+            existing.period_end = end
+            existing.amount = term.amount
+            existing.total_amount = term.amount
+
+            used_charge_ids.add(existing.id)
+
+        else:
+            # ✅ CREATE NEW
+            db.add(
+                LeaseCharge(
+                    lease_id=lease.id,
+                    charge_code="RENT",
+                    source_term_id=term.id,
+                    period_start=start,
+                    period_end=end,
+                    amount=term.amount,
+                    total_amount=term.amount,
+                    payer_id=lease.tenant_id,
+                )
+            )
+
+        previous_end = term.due_date
+
+    # -------- SOFT DELETE REMOVED TERMS --------
+    for charge in existing_charges.values():
+        if charge.id not in used_charge_ids:
+            charge.is_deleted = True

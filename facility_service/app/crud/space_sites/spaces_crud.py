@@ -35,8 +35,8 @@ from ...models.space_sites.sites import Site
 from ...models.space_sites.spaces import Space
 from ...models.leasing_tenants.leases import Lease
 from ...schemas.space_sites.spaces_schemas import (
-    ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut,AssignSpaceTenantIn, 
-    OwnershipHistoryOut, RemoveOwnerRequest, RemoveSpaceTenantRequest, SpaceAccessoryCreate, 
+    ActiveOwnerResponse, AssignSpaceOwnerIn, AssignSpaceOwnerOut, AssignSpaceTenantIn, OwnershipApprovalRequest,
+    OwnershipHistoryOut, RemoveOwnerRequest, RemoveSpaceTenantRequest, SpaceAccessoryCreate,
     SpaceCreate, SpaceListResponse, SpaceOut, SpaceRequest, SpaceUpdate, TenantHistoryOut,
     BulkSpaceRequest, BulkSpaceResponse, BulkUploadError)
 
@@ -469,16 +469,16 @@ def bulk_update_spaces(db: Session, request: BulkSpaceRequest, org_id: UUID):
     inserted, updated = 0, 0
     rowHeaderIndex = 2
     bulk_error_list = []
-    
+
     for s in request.spaces:
         errors = []
-        
+
         # 1. Resolve Site ID
         site_id = db.query(Site.id).filter(
             Site.name == s.siteName,
             Site.is_deleted == False
         ).scalar()
-        
+
         if not site_id:
             errors.append(f"Site '{s.siteName}' doesn't exist.")
 
@@ -490,13 +490,15 @@ def bulk_update_spaces(db: Session, request: BulkSpaceRequest, org_id: UUID):
                 Building.site_id == site_id,
                 Building.is_deleted == False
             ).scalar()
-            
+
             if not building_id:
-                errors.append(f"Building Block '{s.buildingBlockName}' doesn't exist in this site.")
+                errors.append(
+                    f"Building Block '{s.buildingBlockName}' doesn't exist in this site.")
 
         # Stop processing this row if parent entities are missing
         if errors:
-            bulk_error_list.append(BulkUploadError(row=rowHeaderIndex, errors=errors))
+            bulk_error_list.append(BulkUploadError(
+                row=rowHeaderIndex, errors=errors))
             rowHeaderIndex += 1
             continue
 
@@ -507,11 +509,13 @@ def bulk_update_spaces(db: Session, request: BulkSpaceRequest, org_id: UUID):
             Space.is_deleted == False
         ).first()
 
-
         custom_attrs = {}
-        if s.view is not None: custom_attrs["view"] = s.view
-        if s.furnished is not None: custom_attrs["furnished"] = s.furnished
-        if s.star_rating is not None: custom_attrs["star_rating"] = s.star_rating
+        if s.view is not None:
+            custom_attrs["view"] = s.view
+        if s.furnished is not None:
+            custom_attrs["furnished"] = s.furnished
+        if s.star_rating is not None:
+            custom_attrs["star_rating"] = s.star_rating
 
         # 4. Prepare Data Dump
         space_data = s.model_dump(
@@ -519,10 +523,10 @@ def bulk_update_spaces(db: Session, request: BulkSpaceRequest, org_id: UUID):
                 "siteName", "buildingBlockName", "floorName",
                 "view", "furnished", "star_rating",
                 "accessories", "parking_slot_ids", "building_block"
-            }, 
+            },
             exclude_unset=True
         )
-        
+
         space_data["site_id"] = site_id
         space_data["org_id"] = org_id
         space_data["building_block_id"] = building_id
@@ -548,8 +552,10 @@ def bulk_update_spaces(db: Session, request: BulkSpaceRequest, org_id: UUID):
                 ).first()
 
                 if has_tenants or has_leases:
-                    errors.append("Cannot change building for a space with active tenants or leases.")
-                    bulk_error_list.append(BulkUploadError(row=rowHeaderIndex, errors=errors))
+                    errors.append(
+                        "Cannot change building for a space with active tenants or leases.")
+                    bulk_error_list.append(BulkUploadError(
+                        row=rowHeaderIndex, errors=errors))
                     rowHeaderIndex += 1
                     continue
 
@@ -561,7 +567,7 @@ def bulk_update_spaces(db: Session, request: BulkSpaceRequest, org_id: UUID):
             for k, v in space_data.items():
                 setattr(obj, k, v)
             updated += 1
-            
+
         else:
             # INSERT LOGIC
             space_data["attributes"] = custom_attrs
@@ -573,6 +579,7 @@ def bulk_update_spaces(db: Session, request: BulkSpaceRequest, org_id: UUID):
 
     db.commit()
     return {"inserted": inserted, "updated": updated, "validations": bulk_error_list}
+
 
 def get_space_details_by_id(
         db: Session,
@@ -1334,13 +1341,14 @@ def get_space_tenant_history(
     response = []
 
     for tenant_space, lease_no, lease_status in space_tenants:
-        if lease_status == "active":
+        if lease_status in ("ended", "expired", "terminated"):
             response.append(
                 TenantHistoryOut(
                     id=tenant_space.id,
                     tenant_user_id=tenant_space.tenant.user_id,
                     tenant_name=tenant_space.tenant.name,
                     start_date=tenant_space.created_at.date() if tenant_space.created_at else None,
+                    end_date=tenant_space.ended_at.date() if tenant_space.ended_at else None,
                     lease_no=lease_no,
                     is_active=True if tenant_space.tenant.status == "active" else False,
                     status=tenant_space.status
@@ -1424,15 +1432,14 @@ def get_pending_space_owner_requests(
 def update_space_owner_approval(
     db: Session,
     auth_db: Session,
-    request_id: UUID,
-    action: OwnershipStatus,
+    params: OwnershipApprovalRequest,
     org_id: UUID
 ):
     try:
         owner = (
             db.query(SpaceOwner)
             .filter(
-                SpaceOwner.id == request_id
+                SpaceOwner.id == params.request_id
             )
             .first()
         )
@@ -1445,7 +1452,7 @@ def update_space_owner_approval(
             Space.is_deleted == False
         ).first()
 
-        if action == OwnershipStatus.approved:
+        if params.action == OwnershipStatus.approved:
             existing_assignments = db.query(SpaceOwner).filter(
                 SpaceOwner.space_id == owner.space_id,
                 SpaceOwner.is_active == True
@@ -1525,6 +1532,7 @@ def update_space_owner_approval(
 
         else:
             owner.status = OwnershipStatus.rejected
+            owner.rejection_reason = params.reason
             owner.is_active = False
             owner.end_date = date.today()
 

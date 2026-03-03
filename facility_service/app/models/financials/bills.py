@@ -67,5 +67,6 @@ class BillPayment(Base):
     method = Column(String(24))
     ref_no: str = Column(String(64))
     paid_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     bill = relationship("Bill", back_populates="payments")

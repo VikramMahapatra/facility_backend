@@ -64,7 +64,7 @@ class InvoiceLine(Base):
     id: UUID = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     invoice_id: UUID = Column(UUID(as_uuid=True), ForeignKey(
         "invoices.id", ondelete="CASCADE"))
-    code: str = Column(String(32))  # RENT|MAINTENANCE|WORKORDER
+    code: str = Column(String(32))  # RENT|MAINTENANCE|WORKORDER|PARKING_PASS
     item_id: UUID = Column(UUID(as_uuid=True), nullable=False)
     description: str = Column(Text)
     amount: float = Column(Numeric(14, 2), nullable=False)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from facility_service.app.models.space_sites.space_occupancies import OccupancyStatus, RequestType
-from ...schemas.space_sites.space_occupany_schemas import HandoverCreate, HandoverUpdateSchema, InspectionComplete, InspectionItemCreate, InspectionRequest, MaintenanceComplete, MaintenanceRequest, MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, SettlementComplete, SettlementRequest, SpaceMoveOutRequest
+from ...schemas.space_sites.space_occupany_schemas import HandoverCreate, HandoverUpdateSchema, InspectionComplete, InspectionItemCreate, InspectionRequest, MaintenanceComplete, MaintenanceRequest, MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, RejectOccupancyRequest, SettlementComplete, SettlementRequest, SpaceMoveOutRequest
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import success_response
 from shared.core.schemas import Lookup, UserToken
@@ -52,7 +52,7 @@ def get_space_occupancy_requests(
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_space_occupancy_requests(db, current_user.org_id, params)
+    return crud.get_space_occupancy_requests(db, auth_db, current_user.org_id, params)
 
 
 @router.post("/move-in-request")
@@ -70,9 +70,13 @@ def approve_move_in(move_in_id: UUID, db: Session = Depends(get_db)):
     return crud.approve_move_in(db, move_in_id)
 
 
-@router.post("/{move_in_id}/reject_move_in")
-def approve_move_in(move_in_id: UUID, db: Session = Depends(get_db)):
-    return crud.reject_move_in(db, move_in_id)
+@router.post("/{move_in_id}/reject-move-in")
+def reject_move_in(
+    move_in_id: UUID,
+    params: RejectOccupancyRequest,
+    db: Session = Depends(get_db)
+):
+    return crud.reject_move_in(db, move_in_id, params.reason)
 
 
 @router.post("/move-out-request")
@@ -92,9 +96,13 @@ def approve_move_out(
     return crud.approve_move_out(db, move_in_id, current_user.user_id)
 
 
-@router.post("/{move_out_id}/reject_move_out")
-def reject_move_out(move_out_id: UUID, db: Session = Depends(get_db)):
-    return crud.reject_move_out(db, move_out_id)
+@router.post("/{move_out_id}/reject-move-out")
+def reject_move_out(
+    move_out_id: UUID,
+    params: RejectOccupancyRequest,
+    db: Session = Depends(get_db)
+):
+    return crud.reject_move_out(db, move_out_id, params.reason)
 
 
 @router.post("/handover/{occupancy_id}/update-handover")

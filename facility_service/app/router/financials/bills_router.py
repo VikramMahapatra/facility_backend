@@ -1,6 +1,9 @@
-from typing import List
+import json
+import os
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from uuid import UUID
 
@@ -23,15 +26,19 @@ router = APIRouter(
 
 
 @router.post("/create", response_model=BillOut)
-def create_bill(
-    bill: BillCreate,
+async def create_bill(
+    bill: str = Form(...),   # 👈 JSON string
+    attachments: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.create_bill(
+    bill_dict = json.loads(bill)
+    bill_data = BillCreate(**bill_dict)
+    return await crud.create_bill(
         db=db,
         org_id=current_user.org_id,
-        request=bill,
+        request=bill_data,
+        attachments=attachments,
         current_user=current_user
     )
 
@@ -84,16 +91,29 @@ def get_bill_detail(
     )
 
 
-@router.put("/", response_model=BillOut)
-def update_bill(
-    bill: BillUpdate,
+@router.post("/update", response_model=BillOut)
+async def update_bill(
+    bill: str = Form(...),
+    attachments: Optional[List[UploadFile]] = File(None),
+    removed_attachment_ids: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
+    bill_dict = json.loads(bill)
+    bill_data = BillUpdate(**bill_dict)
+
+    removed_ids = (
+        json.loads(removed_attachment_ids)
+        if removed_attachment_ids
+        else []
+    )
+
     """Update an existing bill."""
-    return crud.update_bill(
+    return await crud.update_bill(
         db=db,
-        request=bill,
+        request=bill_data,
+        attachments=attachments,
+        removed_attachment_ids=removed_ids,
         current_user=current_user
     )
 
@@ -163,3 +183,30 @@ def get_payments(
         auth_db: Session = Depends(get_auth_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.get_payments(db=db, auth_db=auth_db, org_id=current_user.org_id, params=params)
+
+
+@router.get("/{bill_id}/download")
+def download_bill(
+    bill_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    file_path, filename = crud.download_bill_pdf(db, bill_id, current_user)
+
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=filename,
+    )
+
+
+@router.get("/payment-receipt/{payment_id}/download")
+def download_bill_payment(payment_id: UUID, db: Session = Depends(get_db)):
+
+    file_path = crud.download_payment_receipt_pdf(db, payment_id)
+
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=os.path.basename(file_path),
+    )

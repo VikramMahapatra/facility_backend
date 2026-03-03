@@ -1,7 +1,7 @@
 # app/models/orgs.py
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
-from sqlalchemy import Column, String, DateTime, func
+from sqlalchemy import Column, String, DateTime, Text, func
 from sqlalchemy.orm import relationship
 from shared.core.database import Base
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -21,6 +21,7 @@ class Org(Base):
     locale = Column(String(16), default="en-IN")
     timezone = Column(String(64), default="Asia/Kolkata")
     status = Column(String(16), default="active")
+    rejection_reason = Column(Text, nullable=True)
 
     # ✅ Proper DateTime fields for Postgres
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -46,6 +47,8 @@ class Org(Base):
     staff_sites = relationship(
         "StaffSite", back_populates="org", cascade="all, delete-orphan")
 
-        # ✅ Relationship with SLA policies
-    sla_policies = relationship("SlaPolicy", back_populates="org", cascade="all, delete-orphan")
-    lease_charge_codes = relationship("LeaseChargeCode", back_populates="org", cascade="all, delete-orphan")
+    # ✅ Relationship with SLA policies
+    sla_policies = relationship(
+        "SlaPolicy", back_populates="org", cascade="all, delete-orphan")
+    lease_charge_codes = relationship(
+        "LeaseChargeCode", back_populates="org", cascade="all, delete-orphan")

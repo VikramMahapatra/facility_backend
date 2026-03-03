@@ -25,13 +25,13 @@ def list_pending_orgs(params: OrgApprovalRequest = Depends(), facility_db: Sessi
 
 
 @router.post("/orgs/{org_id}/approve")
-def approve_org(org_id: str, facility_db: Session = Depends(get_facility_db), auth_db: Session = Depends(get_db)):
-    return super_admin_services.approve_org(org_id, facility_db, auth_db)
+def approve_org(org_id: str, background_tasks: BackgroundTasks, facility_db: Session = Depends(get_facility_db), auth_db: Session = Depends(get_db)):
+    return super_admin_services.approve_org(background_tasks, org_id, facility_db, auth_db)
 
 
 @router.post("/orgs/{org_id}/reject")
-def reject_org(org_id: str, facility_db: Session = Depends(get_facility_db), auth_db: Session = Depends(get_db)):
-    return super_admin_services.reject_org(org_id, facility_db, auth_db)
+def reject_org(org_id: str, background_tasks: BackgroundTasks, facility_db: Session = Depends(get_facility_db), auth_db: Session = Depends(get_db)):
+    return super_admin_services.reject_org(background_tasks, org_id, facility_db, auth_db)
 
 
 @router.get("/stats")

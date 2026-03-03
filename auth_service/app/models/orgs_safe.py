@@ -1,5 +1,5 @@
 # auth_service/app/models/org.py
-from sqlalchemy import Column, DateTime, String, func
+from sqlalchemy import Column, DateTime, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from shared.core.database import Base
 import uuid
@@ -15,3 +15,4 @@ class OrgSafe(Base):
     status = Column(String(16), default="active")
     plan = Column(String(32), default="pro")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    rejection_reason = Column(Text, nullable=True)

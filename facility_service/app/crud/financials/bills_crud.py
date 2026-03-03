@@ -5,14 +5,19 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, List
 from uuid import UUID
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import cast, func, or_, Numeric, Integer
 
+from facility_service.app.crud.common.attachment_crud import AttachmentService
+from facility_service.app.crud.system.system_settings_crud import get_system_settings
+from facility_service.app.enum.module_enum import ModuleName
 from facility_service.app.models.procurement.vendors import Vendor
+from facility_service.app.models.space_sites.orgs import Org
 from facility_service.app.schemas.financials.invoices_schemas import InvoicesRequest, PaymentOut
+from facility_service.app.utils.invoice_pdf import generate_bill_payment_pdf, generate_bill_pdf
 from shared.helpers.json_response_helper import error_response, success_response
-from shared.helpers.user_helper import get_user_name, get_users_bulk
+from shared.helpers.user_helper import get_user_detail, get_user_name, get_users_bulk
 from shared.core.schemas import UserToken
 
 from ...models.financials.bills import Bill, BillLine, BillPayment
@@ -233,6 +238,9 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
         for p in payments
     ]
 
+    attachments_out = AttachmentService.get_attachments(
+        db, ModuleName.bills, bill.id)
+
     return BillOut.model_validate({
         **bill.__dict__,
         "vendor_name": vendor_name,
@@ -242,11 +250,18 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
         "total_amount": bill_total,
         "paid_amount": paid_amount,
         "lines": bill_lines,
-        "payments": payments_list
+        "payments": payments_list,
+        "attachments": attachments_out
     })
 
 
-def create_bill(db: Session, org_id: UUID, request: BillCreate, current_user: UserToken) -> BillOut:
+async def create_bill(
+    db: Session,
+    org_id: UUID,
+    request: BillCreate,
+    attachments: list[UploadFile] | None,
+    current_user: UserToken
+) -> BillOut:
     if not request.lines or len(request.lines) == 0:
         raise HTTPException(
             status_code=400, detail="Bill must have at least one line")
@@ -279,8 +294,15 @@ def create_bill(db: Session, org_id: UUID, request: BillCreate, current_user: Us
             db.add(db_line)
             bill_amount += float(line.amount or 0)
 
-        db_bill.totals = {"grand": bill_amount}
         db.commit()
+
+        # Bill Attachments
+        await AttachmentService.save_attachments(
+            db,
+            ModuleName.bills,
+            db_bill.id,
+            attachments
+        )
 
         return get_bill_detail(db, db, org_id, db_bill.id)
 
@@ -289,8 +311,98 @@ def create_bill(db: Session, org_id: UUID, request: BillCreate, current_user: Us
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def update_bill(db: Session, request: BillUpdate, current_user: UserToken):
-    pass
+async def update_bill(
+    db: Session,
+    org_id: UUID,
+    bill_id: UUID,
+    request: BillCreate,
+    attachments: list[UploadFile] | None,
+    removed_attachment_ids: list[UUID] | None,
+    current_user: UserToken
+) -> BillOut:
+
+    db_bill = (
+        db.query(Bill)
+        .filter(
+            Bill.id == bill_id,
+            Bill.org_id == org_id,
+            Bill.is_deleted.is_(False)
+        )
+        .first()
+    )
+
+    if not db_bill:
+        raise HTTPException(status_code=404, detail="Bill not found")
+
+    if not request.lines or len(request.lines) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Bill must have at least one line"
+        )
+
+    try:
+        # -------------------------------------------------
+        # 1️⃣ Update Bill Fields (except immutable fields)
+        # -------------------------------------------------
+        update_data = request.model_dump(exclude={"lines", "bill_no"})
+
+        for key, value in update_data.items():
+            setattr(db_bill, key, value)
+
+        db_bill.updated_at = datetime.utcnow()
+
+        # -------------------------------------------------
+        # 2️⃣ Replace Bill Lines (safe approach)
+        # -------------------------------------------------
+        db.query(BillLine).filter(
+            BillLine.bill_id == db_bill.id
+        ).delete(synchronize_session=False)
+
+        bill_amount = 0.0
+
+        for line in request.lines:
+            db_line = BillLine(
+                bill_id=db_bill.id,
+                item_id=line.item_id,
+                description=line.description,
+                amount=line.amount,
+                tax_pct=line.tax_pct
+            )
+            db.add(db_line)
+            bill_amount += float(line.amount or 0)
+
+        # -------------------------------------------------
+        # 3️⃣ Remove Attachments (explicit delete)
+        # -------------------------------------------------
+        if removed_attachment_ids:
+            AttachmentService.delete_attachments(
+                db=db,
+                module=ModuleName.bills,
+                entity_id=db_bill.id,
+                attachment_ids=removed_attachment_ids
+            )
+
+        # -------------------------------------------------
+        # 4️⃣ Add New Attachments
+        # -------------------------------------------------
+        await AttachmentService.save_attachments(
+            db=db,
+            module=ModuleName.bills,
+            entity_id=db_bill.id,
+            files=attachments
+        )
+
+        # -------------------------------------------------
+        # 5️⃣ Commit Once
+        # -------------------------------------------------
+        db.commit()
+        db.refresh(db_bill)
+
+        return get_bill_detail(db, db, org_id, db_bill.id)
+
+    except Exception as e:
+        db.rollback()
+        raise e
 
 
 def delete_bill(db: Session, bill_id: str, org_id: UUID):
@@ -308,31 +420,118 @@ def delete_bill(db: Session, bill_id: str, org_id: UUID):
     return success_response(message="Bill deleted successfully")
 
 
-def save_bill_payment(db: Session, payload: BillPaymentCreate, current_user: UserToken):
+def save_bill_payment(
+    db: Session,
+    payload: BillPaymentCreate,
+    current_user: UserToken
+):
     try:
-        bill = db.query(Bill).filter(Bill.id == payload.bill_id).first()
+        # ---------------------------
+        # 0. Validate bill
+        # ---------------------------
+        if not payload.bill_id:
+            return error_response(message="Bill is required")
+
+        bill: Bill = db.query(Bill).filter(
+            Bill.id == payload.bill_id,
+            Bill.is_deleted == False
+        ).first()
+
         if not bill:
             return error_response(message="Invalid bill ID")
 
+        # ---------------------------
+        # 1. Validate bill status
+        # ---------------------------
         if bill.status == "draft":
-            return error_response(message="Cannot add payments to draft bills")
+            return error_response(
+                message="Cannot add payments to draft bills"
+            )
 
+        if bill.status == "paid":
+            return error_response(
+                message="Bill is already fully paid"
+            )
+
+        # ---------------------------
+        # 2. Validate ref_no
+        # ---------------------------
+        if payload.method != "cash" and not payload.ref_no:
+            return error_response(
+                message="ref_no is mandatory for non-cash payments"
+            )
+
+        # prevent duplicate ref_no per bill
+        if payload.ref_no:
+            duplicate = db.query(BillPayment).filter(
+                BillPayment.bill_id == bill.id,
+                BillPayment.ref_no == payload.ref_no,
+                BillPayment.is_deleted == False
+            ).first()
+
+            if duplicate:
+                return error_response(
+                    message=f"Duplicate payment ref_no '{payload.ref_no}' for this bill"
+                )
+
+        # ---------------------------
+        # 3. Prevent Overpayment
+        # ---------------------------
+        bill_total = float(bill.totals.get("grand") or 0)
+
+        existing_payments = db.query(BillPayment).filter(
+            BillPayment.bill_id == bill.id,
+            BillPayment.is_deleted == False
+        ).all()
+
+        already_paid = sum(float(p.amount) for p in existing_payments)
+        incoming_amount = float(payload.amount or 0)
+
+        new_total_paid = already_paid + incoming_amount
+
+        if new_total_paid > bill_total + 0.01:
+            remaining = bill_total - already_paid
+            return error_response(
+                message=f"Payment exceeds bill total. Remaining payable amount is {round(remaining, 2)}"
+            )
+
+        # ---------------------------
+        # 4. Create payment
+        # ---------------------------
         payment = BillPayment(
             bill_id=bill.id,
             org_id=current_user.org_id,
-            amount=float(payload.amount),
+            amount=incoming_amount,
             method=payload.method,
             ref_no=payload.ref_no,
             paid_at=payload.paid_at or datetime.utcnow(),
         )
+
         db.add(payment)
         db.flush()
 
-        # Recalculate and update bill status
+        # ---------------------------
+        # 5. Recalculate bill status
+        # ---------------------------
         new_status = calculate_bill_status(db, bill)
         bill.status = new_status
 
+        # ---------------------------
+        # 6. Safety check (race condition guard)
+        # ---------------------------
+        payments = db.query(BillPayment).filter(
+            BillPayment.bill_id == bill.id,
+            BillPayment.is_deleted == False
+        ).all()
+
+        total_paid = sum(float(p.amount) for p in payments)
+
+        if total_paid > bill_total + 0.01:
+            db.rollback()
+            return error_response(message="Overpayment detected")
+
         db.commit()
+
         return success_response(data={"payment_id": str(payment.id)})
 
     except Exception as e:
@@ -513,7 +712,7 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
         space_name = bill.space.name if bill.space else None
         site_name = bill.site.name if bill.site else None
 
-        results.append(PaymentOut.model_validate({
+        results.append(BillPaymentOut.model_validate({
             **payment.__dict__,
             "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
             "bill_no": bill.bill_no,
@@ -526,3 +725,98 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
         "payments": results,
         "total": total
     }
+
+
+def download_bill_pdf(
+    db: Session,
+    bill_id: UUID,
+    current_user: UserToken
+):
+
+    bill = db.query(Bill).filter(
+        Bill.id == bill_id,
+        Bill.org_id == current_user.org_id,
+        Bill.is_deleted == False
+    ).first()
+
+    if not bill:
+        return error_response(message="Bill not found")
+
+    organization = (
+        db.query(Org)
+        .filter(Org.id == bill.org_id)
+        .first()
+    )
+
+    organization_name = organization.name if organization else "Organization"
+
+    vendor = db.query(Vendor).get(bill.vendor_id)
+    vendor_name = vendor.name if vendor else "Customer"
+
+    payments_total, balance = calculate_balance(db, bill)
+
+    system_settings = get_system_settings(db, bill.org_id)
+
+    file_path = generate_bill_pdf(
+        bill=bill,
+        organization_name=organization_name,
+        vendor_name=vendor_name,
+        payments_total=float(payments_total),
+        balance=float(balance),
+        system_settings=system_settings
+    )
+
+    filename = f"Bill_{bill.bill_no}.pdf"
+
+    return file_path, filename
+
+
+def download_payment_receipt_pdf(
+    db: Session,
+    payment_id: UUID,
+):
+
+    payment = db.query(BillPayment).get(payment_id)
+    bill = payment.bill
+
+    organization = (
+        db.query(Org)
+        .filter(Org.id == bill.org_id)
+        .first()
+    )
+
+    organization_name = organization.name if organization else "Organization"
+
+    vendor = db.query(Vendor).get(bill.vendor_id)
+    vendor_name = vendor.name if vendor else "Customer"
+    system_settings = get_system_settings(db, bill.org_id)
+
+    file_path = generate_bill_payment_pdf(
+        payment,
+        organization_name=organization_name,
+        vendor_name=vendor_name,
+        bill_no=bill.bill_no,
+        system_settings=system_settings
+    )
+
+    return file_path
+
+
+def calculate_balance(db: Session, bill: Bill):
+    bill_total = Decimal(bill.totals.get("grand", 0))
+
+    payments_total = (
+        db.query(func.coalesce(func.sum(BillPayment.amount), 0))
+        .filter(
+            BillPayment.bill_id == bill.id,
+            BillPayment.is_deleted == False
+        )
+        .scalar()
+    ) or Decimal("0")
+
+    balance = bill_total - payments_total
+
+    if balance < 0:
+        balance = Decimal("0")
+
+    return payments_total, balance

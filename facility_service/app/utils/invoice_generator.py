@@ -1,0 +1,242 @@
+
+from datetime import date
+from calendar import monthrange
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from facility_service.app.crud.financials.bills_crud import generate_bill_number
+from facility_service.app.crud.financials.invoices_crud import generate_invoice_number
+from facility_service.app.models.financials.bills import Bill, BillLine
+from facility_service.app.models.financials.invoices import Invoice, InvoiceLine
+from facility_service.app.models.parking_access.parking_pass import ParkingPass
+from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
+
+from ..enum.revenue_enum import InvoiceType
+from ..models.leasing_tenants.lease_charges import LeaseCharge
+from ..models.leasing_tenants.leases import Lease
+from ..models.space_sites.owner_maintenances import OwnerMaintenanceCharge
+from shared.core.schemas import UserToken
+
+
+def get_month_range(target_date: date):
+    start = date(target_date.year, target_date.month, 1)
+    last_day = monthrange(target_date.year, target_date.month)[1]
+    end = date(target_date.year, target_date.month, last_day)
+    return start, end
+
+
+def generate_monthly_billing(
+    db: Session,
+    auth_db: Session,
+    org_id: UUID,
+    target_date: date,
+    current_user: UserToken
+):
+    start_date, end_date = get_month_range(target_date)
+
+    created = {
+        "invoices": [],
+        "bills": []
+    }
+
+    # =====================================================
+    # 1️⃣ RENT (AR)
+    # =====================================================
+    rent_charges = db.query(LeaseCharge).join(Lease).filter(
+        LeaseCharge.period_start >= start_date,
+        LeaseCharge.period_start <= end_date,
+        LeaseCharge.charge_code == InvoiceType.rent.value,
+        LeaseCharge.invoice_id == None
+    ).all()
+
+    for charge in rent_charges:
+        lease = charge.lease
+
+        invoice = create_ar_invoice(
+            db=db,
+            org_id=org_id,
+            site_id=lease.site_id,
+            space_id=lease.space_id,
+            user_id=charge.lease.tenant_id,
+            code=InvoiceType.rent.value,
+            item_id=charge.id,
+            description="Monthly Rent",
+            amount=charge.amount
+        )
+
+        charge.invoice_id = invoice.id
+        created["invoices"].append(invoice.invoice_no)
+
+    # =====================================================
+    # 2️⃣ OWNER MAINTENANCE (AR)
+    # =====================================================
+    maint = db.query(OwnerMaintenanceCharge).filter(
+        OwnerMaintenanceCharge.period_start >= start_date,
+        OwnerMaintenanceCharge.period_start <= end_date,
+        OwnerMaintenanceCharge.invoice_id == None
+    ).all()
+
+    for charge in maint:
+        space = charge.space
+
+        invoice = create_ar_invoice(
+            db=db,
+            org_id=org_id,
+            user_id=charge.owner_id,
+            site_id=space.site_id,
+            space_id=charge.space_id,
+            code=InvoiceType.owner_maintenance.value,
+            item_id=charge.id,
+            description="Owner Maintenance",
+            amount=charge.amount
+        )
+
+        charge.invoice_id = invoice.id
+        created["invoices"].append(invoice.invoice_no)
+
+    # =====================================================
+    # 3️⃣ WORK ORDERS (AR or AP)
+    # =====================================================
+    work_orders = db.query(TicketWorkOrder).filter(
+        TicketWorkOrder.created_at >= start_date,
+        TicketWorkOrder.created_at <= end_date,
+        TicketWorkOrder.invoice_id == None,
+        TicketWorkOrder.bill_id == None
+    ).all()
+
+    for wo in work_orders:
+        ticket = wo.ticket
+
+        # Vendor → AP Bill
+        if wo.bill_to_type == "vendor":
+
+            bill = create_ap_bill(
+                db=db,
+                org_id=org_id,
+                vendor_id=wo.bill_to_id,
+                description=f"Work Order #{wo.wo_no}",
+                amount=wo.total_amount
+            )
+
+            wo.bill_id = bill.id
+            created["bills"].append(bill.bill_no)
+
+        # Tenant / Owner / Org → AR Invoice
+        else:
+
+            invoice = create_ar_invoice(
+                db=db,
+                org_id=org_id,
+                user_id=wo.bill_to_id,
+                site_id=ticket.site_id,
+                space_id=ticket.space_id,
+                code=InvoiceType.work_order.value,
+                item_id=wo.id,
+                description=f"Work Order #{wo.wo_no}",
+                amount=wo.total_amount
+            )
+
+            wo.invoice_id = invoice.id
+            created["invoices"].append(invoice.invoice_no)
+
+    # =====================================================
+    # 4️⃣ PARKING PASS (AR)
+    # =====================================================
+    parking_passes = db.query(ParkingPass).filter(
+        ParkingPass.valid_from >= start_date,
+        ParkingPass.valid_from <= end_date,
+        ParkingPass.invoice_id == None
+    ).all()
+
+    for p in parking_passes:
+
+        invoice = create_ar_invoice(
+            db=db,
+            org_id=org_id,
+            user_id=p.user_id,
+            site_id=p.site_id,
+            space_id=p.space_id,
+            code=InvoiceType.parking_pass.value,
+            item_id=p.id,
+            description="Parking Pass",
+            amount=p.amount
+        )
+
+        p.invoice_id = invoice.id
+        created["invoices"].append(invoice.invoice_no)
+
+    db.commit()
+
+    return created
+
+
+def create_ar_invoice(
+    db: Session,
+    org_id: UUID,
+    site_id: UUID,
+    space_id: UUID,
+    user_id: UUID,
+    code: str,
+    item_id: UUID,
+    description: str,
+    amount: float
+):
+
+    invoice = Invoice(
+        org_id=org_id,
+        user_id=user_id,
+        site_id=site_id,
+        space_id=space_id,
+        invoice_no=generate_invoice_number(db, org_id),
+        status="issued",
+        is_paid=False,
+        date=date.today()
+    )
+
+    db.add(invoice)
+    db.flush()
+
+    line = InvoiceLine(
+        invoice_id=invoice.id,
+        code=code,
+        item_id=item_id,
+        description=description,
+        amount=amount,
+        tax_pct=0
+    )
+
+    db.add(line)
+
+    return invoice
+
+
+def create_ap_bill(
+    db: Session,
+    org_id: UUID,
+    vendor_id: UUID,
+    description: str,
+    amount: float
+):
+
+    bill = Bill(
+        org_id=org_id,
+        vendor_id=vendor_id,
+        bill_no=generate_bill_number(db, org_id),
+        status="issued",
+        date=date.today(),
+        total_amount=amount
+    )
+
+    db.add(bill)
+    db.flush()
+
+    bill_line = BillLine(
+        bill_id=bill.id,
+        description=description,
+        amount=amount
+    )
+
+    db.add(bill_line)
+
+    return bill

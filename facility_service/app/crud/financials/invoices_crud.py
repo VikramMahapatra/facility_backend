@@ -1,3 +1,4 @@
+import base64
 from collections import defaultdict
 
 from sqlalchemy import Integer, func
@@ -6,16 +7,21 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List
 from uuid import UUID
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
 from sqlalchemy.dialects.postgresql import JSONB
+from facility_service.app.crud.common.attachment_crud import AttachmentService
 from facility_service.app.crud.financials.invoice_email_service import InvoiceEmailService
 from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
+from facility_service.app.crud.system.system_settings_crud import get_system_settings
+from facility_service.app.enum.module_enum import ModuleName
+from facility_service.app.models.common.attachments import Attachment
 from facility_service.app.models.financials.customer_advances import AdvanceAdjustment, CustomerAdvance
 from facility_service.app.models.leasing_tenants.leases import Lease
 from facility_service.app.models.leasing_tenants.tenant_spaces import TenantSpace
 from facility_service.app.models.leasing_tenants.tenants import Tenant
+from facility_service.app.models.space_sites.orgs import Org
 from facility_service.app.models.space_sites.owner_maintenances import OwnerMaintenanceCharge
 from facility_service.app.models.space_sites.space_owners import SpaceOwner
 from facility_service.app.models.space_sites.spaces import Space
@@ -24,7 +30,7 @@ from shared.core.database import AuthSessionLocal
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.helpers.user_helper import get_user_detail, get_user_name
 from shared.models.users import Users
-from shared.utils.invoice_pdf import generate_invoice_pdf, get_invoice_email_template
+from facility_service.app.utils.invoice_pdf import generate_invoice_pdf, generate_payment_receipt_pdf
 
 from ...enum.revenue_enum import InvoicePayementMethod, InvoiceType
 
@@ -36,7 +42,7 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket
 from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceLineOut, InvoiceOut, InvoicePaymentHistoryOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceLineOut, InvoiceOut,  InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
 from facility_service.app.models.parking_access import parking_pass
 
 
@@ -112,7 +118,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
             joinedload(Invoice.payments)
         )
     )
-    base_query.filter(*filters)
+    base_query = base_query.filter(*filters)
 
     total = base_query.with_entities(func.count(Invoice.id)).scalar()
 
@@ -203,6 +209,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
         for payment in invoice.payments:
             payments_list.append({
                 "id": payment.id,
+                "invoice_id": payment.invoice_id,
                 "amount": Decimal(str(payment.amount)),
                 "method": payment.method,
                 "ref_no": payment.ref_no,
@@ -222,6 +229,9 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
         )
 
         is_paid = (actual_status == "paid")
+
+        attachment_list = AttachmentService.get_attachments(
+            db, ModuleName.invoices, invoice.id)
 
         # -----------------------------------------
         # Build Response
@@ -243,7 +253,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
             "lines": invoice.lines,
             "created_at": invoice.created_at.isoformat() if isinstance(invoice.created_at, datetime) else invoice.created_at,
             "updated_at": invoice.updated_at.isoformat() if isinstance(invoice.updated_at, datetime) else invoice.updated_at,
-
+            "attachments": attachment_list
         })
 
         results.append(invoice_data)
@@ -252,6 +262,34 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
         invoices=results,
         total=total
     )
+
+
+def get_payment_history(db: Session, invoice_id: UUID):
+
+    invoice = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.payments)
+        )
+        .filter(
+            Invoice.id == invoice_id
+        )
+        .first()
+    )
+
+    payments_list = []
+
+    for payment in invoice.payments:
+        payments_list.append({
+            "id": payment.id,
+            "invoice_id": payment.invoice_id,
+            "amount": Decimal(str(payment.amount)),
+            "method": payment.method,
+            "ref_no": payment.ref_no,
+            "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None
+        })
+
+    return payments_list
 
 
 def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesRequest):
@@ -317,73 +355,7 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
 
         invoice = payment.invoice
         site_name = invoice.site.name if invoice.site else None
-
-        code = None
-        item_no = None
-        customer_name = None
-
-        # -----------------------------------------
-        # Take first invoice line as summary
-        # -----------------------------------------
-        if invoice.lines:
-
-            line = invoice.lines[0]
-            code = line.code
-
-            # -------- WORKORDER --------
-            if line.code == "WORKORDER":
-                wo = db.query(TicketWorkOrder).filter(
-                    TicketWorkOrder.id == line.item_id,
-                    TicketWorkOrder.is_deleted == False
-                ).first()
-
-                if wo:
-                    item_no = wo.wo_no
-
-                    if wo.bill_to_id:
-                        customer_name = get_user_name(wo.bill_to_id)
-
-            # -------- RENT --------
-            elif line.code == "RENT":
-                lease = (
-                    db.query(Lease)
-                    .join(LeaseCharge, LeaseCharge.lease_id == Lease.id)
-                    .filter(
-                        LeaseCharge.id == line.item_id,
-                        Lease.is_deleted == False
-                    ).first()
-                )
-
-                if lease:
-                    item_no = lease.lease_number
-
-                    if lease.tenant:
-                        customer_name = lease.tenant.name or lease.tenant.legal_name
-
-            # -------- PARKING PASS --------
-            elif line.code == "PARKING_PASS":
-                parking_pass = db.query(ParkingPass).filter(
-                    ParkingPass.id == line.item_id,
-                    ParkingPass.is_deleted == False
-                ).first()
-
-                if parking_pass:
-                    item_no = parking_pass.pass_no
-                    if parking_pass.partner_id:
-                        customer_name = get_user_name(parking_pass.partner_id)
-
-            # -------- OWNER MAINTENANCE --------
-            elif line.code == "OWNER_MAINTENANCE":
-                om = db.query(OwnerMaintenanceCharge).filter(
-                    OwnerMaintenanceCharge.id == line.item_id,
-                    OwnerMaintenanceCharge.is_deleted == False
-                ).first()
-
-                if om:
-                    item_no = om.maintenance_no
-
-                    if om.space_owner_id:
-                        customer_name = get_user_name(om.space_owner_id)
+        customer_name = get_user_name(invoice.user_id)
 
         # -----------------------------------------
         # Build Response
@@ -392,11 +364,8 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
             **payment.__dict__,
             "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
             "invoice_no": invoice.invoice_no,
-            "code": code,
-            "item_no": item_no,
             "site_name": site_name,
             "customer_name": customer_name,
-            "line_count": len(invoice.lines)
         }))
 
     return {
@@ -451,11 +420,12 @@ def calculate_invoice_status(
     return "partial"
 
 
-def create_invoice(
+async def create_invoice(
     db: Session,
     auth_db: Session,
     org_id: UUID,
     request: InvoiceCreate,
+    attachments: list[UploadFile] | None,
     current_user
 ):
     if not request.lines or len(request.lines) == 0:
@@ -479,9 +449,15 @@ def create_invoice(
 
         invoice_amount = 0
 
-        # ===============================
-        # PROCESS INVOICE LINES
-        # ===============================
+        # Invoice Attachments
+        await AttachmentService.save_attachments(
+            db,
+            ModuleName.invoices,
+            db_invoice.id,
+            attachments
+        )
+
+        # Invoice Lines
         for line in request.lines:
 
             # --------------------------------
@@ -507,10 +483,6 @@ def create_invoice(
 
             invoice_amount += float(line.amount or 0)
 
-        db_invoice.totals = {
-            "grand": invoice_amount
-        }
-
         if request.status == "issued":
             apply_advance_to_invoice(db, db_invoice)
 
@@ -531,12 +503,13 @@ def create_invoice(
             db.add(notification)
 
             # send email
-            # service = InvoiceEmailService()
-            # service.send_invoice_to_customer(
-            #     db=db,
-            #     invoice=db_invoice,
-            #     customer_email=db_invoice.customer_email
-            # )
+            service = InvoiceEmailService()
+            customer = get_user_detail(db_invoice.user_id)
+            service.send_invoice_to_customer(
+                db=db,
+                invoice=db_invoice,
+                customer_email=customer.email
+            )
 
         db.commit()
 
@@ -565,7 +538,12 @@ def create_invoice(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
+async def update_invoice(
+        db: Session,
+        invoice_update: InvoiceUpdate,
+        attachments: list[UploadFile] | None,
+        removed_attachment_ids: list[UUID] | None,
+        current_user):
     db_invoice = db.query(Invoice).filter(
         Invoice.id == invoice_update.id,
         Invoice.org_id == current_user.org_id,
@@ -598,8 +576,27 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
         if field in update_data:
             setattr(db_invoice, field, update_data[field])
 
-    billable_item_names = []
     invoice_amount = 0
+
+    if removed_attachment_ids:
+        db.query(Attachment).filter(
+            Attachment.entity_id == db_invoice.id,
+            Attachment.id.in_(removed_attachment_ids)
+        ).delete(synchronize_session=False)
+
+    await AttachmentService.delete_attachments(
+        db,
+        ModuleName.invoices,
+        db_invoice.id,
+        removed_attachment_ids
+    )
+
+    await AttachmentService.save_attachments(
+        db,
+        ModuleName.invoices,
+        db_invoice.id,
+        attachments
+    )
 
     # -------------------------
     # UPDATE LINES
@@ -636,22 +633,16 @@ def update_invoice(db: Session, invoice_update: InvoiceUpdate, current_user):
         for line in existing_lines:
             invoice_amount += float(line.amount or 0)
 
-    # -------------------------
-    # UPDATE TOTALS
-    # -------------------------
-    db_invoice.totals = {
-        "grand": invoice_amount
-    }
-
     if invoice_update.status == "issued" and old_invoice_status == "draft":
         apply_advance_to_invoice(db, db_invoice)
 
         # send email
         service = InvoiceEmailService()
+        customer = get_user_detail(db_invoice.user_id)
         service.send_invoice_to_customer(
             db=db,
             invoice=db_invoice,
-            customer_email=db_invoice.customer_email
+            customer_email=customer.email
         )
 
     # -------------------------
@@ -1254,6 +1245,9 @@ def get_invoice_detail(
         invoice=invoice
     )
 
+    attachments_out = AttachmentService.get_attachments(
+        db, ModuleName.invoices, invoice.id)
+
     # -------------------------------------------------
     # RESPONSE
     # -------------------------------------------------
@@ -1269,7 +1263,8 @@ def get_invoice_detail(
         "is_paid": actual_status == "paid",
         "payments": payments_list,
         "currency": invoice.currency,
-        "lines": invoice_lines
+        "lines": invoice_lines,
+        "attachments": attachments_out,
     })
 
 
@@ -1303,9 +1298,9 @@ def save_invoice_payment_detail(
         # ---------------------------
         # 1. Validate invoice status
         # ---------------------------
-        if invoice.status not in ("issued", "draft", "partial"):
+        if invoice.status not in ("issued", "overdue", "partial"):
             return error_response(
-                message="Payment details can only be added to issued, partial, or draft invoices"
+                message="Payment details can only be added to issued, partial or overdue invoices"
             )
 
         # ---------------------------
@@ -1313,6 +1308,33 @@ def save_invoice_payment_detail(
         # ---------------------------
         if payload.method != "cash" and not payload.ref_no:
             return error_response(message="ref_no is mandatory and must be unique per invoice")
+
+        invoice_total = float(invoice.totals.get("grand") or 0)
+
+        existing_payments = db.query(PaymentAR).filter(
+            PaymentAR.invoice_id == invoice.id,
+            PaymentAR.is_deleted == False
+        ).all()
+
+        already_paid = sum(float(p.amount) for p in existing_payments)
+
+        incoming_amount = float(payload.amount or 0)
+
+        if payload.id:
+            old_payment = next(
+                (p for p in existing_payments if str(p.id) == str(payload.id)),
+                None
+            )
+            if old_payment:
+                already_paid -= float(old_payment.amount)
+
+        new_total_paid = already_paid + incoming_amount
+
+        if new_total_paid > invoice_total + 0.01:
+            remaining = invoice_total - already_paid
+            return error_response(
+                message=f"Payment exceeds invoice total. Remaining payable amount is {round(remaining, 2)}"
+            )
 
         # ---------------------------
         # 3. Determine existing payment
@@ -1680,3 +1702,110 @@ def get_advance_payments(db: Session, auth_db: Session, org_id: str, params: Inv
         "advances": results,
         "total": total
     }
+
+
+def download_invoice_pdf(
+    db: Session,
+    invoice_id: UUID,
+    current_user: UserToken
+):
+
+    invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.org_id == current_user.org_id,
+        Invoice.is_deleted == False
+    ).first()
+
+    if not invoice:
+        return error_response(message="Invoice not found")
+
+    organization = (
+        db.query(Org)
+        .filter(Org.id == invoice.org_id)
+        .first()
+    )
+
+    organization_name = organization.name if organization else "Organization"
+
+    customer = get_user_detail(invoice.user_id)
+    customer_name = customer.full_name if customer else "Customer"
+
+    advance_used, payments_total, balance = calculate_balance(db, invoice)
+
+    system_settings = get_system_settings(db, invoice.org_id)
+
+    file_path = generate_invoice_pdf(
+        invoice=invoice,
+        organization_name=organization_name,
+        customer_name=customer_name,
+        payments_total=float(payments_total),
+        advance_used=float(advance_used),
+        balance=float(balance),
+        system_settings=system_settings
+    )
+
+    filename = f"Invoice_{invoice.invoice_no}.pdf"
+
+    return file_path, filename
+
+
+def download_payment_recipt_pdf(
+    db: Session,
+    payment_id: UUID,
+    current_user: UserToken
+):
+
+    payment = db.query(PaymentAR).get(payment_id)
+    invoice = payment.invoice
+
+    organization = (
+        db.query(Org)
+        .filter(Org.id == invoice.org_id)
+        .first()
+    )
+
+    organization_name = organization.name if organization else "Organization"
+
+    customer = get_user_detail(invoice.user_id)
+    customer_name = customer.full_name if customer else "Customer"
+
+    advance_used, payments_total, balance = calculate_balance(db, invoice)
+
+    system_settings = get_system_settings(db, invoice.org_id)
+
+    file_path = generate_payment_receipt_pdf(
+        payment,
+        invoice,
+        organization_name=organization_name,
+        customer_name=customer_name,
+        balance_after_payment=balance,
+        system_settings=system_settings
+    )
+
+    return file_path
+
+
+def calculate_balance(db: Session, invoice: Invoice):
+    invoice_total = Decimal(invoice.totals.get("grand", 0))
+
+    advance_used = (
+        db.query(func.coalesce(func.sum(AdvanceAdjustment.amount), 0))
+        .filter(AdvanceAdjustment.invoice_id == invoice.id)
+        .scalar()
+    ) or Decimal("0")
+
+    payments_total = (
+        db.query(func.coalesce(func.sum(PaymentAR.amount), 0))
+        .filter(
+            PaymentAR.invoice_id == invoice.id,
+            PaymentAR.is_deleted == False
+        )
+        .scalar()
+    ) or Decimal("0")
+
+    balance = invoice_total - advance_used - payments_total
+
+    if balance < 0:
+        balance = Decimal("0")
+
+    return advance_used, payments_total, balance

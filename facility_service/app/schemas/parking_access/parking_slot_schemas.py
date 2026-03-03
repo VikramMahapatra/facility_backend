@@ -78,3 +78,24 @@ class AssignedParkingSlot(BaseModel):
 class AssignParkingSlotsRequest(BaseModel):
     space_id: UUID
     parking_slot_ids: Optional[List[UUID]] = None
+
+# bulk upload related schemas
+
+class ParkingSlotImport(BaseModel):
+    slot_no: str
+    siteName: str
+    zoneName: Optional[str] = None
+    slot_type: Optional[str] = None
+    spaceName: Optional[str] = None
+
+class BulkParkingSlotRequest(BaseModel):
+    slots: List[ParkingSlotImport]
+
+class BulkUploadError(BaseModel):
+    row: int
+    errors: List[str]
+
+class BulkParkingSlotResponse(BaseModel):
+    inserted: Optional[int] = 0
+    updated: Optional[int] = 0
+    validations: List[BulkUploadError] = []

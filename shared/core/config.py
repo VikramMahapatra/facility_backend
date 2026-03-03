@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     DB_PASS: str = os.getenv("DB_PASS")
     DB_HOST: str = os.getenv("DB_HOST")
     DB_PORT: str = os.getenv("DB_PORT")
+    DB_SSLMODE: str | None = os.getenv("DB_SSLMODE")
     AUTH_DB_NAME: str = os.getenv("AUTH_DB_NAME")
     FACILITY_DB_NAME: str = os.getenv("FACILITY_DB_NAME")
     # Add HRMS database configuration
@@ -52,13 +53,23 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-AUTH_DATABASE_URL = (
-    f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASS}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.AUTH_DB_NAME}?sslmode=require"
-)
 
-FACILITY_DATABASE_URL = (
-    f"postgresql+psycopg2://{settings.DB_USER}:{settings.DB_PASS}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.FACILITY_DB_NAME}?sslmode=require"
-)
+def build_db_url(db_name: str) -> str:
+    base_url = (
+        f"postgresql+psycopg2://"
+        f"{settings.DB_USER}:{settings.DB_PASS}"
+        f"@{settings.DB_HOST}:{settings.DB_PORT}/{db_name}"
+    )
+
+    # append ssl only if provided
+    if settings.DB_SSLMODE:
+        base_url += f"?sslmode={settings.DB_SSLMODE}"
+
+    return base_url
+
+
+AUTH_DATABASE_URL = build_db_url(settings.AUTH_DB_NAME)
+FACILITY_DATABASE_URL = build_db_url(settings.FACILITY_DB_NAME)
 
 # Create HRMS database URL
 # HRMS_DATABASE_URL = (

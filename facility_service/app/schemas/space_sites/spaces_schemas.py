@@ -224,6 +224,7 @@ class TenantHistoryOut(BaseModel):
 class OwnershipApprovalRequest(BaseModel):
     action: OwnershipStatus
     request_id: str
+    reason: Optional[str] = None
 
 
 class OwnershipApprovalListResponse(BaseModel):
@@ -251,7 +252,7 @@ class SpaceImport(BaseModel):
     buildingBlockName: Optional[str] = None
     category: Optional[str] = None
     kind: Optional[str] = None
-    floor: str | int | None = None 
+    floor: str | int | None = None
     area_sqft: Optional[float] = None
     beds: Optional[int] = None
     baths: Optional[int] = None
@@ -260,12 +261,15 @@ class SpaceImport(BaseModel):
     furnished: Optional[str] = None
     star_rating: Optional[int] = None
 
+
 class BulkSpaceRequest(BaseModel):
     spaces: List[SpaceImport]
+
 
 class BulkUploadError(BaseModel):
     row: int
     errors: List[str]
+
 
 class BulkSpaceResponse(BaseModel):
     inserted: Optional[int] = 0

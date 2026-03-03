@@ -1,4 +1,4 @@
-from sqlalchemy import (Column,String,Boolean,Integer,DateTime)
+from sqlalchemy import (Column, ForeignKey, String, Boolean, Integer, DateTime)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 import uuid
@@ -11,10 +11,12 @@ import json
 from sqlalchemy.orm import Session
 from shared.core.database import get_facility_db
 
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False)
     # ---------- General ----------
     system_name = Column(String(100), nullable=False)
     time_zone = Column(String(50), nullable=False)
@@ -32,7 +34,7 @@ class SystemSetting(Base):
     two_factor_auth_enabled = Column(Boolean, default=False)
     audit_logging_enabled = Column(Boolean, default=True)
     data_encryption_enabled = Column(Boolean, default=True)
-    
+
     # ---------- Integrations ----------
     email_service_enabled = Column(Boolean, default=False)
     weather_api_enabled = Column(Boolean, default=False)
@@ -41,13 +43,12 @@ class SystemSetting(Base):
     accounting_system_enabled = Column(Boolean, default=False)
     can_sync_to_hrms = Column(Boolean, default=False)
 
-
     # ---------- Meta ----------
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())
+    updated_at = Column(DateTime(timezone=True),
+                        server_default=func.now(), onupdate=func.now())
 
- 
- 
+
 '''
  
 

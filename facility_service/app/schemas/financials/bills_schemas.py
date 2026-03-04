@@ -124,3 +124,11 @@ class BillsOverview(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BillPaymentResponse(BaseModel):
+    payments: List[BillPaymentOut]
+    total: int
+    total_made: int
+
+    model_config = {"from_attributes": True}

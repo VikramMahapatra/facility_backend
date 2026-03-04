@@ -193,6 +193,7 @@ class InvoicesOverview(BaseModel):
 class PaymentResponse(BaseModel):
     payments: List[PaymentOut]
     total: int
+    total_received: int
 
     model_config = {"from_attributes": True}
 

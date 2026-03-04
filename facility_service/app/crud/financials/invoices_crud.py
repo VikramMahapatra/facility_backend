@@ -297,15 +297,24 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
     # -----------------------------------------
     # Total Count
     # -----------------------------------------
-    total = (
-        db.query(func.count(PaymentAR.id))
+    result = (
+        db.query(
+            func.count(PaymentAR.id).label("total_count"),
+            func.coalesce(
+                func.sum(PaymentAR.amount),
+                0
+            ).label("total_amount")
+        )
         .join(Invoice, PaymentAR.invoice_id == Invoice.id)
         .filter(
             PaymentAR.org_id == org_id,
             Invoice.is_deleted == False
         )
-        .scalar()
+        .one()
     )
+
+    total_count = result.total_count
+    total_amount = float(result.total_amount)
 
     # -----------------------------------------
     # Base Query with eager loading
@@ -370,7 +379,8 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
 
     return {
         "payments": results,
-        "total": total
+        "total": total_count,
+        "total_received": total_amount
     }
 
 

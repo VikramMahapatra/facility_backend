@@ -11,7 +11,7 @@ from facility_service.app.schemas.financials.invoices_schemas import InvoicesReq
 # from shared.helpers.json_response_helper import success_response
 from ...crud.financials import bills_crud as crud
 from ...schemas.financials.bills_schemas import (
-    BillCreate, BillOut, BillUpdate, BillsOverview,
+    BillCreate, BillOut, BillPaymentResponse, BillUpdate, BillsOverview,
     BillsRequest, BillsResponse, BillPaymentCreate, BillPaymentOut
 )
 from shared.core.database import get_auth_db, get_facility_db as get_db
@@ -176,7 +176,7 @@ def preview_bill_number(
     return {"bill_no": bill_no}
 
 
-@router.get("/payments", response_model=PaymentResponse)
+@router.get("/payments", response_model=BillPaymentResponse)
 def get_payments(
         params: InvoicesRequest = Depends(),
         db: Session = Depends(get_db),

@@ -1,6 +1,7 @@
 
-from datetime import date
+from datetime import date, timedelta
 from calendar import monthrange
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -62,7 +63,8 @@ def generate_monthly_billing(
             code=InvoiceType.rent.value,
             item_id=charge.id,
             description="Monthly Rent",
-            amount=charge.amount
+            amount=charge.amount,
+            due_date=charge.period_end + timedelta(days=7)
         )
 
         charge.invoice_id = invoice.id
@@ -89,7 +91,8 @@ def generate_monthly_billing(
             code=InvoiceType.owner_maintenance.value,
             item_id=charge.id,
             description="Owner Maintenance",
-            amount=charge.amount
+            amount=charge.amount,
+            due_date=charge.charge.period_end + timedelta(days=7)
         )
 
         charge.invoice_id = invoice.id
@@ -134,7 +137,8 @@ def generate_monthly_billing(
                 code=InvoiceType.work_order.value,
                 item_id=wo.id,
                 description=f"Work Order #{wo.wo_no}",
-                amount=wo.total_amount
+                amount=wo.total_amount,
+                due_date=date.today() + timedelta(days=7)
             )
 
             wo.invoice_id = invoice.id
@@ -160,7 +164,8 @@ def generate_monthly_billing(
             code=InvoiceType.parking_pass.value,
             item_id=p.id,
             description="Parking Pass",
-            amount=p.amount
+            amount=p.charge_amount,
+            due_date=date.today() + timedelta(days=7)
         )
 
         p.invoice_id = invoice.id
@@ -180,8 +185,13 @@ def create_ar_invoice(
     code: str,
     item_id: UUID,
     description: str,
-    amount: float
+    amount: float,
+    due_date: date
 ):
+    tax_pct = 5  # or dynamic
+    sub = Decimal(amount)
+    tax = (sub * Decimal(tax_pct)) / Decimal(100)
+    grand = sub + tax
 
     invoice = Invoice(
         org_id=org_id,
@@ -191,7 +201,13 @@ def create_ar_invoice(
         invoice_no=generate_invoice_number(db, org_id),
         status="issued",
         is_paid=False,
-        date=date.today()
+        date=date.today(),
+        due_date=due_date,
+        totals={
+            "sub": float(round(sub, 2)),
+            "tax": float(round(tax, 2)),
+            "grand": float(round(grand, 2))
+        }
     )
 
     db.add(invoice)
@@ -203,7 +219,7 @@ def create_ar_invoice(
         item_id=item_id,
         description=description,
         amount=amount,
-        tax_pct=0
+        tax_pct=tax_pct
     )
 
     db.add(line)
@@ -218,6 +234,10 @@ def create_ap_bill(
     description: str,
     amount: float
 ):
+    tax_pct = 5  # or dynamic
+    sub = Decimal(amount)
+    tax = (sub * Decimal(tax_pct)) / Decimal(100)
+    grand = sub + tax
 
     bill = Bill(
         org_id=org_id,
@@ -225,7 +245,11 @@ def create_ap_bill(
         bill_no=generate_bill_number(db, org_id),
         status="issued",
         date=date.today(),
-        total_amount=amount
+        totals={
+            "sub": float(round(sub, 2)),
+            "tax": float(round(tax, 2)),
+            "grand": float(round(grand, 2))
+        }
     )
 
     db.add(bill)

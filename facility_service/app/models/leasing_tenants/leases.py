@@ -1,9 +1,15 @@
 import uuid
-from sqlalchemy import Boolean, Column, Sequence, String, Date, Numeric, ForeignKey, DateTime, UniqueConstraint, event, select
+from sqlalchemy import Boolean, Column, Enum, Sequence, String, Date, Numeric, ForeignKey, DateTime, UniqueConstraint, event, select
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from shared.core.database import Base
+import enum
+
+
+class RentPeriod(str, enum.Enum):
+    monthly = "monthly"
+    annually = "annually"
 
 
 class Lease(Base):
@@ -25,7 +31,11 @@ class Lease(Base):
         "tenants.id"), nullable=True)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=True)
-
+    rent_period = Column(
+        Enum(RentPeriod),
+        nullable=False,
+        default=RentPeriod.monthly
+    )
     rent_amount = Column(Numeric(14, 2), nullable=True)
     deposit_amount = Column(Numeric(14, 2), nullable=True)
     lease_frequency = Column(String(16), default="monthly", nullable=True)

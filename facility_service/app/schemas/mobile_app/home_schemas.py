@@ -52,6 +52,7 @@ class LeaseContractDetail(EmptyStringModel):
     rent_frequency: Optional[str] = None
     last_paid_date: Optional[date] = None
     next_due_date: Optional[date] = None
+    security_deposit: float = 0.0
 
 
 class MaintenanceDetail(EmptyStringModel):

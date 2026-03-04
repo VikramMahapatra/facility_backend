@@ -786,6 +786,22 @@ def move_in(
                             message=f"Move-in date cannot exceed lease end date({lease.end_date})"
                         )
 
+        existing = (
+            db.query(SpaceOccupancy)
+            .filter(
+                SpaceOccupancy.occupant_user_id == params.occupant_user_id,
+                SpaceOccupancy.occupant_type == params.occupant_type,
+                SpaceOccupancy.space_id == params.space_id,
+                SpaceOccupancy.status.in_(
+                    [OccupancyStatus.pending, OccupancyStatus.active, OccupancyStatus.scheduled])
+            )
+        )
+
+        if existing:
+            return error_response(
+                message=f"Move-in request already submitted"
+            )
+
         # Create occupancy
         occ = SpaceOccupancy(
             space_id=params.space_id,

@@ -748,14 +748,14 @@ def move_in(
             return error_response(message="Space is already occupied")
 
         if current_user.account_type != UserAccountType.ORGANIZATION.value:
-            params.occupant_user_id = current_user.id
+            params.occupant_user_id = current_user.user_id
 
         if params.occupant_type == "tenant":
             if not params.tenant_id:
                 params.tenant_id = (
                     db.query(Tenant.id)
                     .filter(
-                        Tenant.user_id == current_user.user_id,
+                        Tenant.user_id == params.occupant_user_id,
                         SpaceOccupancy.status == OccupancyStatus.active
                     )
                     .first()

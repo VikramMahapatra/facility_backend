@@ -51,6 +51,7 @@ class LeaseBase(BaseModel):
     reference: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    rent_amount: Optional[str] = None
     rent_amount: Optional[Decimal] = None
     deposit_amount: Optional[Decimal] = None
     cam_rate: Optional[Decimal] = None

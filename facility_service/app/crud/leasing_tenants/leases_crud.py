@@ -430,6 +430,7 @@ async def create(
                 payment_terms.append(payment_term)
 
             db.add_all(payment_terms)
+            db.flush()
 
         sync_rent_charges(db, lease)
 
@@ -683,6 +684,8 @@ async def update(
                     new_terms.append(payment_term)
 
                 db.add_all(new_terms)
+
+            db.flush()
 
         sync_rent_charges(db, obj)
 

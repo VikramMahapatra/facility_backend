@@ -754,8 +754,10 @@ def move_in(
             if not params.tenant_id:
                 params.tenant_id = (
                     db.query(Tenant.id)
+                    .join(SpaceOccupancy, SpaceOccupancy.occupant_user_id == Tenant.user_id)
                     .filter(
                         Tenant.user_id == params.occupant_user_id,
+                        SpaceOccupancy.occupant_type == params.occupant_type,
                         SpaceOccupancy.status == OccupancyStatus.active
                     )
                     .first()

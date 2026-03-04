@@ -1708,7 +1708,7 @@ def sync_rent_charges(db: Session, lease: Lease):
     )
 
     existing_charges = {
-        c.source_term_id: c
+        c.id: c
         for c in db.query(LeaseCharge).filter(
             LeaseCharge.lease_id == lease.id,
             LeaseCharge.charge_code == "RENT",
@@ -1749,7 +1749,6 @@ def sync_rent_charges(db: Session, lease: Lease):
                 LeaseCharge(
                     lease_id=lease.id,
                     charge_code="RENT",
-                    source_term_id=term.id,
                     period_start=start,
                     period_end=end,
                     amount=term.amount,

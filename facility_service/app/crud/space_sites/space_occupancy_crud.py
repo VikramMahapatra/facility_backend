@@ -797,6 +797,7 @@ def move_in(
                 SpaceOccupancy.status.in_(
                     [OccupancyStatus.pending, OccupancyStatus.active, OccupancyStatus.scheduled])
             )
+            .first()
         )
 
         if existing:

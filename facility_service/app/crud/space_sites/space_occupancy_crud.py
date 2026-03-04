@@ -655,17 +655,18 @@ def get_space_occupancy_requests(
             Site.name.label("site_name"),
             Building.name.label("building_name"),
             SpaceOccupancy.occupant_type,
+            SpaceOccupancy.occupant_user_id,
             SpaceOccupancy.created_at,
             SpaceOccupancy.move_in_date,
             SpaceOccupancy.move_out_date,
             SpaceOccupancy.status,
         )
         .join(Space, Space.id == SpaceOccupancy.space_id)
-        .join(Building, Building.id == Space.building_id)
+        .join(Building, Building.id == Space.building_block_id)
         .join(Site, Site.id == Building.site_id)
         .filter(
             Space.org_id == org_id,
-            SpaceOccupancy.request_type.isnot_(None)
+            SpaceOccupancy.request_type.isnot(None)
         )
     )
 
@@ -792,6 +793,7 @@ def move_in(
                 SpaceOccupancy.occupant_user_id == params.occupant_user_id,
                 SpaceOccupancy.occupant_type == params.occupant_type,
                 SpaceOccupancy.space_id == params.space_id,
+                SpaceOccupancy.request_type == RequestType.move_in,
                 SpaceOccupancy.status.in_(
                     [OccupancyStatus.pending, OccupancyStatus.active, OccupancyStatus.scheduled])
             )

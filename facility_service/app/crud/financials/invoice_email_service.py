@@ -1,10 +1,13 @@
 from decimal import Decimal
+from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from facility_service.app.crud.system.system_settings_crud import get_system_settings
 from facility_service.app.models.financials.customer_advances import AdvanceAdjustment
 from facility_service.app.models.financials.invoices import Invoice, PaymentAR
+from facility_service.app.models.leasing_tenants.tenants import Tenant
 from facility_service.app.models.space_sites.orgs import Org
+from facility_service.app.schemas.financials.invoices_schemas import InvoiceCustomerDetail
 from shared.helpers.email_helper import EmailHelper
 from shared.helpers.json_response_helper import error_response
 from shared.helpers.user_helper import get_user_detail
@@ -29,7 +32,7 @@ class InvoiceEmailService:
         # -----------------------------
         if invoice.status not in ["issued", "partial", "paid"]:
             return error_response(
-                status_code=str(AppStatusCode.BAD_REQUEST),
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 message="Only issued invoices can be emailed"
             )
 
@@ -44,13 +47,17 @@ class InvoiceEmailService:
             .first()
         )
 
-        organization_name = organization.name if organization else "Organization"
-
         # -----------------------------
         # Customer (User)
         # -----------------------------
-        customer = get_user_detail(invoice.user_id)
-        customer_name = customer.full_name if customer else "Customer"
+        customer = get_tenant_detail(db, invoice.user_id)
+
+        customer_detail = InvoiceCustomerDetail(
+            customer_name=customer.name if customer else "Customer",
+            space_name=invoice.space.name,
+            customer_phone=customer.phone,
+            customer_address=format_address(customer.address)
+        )
 
         # -----------------------------
         # Invoice Total
@@ -92,8 +99,8 @@ class InvoiceEmailService:
         # -----------------------------
         pdf_path = generate_invoice_pdf(
             invoice=invoice,
-            organization_name=organization_name,
-            customer_name=customer_name,
+            organization=organization.name,
+            customer=customer_detail,
             payments_total=float(payments_total),
             advance_used=float(advance_used),
             balance=float(balance),
@@ -112,9 +119,9 @@ class InvoiceEmailService:
         # Email Context
         # -----------------------------
         context = {
-            "customer_name": customer_name,
+            "customer_name": customer.full_name,
             "invoice_no": invoice.invoice_no,
-            "organization_name": organization_name,
+            "organization_name": organization.name,
             "invoice_total": float(invoice_total),
             "advance_used": float(advance_used),
             "payments_total": float(payments_total),
@@ -123,7 +130,7 @@ class InvoiceEmailService:
             "currency": invoice.currency,
         }
 
-        subject = f"Invoice {invoice.invoice_no} from {organization_name}"
+        subject = f"Invoice {invoice.invoice_no} from {organization.name}"
 
         # -----------------------------
         # Send Email
@@ -148,3 +155,32 @@ class InvoiceEmailService:
             return "invoice_partially_adjusted"
 
         return "invoice_payment_required"
+
+
+def get_tenant_detail(db: Session, user_id: UUID):
+    tenant = db.query(Tenant).filter(Tenant.user_id ==
+                                     user_id, Tenant.is_deleted == False).first()
+    return tenant if tenant else None
+
+
+def format_address(address: dict) -> str:
+    if not address:
+        return ""
+
+    lines = []
+
+    for key in ["line1", "line2"]:
+        if address.get(key):
+            lines.append(address[key])
+
+    city_state = ", ".join(
+        filter(None, [address.get("city"), address.get("state")])
+    )
+
+    if address.get("pincode"):
+        city_state = f"{city_state} - {address['pincode']}" if city_state else address["pincode"]
+
+    if city_state:
+        lines.append(city_state)
+
+    return "\n".join(lines)

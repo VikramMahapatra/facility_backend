@@ -1,7 +1,7 @@
 import base64
 from collections import defaultdict
 
-from sqlalchemy import Integer, func
+from sqlalchemy import Integer, extract, func
 from sqlalchemy.orm import joinedload
 from datetime import date, datetime
 from decimal import Decimal
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
 from sqlalchemy.dialects.postgresql import JSONB
 from facility_service.app.crud.common.attachment_crud import AttachmentService
-from facility_service.app.crud.financials.invoice_email_service import InvoiceEmailService
+from facility_service.app.crud.financials.invoice_email_service import InvoiceEmailService, format_address, get_tenant_detail
 from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
 from facility_service.app.crud.system.system_settings_crud import get_system_settings
 from facility_service.app.enum.module_enum import ModuleName
@@ -31,6 +31,7 @@ from shared.helpers.json_response_helper import error_response, success_response
 from shared.helpers.user_helper import get_user_detail, get_user_name
 from shared.models.users import Users
 from facility_service.app.utils.invoice_pdf import generate_invoice_pdf, generate_payment_receipt_pdf
+from shared.utils.enums import UserAccountType
 
 from ...enum.revenue_enum import InvoicePayementMethod, InvoiceType
 
@@ -42,13 +43,21 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket
 from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceLineOut, InvoiceOut,  InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceCustomerDetail, InvoiceLineOut, InvoiceOut,  InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
 from facility_service.app.models.parking_access import parking_pass
 
+
+MODEL_MAP = {
+    InvoiceType.rent.value: LeaseCharge,
+    InvoiceType.work_order.value: TicketWorkOrder,
+    InvoiceType.owner_maintenance.value: OwnerMaintenanceCharge,
+    InvoiceType.parking_pass.value: ParkingPass,
+}
 
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
 # ----------------------------------------------------------------------
+
 
 def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
     filters = [
@@ -269,7 +278,8 @@ def get_payment_history(db: Session, invoice_id: UUID):
     invoice = (
         db.query(Invoice)
         .options(
-            joinedload(Invoice.payments)
+            joinedload(Invoice.payments),
+            joinedload(Invoice.lines)
         )
         .filter(
             Invoice.id == invoice_id
@@ -277,6 +287,7 @@ def get_payment_history(db: Session, invoice_id: UUID):
         .first()
     )
 
+    code = invoice.lines[0].code if invoice.lines else None
     payments_list = []
 
     for payment in invoice.payments:
@@ -284,28 +295,45 @@ def get_payment_history(db: Session, invoice_id: UUID):
             "id": payment.id,
             "invoice_id": payment.invoice_id,
             "amount": Decimal(str(payment.amount)),
+            "code": code,
             "method": payment.method,
             "ref_no": payment.ref_no,
+            "notes": payment.meta.get("notes") if payment.meta else None,
             "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None
         })
 
     return payments_list
 
 
-def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesRequest):
+def get_payments(
+    db: Session,
+    auth_db: Session,
+    org_id: str,
+    current_user: UserToken,
+    params: InvoicesRequest
+):
 
     # -----------------------------------------
     # Total Count
     # -----------------------------------------
-    total = (
-        db.query(func.count(PaymentAR.id))
+    result = (
+        db.query(
+            func.count(PaymentAR.id).label("total_count"),
+            func.coalesce(
+                func.sum(PaymentAR.amount),
+                0
+            ).label("total_amount")
+        )
         .join(Invoice, PaymentAR.invoice_id == Invoice.id)
         .filter(
             PaymentAR.org_id == org_id,
             Invoice.is_deleted == False
         )
-        .scalar()
+        .one()
     )
+
+    total_count = result.total_count
+    total_amount = float(result.total_amount)
 
     # -----------------------------------------
     # Base Query with eager loading
@@ -341,6 +369,17 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
                 matching_user_ids) if matching_user_ids else False
         ))
 
+    if params.year:
+        base_query = base_query.filter(
+            extract('year', PaymentAR.paid_at) == int(params.year)
+        )
+
+    if current_user.account_type in [UserAccountType.FLAT_OWNER, UserAccountType.TENANT]:
+        base_query = base_query.filter(Invoice.user_id == current_user.user_id)
+
+    if params.space_id:
+        base_query = base_query.filter(Invoice.space_id == params.space_id)
+
     payments = (
         base_query
         .order_by(PaymentAR.paid_at.desc())
@@ -356,6 +395,7 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
         invoice = payment.invoice
         site_name = invoice.site.name if invoice.site else None
         customer_name = get_user_name(invoice.user_id)
+        code = invoice.lines[0].code if invoice.lines else None
 
         # -----------------------------------------
         # Build Response
@@ -364,14 +404,17 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
             **payment.__dict__,
             "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
             "invoice_no": invoice.invoice_no,
+            "code": code,
+            "notes": payment.meta.get("notes") if payment.meta else None,
             "site_name": site_name,
             "customer_name": customer_name,
         }))
 
-    return {
+    return PaymentResponse.model_validate({
         "payments": results,
-        "total": total
-    }
+        "total": total_count,
+        "total_received": total_amount
+    })
 
 
 def get_invoice_by_id(db: Session, invoice_id: UUID):
@@ -422,7 +465,6 @@ def calculate_invoice_status(
 
 async def create_invoice(
     db: Session,
-    auth_db: Session,
     org_id: UUID,
     request: InvoiceCreate,
     attachments: list[UploadFile] | None,
@@ -480,6 +522,17 @@ async def create_invoice(
             )
 
             db.add(db_line)
+
+            if request.status == "issued" and line.item_id:
+                model = MODEL_MAP.get(line.code)
+
+                if model:
+                    record = db.query(model).filter(
+                        model.id == line.item_id
+                    ).first()
+
+                    if record:
+                        record.invoice_id = db_invoice.id
 
             invoice_amount += float(line.amount or 0)
 
@@ -636,6 +689,21 @@ async def update_invoice(
     if invoice_update.status == "issued" and old_invoice_status == "draft":
         apply_advance_to_invoice(db, db_invoice)
 
+    # -------------------------
+    # STATUS RECALCULATION
+    # -------------------------
+    new_status = calculate_invoice_status(
+        db=db,
+        invoice=db_invoice
+    )
+
+    db_invoice.status = new_status
+    db_invoice.is_paid = (new_status == "paid")
+
+    db.commit()
+    db.refresh(db_invoice)
+
+    if db_invoice.status == "issued" and old_invoice_status == "draft":
         # send email
         service = InvoiceEmailService()
         customer = get_user_detail(db_invoice.user_id)
@@ -644,20 +712,6 @@ async def update_invoice(
             invoice=db_invoice,
             customer_email=customer.email
         )
-
-    # -------------------------
-    # STATUS RECALCULATION
-    # -------------------------
-    new_status = calculate_invoice_status(
-        db=db,
-        db_invoice=db_invoice
-    )
-
-    db_invoice.status = new_status
-    db_invoice.is_paid = (new_status == "paid")
-
-    db.commit()
-    db.refresh(db_invoice)
 
     # -------------------------
     # RESPONSE
@@ -1229,7 +1283,8 @@ def get_invoice_detail(
             "ref_no": p.ref_no,
             "amount": Decimal(str(p.amount)),
             "paid_at": p.paid_at.date().isoformat() if p.paid_at else None,
-            "meta": p.meta
+            "meta": p.meta,
+            "notes": p.meta.get("notes") if p.meta else None,
         }
         for p in payments
     ]
@@ -1307,7 +1362,7 @@ def save_invoice_payment_detail(
         # 2. Validate ref_no
         # ---------------------------
         if payload.method != "cash" and not payload.ref_no:
-            return error_response(message="ref_no is mandatory and must be unique per invoice")
+            return error_response(message="Reference No. is mandatory and must be unique per invoice")
 
         invoice_total = float(invoice.totals.get("grand") or 0)
 
@@ -1358,7 +1413,7 @@ def save_invoice_payment_detail(
             ).first()
             if duplicate:
                 return error_response(
-                    message=f"Duplicate payment ref_no '{payload.ref_no}' for this invoice"
+                    message=f"Duplicate payment Ref No '{payload.ref_no}' for this invoice"
                 )
 
             # Update fields
@@ -1372,6 +1427,18 @@ def save_invoice_payment_detail(
                 payment.meta = payload.meta or {}
 
         else:
+
+            # Duplicate ref_no check (exclude self)
+            duplicate = db.query(PaymentAR).filter(
+                PaymentAR.invoice_id == invoice.id,
+                PaymentAR.ref_no == payload.ref_no,
+                PaymentAR.is_deleted == False
+            ).first()
+            if duplicate:
+                return error_response(
+                    message=f"Duplicate payment Ref No. '{payload.ref_no}' for this invoice"
+                )
+
             # Create mode: check if payment with same ref_no exists
             payment = db.query(PaymentAR).filter(
                 PaymentAR.invoice_id == invoice.id,
@@ -1725,10 +1792,14 @@ def download_invoice_pdf(
         .first()
     )
 
-    organization_name = organization.name if organization else "Organization"
+    customer = get_tenant_detail(db, invoice.user_id)
 
-    customer = get_user_detail(invoice.user_id)
-    customer_name = customer.full_name if customer else "Customer"
+    customer_detail = InvoiceCustomerDetail(
+        customer_name=customer.name if customer else "Customer",
+        space_name=invoice.space.name,
+        customer_phone=customer.phone,
+        customer_address=format_address(customer.address)
+    )
 
     advance_used, payments_total, balance = calculate_balance(db, invoice)
 
@@ -1736,8 +1807,8 @@ def download_invoice_pdf(
 
     file_path = generate_invoice_pdf(
         invoice=invoice,
-        organization_name=organization_name,
-        customer_name=customer_name,
+        organization=organization,
+        customer=customer_detail,
         payments_total=float(payments_total),
         advance_used=float(advance_used),
         balance=float(balance),

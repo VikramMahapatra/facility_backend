@@ -234,6 +234,7 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
             "ref_no": p.ref_no,
             "amount": Decimal(str(p.amount)),
             "paid_at": p.paid_at.date().isoformat() if p.paid_at else None,
+            "notes": p.meta.get("notes") if p.meta else None
         }
         for p in payments
     ]
@@ -656,15 +657,24 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
     # -----------------------------------------
     # Total Count
     # -----------------------------------------
-    total = (
-        db.query(func.count(BillPayment.id))
+    result = (
+        db.query(
+            func.count(BillPayment.id).label("total_count"),
+            func.coalesce(
+                func.sum(BillPayment.amount),
+                0
+            ).label("total_amount")
+        )
         .join(Bill, BillPayment.bill_id == Bill.id)
         .filter(
             BillPayment.org_id == org_id,
             Bill.is_deleted == False
         )
-        .scalar()
+        .one()
     )
+
+    total_count = result.total_count
+    total_amount = float(result.total_amount)
 
     # -----------------------------------------
     # Base Query with eager loading
@@ -718,12 +728,14 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
             "bill_no": bill.bill_no,
             "space_name": space_name,
             "site_name": site_name,
-            "customer_name": vendor_name
+            "customer_name": vendor_name,
+            "notes": payment.meta.get("notes") if payment.meta else None,
         }))
 
     return {
         "payments": results,
-        "total": total
+        "total": total_count,
+        "total_made": total_amount
     }
 
 

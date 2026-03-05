@@ -115,6 +115,7 @@ class PaymentOut(BaseModel):
     amount: Decimal
     paid_at: Optional[date_type] = None
     meta: Optional[Any] = None
+    notes: Optional[str] = None
     customer_name: Optional[str] = None  # Add this field
 
     class Config:
@@ -171,6 +172,8 @@ class InvoiceOut(BaseModel):
 
 class InvoicesRequest(CommonQueryParams):
     status: Optional[str] = None
+    year: Optional[str] = None
+    space_id: Optional[UUID] = None
     billable_item_type: Optional[str] = None
 
 
@@ -193,6 +196,7 @@ class InvoicesOverview(BaseModel):
 class PaymentResponse(BaseModel):
     payments: List[PaymentOut]
     total: int
+    total_received: int
 
     model_config = {"from_attributes": True}
 
@@ -224,3 +228,14 @@ class InvoiceDetailRequest(BaseModel):
     limit: int = 10
     status: Optional[str] = None
     invoice_id: Optional[UUID] = None
+
+
+class AutoInvoiceResponse(BaseModel):
+    total_invoice_created: int
+
+
+class InvoiceCustomerDetail(BaseModel):
+    customer_name: str
+    space_name: str
+    customer_address: str
+    customer_phone: str

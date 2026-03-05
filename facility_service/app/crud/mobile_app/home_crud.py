@@ -245,13 +245,7 @@ def get_home_details(db: Session, auth_db: Session, params: MasterQueryParams, u
             TenantSpace.site_id == params.site_id,
             TenantSpace.is_deleted == False,
             Tenant.user_id == user.user_id,
-            TenantSpace.status.in_(
-                [
-                    OwnershipStatus.pending.value,
-                    OwnershipStatus.approved.value,
-                    OwnershipStatus.leased.value
-                ]
-            )
+            TenantSpace.status == OwnershipStatus.leased.value
         ).options(
             joinedload(Space.building),
             joinedload(Space.site)
@@ -678,7 +672,8 @@ def get_space_detail(
                     total_rent_paid=float(total_rent_paid),
                     rent_frequency=lease.frequency,
                     last_paid_date=last_rent_paid,
-                    next_due_date=next_rent_due
+                    next_due_date=next_rent_due,
+                    security_deposit=lease.deposit_amount
                 )
 
         # Add space to response

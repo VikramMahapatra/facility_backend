@@ -975,8 +975,7 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> Li
         for work_order in work_orders:
             # Find invoices for this work order
             invoices = db.query(Invoice).filter(
-                Invoice.billable_item_type == "work order",
-                Invoice.billable_item_id == work_order.id,
+                Invoice.id == work_order.invoice_id,
                 Invoice.is_deleted == False
             ).all()
 

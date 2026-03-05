@@ -45,6 +45,15 @@ def occupancy_timeline(
     return crud.get_occupancy_timeline(db, space_id, current_user)
 
 
+@router.post("/{space_id:uuid}/tenant/timeline")
+def occupancy_timeline(
+    space_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_tenant_timeline(db, space_id, current_user)
+
+
 @router.get("/occupancy-requests")
 def get_space_occupancy_requests(
     params: OccupancyApprovalRequest = Depends(),

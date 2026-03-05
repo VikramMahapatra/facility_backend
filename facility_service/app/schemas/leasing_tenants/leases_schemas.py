@@ -4,6 +4,8 @@ from typing import Optional, List, Any
 from decimal import Decimal
 from pydantic import BaseModel, field_validator
 
+from facility_service.app.models.leasing_tenants.leases import RentPeriod
+
 from .lease_charges_schemas import LeaseChargeOut
 from shared.core.schemas import AttachmentOut, CommonQueryParams
 
@@ -51,6 +53,7 @@ class LeaseBase(BaseModel):
     reference: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    rent_period: Optional[RentPeriod] = None
     rent_amount: Optional[Decimal] = None
     deposit_amount: Optional[Decimal] = None
     cam_rate: Optional[Decimal] = None

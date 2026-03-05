@@ -40,6 +40,7 @@ class LeaseChargesOverview(BaseModel):
 class LeaseChargeOut(BaseModel):
     id: UUID
     lease_id: UUID
+    tenant_id: Optional[UUID] = None
     tenant_name: str
     site_id: Optional[UUID] = None
     site_name: str

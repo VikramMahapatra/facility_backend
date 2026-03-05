@@ -615,6 +615,75 @@ def get_occupancy_timeline(
     return timeline
 
 
+def get_tenant_timeline(
+    db: Session,
+    space_id: UUID,
+    user: UserToken
+):
+
+    events_query = (
+        db.query(SpaceOccupancyEvent)
+        .filter(SpaceOccupancyEvent.space_id == space_id)
+        .order_by(SpaceOccupancyEvent.event_date.asc())
+    )
+
+    if user.account_type in [UserAccountType.FLAT_OWNER, UserAccountType.TENANT]:
+        events_query = events_query.filter(
+            SpaceOccupancyEvent.occupant_user_id == user.user_id
+        )
+
+    events = events_query.all()
+
+    move_in_events = []
+    move_out_events = []
+
+    move_in_types = {
+        OccupancyEventType.moved_in_requested,
+        OccupancyEventType.moved_in_scheduled,
+        OccupancyEventType.moved_in_rejected,
+        OccupancyEventType.moved_in
+    }
+
+    move_out_types = {
+        OccupancyEventType.moved_out_requested,
+        OccupancyEventType.moved_out_scheduled,
+        OccupancyEventType.moved_out_rejected,
+        OccupancyEventType.moved_out,
+        OccupancyEventType.handover_awaited,
+        OccupancyEventType.handover_completed,
+        OccupancyEventType.inspection_requested,
+        OccupancyEventType.inspection_completed,
+        OccupancyEventType.maintenance_requested,
+        OccupancyEventType.maintenance_completed,
+        OccupancyEventType.settlement_pending,
+        OccupancyEventType.settlement_completed,
+    }
+
+    for e in events:
+
+        occupant_name = get_user_name(e.occupant_user_id)
+
+        event_data = {
+            "event": e.event_type,
+            "occupant_type": e.occupant_type,
+            "occupant_user_id": e.occupant_user_id,
+            "occupant_name": occupant_name,
+            "date": e.event_date,
+            "notes": e.notes,
+        }
+
+        if e.event_type in move_in_types:
+            move_in_events.append(event_data)
+
+        elif e.event_type in move_out_types:
+            move_out_events.append(event_data)
+
+    return {
+        "move_in": move_in_events,
+        "move_out": move_out_events
+    }
+
+
 def log_occupancy_event(
     db: Session,
     space_id: UUID,
@@ -655,17 +724,18 @@ def get_space_occupancy_requests(
             Site.name.label("site_name"),
             Building.name.label("building_name"),
             SpaceOccupancy.occupant_type,
+            SpaceOccupancy.occupant_user_id,
             SpaceOccupancy.created_at,
             SpaceOccupancy.move_in_date,
             SpaceOccupancy.move_out_date,
             SpaceOccupancy.status,
         )
         .join(Space, Space.id == SpaceOccupancy.space_id)
-        .join(Building, Building.id == Space.building_id)
+        .join(Building, Building.id == Space.building_block_id)
         .join(Site, Site.id == Building.site_id)
         .filter(
             Space.org_id == org_id,
-            SpaceOccupancy.request_type.isnot_(None)
+            SpaceOccupancy.request_type.isnot(None)
         )
     )
 
@@ -748,14 +818,16 @@ def move_in(
             return error_response(message="Space is already occupied")
 
         if current_user.account_type != UserAccountType.ORGANIZATION.value:
-            params.occupant_user_id = current_user.id
+            params.occupant_user_id = current_user.user_id
 
         if params.occupant_type == "tenant":
             if not params.tenant_id:
                 params.tenant_id = (
                     db.query(Tenant.id)
+                    .join(SpaceOccupancy, SpaceOccupancy.occupant_user_id == Tenant.user_id)
                     .filter(
-                        Tenant.user_id == current_user.user_id,
+                        Tenant.user_id == params.occupant_user_id,
+                        SpaceOccupancy.occupant_type == params.occupant_type,
                         SpaceOccupancy.status == OccupancyStatus.active
                     )
                     .first()
@@ -783,6 +855,24 @@ def move_in(
                         return error_response(
                             message=f"Move-in date cannot exceed lease end date({lease.end_date})"
                         )
+
+        existing = (
+            db.query(SpaceOccupancy)
+            .filter(
+                SpaceOccupancy.occupant_user_id == params.occupant_user_id,
+                SpaceOccupancy.occupant_type == params.occupant_type,
+                SpaceOccupancy.space_id == params.space_id,
+                SpaceOccupancy.request_type == RequestType.move_in,
+                SpaceOccupancy.status.in_(
+                    [OccupancyStatus.pending, OccupancyStatus.active, OccupancyStatus.scheduled])
+            )
+            .first()
+        )
+
+        if existing:
+            return error_response(
+                message=f"Move-in request already submitted"
+            )
 
         # Create occupancy
         occ = SpaceOccupancy(

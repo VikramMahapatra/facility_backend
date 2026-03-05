@@ -1,3 +1,4 @@
+from datetime import date
 import json
 import os
 from typing import List, Optional
@@ -8,10 +9,11 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 
 from facility_service.app.schemas.financials.invoices_schemas import InvoicesRequest, PaymentResponse
+from facility_service.app.utils.invoice_generator import auto_generate_monthly_bills
 # from shared.helpers.json_response_helper import success_response
 from ...crud.financials import bills_crud as crud
 from ...schemas.financials.bills_schemas import (
-    BillCreate, BillOut, BillUpdate, BillsOverview,
+    AutoBillResponse, BillCreate, BillOut, BillPaymentResponse, BillUpdate, BillsOverview,
     BillsRequest, BillsResponse, BillPaymentCreate, BillPaymentOut
 )
 from shared.core.database import get_auth_db, get_facility_db as get_db
@@ -176,7 +178,7 @@ def preview_bill_number(
     return {"bill_no": bill_no}
 
 
-@router.get("/payments", response_model=PaymentResponse)
+@router.get("/payments", response_model=BillPaymentResponse)
 def get_payments(
         params: InvoicesRequest = Depends(),
         db: Session = Depends(get_db),
@@ -209,4 +211,20 @@ def download_bill_payment(payment_id: UUID, db: Session = Depends(get_db)):
         path=file_path,
         media_type="application/pdf",
         filename=os.path.basename(file_path),
+    )
+
+
+@router.post("/auto-generate", response_model=AutoBillResponse)
+def auto_generate_lease_charges_endpoint(
+    date: date = Query(
+        ..., description="Any date in the month to generate lease charges for"),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return auto_generate_monthly_bills(
+        db=db,
+        org_id=current_user.org_id,
+        target_date=date,
+        current_user=current_user
     )

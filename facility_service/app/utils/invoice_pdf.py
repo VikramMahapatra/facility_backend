@@ -10,13 +10,15 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib import colors
 
-from facility_service.app.schemas.system.system_settings_schema import SystemSettingsOut
+from ..models.space_sites.orgs import Org
+from ..schemas.financials.invoices_schemas import InvoiceCustomerDetail
+from ..schemas.system.system_settings_schema import SystemSettingsOut
 
 
 def generate_invoice_pdf(
     invoice,
-    organization_name: str,
-    customer_name: str,
+    organization: Org,
+    customer: InvoiceCustomerDetail,
     payments_total: float,
     advance_used: float,
     balance: float,
@@ -27,39 +29,86 @@ def generate_invoice_pdf(
     story = []
 
     # --------------------------------------------------
-    # HEADER
+    # INVOICE TITLE
     # --------------------------------------------------
-    story.append(Paragraph(f"<b>{organization_name}</b>", styles["Title"]))
-    story.append(Spacer(1, 12))
 
-    story.append(
-        Paragraph(f"<b>Invoice No:</b> {invoice.invoice_no}", styles["Normal"])
+    title_style = ParagraphStyle(
+        "InvoiceTitle",
+        parent=styles["Title"],
+        alignment=1,  # Center
     )
-    story.append(
-        Paragraph(f"<b>Customer:</b> {customer_name}", styles["Normal"])
-    )
-    story.append(
-        Paragraph(
-            f"<b>Invoice Date:</b> {invoice.date.strftime('%d %b %Y')}",
-            styles["Normal"],
-        )
-    )
+
+    story.append(Paragraph("INVOICE", title_style))
+    story.append(Spacer(1, 20))
+
+    # --------------------------------------------------
+    # COMPANY / CUSTOMER / INVOICE META
+    # --------------------------------------------------
+
+    org_details = f"""
+    <b>{organization.name}</b><br/>
+    Phone: {organization.contact_phone or ''}<br/>
+    Email: {organization.billing_email or ''}
+    """
+
+    bill_to_lines = ["<b>Bill To</b>"]
+
+    if customer.customer_name:
+        bill_to_lines.append(customer.customer_name)
+
+    if customer.space_name:
+        bill_to_lines.append(f"Unit: {customer.space_name}")
+
+    if customer.customer_address:
+        bill_to_lines.append(customer.customer_address)
+
+    if customer.customer_phone:
+        bill_to_lines.append(f"Phone: {customer.customer_phone}")
+
+    customer_details = "<br/>".join(bill_to_lines)
+
+    invoice_meta = f"""
+    <b>Invoice No:</b> {invoice.invoice_no}<br/>
+    <b>Invoice Date:</b> {invoice.date.strftime('%d %b %Y')}<br/>
+    """
 
     if invoice.due_date:
-        story.append(
-            Paragraph(
-                f"<b>Due Date:</b> {invoice.due_date.strftime('%d %b %Y')}",
-                styles["Normal"],
-            )
-        )
+        invoice_meta += f"<b>Due Date:</b> {invoice.due_date.strftime('%d %b %Y')}"
 
-    story.append(Spacer(1, 20))
+    header_data = [
+        [
+            Paragraph(org_details, styles["Normal"]),
+            Paragraph(customer_details, styles["Normal"]),
+            Paragraph(invoice_meta, styles["Normal"]),
+        ]
+    ]
+
+    header_table = Table(
+        header_data,
+        colWidths=[220, 180, 160],
+        hAlign="LEFT"
+    )
+
+    header_table.setStyle(
+        TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ])
+    )
+
+    story.append(header_table)
+    story.append(Spacer(1, 25))
 
     # --------------------------------------------------
     # LINE ITEMS TABLE
     # --------------------------------------------------
     data = [
-        ["Code", "Description", "Amount", "Tax %"]
+        ["Type", "Description", "Amount", "Tax %"]
     ]
 
     subtotal = Decimal("0")

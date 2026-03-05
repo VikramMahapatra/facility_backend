@@ -58,7 +58,12 @@ class Space(Base):
         "HousekeepingTask", back_populates="space", cascade="all, delete-orphan")
     meters = relationship("Meter", back_populates="space",
                           cascade="all, delete-orphan")
-    tickets = relationship("Ticket", back_populates="space")
+    tickets = relationship(
+        "Ticket", foreign_keys="Ticket.space_id", back_populates="space")
+    amenity_tickets = relationship(
+        "Ticket",
+        foreign_keys="Ticket.amenity_id"
+    )
     parking_passes = relationship("ParkingPass", back_populates="space")
     owners = relationship(
         "SpaceOwner",

@@ -132,10 +132,10 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
     base_query = (
         db.query(LeaseCharge)
         .join(Lease, LeaseCharge.lease_id == Lease.id)
+        .join(Tenant, Lease.tenant_id == Tenant.id)
+        .join(Space, Lease.space_id == Space.id)
+        .join(Site, Lease.site_id == Site.id)
         .outerjoin(TaxCode, LeaseCharge.tax_code_id == TaxCode.id)
-        .outerjoin(Tenant, Lease.tenant_id == Tenant.id)
-        .outerjoin(Space, Lease.space_id == Space.id)
-        .outerjoin(Site, Lease.site_id == Site.id)
         .filter(*filters)
 
     )
@@ -220,7 +220,7 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
             "rent_amount": lease.rent_amount,
             "period_days": period_days,
             "site_id": lease.site_id,
-            "tenant_id": lease.tenant.id,
+            "tenant_id": lease.tenant.id if lease.tenant else None,
             "tenant_name": display_name,
             "site_name": lease.site.name if lease.site else None,
             "space_name": lease.space.name if lease.space else None,

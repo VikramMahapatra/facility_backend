@@ -68,7 +68,11 @@ class Ticket(Base):
 
     org = relationship("Org", back_populates="tickets")
     site = relationship("Site", back_populates="tickets")
-    space = relationship("Space", back_populates="tickets")
+    space = relationship(
+        "Space",
+        foreign_keys=[space_id],
+        back_populates="tickets"
+    )
     tenant = relationship("Tenant", back_populates="tickets")
     category = relationship("TicketCategory", back_populates="tickets")
 

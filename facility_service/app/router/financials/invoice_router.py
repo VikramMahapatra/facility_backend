@@ -128,7 +128,6 @@ async def create_invoice(
     invoice_data = InvoiceCreate(**invoice_dict)
     return await crud.create_invoice(
         db=db,
-        auth_db=auth_db,
         org_id=current_user.org_id,
         request=invoice_data,
         attachments=attachments,

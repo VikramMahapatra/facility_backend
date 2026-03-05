@@ -229,3 +229,10 @@ class InvoiceDetailRequest(BaseModel):
 
 class AutoInvoiceResponse(BaseModel):
     total_invoice_created: int
+
+
+class InvoiceCustomerDetail(BaseModel):
+    customer_name: str
+    space_name: str
+    customer_address: str
+    customer_phone: str

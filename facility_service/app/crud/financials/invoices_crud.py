@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
 from sqlalchemy.dialects.postgresql import JSONB
 from facility_service.app.crud.common.attachment_crud import AttachmentService
-from facility_service.app.crud.financials.invoice_email_service import InvoiceEmailService
+from facility_service.app.crud.financials.invoice_email_service import InvoiceEmailService, format_address, get_tenant_detail
 from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
 from facility_service.app.crud.system.system_settings_crud import get_system_settings
 from facility_service.app.enum.module_enum import ModuleName
@@ -42,7 +42,7 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket
 from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceLineOut, InvoiceOut,  InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceCustomerDetail, InvoiceLineOut, InvoiceOut,  InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
 from facility_service.app.models.parking_access import parking_pass
 
 
@@ -1335,7 +1335,7 @@ def save_invoice_payment_detail(
         # 2. Validate ref_no
         # ---------------------------
         if payload.method != "cash" and not payload.ref_no:
-            return error_response(message="ref_no is mandatory and must be unique per invoice")
+            return error_response(message="Reference No. is mandatory and must be unique per invoice")
 
         invoice_total = float(invoice.totals.get("grand") or 0)
 
@@ -1386,7 +1386,7 @@ def save_invoice_payment_detail(
             ).first()
             if duplicate:
                 return error_response(
-                    message=f"Duplicate payment ref_no '{payload.ref_no}' for this invoice"
+                    message=f"Duplicate payment Ref No '{payload.ref_no}' for this invoice"
                 )
 
             # Update fields
@@ -1400,6 +1400,18 @@ def save_invoice_payment_detail(
                 payment.meta = payload.meta or {}
 
         else:
+
+            # Duplicate ref_no check (exclude self)
+            duplicate = db.query(PaymentAR).filter(
+                PaymentAR.invoice_id == invoice.id,
+                PaymentAR.ref_no == payload.ref_no,
+                PaymentAR.is_deleted == False
+            ).first()
+            if duplicate:
+                return error_response(
+                    message=f"Duplicate payment Ref No. '{payload.ref_no}' for this invoice"
+                )
+
             # Create mode: check if payment with same ref_no exists
             payment = db.query(PaymentAR).filter(
                 PaymentAR.invoice_id == invoice.id,
@@ -1753,10 +1765,14 @@ def download_invoice_pdf(
         .first()
     )
 
-    organization_name = organization.name if organization else "Organization"
+    customer = get_tenant_detail(db, invoice.user_id)
 
-    customer = get_user_detail(invoice.user_id)
-    customer_name = customer.full_name if customer else "Customer"
+    customer_detail = InvoiceCustomerDetail(
+        customer_name=customer.name if customer else "Customer",
+        space_name=invoice.space.name,
+        customer_phone=customer.phone,
+        customer_address=format_address(customer.address)
+    )
 
     advance_used, payments_total, balance = calculate_balance(db, invoice)
 
@@ -1764,8 +1780,8 @@ def download_invoice_pdf(
 
     file_path = generate_invoice_pdf(
         invoice=invoice,
-        organization_name=organization_name,
-        customer_name=customer_name,
+        organization=organization,
+        customer=customer_detail,
         payments_total=float(payments_total),
         advance_used=float(advance_used),
         balance=float(balance),

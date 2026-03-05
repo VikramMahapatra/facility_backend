@@ -35,6 +35,7 @@ class BillPaymentBase(BaseModel):
     method: Optional[str] = None
     ref_no: Optional[str] = None
     paid_at: Optional[datetime] = None
+    meta: Optional[Any] = None
 
     class Config:
         from_attributes = True
@@ -51,6 +52,7 @@ class BillPaymentOut(BillPaymentBase):
     site_name: Optional[str] = None
     space_name: Optional[str] = None
     customer_name: Optional[str] = None
+    notes: Optional[Any] = None
 
 # Bills
 

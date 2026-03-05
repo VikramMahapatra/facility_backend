@@ -234,6 +234,7 @@ def get_bill_detail(db: Session, auth_db: Session, org_id: UUID, bill_id: UUID) 
             "ref_no": p.ref_no,
             "amount": Decimal(str(p.amount)),
             "paid_at": p.paid_at.date().isoformat() if p.paid_at else None,
+            "notes": p.meta.get("notes") if p.meta else None
         }
         for p in payments
     ]
@@ -727,7 +728,8 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
             "bill_no": bill.bill_no,
             "space_name": space_name,
             "site_name": site_name,
-            "customer_name": vendor_name
+            "customer_name": vendor_name,
+            "notes": payment.meta.get("notes") if payment.meta else None,
         }))
 
     return {

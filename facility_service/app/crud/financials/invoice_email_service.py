@@ -32,7 +32,7 @@ class InvoiceEmailService:
         # -----------------------------
         if invoice.status not in ["issued", "partial", "paid"]:
             return error_response(
-                status_code=str(AppStatusCode.BAD_REQUEST),
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
                 message="Only issued invoices can be emailed"
             )
 

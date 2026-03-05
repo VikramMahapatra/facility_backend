@@ -689,15 +689,6 @@ async def update_invoice(
     if invoice_update.status == "issued" and old_invoice_status == "draft":
         apply_advance_to_invoice(db, db_invoice)
 
-        # send email
-        service = InvoiceEmailService()
-        customer = get_user_detail(db_invoice.user_id)
-        service.send_invoice_to_customer(
-            db=db,
-            invoice=db_invoice,
-            customer_email=customer.email
-        )
-
     # -------------------------
     # STATUS RECALCULATION
     # -------------------------
@@ -711,6 +702,16 @@ async def update_invoice(
 
     db.commit()
     db.refresh(db_invoice)
+
+    if db_invoice.status == "issued" and old_invoice_status == "draft":
+        # send email
+        service = InvoiceEmailService()
+        customer = get_user_detail(db_invoice.user_id)
+        service.send_invoice_to_customer(
+            db=db,
+            invoice=db_invoice,
+            customer_email=customer.email
+        )
 
     # -------------------------
     # RESPONSE

@@ -104,6 +104,15 @@ def space_building_lookup(
     return crud.get_space_with_building_lookup(db, site_id, current_user.org_id)
 
 
+@router.post("/amenities-lookup", response_model=List[Lookup])
+def filter_space_with_request_type_lookup(
+    site_id: Optional[str],
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_space_lookup(db=db, site_id=site_id, user=current_user, request_type="community")
+
+
 @router.get("/detail/{space_id:str}", response_model=SpaceOut)
 def get_space_details(
         space_id: str,

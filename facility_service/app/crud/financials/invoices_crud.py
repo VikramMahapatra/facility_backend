@@ -65,11 +65,14 @@ def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
         Invoice.is_deleted == False  # ✅ ADD THIS: Exclude soft-deleted invoices
     ]
 
-    if params.billable_item_type and params.billable_item_type.lower() != "all":
-        filters.append(InvoiceLine.code == params.billable_item_type)
+    if params.code and params.code.lower() != "all":
+        filters.append(InvoiceLine.code == params.code)
 
     if params.status and params.status.lower() != "all":
         filters.append(Invoice.status == params.status)
+
+    if params.site_id and params.site_id.lower() != "all":
+        filters.append(Invoice.site_id == params.site_id)
 
     if params.search:
         search_term = f"%{params.search}%"
@@ -899,180 +902,6 @@ def get_pending_charges_by_customer(
             })
 
     return list(customers.values())
-
-
-def get_work_order_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> InvoicesResponse:
-    """Get only work order invoices"""
-    # Add filter for work order type
-    params.billable_item_type = "work order"
-
-    base_query = get_invoices_query(db, org_id, params)
-    total = base_query.with_entities(func.count(Invoice.id)).scalar()
-
-    invoices = (
-        base_query
-        .order_by(Invoice.updated_at.desc())
-        .join(Site, Site.id == Invoice.site_id)
-        .offset(params.skip)
-        .limit(params.limit)
-        .all()
-    )
-
-    results = []
-    for invoice in invoices:
-        billable_item_name = None
-        site_name = invoice.site.name if invoice.site else None
-
-        if invoice.billable_item_id:
-            ticket_work_order = db.query(TicketWorkOrder).filter(
-                TicketWorkOrder.id == invoice.billable_item_id,
-                TicketWorkOrder.is_deleted == False
-            ).first()
-            if ticket_work_order:
-                ticket = db.query(Ticket).filter(
-                    Ticket.id == ticket_work_order.ticket_id,
-                    Ticket.status == "open"
-                ).first()
-
-                if ticket and ticket.ticket_no:
-                    billable_item_name = f"{ticket_work_order.wo_no} | Ticket {ticket.ticket_no}"
-                else:
-                    billable_item_name = ticket_work_order.wo_no
-
-        # ✅ ADD: Get payments and calculate status
-        payments = db.query(PaymentAR).filter(
-            PaymentAR.invoice_id == invoice.id
-        ).all()
-
-        payments_list = []
-        for payment in payments:
-            payments_list.append({
-                "id": payment.id,
-                "org_id": payment.org_id,
-                "invoice_id": payment.invoice_id,
-                "invoice_no": invoice.invoice_no,
-                "billable_item_name": billable_item_name,
-                "method": payment.method,
-                "ref_no": payment.ref_no,
-                "amount": Decimal(str(payment.amount)),
-                "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
-                "meta": payment.meta
-            })
-
-        # Calculate dynamic status
-        invoice_amount = 0.0
-        if invoice.totals and "grand" in invoice.totals:
-            invoice_amount = float(invoice.totals.get("grand", 0.0))
-
-        actual_status = calculate_invoice_status(
-            db=db,
-            invoice=invoice
-        )
-
-        is_paid = (actual_status == "paid")
-
-        invoice_data = InvoiceOut.model_validate({
-            **invoice.__dict__,
-            "date": invoice.date.isoformat() if invoice.date else None,
-            "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
-            "billable_item_name": billable_item_name,
-            "site_name": site_name,
-            "status": actual_status,  # ✅ Use calculated status
-            "is_paid": is_paid,  # ✅ Use calculated is_paid
-            "payments": payments_list  # ✅ Add payments
-        })
-        results.append(invoice_data)
-
-    return InvoicesResponse(
-        invoices=results,
-        total=total
-    )
-
-
-def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> InvoicesResponse:
-    """Get only lease charge invoices"""
-    # Add filter for lease charge type
-    params.billable_item_type = "lease charge"
-
-    base_query = get_invoices_query(db, org_id, params)
-    total = base_query.with_entities(func.count(Invoice.id)).scalar()
-
-    invoices = (
-        base_query
-        .order_by(Invoice.updated_at.desc())
-        .join(Site, Site.id == Invoice.site_id)
-        .offset(params.skip)
-        .limit(params.limit)
-        .all()
-    )
-
-    results = []
-    for invoice in invoices:
-        billable_item_name = None
-        site_name = invoice.site.name if invoice.site else None
-
-        if invoice.billable_item_id:
-            lease_charge = db.query(LeaseCharge).filter(
-                LeaseCharge.id == invoice.billable_item_id,
-                LeaseCharge.is_deleted == False
-            ).first()
-            if lease_charge:
-                charge_code = lease_charge.charge_code.code
-                if lease_charge.period_start and lease_charge.period_end:
-                    start_str = lease_charge.period_start.strftime("%d %b %Y")
-                    end_str = lease_charge.period_end.strftime("%d %b %Y")
-                    billable_item_name = f"{charge_code} | {start_str} - {end_str}"
-                else:
-                    billable_item_name = charge_code
-
-        # ✅ ADD: Get payments and calculate status
-        payments = db.query(PaymentAR).filter(
-            PaymentAR.invoice_id == invoice.id
-        ).all()
-
-        payments_list = []
-        for payment in payments:
-            payments_list.append({
-                "id": payment.id,
-                "org_id": payment.org_id,
-                "invoice_id": payment.invoice_id,
-                "invoice_no": invoice.invoice_no,
-                "billable_item_name": billable_item_name,
-                "method": payment.method,
-                "ref_no": payment.ref_no,
-                "amount": Decimal(str(payment.amount)),
-                "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
-                "meta": payment.meta
-            })
-
-        # Calculate dynamic status
-        invoice_amount = 0.0
-        if invoice.totals and "grand" in invoice.totals:
-            invoice_amount = float(invoice.totals.get("grand", 0.0))
-
-        actual_status = calculate_invoice_status(
-            db=db,
-            invoice=invoice
-        )
-
-        is_paid = (actual_status == "paid")
-
-        invoice_data = InvoiceOut.model_validate({
-            **invoice.__dict__,
-            "date": invoice.date.isoformat() if invoice.date else None,
-            "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
-            "billable_item_name": billable_item_name,
-            "site_name": site_name,
-            "status": actual_status,  # ✅ Use calculated status
-            "is_paid": is_paid,  # ✅ Use calculated is_paid
-            "payments": payments_list  # ✅ Add payments
-        })
-        results.append(invoice_data)
-
-    return InvoicesResponse(
-        invoices=results,
-        total=total
-    )
 
 
 def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[str, Any]:

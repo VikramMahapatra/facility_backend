@@ -220,6 +220,7 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
             "rent_amount": lease.rent_amount,
             "period_days": period_days,
             "site_id": lease.site_id,
+            "tenant_id": lease.tenant.id,
             "tenant_name": display_name,
             "site_name": lease.site.name if lease.site else None,
             "space_name": lease.space.name if lease.space else None,

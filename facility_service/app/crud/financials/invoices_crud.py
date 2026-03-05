@@ -1,7 +1,7 @@
 import base64
 from collections import defaultdict
 
-from sqlalchemy import Integer, func
+from sqlalchemy import Integer, extract, func
 from sqlalchemy.orm import joinedload
 from datetime import date, datetime
 from decimal import Decimal
@@ -31,6 +31,7 @@ from shared.helpers.json_response_helper import error_response, success_response
 from shared.helpers.user_helper import get_user_detail, get_user_name
 from shared.models.users import Users
 from facility_service.app.utils.invoice_pdf import generate_invoice_pdf, generate_payment_receipt_pdf
+from shared.utils.enums import UserAccountType
 
 from ...enum.revenue_enum import InvoicePayementMethod, InvoiceType
 
@@ -277,7 +278,8 @@ def get_payment_history(db: Session, invoice_id: UUID):
     invoice = (
         db.query(Invoice)
         .options(
-            joinedload(Invoice.payments)
+            joinedload(Invoice.payments),
+            joinedload(Invoice.lines)
         )
         .filter(
             Invoice.id == invoice_id
@@ -285,6 +287,7 @@ def get_payment_history(db: Session, invoice_id: UUID):
         .first()
     )
 
+    code = invoice.lines[0].code if invoice.lines else None
     payments_list = []
 
     for payment in invoice.payments:
@@ -292,15 +295,23 @@ def get_payment_history(db: Session, invoice_id: UUID):
             "id": payment.id,
             "invoice_id": payment.invoice_id,
             "amount": Decimal(str(payment.amount)),
+            "code": code,
             "method": payment.method,
             "ref_no": payment.ref_no,
+            "notes": payment.meta.get("notes") if payment.meta else None,
             "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None
         })
 
     return payments_list
 
 
-def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesRequest):
+def get_payments(
+    db: Session,
+    auth_db: Session,
+    org_id: str,
+    current_user: UserToken,
+    params: InvoicesRequest
+):
 
     # -----------------------------------------
     # Total Count
@@ -358,6 +369,17 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
                 matching_user_ids) if matching_user_ids else False
         ))
 
+    if params.year:
+        base_query = base_query.filter(
+            extract('year', PaymentAR.paid_at) == int(params.year)
+        )
+
+    if current_user.account_type in [UserAccountType.FLAT_OWNER, UserAccountType.TENANT]:
+        base_query = base_query.filter(Invoice.user_id == current_user.user_id)
+
+    if params.space_id:
+        base_query = base_query.filter(Invoice.space_id == params.space_id)
+
     payments = (
         base_query
         .order_by(PaymentAR.paid_at.desc())
@@ -373,6 +395,7 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
         invoice = payment.invoice
         site_name = invoice.site.name if invoice.site else None
         customer_name = get_user_name(invoice.user_id)
+        code = invoice.lines[0].code if invoice.lines else None
 
         # -----------------------------------------
         # Build Response
@@ -381,6 +404,8 @@ def get_payments(db: Session, auth_db: Session, org_id: str, params: InvoicesReq
             **payment.__dict__,
             "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
             "invoice_no": invoice.invoice_no,
+            "code": code,
+            "notes": payment.meta.get("notes") if payment.meta else None,
             "site_name": site_name,
             "customer_name": customer_name,
         }))

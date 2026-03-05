@@ -171,6 +171,8 @@ class InvoiceOut(BaseModel):
 
 class InvoicesRequest(CommonQueryParams):
     status: Optional[str] = None
+    year: Optional[str] = None
+    space_id: Optional[UUID] = None
     billable_item_type: Optional[str] = None
 
 

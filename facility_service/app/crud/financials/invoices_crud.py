@@ -43,7 +43,7 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket
 from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceCustomerDetail, InvoiceLineOut, InvoiceOut,  InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceCustomerDetail, InvoiceLineOut, InvoiceOut,  InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
 from facility_service.app.models.parking_access import parking_pass
 
 
@@ -410,11 +410,11 @@ def get_payments(
             "customer_name": customer_name,
         }))
 
-    return {
+    return PaymentResponse.model_validate({
         "payments": results,
         "total": total_count,
         "total_received": total_amount
-    }
+    })
 
 
 def get_invoice_by_id(db: Session, invoice_id: UUID):

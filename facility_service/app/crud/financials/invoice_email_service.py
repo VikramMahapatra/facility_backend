@@ -99,7 +99,7 @@ class InvoiceEmailService:
         # -----------------------------
         pdf_path = generate_invoice_pdf(
             invoice=invoice,
-            organization_name=organization.name,
+            organization=organization.name,
             customer=customer_detail,
             payments_total=float(payments_total),
             advance_used=float(advance_used),

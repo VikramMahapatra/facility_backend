@@ -615,6 +615,67 @@ def get_occupancy_timeline(
     return timeline
 
 
+def get_tenant_timeline(
+    db: Session,
+    space_id: UUID,
+    user: UserToken
+):
+
+    events_query = (
+        db.query(SpaceOccupancyEvent)
+        .filter(SpaceOccupancyEvent.space_id == space_id)
+        .order_by(SpaceOccupancyEvent.event_date.asc())
+    )
+
+    if user.account_type in [UserAccountType.FLAT_OWNER, UserAccountType.TENANT]:
+        events_query = events_query.filter(
+            SpaceOccupancyEvent.occupant_user_id == user.user_id
+        )
+
+    events = events_query.all()
+
+    move_in_events = []
+    move_out_events = []
+
+    move_in_types = {
+        OccupancyEventType.moved_in_requested,
+        OccupancyEventType.moved_in_scheduled,
+        OccupancyEventType.moved_in_rejected,
+        OccupancyEventType.moved_in
+    }
+
+    move_out_types = {
+        OccupancyEventType.moved_out_requested,
+        OccupancyEventType.moved_out_scheduled,
+        OccupancyEventType.moved_out_rejected,
+        OccupancyEventType.moved_out
+    }
+
+    for e in events:
+
+        occupant_name = get_user_name(e.occupant_user_id)
+
+        event_data = {
+            "event": e.event_type,
+            "occupant_type": e.occupant_type,
+            "occupant_user_id": e.occupant_user_id,
+            "occupant_name": occupant_name,
+            "date": e.event_date,
+            "notes": e.notes,
+        }
+
+        if e.event_type in move_in_types:
+            move_in_events.append(event_data)
+
+        elif e.event_type in move_out_types:
+            move_out_events.append(event_data)
+
+    return {
+        "move_in": move_in_events,
+        "move_out": move_out_events
+    }
+
+
 def log_occupancy_event(
     db: Session,
     space_id: UUID,

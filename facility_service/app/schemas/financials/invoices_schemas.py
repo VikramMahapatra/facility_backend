@@ -115,6 +115,7 @@ class PaymentOut(BaseModel):
     amount: Decimal
     paid_at: Optional[date_type] = None
     meta: Optional[Any] = None
+    notes: Optional[str] = None
     customer_name: Optional[str] = None  # Add this field
 
     class Config:

@@ -1,12 +1,14 @@
+from datetime import date
 import json
 import os
 from typing import List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
+from facility_service.app.utils.invoice_generator import auto_generate_monthly_invoices
 from shared.helpers.json_response_helper import success_response
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, AutoInvoiceResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import Lookup, UserToken
@@ -273,3 +275,19 @@ def get_advance_payments(
         auth_db: Session = Depends(get_auth_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.get_advance_payments(db=db, auth_db=auth_db, org_id=current_user.org_id, params=params)
+
+
+@router.post("/auto-generate", response_model=AutoInvoiceResponse)
+def auto_generate_lease_charges_endpoint(
+    date: date = Query(
+        ..., description="Any date in the month to generate lease charges for"),
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return auto_generate_monthly_invoices(
+        db=db,
+        org_id=current_user.org_id,
+        target_date=date,
+        current_user=current_user
+    )

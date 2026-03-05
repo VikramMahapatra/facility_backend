@@ -46,9 +46,17 @@ from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, Advance
 from facility_service.app.models.parking_access import parking_pass
 
 
+MODEL_MAP = {
+    InvoiceType.rent.value: LeaseCharge,
+    InvoiceType.work_order.value: TicketWorkOrder,
+    InvoiceType.owner_maintenance.value: OwnerMaintenanceCharge,
+    InvoiceType.parking_pass.value: ParkingPass,
+}
+
 # ----------------------------------------------------------------------
 # CRUD OPERATIONS
 # ----------------------------------------------------------------------
+
 
 def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
     filters = [
@@ -432,7 +440,6 @@ def calculate_invoice_status(
 
 async def create_invoice(
     db: Session,
-    auth_db: Session,
     org_id: UUID,
     request: InvoiceCreate,
     attachments: list[UploadFile] | None,
@@ -490,6 +497,17 @@ async def create_invoice(
             )
 
             db.add(db_line)
+
+            if request.status == "issued" and line.item_id:
+                model = MODEL_MAP.get(line.code)
+
+                if model:
+                    record = db.query(model).filter(
+                        model.id == line.item_id
+                    ).first()
+
+                    if record:
+                        record.invoice_id = db_invoice.id
 
             invoice_amount += float(line.amount or 0)
 

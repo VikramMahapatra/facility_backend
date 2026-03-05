@@ -132,3 +132,7 @@ class BillPaymentResponse(BaseModel):
     total_made: int
 
     model_config = {"from_attributes": True}
+
+
+class AutoBillResponse(BaseModel):
+    total_bill_created: int

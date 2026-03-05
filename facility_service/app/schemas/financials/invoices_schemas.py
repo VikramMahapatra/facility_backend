@@ -225,3 +225,7 @@ class InvoiceDetailRequest(BaseModel):
     limit: int = 10
     status: Optional[str] = None
     invoice_id: Optional[UUID] = None
+
+
+class AutoInvoiceResponse(BaseModel):
+    total_invoice_created: int

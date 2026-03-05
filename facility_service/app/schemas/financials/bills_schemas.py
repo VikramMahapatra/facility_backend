@@ -108,6 +108,7 @@ class BillOut(BillBase):
 class BillsRequest(CommonQueryParams):
     status: Optional[str] = None
     vendor_id: Optional[UUID] = None
+    site_id: Optional[UUID] = None
 
 
 class BillsResponse(BaseModel):

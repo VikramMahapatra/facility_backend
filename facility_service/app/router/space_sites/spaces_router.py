@@ -105,7 +105,7 @@ def space_building_lookup(
 
 
 @router.post("/amenities-lookup", response_model=List[Lookup])
-def filter_space_with_request_type_lookup(
+def get_amenities_lookup(
     site_id: Optional[str],
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)

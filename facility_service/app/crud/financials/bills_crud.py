@@ -43,6 +43,9 @@ def build_bills_filters(db: Session, auth_db: Session, org_id: UUID, params: Bil
     if params.vendor_id:
         filters.append(Bill.vendor_id == params.vendor_id)
 
+    if params.site_id:
+        filters.append(Bill.site_id == params.site_id)
+
     # Text Search Bar (bill number OR vendor name)
     if params.search:
         search_term = f"%{params.search}%"

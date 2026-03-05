@@ -71,7 +71,7 @@ def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
     if params.status and params.status.lower() != "all":
         filters.append(Invoice.status == params.status)
 
-    if params.site_id and params.site_id.lower() != "all":
+    if params.site_id:
         filters.append(Invoice.site_id == params.site_id)
 
     if params.search:

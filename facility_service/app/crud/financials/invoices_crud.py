@@ -694,7 +694,7 @@ async def update_invoice(
     # -------------------------
     new_status = calculate_invoice_status(
         db=db,
-        db_invoice=db_invoice
+        invoice=db_invoice
     )
 
     db_invoice.status = new_status

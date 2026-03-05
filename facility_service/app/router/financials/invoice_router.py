@@ -92,7 +92,23 @@ def get_payments(
         auth_db=auth_db,
         org_id=current_user.org_id,
         current_user=current_user,
-        params=params)
+        params=params
+    )
+
+
+@router.post("/payments", response_model=PaymentResponse)
+def get_payments(
+        params: InvoicesRequest = Depends(),
+        db: Session = Depends(get_db),
+        auth_db: Session = Depends(get_auth_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_payments(
+        db=db,
+        auth_db=auth_db,
+        org_id=current_user.org_id,
+        current_user=current_user,
+        params=params
+    )
 
 
 @router.get("/payment-history/{invoice_id}", response_model=List[PaymentOut])

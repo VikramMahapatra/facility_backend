@@ -1283,7 +1283,8 @@ def get_invoice_detail(
             "ref_no": p.ref_no,
             "amount": Decimal(str(p.amount)),
             "paid_at": p.paid_at.date().isoformat() if p.paid_at else None,
-            "meta": p.meta
+            "meta": p.meta,
+            "notes": p.meta.get("notes") if p.meta else None,
         }
         for p in payments
     ]

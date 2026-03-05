@@ -648,7 +648,15 @@ def get_tenant_timeline(
         OccupancyEventType.moved_out_requested,
         OccupancyEventType.moved_out_scheduled,
         OccupancyEventType.moved_out_rejected,
-        OccupancyEventType.moved_out
+        OccupancyEventType.moved_out,
+        OccupancyEventType.handover_awaited,
+        OccupancyEventType.handover_completed,
+        OccupancyEventType.inspection_requested,
+        OccupancyEventType.inspection_completed,
+        OccupancyEventType.maintenance_requested,
+        OccupancyEventType.maintenance_completed,
+        OccupancyEventType.settlement_pending,
+        OccupancyEventType.settlement_completed,
     }
 
     for e in events:

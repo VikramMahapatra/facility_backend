@@ -11,7 +11,7 @@ from ...schemas.space_sites.spaces_schemas import (
     SpaceUpdate, TenantHistoryOut, BulkSpaceRequest, BulkSpaceResponse)
 from ...crud.space_sites import spaces_crud as crud
 from shared.core.auth import allow_admin,  validate_current_token  # for dependicies
-from shared.core.schemas import CommonQueryParams, Lookup, UserToken
+from shared.core.schemas import CommonQueryParams, Lookup, MasterQueryParams, UserToken
 from uuid import UUID
 router = APIRouter(
     prefix="/api/spaces",
@@ -106,11 +106,11 @@ def space_building_lookup(
 
 @router.post("/amenities-lookup", response_model=List[Lookup])
 def get_amenities_lookup(
-    site_id: Optional[str],
+    params: MasterQueryParams,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_space_lookup(db=db, site_id=site_id, user=current_user, request_type="community")
+    return crud.get_space_lookup(db=db, site_id=params.site_id, user=current_user, request_type="community")
 
 
 @router.get("/detail/{space_id:str}", response_model=SpaceOut)

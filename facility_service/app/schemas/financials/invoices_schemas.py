@@ -170,9 +170,31 @@ class InvoiceOut(BaseModel):
         from_attributes = True
 
 
+class UserInvoiceOut(BaseModel):
+    id: UUID
+    org_id: UUID
+    site_id: UUID
+    space_id: UUID
+    invoice_no: str
+    date: Optional[str]
+    due_date: Optional[str]
+    currency: str
+    status: str
+    is_paid: bool
+    # Derived / Extra fields
+    site_name: Optional[str] = None
+    space_name: Optional[str] = None
+    code: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class InvoicesRequest(CommonQueryParams):
     status: Optional[str] = None
-    year: Optional[str] = None
+    year: Optional[int] = None
     site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
     code: Optional[str] = None

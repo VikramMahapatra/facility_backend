@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from facility_service.app.utils.invoice_generator import auto_generate_monthly_invoices
 from shared.helpers.json_response_helper import success_response
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, AutoInvoiceResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, AutoInvoiceResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse, UserInvoiceOut
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import Lookup, UserToken
@@ -55,6 +55,14 @@ def get_invoices(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.get_invoices(db, current_user.org_id, params)
+
+
+@router.post("/my-invoices", response_model=List[UserInvoiceOut])
+def get_user_invoices(
+        params: InvoicesRequest,
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_user_invoices(db, current_user, params)
 
 
 @router.get("/overview", response_model=InvoicesOverview)

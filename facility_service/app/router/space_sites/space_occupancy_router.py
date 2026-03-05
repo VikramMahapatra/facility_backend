@@ -9,7 +9,7 @@ from facility_service.app.models.space_sites.space_occupancies import OccupancyS
 from ...schemas.space_sites.space_occupany_schemas import HandoverCreate, HandoverUpdateSchema, InspectionComplete, InspectionItemCreate, InspectionRequest, MaintenanceComplete, MaintenanceRequest, MoveInRequest, MoveOutRequest, OccupancyApprovalRequest, RejectOccupancyRequest, SettlementComplete, SettlementRequest, SpaceMoveOutRequest
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.helpers.json_response_helper import success_response
-from shared.core.schemas import Lookup, UserToken
+from shared.core.schemas import Lookup, MasterQueryParams, UserToken
 from ...schemas.space_sites.space_groups_schemas import SpaceGroupOut, SpaceGroupCreate, SpaceGroupRequest, SpaceGroupResponse, SpaceGroupUpdate
 from ...crud.space_sites import space_occupancy_crud as crud
 from shared.core.auth import validate_current_token
@@ -47,11 +47,11 @@ def occupancy_timeline(
 
 @router.post("/{space_id:uuid}/tenant/timeline")
 def occupancy_timeline(
-    space_id: UUID,
+    params: MasterQueryParams,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_tenant_timeline(db, space_id, current_user)
+    return crud.get_tenant_timeline(db, params.space_id, current_user)
 
 
 @router.get("/occupancy-requests")

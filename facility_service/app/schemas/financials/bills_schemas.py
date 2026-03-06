@@ -67,13 +67,14 @@ class BillBase(BaseModel):
     status: str = "draft"
     totals: Optional[Any] = None
     meta: Optional[Any] = None
+    lines: List[BillLineCreate] = []
 
     class Config:
         from_attributes = True
 
 
 class BillCreate(BillBase):
-    lines: List[BillLineCreate] = []
+    pass
 
 
 class BillUpdate(BillBase):

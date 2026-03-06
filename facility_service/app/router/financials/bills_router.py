@@ -113,6 +113,7 @@ async def update_bill(
     """Update an existing bill."""
     return await crud.update_bill(
         db=db,
+        org_id=current_user.org_id,
         request=bill_data,
         attachments=attachments,
         removed_attachment_ids=removed_ids,

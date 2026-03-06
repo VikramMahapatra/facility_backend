@@ -1,4 +1,4 @@
-from datetime import date as date_type, datetime
+from datetime import date as date, datetime
 from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel
@@ -63,8 +63,7 @@ class BillBase(BaseModel):
     space_id: UUID
     vendor_id: UUID
     bill_no: str
-    date: date_type
-    due_date: Optional[date_type] = None
+    date: date
     status: str = "draft"
     totals: Optional[Any] = None
     meta: Optional[Any] = None
@@ -77,14 +76,8 @@ class BillCreate(BillBase):
     lines: List[BillLineCreate] = []
 
 
-class BillUpdate(BaseModel):
-    work_order_id: Optional[UUID] = None
-    vendor_id: Optional[UUID] = None
-    bill_no: Optional[str] = None
-    date: Optional[date_type] = None
-    due_date: Optional[date_type] = None
-    status: Optional[str] = None
-    totals: Optional[Any] = None
+class BillUpdate(BillBase):
+    id: UUID
 
 
 class BillOut(BillBase):

@@ -298,6 +298,14 @@ async def create_bill(
             db.add(db_line)
             bill_amount += float(line.amount or 0)
 
+            if request.status == "approved" and line.item_id:
+                record = db.query(TicketWorkOrder).filter(
+                    TicketWorkOrder.id == line.item_id
+                ).first()
+
+                if record:
+                    record.bill_id = db_bill.id
+
         db.commit()
 
         # Bill Attachments
@@ -400,6 +408,14 @@ async def update_bill(
         # -------------------------------------------------
         db.commit()
         db.refresh(db_bill)
+
+        if request.status == "approved" and line.item_id:
+            record = db.query(TicketWorkOrder).filter(
+                TicketWorkOrder.id == line.item_id
+            ).first()
+
+            if record:
+                record.bill_id = db_bill.id
 
         return get_bill_detail(db, db, org_id, db_bill.id)
 

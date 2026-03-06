@@ -66,7 +66,7 @@ class DownloadAttachmentRequest(BaseModel):
     id: UUID
 
 
-class AttachmentOut(BaseModel):
+class AttachmentOut(EmptyStringModel):
     id: Optional[str] = None
     file_name: str
     content_type: str

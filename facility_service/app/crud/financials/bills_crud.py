@@ -327,7 +327,7 @@ async def update_bill(
     db_bill = (
         db.query(Bill)
         .filter(
-            Bill.id == request.bill_id,
+            Bill.id == request.id,
             Bill.org_id == org_id,
             Bill.is_deleted.is_(False)
         )

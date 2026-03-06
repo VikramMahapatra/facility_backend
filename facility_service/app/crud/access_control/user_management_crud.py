@@ -781,6 +781,7 @@ def search_tenant_owner_user(db: Session, org_id: UUID, search_users: Optional[s
             UserOrganization,
             and_(
                 UserOrganization.user_id == Users.id,
+                UserOrganization.org_id == org_id,
                 UserOrganization.status == "active",
                 UserOrganization.account_type.in_(
                     [UserAccountType.TENANT, UserAccountType.FLAT_OWNER])
@@ -820,6 +821,7 @@ def search_vendor_user(db: Session, org_id: UUID, search_users: Optional[str] = 
             UserOrganization,
             and_(
                 UserOrganization.user_id == Users.id,
+                UserOrganization.org_id == org_id,
                 UserOrganization.status == "active",
                 UserOrganization.account_type == UserAccountType.VENDOR
             )

@@ -342,7 +342,7 @@ def get_user_invoices(db: Session, current_user: UserToken, params: InvoicesRequ
             "status": actual_status,
             "is_paid": is_paid,
             "code": code,
-            "invoice_amount": invoice_amount,
+            "total_amount": invoice_amount,
             "created_at": invoice.created_at.isoformat() if isinstance(invoice.created_at, datetime) else invoice.created_at,
             "updated_at": invoice.updated_at.isoformat() if isinstance(invoice.updated_at, datetime) else invoice.updated_at,
         })
@@ -1851,7 +1851,7 @@ def get_customer_invoices(db: Session, org_id: UUID, customer_user_id: UUID):
             "building_id": building_id,
             "building_name": building_name,
             "code": code,
-            "invoice_amount": invoice_amount,
+            "total_amount": invoice_amount,
             "paid_amount": paid_amount,
             "pending_amount": pending_amount,
             "created_at": invoice.created_at.isoformat() if isinstance(invoice.created_at, datetime) else invoice.created_at,

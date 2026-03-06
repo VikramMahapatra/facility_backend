@@ -186,7 +186,7 @@ class UserInvoiceOut(BaseModel):
     code: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    invoice_amount: Optional[float] = None
+    total_amount: Optional[float] = None
     paid_amount: Optional[float] = None
     pending_amount: Optional[float] = None
 

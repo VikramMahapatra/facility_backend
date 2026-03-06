@@ -1728,7 +1728,7 @@ def download_invoice_pdf(
     return file_path, filename
 
 
-def download_payment_recipt_pdf(
+def download_payment_receipt_pdf(
     db: Session,
     payment_id: UUID,
     current_user: UserToken

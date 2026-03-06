@@ -63,7 +63,7 @@ class MasterQueryParams(BaseModel):
 
 
 class AttachmentOut(BaseModel):
-    id: str  # ADD THIS LINE - Attachment ID from database
+    id: Optional[str] = None
     file_name: str
     content_type: str
     file_data_base64: Optional[str] = None

@@ -200,18 +200,11 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
          # ✅ SIMPLE CHECK: Get invoice status for this lease charge
         invoice = (
             db.query(Invoice)
-            .join(
-                InvoiceLine, Invoice.id == InvoiceLine.invoice_id
-            )
             .filter(
-                InvoiceLine.item_id == lc.id,
-                InvoiceLine.code == InvoiceType.rent.value,
-                Invoice.due_date >= date.today(),
+                Invoice.id == lc.invoice_id,
                 Invoice.is_deleted == False
             ).first()
         )
-
-        invoice_status = invoice.status if invoice else None
 
         items.append(LeaseChargeOut.model_validate({
             **lc.__dict__,
@@ -225,7 +218,8 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
             "site_name": lease.site.name if lease.site else None,
             "space_name": lease.space.name if lease.space else None,
             "tax_pct": tax_rate,
-            "invoice_status": invoice_status,
+            "invoice_status": invoice.status if invoice else None,
+            "invoice_no": invoice.invoice_no if invoice else None,
             "building_block": building_name,  # Add this
             "building_block_id": building_block_id,  # Add this
         }))

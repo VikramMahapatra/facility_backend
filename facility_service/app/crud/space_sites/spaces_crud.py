@@ -748,7 +748,7 @@ def get_space_lookup(
     site_id: str,
     building_id: str,
     user: UserToken,
-    request_type: str | None = "unit"  # unit | community
+    request_type: str | None   # unit | community
 ):
     allowed_space_ids = None
 
@@ -784,14 +784,15 @@ def get_space_lookup(
         space_query = space_query.filter(
             Space.building_block_id == building_id)
 
-    if request_type == "community":
-        space_query = space_query.filter(
-            Space.category == "common_area"
-        )
-    else:  # default = unit
-        space_query = space_query.filter(
-            Space.category.in_(["residential", "commercial"])
-        )
+    if request_type:
+        if request_type == "community":
+            space_query = space_query.filter(
+                Space.category == "common_area"
+            )
+        else:  # default = unit
+            space_query = space_query.filter(
+                Space.category.in_(["residential", "commercial"])
+            )
 
     return space_query.order_by(Space.name.asc()).all()
 

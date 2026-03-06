@@ -52,7 +52,7 @@ class BillPaymentOut(BillPaymentBase):
     site_name: Optional[str] = None
     space_name: Optional[str] = None
     customer_name: Optional[str] = None
-    notes: Optional[Any] = None
+    notes: Optional[str] = None
 
 # Bills
 
@@ -67,6 +67,7 @@ class BillBase(BaseModel):
     due_date: Optional[date_type] = None
     status: str = "draft"
     totals: Optional[Any] = None
+    meta: Optional[Any] = None
 
     class Config:
         from_attributes = True

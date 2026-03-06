@@ -27,7 +27,7 @@ from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from shared.utils.app_status_code import AppStatusCode
-from shared.helpers.json_response_helper import error_response
+from shared.helpers.json_response_helper import error_response, success_response
 from ...enum.leasing_tenants_enum import LeaseDefaultPayer, LeaseFrequency, LeaseStatus, TenantSpaceStatus, TenantStatus
 from shared.core.schemas import Lookup, UserToken
 
@@ -1567,7 +1567,7 @@ def create_termination_request(
     db.commit()
     db.refresh(req)
 
-    return req
+    return success_response(data=None, message="Termination request submitted")
 
 
 def approve_termination(db, request_id, approver_id):

@@ -62,6 +62,7 @@ class LeaseChargeOut(BaseModel):
     created_at: Optional[datetime] = None
     # 'issued', 'partial', 'paid', 'overdue'
     invoice_status: Optional[str] = None
+    invoice_no: Optional[str] = None
 
     model_config = {
         "from_attributes": True

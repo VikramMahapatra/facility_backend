@@ -122,6 +122,8 @@ def get_ticket_work_orders(
             "site_name": site_name,
             "assigned_to_name": assigned_to_name,
             "vendor_name": vendor_name,
+            "invoice_no": wo.invoice.invoice_no if wo.invoice else None,
+            "invoice_status": wo.invoice.status if wo.invoice else None,
         })
         results.append(work_order_out)
 

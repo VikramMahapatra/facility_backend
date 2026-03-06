@@ -392,7 +392,8 @@ def get_payments(
     auth_db: Session,
     org_id: str,
     current_user: UserToken,
-    params: InvoicesRequest
+    params: InvoicesRequest,
+    only_credit: bool | None = None
 ):
 
     # -----------------------------------------
@@ -461,6 +462,9 @@ def get_payments(
 
     if params.space_id:
         base_query = base_query.filter(Invoice.space_id == params.space_id)
+
+    if only_credit:
+        base_query = base_query.filter(PaymentAR.method != "advance")
 
     payments = (
         base_query
@@ -569,7 +573,7 @@ async def create_invoice(
 
         db_invoice = Invoice(**invoice_data)
         db.add(db_invoice)
-        db.flush()
+        db.commit()
 
         invoice_amount = 0
 
@@ -618,7 +622,7 @@ async def create_invoice(
 
             invoice_amount += float(line.amount or 0)
 
-        if request.status == "issued":
+        if db_invoice.status == "issued":
             apply_advance_to_invoice(db, db_invoice)
 
             # ===============================
@@ -664,12 +668,14 @@ async def create_invoice(
 
         return InvoiceOut.model_validate(invoice_dict)
 
-    except HTTPException:
+    except HTTPException as e:
+        print(str(e))
         db.rollback()
         raise
 
     except Exception as e:
         db.rollback()
+        print(str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1560,7 +1566,6 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         invoice.is_paid = False
 
     else:
-        invoice.status = "unpaid"
         invoice.is_paid = False
 
 
@@ -1788,3 +1793,71 @@ def calculate_balance(db: Session, invoice: Invoice):
         balance = Decimal("0")
 
     return advance_used, payments_total, balance
+
+
+def get_customer_invoices(db: Session, org_id: UUID, customer_user_id: UUID):
+    invoices = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.lines),
+            joinedload(Invoice.site)
+        )
+        .filter(
+            Invoice.user_id == customer_user_id,
+            Invoice.status.notin_(["draft", "paid"]),
+            Invoice.is_deleted == False,
+            Invoice.org_id == org_id
+        ) .all()
+    )
+
+    results = []
+
+    for invoice in invoices:
+        space_name = invoice.space.name if invoice.space else None
+        site_name = invoice.site.name if invoice.site else None
+
+        building_id = invoice.space.building_block_id if invoice.space and invoice.space.building_block_id else None
+        building_name = invoice.space.building.name if invoice.space and invoice.space.building else None,
+        code = invoice.lines[0].code
+
+        # -----------------------------------------
+        # Status Calculation
+        # -----------------------------------------
+        invoice_amount = 0.0
+        if invoice.totals and "grand" in invoice.totals:
+            invoice_amount = float(invoice.totals.get("grand", 0.0))
+
+        paid_amount = (
+            db.query(func.sum(PaymentAR.amount))
+            .filter(
+                PaymentAR.invoice_id == invoice.id,
+                PaymentAR.is_deleted == False
+            )
+            .scalar()
+        ) or 0.0
+
+        paid_amount = float(paid_amount)
+        pending_amount = invoice_amount - paid_amount
+
+        # -----------------------------------------
+        # Build Response
+        # -----------------------------------------
+        invoice_data = UserInvoiceOut.model_validate({
+            **invoice.__dict__,
+            "date": invoice.date.isoformat() if invoice.date else None,
+            "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+            "site_name": site_name,
+            "space_name": space_name,
+            "building_id": building_id,
+            "building_name": building_name,
+            "code": code,
+            "invoice_amount": invoice_amount,
+            "paid_amount": paid_amount,
+            "pending_amount": pending_amount,
+            "created_at": invoice.created_at.isoformat() if isinstance(invoice.created_at, datetime) else invoice.created_at,
+            "updated_at": invoice.updated_at.isoformat() if isinstance(invoice.updated_at, datetime) else invoice.updated_at,
+        })
+
+        results.append(invoice_data)
+
+    return results

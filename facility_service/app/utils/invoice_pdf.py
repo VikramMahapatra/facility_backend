@@ -24,7 +24,6 @@ def generate_invoice_pdf(
     balance: float,
     system_settings: SystemSettingsOut
 ):
-
     styles = getSampleStyleSheet()
     story = []
 

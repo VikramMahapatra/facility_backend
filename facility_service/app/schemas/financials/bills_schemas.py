@@ -91,6 +91,7 @@ class BillOut(BillBase):
     site_name: Optional[str] = None
     total_amount: Optional[Decimal] = None
     paid_amount: Optional[Decimal] = None
+    pending_amount: Optional[Decimal] = None
 
     # Relationships
     lines: List[BillLineOut] = []

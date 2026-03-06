@@ -13,7 +13,7 @@ from ...crud.financials import invoices_crud as crud
 from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, AutoInvoiceResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse, UserInvoiceOut
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
-from shared.core.schemas import AttachmentOut, Lookup, UserToken
+from shared.core.schemas import AttachmentOut, DownloadAttachmentRequest, Lookup, UserToken
 from uuid import UUID
 from fastapi.responses import FileResponse, StreamingResponse
 from facility_service.app.utils.invoice_pdf import generate_invoice_pdf
@@ -67,6 +67,14 @@ def get_user_invoices(
     return crud.get_user_invoices(db, current_user, params)
 
 
+@router.get("/{customer_user_id:uuid}/customer-invoices", response_model=List[UserInvoiceOut])
+def get_customer_invoices(
+        customer_user_id: UUID,
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_customer_invoices(db, current_user.org_id, customer_user_id)
+
+
 @router.get("/overview", response_model=InvoicesOverview)
 def get_invoices_overview(
         params: InvoicesRequest = Depends(),
@@ -101,7 +109,8 @@ def get_payments(
         auth_db=auth_db,
         org_id=current_user.org_id,
         current_user=current_user,
-        params=params
+        params=params,
+        only_credit=True
     )
     return payment_response.payments
 
@@ -228,16 +237,16 @@ def download_invoice_pdf(
     )
 
 
-@router.post("/{invoice_id}/download", response_model=AttachmentOut)
+@router.post("/download", response_model=AttachmentOut)
 def download_invoice_pdf(
-    invoice_id: UUID,
+    params: DownloadAttachmentRequest,
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_auth_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
 
     file_path, filename = crud.download_invoice_pdf(
-        db, invoice_id, current_user
+        db, params.id, current_user
     )
 
     if not file_path or not os.path.exists(file_path):
@@ -276,15 +285,15 @@ def download_payment_receipt_pdf(
     )
 
 
-@router.post("/payment-receipt/{payment_id:uuid}/download", response_model=AttachmentOut)
+@router.post("/payment-receipt/download", response_model=AttachmentOut)
 def download_payment_receipt_pdf(
-    payment_id: UUID,
+    params: DownloadAttachmentRequest,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
 
     file_path = crud.download_payment_receipt_pdf(
-        db, payment_id, current_user
+        db, params.id, current_user
     )
 
     if not file_path or not os.path.exists(file_path):

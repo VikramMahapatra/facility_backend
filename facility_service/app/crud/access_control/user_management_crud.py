@@ -812,6 +812,44 @@ def search_tenant_owner_user(db: Session, org_id: UUID, search_users: Optional[s
     ]
 
 
+def search_vendor_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -> List[Lookup]:
+    #  USERS
+    user_query = (
+        db.query(Users)
+        .join(
+            UserOrganization,
+            and_(
+                UserOrganization.user_id == Users.id,
+                UserOrganization.status == "active",
+                UserOrganization.account_type == UserAccountType.VENDOR
+            )
+        )
+        .filter(
+            Users.is_deleted == False,
+            Users.status == "active"
+        )
+    )
+
+    if search_users:
+        search_users = search_users.strip()
+        user_query = user_query.filter(
+            or_(
+                Users.full_name.ilike(f"%{search_users}%"),
+                Users.email.ilike(f"%{search_users}%"),
+                Users.phone.ilike(f"%{search_users}%")
+            )
+        )
+
+    users = user_query.order_by(Users.full_name.asc()).all()
+    if not users:
+        return []
+
+    return [
+        Lookup(id=user.id, name=user.full_name)
+        for user in users
+    ]
+
+
 def search_staff_user(db: Session, org_id: UUID, search_users: Optional[str] = None) -> List[Lookup]:
     #  USERS
     user_query = (

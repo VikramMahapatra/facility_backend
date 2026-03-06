@@ -229,3 +229,11 @@ def auto_generate_lease_charges_endpoint(
         target_date=date,
         current_user=current_user
     )
+
+
+@router.get("/{customer_user_id:uuid}/customer-bills", response_model=List[BillOut])
+def get_customer_invoices(
+        customer_user_id: UUID,
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)):
+    return crud.get_customer_bills(db, current_user.org_id, customer_user_id)

@@ -834,3 +834,48 @@ def calculate_balance(db: Session, bill: Bill):
         balance = Decimal("0")
 
     return payments_total, balance
+
+
+def get_customer_bills(db: Session, org_id: UUID, customer_user_id: UUID):
+    bills = (
+        db.query(Bill)
+        .join(Vendor, Vendor.id == Bill.vendor_id)
+        .filter(
+            Vendor.user_id == customer_user_id,
+            Bill.status.notin_(["paid", "draft"]),
+            Bill.is_deleted == False
+        )
+    )
+
+    results = []
+
+    for bill in bills:
+        # Resolve relationships
+        # Using the helper from your shared core
+        vendor_name = bill.vendor.name if bill.vendor else None
+        space_name = bill.space.name if bill.space else None
+        site_name = bill.site.name if bill.site else None
+
+        # Calculate status & totals
+        actual_status = calculate_bill_status(db, bill)
+
+        bill_total = float(bill.totals.get("grand", 0)) if bill.totals else 0.0
+        paid_amount = db.query(func.sum(BillPayment.amount)).filter(
+            BillPayment.bill_id == bill.id).scalar() or 0.0
+        pending_amount = bill_total - float(paid_amount)
+
+        bill_data = BillOut.model_validate({
+            **bill.__dict__,
+            "vendor_name": vendor_name,
+            "space_name": space_name,
+            "site_name": site_name,
+            "status": actual_status,
+            "total_amount": bill_total,
+            "paid_amount": float(paid_amount),
+            "pending_amount": pending_amount,
+            "lines": [],
+            "payments": []
+        })
+        results.append(bill_data)
+
+    return results

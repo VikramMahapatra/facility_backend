@@ -85,7 +85,8 @@ class Ticket(Base):
     vendor = relationship("Vendor", back_populates="tickets")
     amenity = relationship(
         "Space",
-        foreign_keys=[amenity_id]
+        foreign_keys=[amenity_id],
+        back_populates="amenity_tickets"
     )
 
     __table_args__ = (

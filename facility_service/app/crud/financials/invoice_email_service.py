@@ -26,7 +26,6 @@ class InvoiceEmailService:
         invoice: Invoice,
         customer_email: str
     ):
-
         # -----------------------------
         # Validate Status
         # -----------------------------
@@ -51,6 +50,8 @@ class InvoiceEmailService:
         # Customer (User)
         # -----------------------------
         customer = get_tenant_detail(db, invoice.user_id)
+
+        print(customer)
 
         customer_detail = InvoiceCustomerDetail(
             customer_name=customer.name if customer else "Customer",
@@ -99,7 +100,7 @@ class InvoiceEmailService:
         # -----------------------------
         pdf_path = generate_invoice_pdf(
             invoice=invoice,
-            organization=organization.name,
+            organization=organization,
             customer=customer_detail,
             payments_total=float(payments_total),
             advance_used=float(advance_used),
@@ -119,7 +120,7 @@ class InvoiceEmailService:
         # Email Context
         # -----------------------------
         context = {
-            "customer_name": customer.full_name,
+            "customer_name": customer.name,
             "invoice_no": invoice.invoice_no,
             "organization_name": organization.name,
             "invoice_total": float(invoice_total),
@@ -131,6 +132,8 @@ class InvoiceEmailService:
         }
 
         subject = f"Invoice {invoice.invoice_no} from {organization.name}"
+
+        print("Sending email...")
 
         # -----------------------------
         # Send Email

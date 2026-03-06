@@ -318,8 +318,7 @@ async def create_bill(
 async def update_bill(
     db: Session,
     org_id: UUID,
-    bill_id: UUID,
-    request: BillCreate,
+    request: BillUpdate,
     attachments: list[UploadFile] | None,
     removed_attachment_ids: list[UUID] | None,
     current_user: UserToken
@@ -328,7 +327,7 @@ async def update_bill(
     db_bill = (
         db.query(Bill)
         .filter(
-            Bill.id == bill_id,
+            Bill.id == request.bill_id,
             Bill.org_id == org_id,
             Bill.is_deleted.is_(False)
         )

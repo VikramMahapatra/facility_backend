@@ -349,10 +349,7 @@ def get_user_invoices(db: Session, current_user: UserToken, params: InvoicesRequ
 
         results.append(invoice_data)
 
-    return InvoicesResponse(
-        invoices=results,
-        total=total
-    )
+    return results
 
 
 def get_payment_history(db: Session, invoice_id: UUID):

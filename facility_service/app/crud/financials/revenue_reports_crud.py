@@ -11,7 +11,7 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 
 from ...schemas.financials.revenue_schemas import RevenueReportsRequest
 from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
-from ...enum.revenue_enum import RevenueMonth
+from ...enum.revenue_enum import InvoiceType, RevenueMonth
 from ...models.space_sites.sites import Site
 from uuid import UUID
 from typing import Optional
@@ -89,7 +89,8 @@ def get_revenue_overview(db: Session, org_id: UUID, params: RevenueReportsReques
         .filter(
             *filters,
             Invoice.org_id == org_id,
-            InvoiceLine.code.in_(["rent", "maintenance", "parking_pass"])
+            InvoiceLine.code.in_(
+                [InvoiceType.rent.value, InvoiceType.owner_maintenance.value, InvoiceType.parking_pass.value])
         )
         .group_by(InvoiceLine.code)
         .all()
@@ -100,9 +101,10 @@ def get_revenue_overview(db: Session, org_id: UUID, params: RevenueReportsReques
         for row in revenue_rows
     }
 
-    rent_revenue = revenue_map.get("rent", 0.0)
-    maintenance_revenue = revenue_map.get("maintenance", 0.0)
-    parking_revenue = revenue_map.get("parking_pass", 0.0)
+    rent_revenue = revenue_map.get(InvoiceType.rent.value, 0.0)
+    maintenance_revenue = revenue_map.get(
+        InvoiceType.owner_maintenance.value, 0.0)
+    parking_revenue = revenue_map.get(InvoiceType.parking_pass.value, 0.0)
 
     # ---------------------------------------------------------
     # TOTAL & COLLECTION RATE (Invoice level)
@@ -251,7 +253,8 @@ def get_revenue_trend(db: Session, org_id: UUID, params: RevenueReportsRequest):
 def get_revenue_by_source(db: Session, org_id: UUID, params: RevenueReportsRequest):
     filters = build_revenue_filters(org_id, params)
 
-    REVENUE_CODES = ["rent", "maintenance", "parking_pass"]
+    REVENUE_CODES = [InvoiceType.rent.value,
+                     InvoiceType.owner_maintenance.value, InvoiceType.parking_pass.value]
 
     # ---------------------------------------------------------
     # Revenue grouped by source (invoice lines)

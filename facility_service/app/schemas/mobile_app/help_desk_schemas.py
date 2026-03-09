@@ -10,10 +10,10 @@ from shared.wrappers.empty_string_model_wrapper import EmptyStringModel
 
 class ComplaintOut(EmptyStringModel):
     id: UUID
-    site_id:Optional[UUID] = None
-    site_name:Optional[str] = None
+    site_id: Optional[UUID] = None
+    site_name: Optional[str] = None
     space_id: Optional[UUID] = None
-    space_name:Optional[str] = None
+    space_name: Optional[str] = None
     category: str
     status: str
     description: Optional[str] = None
@@ -39,6 +39,7 @@ class ComplaintCreate(EmptyStringModel):
         "%H:%M"))                    # REQUIRED
     preferred_date: date = Field(default_factory=date.today)
     priority: Optional[str] = None
+    amenity_id: Optional[UUID] = None
 
     @classmethod
     def as_form(
@@ -50,7 +51,8 @@ class ComplaintCreate(EmptyStringModel):
         preferred_time: str = Form(default_factory=lambda: datetime.utcnow().strftime(
             "%H:%M")),      # REQUIRED in form
         preferred_date: date = Form(default_factory=date.today),
-        priority: Optional[str] = Form(None)
+        priority: Optional[str] = Form(None),
+        amenity_id: Optional[UUID] = Form(None)
 
 
     ):
@@ -62,7 +64,7 @@ class ComplaintCreate(EmptyStringModel):
             preferred_time=preferred_time,
             preferred_date=preferred_date,
             priority=priority,
-
+            amenity_id=amenity_id
         )
     model_config = {"from_attributes": True}
 
@@ -99,6 +101,7 @@ class ComplaintDetailsResponse(EmptyStringModel):
     closed_date: Optional[str] = None
     space_id: Optional[UUID] = None
     space_name: Optional[str] = None
+    amenity_name: Optional[str] = None
     building_name: Optional[str] = None
     site_name: Optional[str] = None
     can_escalate: Optional[bool] = False

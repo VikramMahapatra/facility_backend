@@ -27,8 +27,8 @@ from ...models.leasing_tenants.commercial_partners import CommercialPartner
 from ...models.leasing_tenants.tenants import Tenant
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from shared.utils.app_status_code import AppStatusCode
-from shared.helpers.json_response_helper import error_response
-from ...enum.leasing_tenants_enum import LeaseDefaultPayer, LeaseFrequency, LeaseStatus, TenantSpaceStatus, TenantStatus
+from shared.helpers.json_response_helper import error_response, success_response
+from ...enum.leasing_tenants_enum import LeaseChargeCodes, LeaseDefaultPayer, LeaseFrequency, LeaseStatus, TenantSpaceStatus, TenantStatus
 from shared.core.schemas import Lookup, UserToken
 
 from ...models.leasing_tenants.leases import Lease
@@ -1007,7 +1007,7 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         .filter(
             LeaseCharge.lease_id == lease_id,
             LeaseCharge.is_deleted == False,
-            func.lower(LeaseCharge.charge_code) == "rent"
+            func.lower(LeaseCharge.charge_code) == LeaseChargeCodes.rent.value
         )
         .order_by(LeaseCharge.period_start.desc())
         .all()
@@ -1567,7 +1567,7 @@ def create_termination_request(
     db.commit()
     db.refresh(req)
 
-    return req
+    return success_response(data=None, message="Termination request submitted")
 
 
 def approve_termination(db, request_id, approver_id):
@@ -1707,35 +1707,35 @@ def sync_rent_charges(db: Session, lease: Lease):
         .all()
     )
 
-    existing_charges = {
-        c.id: c
-        for c in db.query(LeaseCharge).filter(
+    existing_charges = (
+        db.query(LeaseCharge)
+        .filter(
             LeaseCharge.lease_id == lease.id,
-            LeaseCharge.charge_code == "RENT",
+            LeaseCharge.charge_code == LeaseChargeCodes.rent.value,
             LeaseCharge.is_deleted == False
         )
-    }
+        .all()
+    )
 
-    previous_end = lease.start_date
+    existing_by_start = {c.period_start: c for c in existing_charges}
     used_charge_ids = set()
 
-    for index, term in enumerate(terms):
+    for i, term in enumerate(terms):
 
-        # -------- PERIOD CALCULATION --------
-        if index == 0:
-            start = lease.start_date
+        # PERIOD START
+        start = term.due_date
+
+        # PERIOD END
+        if i < len(terms) - 1:
+            next_term = terms[i + 1]
+            end = next_term.due_date - timedelta(days=1)
         else:
-            start = previous_end + timedelta(days=1)
-
-        if index == len(terms) - 1:
             end = lease.end_date
-        else:
-            end = term.due_date
 
-        existing = existing_charges.get(term.id)
+        existing = existing_by_start.get(start)
 
         if existing:
-            # ✅ UPDATE EXISTING
+            # UPDATE
             existing.period_start = start
             existing.period_end = end
             existing.amount = term.amount
@@ -1744,11 +1744,11 @@ def sync_rent_charges(db: Session, lease: Lease):
             used_charge_ids.add(existing.id)
 
         else:
-            # ✅ CREATE NEW
+            # CREATE
             db.add(
                 LeaseCharge(
                     lease_id=lease.id,
-                    charge_code="RENT",
+                    charge_code=LeaseChargeCodes.rent.value,
                     period_start=start,
                     period_end=end,
                     amount=term.amount,
@@ -1757,9 +1757,7 @@ def sync_rent_charges(db: Session, lease: Lease):
                 )
             )
 
-        previous_end = term.due_date
-
-    # -------- SOFT DELETE REMOVED TERMS --------
-    for charge in existing_charges.values():
+    # SOFT DELETE REMOVED TERMS
+    for charge in existing_charges:
         if charge.id not in used_charge_ids:
             charge.is_deleted = True

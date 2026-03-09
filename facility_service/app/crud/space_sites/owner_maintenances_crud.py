@@ -205,6 +205,8 @@ def get_owner_maintenances(
             "building_name": building_name,
             "owner_user_id": owner_user_id,
             "invoice_id": maintenance.invoice_id,
+            "invoice_no": maintenance.invoice.invoice_no if maintenance.invoice else None,
+            "invoice_status": maintenance.invoice.status if maintenance.invoice else None,
             "space_owner_id": maintenance.space_owner_id  # Make sure this is included
         }
 

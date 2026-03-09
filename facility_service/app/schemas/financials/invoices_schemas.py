@@ -60,7 +60,7 @@ class InvoiceBase(BaseModel):
     user_id: UUID
     date: date_type
     due_date: Optional[date_type] = None
-    currency: str
+    currency: Optional[str] = None
     totals: Optional[Any] = None
     meta: Optional[Any] = None
     status: str
@@ -114,7 +114,6 @@ class PaymentOut(BaseModel):
     ref_no: str
     amount: Decimal
     paid_at: Optional[date_type] = None
-    meta: Optional[Any] = None
     notes: Optional[str] = None
     customer_name: Optional[str] = None  # Add this field
 
@@ -170,11 +169,37 @@ class InvoiceOut(BaseModel):
         from_attributes = True
 
 
+class UserInvoiceOut(BaseModel):
+    id: UUID
+    org_id: UUID
+    site_id: UUID
+    space_id: UUID
+    invoice_no: str
+    date: Optional[str]
+    due_date: Optional[str]
+    currency: str
+    status: str
+    is_paid: bool
+    # Derived / Extra fields
+    site_name: Optional[str] = None
+    space_name: Optional[str] = None
+    code: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    total_amount: Optional[float] = None
+    paid_amount: Optional[float] = None
+    pending_amount: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+
 class InvoicesRequest(CommonQueryParams):
     status: Optional[str] = None
-    year: Optional[str] = None
+    year: Optional[int] = None
+    site_id: Optional[UUID] = None
     space_id: Optional[UUID] = None
-    billable_item_type: Optional[str] = None
+    code: Optional[str] = None
 
 
 class InvoicesResponse(BaseModel):

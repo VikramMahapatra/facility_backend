@@ -9,6 +9,7 @@ from sqlalchemy import String, and_, func, extract, or_, cast, Date
 from sqlalchemy import desc
 from decimal import Decimal, ROUND_HALF_UP
 
+from facility_service.app.enum.leasing_tenants_enum import LeaseChargeCodes
 from facility_service.app.enum.revenue_enum import InvoiceType
 from facility_service.app.models.financials.invoices import Invoice, InvoiceLine
 from facility_service.app.models.space_sites.buildings import Building
@@ -39,7 +40,7 @@ def build_lease_charge_filters(org_id: UUID, params: LeaseChargeRequest):
         Lease.org_id == org_id,
         LeaseCharge.is_deleted == False,
         Lease.is_deleted == False,
-        func.lower(LeaseCharge.charge_code) == "rent"
+        func.lower(LeaseCharge.charge_code) == LeaseChargeCodes.rent.value
     ]
 
     if params.month and params.month != "all":
@@ -96,7 +97,7 @@ def get_lease_charges_overview(db: Session, user: UserToken):
             Lease.org_id == user.org_id,
             LeaseCharge.is_deleted == False,  # Add soft delete filter
             Lease.is_deleted == False,  # Add soft delete filter for lease
-            func.lower(LeaseCharge.charge_code) == "rent"
+            func.lower(LeaseCharge.charge_code) == LeaseChargeCodes.rent.value
         )
     )
     if allowed_spaces_ids is not None:
@@ -132,10 +133,10 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
     base_query = (
         db.query(LeaseCharge)
         .join(Lease, LeaseCharge.lease_id == Lease.id)
+        .join(Tenant, Lease.tenant_id == Tenant.id)
+        .join(Space, Lease.space_id == Space.id)
+        .join(Site, Lease.site_id == Site.id)
         .outerjoin(TaxCode, LeaseCharge.tax_code_id == TaxCode.id)
-        .outerjoin(Tenant, Lease.tenant_id == Tenant.id)
-        .outerjoin(Space, Lease.space_id == Space.id)
-        .outerjoin(Site, Lease.site_id == Site.id)
         .filter(*filters)
 
     )
@@ -153,7 +154,7 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
 
     results = (
         base_query
-        .order_by(LeaseCharge.updated_at.desc())
+        .order_by(LeaseCharge.period_start.desc())
         .offset(params.skip)
         .limit(params.limit)
         .all()
@@ -200,18 +201,11 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
          # ✅ SIMPLE CHECK: Get invoice status for this lease charge
         invoice = (
             db.query(Invoice)
-            .join(
-                InvoiceLine, Invoice.id == InvoiceLine.invoice_id
-            )
             .filter(
-                InvoiceLine.item_id == lc.id,
-                InvoiceLine.code == InvoiceType.rent.value,
-                Invoice.due_date >= date.today(),
+                Invoice.id == lc.invoice_id,
                 Invoice.is_deleted == False
             ).first()
         )
-
-        invoice_status = invoice.status if invoice else None
 
         items.append(LeaseChargeOut.model_validate({
             **lc.__dict__,
@@ -220,12 +214,13 @@ def get_lease_charges(db: Session, user: UserToken, params: LeaseChargeRequest):
             "rent_amount": lease.rent_amount,
             "period_days": period_days,
             "site_id": lease.site_id,
-            "tenant_id": lease.tenant.id,
+            "tenant_id": lease.tenant.id if lease.tenant else None,
             "tenant_name": display_name,
             "site_name": lease.site.name if lease.site else None,
             "space_name": lease.space.name if lease.space else None,
             "tax_pct": tax_rate,
-            "invoice_status": invoice_status,
+            "invoice_status": invoice.status if invoice else None,
+            "invoice_no": invoice.invoice_no if invoice else None,
             "building_block": building_name,  # Add this
             "building_block_id": building_block_id,  # Add this
         }))
@@ -337,7 +332,7 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate, current_user_id
         .join(Lease)
         .filter(
             LeaseCharge.lease_id == payload.lease_id,
-            func(LeaseCharge.charge_code) == "rent",
+            func(LeaseCharge.charge_code) == LeaseChargeCodes.rent.value,
             LeaseCharge.is_deleted == False,
             Lease.is_deleted == False,
             LeaseCharge.period_start <= payload.period_end,
@@ -351,7 +346,7 @@ def create_lease_charge(db: Session, payload: LeaseChargeCreate, current_user_id
             message=f"Rent Charge already exists for this lease with overlapping period"
         )
 
-    payload.charge_code = "RENT"
+    payload.charge_code = LeaseChargeCodes.rent.value
 
     tax_rate = (db.query(TaxCode.rate)
                 .filter(TaxCode.id == payload.tax_code_id)
@@ -423,7 +418,7 @@ def update_lease_charge(
         .filter(
             LeaseCharge.id != payload.id,  # Exclude current record
             LeaseCharge.lease_id == lease_id,
-            func.lower(LeaseCharge.charge_code) == "rent",
+            func.lower(LeaseCharge.charge_code) == LeaseChargeCodes.rent.value,
             LeaseCharge.is_deleted == False,
             Lease.is_deleted == False,
             # Check if periods overlap
@@ -452,7 +447,7 @@ def update_lease_charge(
     total_amount = obj.amount + (obj.amount * tax_rate / Decimal("100"))
 
     obj.total_amount = total_amount
-    obj.charge_code = "RENT"
+    obj.charge_code = LeaseChargeCodes.rent.value
 
     db.commit()
     db.refresh(obj)
@@ -627,7 +622,7 @@ def auto_generate_lease_rent_charges(
     next_month = period_start.replace(day=28) + timedelta(days=4)
     period_end = next_month.replace(day=1) - timedelta(days=1)
 
-    rent_code = "RENT"
+    rent_code = LeaseChargeCodes.rent.value
 
     # 🔹 Default tax (optional)
     default_tax = db.query(TaxCode).filter(
@@ -660,7 +655,7 @@ def auto_generate_lease_rent_charges(
         # 🔹 Check overlapping RENT charge
         existing = db.query(LeaseCharge).filter(
             LeaseCharge.lease_id == lease.id,
-            func.lower(LeaseCharge.charge_code) == "rent",
+            func.lower(LeaseCharge.charge_code) == LeaseChargeCodes.rent.value,
             LeaseCharge.is_deleted == False,
             LeaseCharge.period_start <= period_end,
             LeaseCharge.period_end >= period_start

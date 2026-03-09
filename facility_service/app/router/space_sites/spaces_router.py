@@ -11,7 +11,7 @@ from ...schemas.space_sites.spaces_schemas import (
     SpaceUpdate, TenantHistoryOut, BulkSpaceRequest, BulkSpaceResponse)
 from ...crud.space_sites import spaces_crud as crud
 from shared.core.auth import allow_admin,  validate_current_token  # for dependicies
-from shared.core.schemas import CommonQueryParams, Lookup, UserToken
+from shared.core.schemas import CommonQueryParams, Lookup, MasterQueryParams, UserToken
 from uuid import UUID
 router = APIRouter(
     prefix="/api/spaces",
@@ -75,6 +75,16 @@ def delete_space(space_id: str, db: Session = Depends(get_db)):
     return crud.delete_space(db, space_id)
 
 
+@router.get("/all-spaces", response_model=List[Lookup])
+def space_lookup(
+        site_id: Optional[str] = Query(None),
+        building_id: Optional[str] = Query(None),
+        db: Session = Depends(get_db),
+        current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_space_lookup(db=db, site_id=site_id, building_id=building_id, user=current_user, request_type=None)
+
+
 @router.get("/lookup", response_model=List[Lookup])
 def space_lookup(
         site_id: Optional[str] = Query(None),
@@ -82,7 +92,7 @@ def space_lookup(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.get_space_lookup(db=db, site_id=site_id, building_id=building_id, user=current_user)
+    return crud.get_space_lookup(db=db, site_id=site_id, building_id=building_id, user=current_user, request_type="unit")
 
 
 @router.get("/filtered-lookup", response_model=List[Lookup])
@@ -102,6 +112,15 @@ def space_building_lookup(
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
     return crud.get_space_with_building_lookup(db, site_id, current_user.org_id)
+
+
+@router.post("/amenities-lookup", response_model=List[Lookup])
+def get_amenities_lookup(
+    params: MasterQueryParams,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.get_space_lookup(db=db, site_id=params.site_id, user=current_user, request_type="community")
 
 
 @router.get("/detail/{space_id:str}", response_model=SpaceOut)

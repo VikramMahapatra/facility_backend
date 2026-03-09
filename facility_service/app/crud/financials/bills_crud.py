@@ -43,6 +43,9 @@ def build_bills_filters(db: Session, auth_db: Session, org_id: UUID, params: Bil
     if params.vendor_id:
         filters.append(Bill.vendor_id == params.vendor_id)
 
+    if params.site_id:
+        filters.append(Bill.site_id == params.site_id)
+
     # Text Search Bar (bill number OR vendor name)
     if params.search:
         search_term = f"%{params.search}%"
@@ -295,6 +298,14 @@ async def create_bill(
             db.add(db_line)
             bill_amount += float(line.amount or 0)
 
+            if request.status == "approved" and line.item_id:
+                record = db.query(TicketWorkOrder).filter(
+                    TicketWorkOrder.id == line.item_id
+                ).first()
+
+                if record:
+                    record.bill_id = db_bill.id
+
         db.commit()
 
         # Bill Attachments
@@ -315,8 +326,7 @@ async def create_bill(
 async def update_bill(
     db: Session,
     org_id: UUID,
-    bill_id: UUID,
-    request: BillCreate,
+    request: BillUpdate,
     attachments: list[UploadFile] | None,
     removed_attachment_ids: list[UUID] | None,
     current_user: UserToken
@@ -325,7 +335,7 @@ async def update_bill(
     db_bill = (
         db.query(Bill)
         .filter(
-            Bill.id == bill_id,
+            Bill.id == request.id,
             Bill.org_id == org_id,
             Bill.is_deleted.is_(False)
         )
@@ -398,6 +408,14 @@ async def update_bill(
         # -------------------------------------------------
         db.commit()
         db.refresh(db_bill)
+
+        if request.status == "approved" and line.item_id:
+            record = db.query(TicketWorkOrder).filter(
+                TicketWorkOrder.id == line.item_id
+            ).first()
+
+            if record:
+                record.bill_id = db_bill.id
 
         return get_bill_detail(db, db, org_id, db_bill.id)
 
@@ -832,3 +850,48 @@ def calculate_balance(db: Session, bill: Bill):
         balance = Decimal("0")
 
     return payments_total, balance
+
+
+def get_customer_bills(db: Session, org_id: UUID, customer_user_id: UUID):
+    bills = (
+        db.query(Bill)
+        .join(Vendor, Vendor.id == Bill.vendor_id)
+        .filter(
+            Vendor.user_id == customer_user_id,
+            Bill.status.notin_(["paid", "draft"]),
+            Bill.is_deleted == False
+        )
+    )
+
+    results = []
+
+    for bill in bills:
+        # Resolve relationships
+        # Using the helper from your shared core
+        vendor_name = bill.vendor.name if bill.vendor else None
+        space_name = bill.space.name if bill.space else None
+        site_name = bill.site.name if bill.site else None
+
+        # Calculate status & totals
+        actual_status = calculate_bill_status(db, bill)
+
+        bill_total = float(bill.totals.get("grand", 0)) if bill.totals else 0.0
+        paid_amount = db.query(func.sum(BillPayment.amount)).filter(
+            BillPayment.bill_id == bill.id).scalar() or 0.0
+        pending_amount = bill_total - float(paid_amount)
+
+        bill_data = BillOut.model_validate({
+            **bill.__dict__,
+            "vendor_name": vendor_name,
+            "space_name": space_name,
+            "site_name": site_name,
+            "status": actual_status,
+            "total_amount": bill_total,
+            "paid_amount": float(paid_amount),
+            "pending_amount": pending_amount,
+            "lines": [],
+            "payments": []
+        })
+        results.append(bill_data)
+
+    return results

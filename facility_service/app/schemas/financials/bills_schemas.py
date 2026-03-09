@@ -1,4 +1,4 @@
-from datetime import date as date_type, datetime
+from datetime import date as date, datetime
 from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel
@@ -52,7 +52,7 @@ class BillPaymentOut(BillPaymentBase):
     site_name: Optional[str] = None
     space_name: Optional[str] = None
     customer_name: Optional[str] = None
-    notes: Optional[Any] = None
+    notes: Optional[str] = None
 
 # Bills
 
@@ -63,27 +63,22 @@ class BillBase(BaseModel):
     space_id: UUID
     vendor_id: UUID
     bill_no: str
-    date: date_type
-    due_date: Optional[date_type] = None
+    date: date
     status: str = "draft"
     totals: Optional[Any] = None
+    meta: Optional[Any] = None
+    lines: List[BillLineCreate] = []
 
     class Config:
         from_attributes = True
 
 
 class BillCreate(BillBase):
-    lines: List[BillLineCreate] = []
+    pass
 
 
-class BillUpdate(BaseModel):
-    work_order_id: Optional[UUID] = None
-    vendor_id: Optional[UUID] = None
-    bill_no: Optional[str] = None
-    date: Optional[date_type] = None
-    due_date: Optional[date_type] = None
-    status: Optional[str] = None
-    totals: Optional[Any] = None
+class BillUpdate(BillBase):
+    id: UUID
 
 
 class BillOut(BillBase):
@@ -96,6 +91,7 @@ class BillOut(BillBase):
     site_name: Optional[str] = None
     total_amount: Optional[Decimal] = None
     paid_amount: Optional[Decimal] = None
+    pending_amount: Optional[Decimal] = None
 
     # Relationships
     lines: List[BillLineOut] = []
@@ -108,6 +104,7 @@ class BillOut(BillBase):
 class BillsRequest(CommonQueryParams):
     status: Optional[str] = None
     vendor_id: Optional[UUID] = None
+    site_id: Optional[UUID] = None
 
 
 class BillsResponse(BaseModel):

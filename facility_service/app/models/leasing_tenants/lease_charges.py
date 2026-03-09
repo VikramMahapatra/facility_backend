@@ -33,5 +33,5 @@ class LeaseCharge(Base):
     lease = relationship("Lease", back_populates="charges")
     # # ✅ ADD THIS LINE
     # charge_code = relationship("LeaseChargeCode", back_populates="charges")
-
     tax_code = relationship("TaxCode", back_populates="charge")
+    invoice = relationship("Invoice")

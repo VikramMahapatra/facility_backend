@@ -14,7 +14,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from facility_service.app.crud.common.attachment_crud import AttachmentService
 from facility_service.app.crud.financials.invoice_email_service import InvoiceEmailService, format_address, get_tenant_detail
 from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
-from facility_service.app.crud.system.system_settings_crud import get_system_settings
+from facility_service.app.crud.system.system_settings_crud import get_system_currency, get_system_settings
+from facility_service.app.enum.leasing_tenants_enum import LeaseChargeCodes
 from facility_service.app.enum.module_enum import ModuleName
 from facility_service.app.models.common.attachments import Attachment
 from facility_service.app.models.financials.customer_advances import AdvanceAdjustment, CustomerAdvance
@@ -43,7 +44,7 @@ from ...models.leasing_tenants.lease_charges import LeaseCharge
 from ...models.service_ticket.tickets_work_order import TicketWorkOrder
 from ...models.service_ticket.tickets import Ticket
 from ...models.financials.invoices import Invoice, InvoiceLine, PaymentAR
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceCustomerDetail, InvoiceLineOut, InvoiceOut,  InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, InvoiceCreate, InvoiceCustomerDetail, InvoiceLineOut, InvoiceOut,  InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse, UserInvoiceOut
 from facility_service.app.models.parking_access import parking_pass
 
 
@@ -65,17 +66,25 @@ def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
         Invoice.is_deleted == False  # ✅ ADD THIS: Exclude soft-deleted invoices
     ]
 
-    if params.billable_item_type and params.billable_item_type.lower() != "all":
-        filters.append(InvoiceLine.code == params.billable_item_type)
+    if params.code and params.code.lower() != "all":
+        filters.append(InvoiceLine.code == params.code)
 
     if params.status and params.status.lower() != "all":
         filters.append(Invoice.status == params.status)
+
+    if params.site_id:
+        filters.append(Invoice.site_id == params.site_id)
 
     if params.search:
         search_term = f"%{params.search}%"
         filters.append(or_(
             Invoice.invoice_no.ilike(search_term),
         ))
+
+    if params.year:
+        base_query = base_query.filter(
+            extract('year', Invoice.date) == params.year
+        )
 
     return filters
 
@@ -273,6 +282,77 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
     )
 
 
+def get_user_invoices(db: Session, current_user: UserToken, params: InvoicesRequest) -> InvoicesResponse:
+    filters = build_invoices_filters(current_user.org_id, params)
+    base_query = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.lines),
+            joinedload(Invoice.site)
+        )
+    )
+    base_query = base_query.filter(
+        *filters,
+        Invoice.user_id == current_user.user_id
+    )
+    total = base_query.with_entities(func.count(Invoice.id)).scalar()
+
+    invoices = (
+        base_query
+        .order_by(Invoice.updated_at.desc())
+        .offset(params.skip)
+        .limit(params.limit)
+        .all()
+    )
+
+    results = []
+
+    for invoice in invoices:
+        space_name = invoice.space.name if invoice.space else None
+        site_name = invoice.site.name if invoice.site else None
+
+        building_id = invoice.space.building_block_id if invoice.space and invoice.space.building_block_id else None
+        building_name = invoice.space.building.name if invoice.space and invoice.space.building else None,
+        code = invoice.lines[0].code
+
+        # -----------------------------------------
+        # Status Calculation
+        # -----------------------------------------
+        invoice_amount = 0.0
+        if invoice.totals and "grand" in invoice.totals:
+            invoice_amount = float(invoice.totals.get("grand", 0.0))
+
+        actual_status = calculate_invoice_status(
+            db=db,
+            invoice=invoice
+        )
+
+        is_paid = (actual_status == "paid")
+
+        # -----------------------------------------
+        # Build Response
+        # -----------------------------------------
+        invoice_data = UserInvoiceOut.model_validate({
+            **invoice.__dict__,
+            "date": invoice.date.isoformat() if invoice.date else None,
+            "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+            "site_name": site_name,
+            "space_name": space_name,
+            "building_id": building_id,
+            "building_name": building_name,
+            "status": actual_status,
+            "is_paid": is_paid,
+            "code": code,
+            "total_amount": invoice_amount,
+            "created_at": invoice.created_at.isoformat() if isinstance(invoice.created_at, datetime) else invoice.created_at,
+            "updated_at": invoice.updated_at.isoformat() if isinstance(invoice.updated_at, datetime) else invoice.updated_at,
+        })
+
+        results.append(invoice_data)
+
+    return results
+
+
 def get_payment_history(db: Session, invoice_id: UUID):
 
     invoice = (
@@ -310,7 +390,8 @@ def get_payments(
     auth_db: Session,
     org_id: str,
     current_user: UserToken,
-    params: InvoicesRequest
+    params: InvoicesRequest,
+    only_credit: bool | None = None
 ):
 
     # -----------------------------------------
@@ -371,7 +452,7 @@ def get_payments(
 
     if params.year:
         base_query = base_query.filter(
-            extract('year', PaymentAR.paid_at) == int(params.year)
+            extract('year', PaymentAR.paid_at) == params.year
         )
 
     if current_user.account_type in [UserAccountType.FLAT_OWNER, UserAccountType.TENANT]:
@@ -379,6 +460,9 @@ def get_payments(
 
     if params.space_id:
         base_query = base_query.filter(Invoice.space_id == params.space_id)
+
+    if only_credit:
+        base_query = base_query.filter(PaymentAR.method != "advance")
 
     payments = (
         base_query
@@ -474,6 +558,7 @@ async def create_invoice(
         raise HTTPException(
             status_code=400, detail="Invoice must have at least one line")
 
+    request.currency = get_system_currency(db, org_id)
     invoice_data = request.model_dump(exclude={"org_id", "lines"})
     invoice_data.update({
         "org_id": org_id,
@@ -487,7 +572,7 @@ async def create_invoice(
 
         db_invoice = Invoice(**invoice_data)
         db.add(db_invoice)
-        db.flush()
+        db.commit()
 
         invoice_amount = 0
 
@@ -536,7 +621,7 @@ async def create_invoice(
 
             invoice_amount += float(line.amount or 0)
 
-        if request.status == "issued":
+        if db_invoice.status == "issued":
             apply_advance_to_invoice(db, db_invoice)
 
             # ===============================
@@ -582,12 +667,14 @@ async def create_invoice(
 
         return InvoiceOut.model_validate(invoice_dict)
 
-    except HTTPException:
+    except HTTPException as e:
+        print(str(e))
         db.rollback()
         raise
 
     except Exception as e:
         db.rollback()
+        print(str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -783,7 +870,7 @@ def get_pending_charges_by_customer(
     # ---------------------------
     # RENT
     # ---------------------------
-    if code == "rent":
+    if code == InvoiceType.rent.value:
         lease_charges = (
             db.query(LeaseCharge)
             .join(Lease, LeaseCharge.lease_id == Lease.id)
@@ -804,7 +891,7 @@ def get_pending_charges_by_customer(
             customers[tenant.user_id]["customer_email"] = tenant_user.email
             customers[tenant.user_id]["customer_phone"] = tenant_user.phone
             customers[tenant.user_id]["charges"].append({
-                "type": "rent",
+                "type": LeaseChargeCodes.rent.value,
                 "id": str(lc.id),
                 "period": f"{lc.period_start:%d %b %Y} - {lc.period_end:%d %b %Y}"
             })
@@ -899,180 +986,6 @@ def get_pending_charges_by_customer(
             })
 
     return list(customers.values())
-
-
-def get_work_order_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> InvoicesResponse:
-    """Get only work order invoices"""
-    # Add filter for work order type
-    params.billable_item_type = "work order"
-
-    base_query = get_invoices_query(db, org_id, params)
-    total = base_query.with_entities(func.count(Invoice.id)).scalar()
-
-    invoices = (
-        base_query
-        .order_by(Invoice.updated_at.desc())
-        .join(Site, Site.id == Invoice.site_id)
-        .offset(params.skip)
-        .limit(params.limit)
-        .all()
-    )
-
-    results = []
-    for invoice in invoices:
-        billable_item_name = None
-        site_name = invoice.site.name if invoice.site else None
-
-        if invoice.billable_item_id:
-            ticket_work_order = db.query(TicketWorkOrder).filter(
-                TicketWorkOrder.id == invoice.billable_item_id,
-                TicketWorkOrder.is_deleted == False
-            ).first()
-            if ticket_work_order:
-                ticket = db.query(Ticket).filter(
-                    Ticket.id == ticket_work_order.ticket_id,
-                    Ticket.status == "open"
-                ).first()
-
-                if ticket and ticket.ticket_no:
-                    billable_item_name = f"{ticket_work_order.wo_no} | Ticket {ticket.ticket_no}"
-                else:
-                    billable_item_name = ticket_work_order.wo_no
-
-        # ✅ ADD: Get payments and calculate status
-        payments = db.query(PaymentAR).filter(
-            PaymentAR.invoice_id == invoice.id
-        ).all()
-
-        payments_list = []
-        for payment in payments:
-            payments_list.append({
-                "id": payment.id,
-                "org_id": payment.org_id,
-                "invoice_id": payment.invoice_id,
-                "invoice_no": invoice.invoice_no,
-                "billable_item_name": billable_item_name,
-                "method": payment.method,
-                "ref_no": payment.ref_no,
-                "amount": Decimal(str(payment.amount)),
-                "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
-                "meta": payment.meta
-            })
-
-        # Calculate dynamic status
-        invoice_amount = 0.0
-        if invoice.totals and "grand" in invoice.totals:
-            invoice_amount = float(invoice.totals.get("grand", 0.0))
-
-        actual_status = calculate_invoice_status(
-            db=db,
-            invoice=invoice
-        )
-
-        is_paid = (actual_status == "paid")
-
-        invoice_data = InvoiceOut.model_validate({
-            **invoice.__dict__,
-            "date": invoice.date.isoformat() if invoice.date else None,
-            "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
-            "billable_item_name": billable_item_name,
-            "site_name": site_name,
-            "status": actual_status,  # ✅ Use calculated status
-            "is_paid": is_paid,  # ✅ Use calculated is_paid
-            "payments": payments_list  # ✅ Add payments
-        })
-        results.append(invoice_data)
-
-    return InvoicesResponse(
-        invoices=results,
-        total=total
-    )
-
-
-def get_lease_charge_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> InvoicesResponse:
-    """Get only lease charge invoices"""
-    # Add filter for lease charge type
-    params.billable_item_type = "lease charge"
-
-    base_query = get_invoices_query(db, org_id, params)
-    total = base_query.with_entities(func.count(Invoice.id)).scalar()
-
-    invoices = (
-        base_query
-        .order_by(Invoice.updated_at.desc())
-        .join(Site, Site.id == Invoice.site_id)
-        .offset(params.skip)
-        .limit(params.limit)
-        .all()
-    )
-
-    results = []
-    for invoice in invoices:
-        billable_item_name = None
-        site_name = invoice.site.name if invoice.site else None
-
-        if invoice.billable_item_id:
-            lease_charge = db.query(LeaseCharge).filter(
-                LeaseCharge.id == invoice.billable_item_id,
-                LeaseCharge.is_deleted == False
-            ).first()
-            if lease_charge:
-                charge_code = lease_charge.charge_code.code
-                if lease_charge.period_start and lease_charge.period_end:
-                    start_str = lease_charge.period_start.strftime("%d %b %Y")
-                    end_str = lease_charge.period_end.strftime("%d %b %Y")
-                    billable_item_name = f"{charge_code} | {start_str} - {end_str}"
-                else:
-                    billable_item_name = charge_code
-
-        # ✅ ADD: Get payments and calculate status
-        payments = db.query(PaymentAR).filter(
-            PaymentAR.invoice_id == invoice.id
-        ).all()
-
-        payments_list = []
-        for payment in payments:
-            payments_list.append({
-                "id": payment.id,
-                "org_id": payment.org_id,
-                "invoice_id": payment.invoice_id,
-                "invoice_no": invoice.invoice_no,
-                "billable_item_name": billable_item_name,
-                "method": payment.method,
-                "ref_no": payment.ref_no,
-                "amount": Decimal(str(payment.amount)),
-                "paid_at": payment.paid_at.date().isoformat() if payment.paid_at else None,
-                "meta": payment.meta
-            })
-
-        # Calculate dynamic status
-        invoice_amount = 0.0
-        if invoice.totals and "grand" in invoice.totals:
-            invoice_amount = float(invoice.totals.get("grand", 0.0))
-
-        actual_status = calculate_invoice_status(
-            db=db,
-            invoice=invoice
-        )
-
-        is_paid = (actual_status == "paid")
-
-        invoice_data = InvoiceOut.model_validate({
-            **invoice.__dict__,
-            "date": invoice.date.isoformat() if invoice.date else None,
-            "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
-            "billable_item_name": billable_item_name,
-            "site_name": site_name,
-            "status": actual_status,  # ✅ Use calculated status
-            "is_paid": is_paid,  # ✅ Use calculated is_paid
-            "payments": payments_list  # ✅ Add payments
-        })
-        results.append(invoice_data)
-
-    return InvoicesResponse(
-        invoices=results,
-        total=total
-    )
 
 
 def calculate_invoice_totals(db: Session, params: InvoiceTotalsRequest) -> Dict[str, Any]:
@@ -1474,7 +1387,7 @@ def save_invoice_payment_detail(
                 # ---------------------------
                 line_codes = {line.code.lower() for line in invoice.lines}
                 for code in line_codes:
-                    if code == "rent":
+                    if code == InvoiceType.rent.value:
                         db.add(Notification(
                             user_id=invoice.user_id,
                             type=NotificationType.alert,
@@ -1529,7 +1442,7 @@ def save_invoice_payment_detail(
         if invoice.status == "paid":
             line_codes = {line.code.lower() for line in invoice.lines}
             for code in line_codes:
-                if code == "rent":
+                if code == InvoiceType.rent.value:
                     db.add(Notification(
                         user_id=invoice.user_id,
                         type=NotificationType.alert,
@@ -1652,7 +1565,6 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         invoice.is_paid = False
 
     else:
-        invoice.status = "unpaid"
         invoice.is_paid = False
 
 
@@ -1820,7 +1732,7 @@ def download_invoice_pdf(
     return file_path, filename
 
 
-def download_payment_recipt_pdf(
+def download_payment_receipt_pdf(
     db: Session,
     payment_id: UUID,
     current_user: UserToken
@@ -1880,3 +1792,71 @@ def calculate_balance(db: Session, invoice: Invoice):
         balance = Decimal("0")
 
     return advance_used, payments_total, balance
+
+
+def get_customer_invoices(db: Session, org_id: UUID, customer_user_id: UUID):
+    invoices = (
+        db.query(Invoice)
+        .options(
+            joinedload(Invoice.lines),
+            joinedload(Invoice.site)
+        )
+        .filter(
+            Invoice.user_id == customer_user_id,
+            Invoice.status.notin_(["draft", "paid"]),
+            Invoice.is_deleted == False,
+            Invoice.org_id == org_id
+        ) .all()
+    )
+
+    results = []
+
+    for invoice in invoices:
+        space_name = invoice.space.name if invoice.space else None
+        site_name = invoice.site.name if invoice.site else None
+
+        building_id = invoice.space.building_block_id if invoice.space and invoice.space.building_block_id else None
+        building_name = invoice.space.building.name if invoice.space and invoice.space.building else None,
+        code = invoice.lines[0].code
+
+        # -----------------------------------------
+        # Status Calculation
+        # -----------------------------------------
+        invoice_amount = 0.0
+        if invoice.totals and "grand" in invoice.totals:
+            invoice_amount = float(invoice.totals.get("grand", 0.0))
+
+        paid_amount = (
+            db.query(func.sum(PaymentAR.amount))
+            .filter(
+                PaymentAR.invoice_id == invoice.id,
+                PaymentAR.is_deleted == False
+            )
+            .scalar()
+        ) or 0.0
+
+        paid_amount = float(paid_amount)
+        pending_amount = invoice_amount - paid_amount
+
+        # -----------------------------------------
+        # Build Response
+        # -----------------------------------------
+        invoice_data = UserInvoiceOut.model_validate({
+            **invoice.__dict__,
+            "date": invoice.date.isoformat() if invoice.date else None,
+            "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+            "site_name": site_name,
+            "space_name": space_name,
+            "building_id": building_id,
+            "building_name": building_name,
+            "code": code,
+            "total_amount": invoice_amount,
+            "paid_amount": paid_amount,
+            "pending_amount": pending_amount,
+            "created_at": invoice.created_at.isoformat() if isinstance(invoice.created_at, datetime) else invoice.created_at,
+            "updated_at": invoice.updated_at.isoformat() if isinstance(invoice.updated_at, datetime) else invoice.updated_at,
+        })
+
+        results.append(invoice_data)
+
+    return results

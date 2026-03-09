@@ -94,3 +94,13 @@ def update_system_settings(db: Session, setting_id: UUID, update_data: SystemSet
             "can_sync_to_hrms": setting.can_sync_to_hrms,
         },
     }
+
+
+def get_system_currency(db: Session, org_id: UUID) -> str | None:
+    currency = (
+        db.query(SystemSetting.currency)
+        .filter(SystemSetting.org_id == org_id)
+        .scalar()
+    )
+
+    return currency

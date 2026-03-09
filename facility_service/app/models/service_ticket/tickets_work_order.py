@@ -1,4 +1,4 @@
-from sqlalchemy import TIMESTAMP, Column, Numeric, Sequence, Text, func, select, cast, Integer, event
+from sqlalchemy import TIMESTAMP, Column, Numeric, Sequence, Text, UniqueConstraint, func, select, cast, Integer, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Boolean, Column, Integer, String, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
@@ -19,6 +19,7 @@ class TicketWorkOrder(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ticket_id = Column(UUID(as_uuid=True), ForeignKey(
         "tickets.id", ondelete="CASCADE"))
+    org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False)
     description = Column(Text)
     assigned_to = Column(UUID(as_uuid=True))
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
@@ -28,7 +29,7 @@ class TicketWorkOrder(Base):
     status = Column(String(50), default="PENDING")
 
     # Auto-generated work order number
-    wo_no = Column(String(20), unique=True, nullable=False)
+    wo_no = Column(String(20), nullable=False)
 
     # ✅ NEW COLUMNS ADDED
     labour_cost = Column(Numeric(10, 2), nullable=True)  # Labour cost
@@ -57,23 +58,30 @@ class TicketWorkOrder(Base):
 
     ticket = relationship("Ticket", back_populates="work_orders")
     tax_code = relationship("TaxCode", back_populates="ticket_work_orders")
+    invoice = relationship("Invoice")
 
+    __table_args__ = (
+        UniqueConstraint("org_id", "wo_no", name="uq_org_wo_no"),
+    )
 
 # Auto-generate wo_no before insert
+
+
 @event.listens_for(TicketWorkOrder, "before_insert")
 def generate_wo_no(mapper, connection, target):
 
+    # Get org_id from ticket
     org_id = connection.execute(
-        select(Ticket.org_id)
-        .select_from(Ticket)
-        .where(Ticket.id == target.ticket_id)
+        select(Ticket.org_id).where(Ticket.id == target.ticket_id)
     ).scalar()
 
+    # assign org_id to work order
+    target.org_id = org_id
+
+    # get last wo_no for this org
     result = connection.execute(
         select(func.max(TicketWorkOrder.wo_no))
-        .select_from(TicketWorkOrder)
-        .join(Ticket, TicketWorkOrder.ticket_id == Ticket.id)
-        .where(Ticket.org_id == org_id)
+        .where(TicketWorkOrder.org_id == org_id)
     ).scalar()
 
     if result:

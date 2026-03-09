@@ -45,9 +45,9 @@ class TicketOut(BaseModel):
     id: UUID
     ticket_no: str
     space_id: Optional[UUID] = None
-    site_id:Optional[UUID]=None
-    site_name:Optional[str] = None
-    space_name:Optional[str] = None
+    site_id: Optional[UUID] = None
+    site_name: Optional[str] = None
+    space_name: Optional[str] = None
     category: Optional[str] = None
     title: str
     description: str
@@ -61,7 +61,7 @@ class TicketOut(BaseModel):
     can_escalate: Optional[bool] = False
     can_reopen: Optional[bool] = False
     is_overdue: Optional[bool] = False
-        # ✅ ADD THESE OPTIONAL FIELDS
+    # ✅ ADD THESE OPTIONAL FIELDS
     assigned_to: Optional[UUID] = None
     vendor_id: Optional[UUID] = None
     assigned_to_name: Optional[str] = None  # For displaying assigned user name
@@ -89,14 +89,15 @@ class TicketCreate(BaseModel):
     category_id: Optional[UUID] = None
     title: Optional[str] = None
     description: str
-    preferred_time: str = Field(default_factory=lambda: datetime.utcnow().strftime("%H:%M"))
+    preferred_time: str = Field(
+        default_factory=lambda: datetime.utcnow().strftime("%H:%M"))
     request_type: str
     priority: Optional[str] = None
     # ✅ ADD THESE 2 OPTIONAL FIELDS
     assigned_to: Optional[UUID] = None
     vendor_id: Optional[UUID] = None
     preferred_date: date = Field(default_factory=date.today)
-
+    amenity_id: Optional[UUID] = None
 
     @classmethod
     def as_form(
@@ -110,11 +111,12 @@ class TicketCreate(BaseModel):
         category_id: Optional[UUID] = Form(None),
         title: Optional[str] = Form(None),
         description: str = Form(...),
-        preferred_time: str = Form(default_factory=lambda: datetime.utcnow().strftime("%H:%M")),
+        preferred_time: str = Form(
+            default_factory=lambda: datetime.utcnow().strftime("%H:%M")),
         preferred_date: date = Form(default_factory=date.today),
         request_type: str = Form(...),
         priority: Optional[str] = Form(None),
-                # ✅ ADD THESE TO FORM METHOD
+        # ✅ ADD THESE TO FORM METHOD
         assigned_to: Optional[UUID] = Form(None),
         vendor_id: Optional[UUID] = Form(None),
     ):
@@ -208,11 +210,12 @@ class TicketWorkFlowOut(EmptyStringModel):
     type: Optional[str] = None
     action_taken: Optional[str] = None
     created_at: Optional[datetime] = None
-    old_status: Optional[str] = None 
-    new_status: Optional[str] = None 
-    action_by:Optional[UUID]
+    old_status: Optional[str] = None
+    new_status: Optional[str] = None
+    action_by: Optional[UUID]
     action_by_name: Optional[str] = None
     action_time: Optional[datetime]
+
     class Config:
         from_attributes = True
 
@@ -220,9 +223,6 @@ class TicketWorkFlowOut(EmptyStringModel):
 class TicketListResponse(BaseModel):
     tickets: List[TicketOut]
     total: int
-
-
-
 
 
 # FOR VIEW -------------------------------------------------------
@@ -245,6 +245,7 @@ class TicketCommentOut(BaseModel):
     comment_text: Optional[str]
     created_at: Optional[datetime]
     reactions: List = []
+
 
 class TicketDetailsResponse(EmptyStringModel):
     id: UUID
@@ -271,11 +272,12 @@ class TicketDetailsResponse(EmptyStringModel):
     request_type: Optional[str] = None
     is_overdue: Optional[bool] = False
     attachments: Optional[List[TicketAttachmentOut]] = None
-    vendor_id: Optional[UUID] = None     #--------added
+    vendor_id: Optional[UUID] = None  # --------added
     vendor_name: Optional[str] = None
 
     class Config:
         from_attributes = True
+
 
 class TicketUpdateRequest(BaseModel):
     ticket_id: UUID

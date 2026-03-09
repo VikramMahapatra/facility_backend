@@ -1,17 +1,19 @@
+import base64
 from datetime import date
 import json
 import os
 from typing import List, Optional
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from facility_service.app.utils.invoice_generator import auto_generate_monthly_invoices
-from shared.helpers.json_response_helper import success_response
+from shared.helpers.json_response_helper import error_response, success_response
+from shared.utils.app_status_code import AppStatusCode
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, AutoInvoiceResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, AutoInvoiceResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse, UserInvoiceOut
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
-from shared.core.schemas import Lookup, UserToken
+from shared.core.schemas import AttachmentOut, DownloadAttachmentRequest, Lookup, UserToken
 from uuid import UUID
 from fastapi.responses import FileResponse, StreamingResponse
 from facility_service.app.utils.invoice_pdf import generate_invoice_pdf
@@ -57,20 +59,20 @@ def get_invoices(
     return crud.get_invoices(db, current_user.org_id, params)
 
 
-@router.get("/all-work-order-invoices", response_model=InvoicesResponse)
-def get_work_order(
-        params: InvoicesRequest = Depends(),
+@router.post("/my-invoices", response_model=List[UserInvoiceOut])
+def get_user_invoices(
+        params: InvoicesRequest,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_work_order_invoices(db, current_user.org_id, params)
+    return crud.get_user_invoices(db, current_user, params)
 
 
-@router.get("/all-lease-charge-invoices", response_model=InvoicesResponse)
-def get_work_order(
-        params: InvoicesRequest = Depends(),
+@router.get("/{customer_user_id:uuid}/customer-invoices", response_model=List[UserInvoiceOut])
+def get_customer_invoices(
+        customer_user_id: UUID,
         db: Session = Depends(get_db),
         current_user: UserToken = Depends(validate_current_token)):
-    return crud.get_lease_charge_invoices(db, current_user.org_id, params)
+    return crud.get_customer_invoices(db, current_user.org_id, customer_user_id)
 
 
 @router.get("/overview", response_model=InvoicesOverview)
@@ -98,7 +100,7 @@ def get_payments(
 
 @router.post("/payments", response_model=List[PaymentOut])
 def get_payments(
-        params: InvoicesRequest = Depends(),
+        params: InvoicesRequest,
         db: Session = Depends(get_db),
         auth_db: Session = Depends(get_auth_db),
         current_user: UserToken = Depends(validate_current_token)):
@@ -107,7 +109,8 @@ def get_payments(
         auth_db=auth_db,
         org_id=current_user.org_id,
         current_user=current_user,
-        params=params
+        params=params,
+        only_credit=True
     )
     return payment_response.payments
 
@@ -234,14 +237,39 @@ def download_invoice_pdf(
     )
 
 
+@router.post("/download", response_model=AttachmentOut)
+def download_invoice_pdf(
+    params: DownloadAttachmentRequest,
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+
+    file_path, filename = crud.download_invoice_pdf(
+        db, params.id, current_user
+    )
+
+    if not file_path or not os.path.exists(file_path):
+        return error_response(status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR), message="Invoice PDF not found")
+
+    with open(file_path, "rb") as f:
+        encoded_file = base64.b64encode(f.read()).decode("utf-8")
+
+    return AttachmentOut(
+        file_name=filename,
+        content_type="application/pdf",
+        file_data_base64=encoded_file
+    )
+
+
 @router.get("/payment-receipt/{payment_id:uuid}/download")
-def download_payment_recipt_pdf(
+def download_payment_receipt_pdf(
     payment_id: UUID,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
 
-    file_path = crud.download_payment_recipt_pdf(
+    file_path = crud.download_payment_receipt_pdf(
         db, payment_id, current_user)
 
     if not file_path or not os.path.exists(file_path):
@@ -254,6 +282,33 @@ def download_payment_recipt_pdf(
         file_path,
         media_type="application/pdf",
         filename=os.path.basename(file_path)
+    )
+
+
+@router.post("/payment-receipt/download", response_model=AttachmentOut)
+def download_payment_receipt_pdf(
+    params: DownloadAttachmentRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+
+    file_path = crud.download_payment_receipt_pdf(
+        db, params.id, current_user
+    )
+
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=404,
+            detail="Receipt PDF not found"
+        )
+
+    with open(file_path, "rb") as file:
+        encoded_file = base64.b64encode(file.read()).decode("utf-8")
+
+    return AttachmentOut(
+        file_name=os.path.basename(file_path),
+        content_type="application/pdf",
+        file_data_base64=encoded_file
     )
 
 

@@ -342,6 +342,7 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
             **service_req.__dict__,
             "category": category_name,
             "space_name": service_req.space.name if service_req.space else None,
+            "amenity_name": service_req.amenity.name if service_req.amenity else None,
             "building_name": service_req.space.building.name if service_req.space and service_req.space.building else None,
             "site_name": service_req.site.name if service_req.site else None,
             "closed_date": service_req.closed_date.isoformat() if service_req.closed_date else None,
@@ -384,6 +385,7 @@ async def create_ticket(
     tenant_id = None
     ticket_user_id = None
     title = None
+    amenity_id = None
 
     category_name = session.query(
         TicketCategory.category_name).filter(TicketCategory.id == data.category_id).scalar()
@@ -400,6 +402,7 @@ async def create_ticket(
             .scalar()
         )
         title = data.title
+        amenity_id = data.space_id
     else:
         # TENANT users - creating ticket for themselves
         ticket_user_id = user.user_id
@@ -447,7 +450,8 @@ async def create_ticket(
             data, "priority") else PriorityType.low,
         # ✅ Add assigned_to and vendor_id fields
         assigned_to=data.assigned_to if hasattr(data, "assigned_to") else None,
-        vendor_id=data.vendor_id if hasattr(data, "vendor_id") else None
+        vendor_id=data.vendor_id if hasattr(data, "vendor_id") else None,
+        amenity_id=amenity_id if amenity_id else data.space_id
     )
 
     session.add(new_ticket)

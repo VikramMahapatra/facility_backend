@@ -52,6 +52,8 @@ class Ticket(Base):
     request_type = Column(String(20), default="unit")
     preferred_time = Column(String(255), nullable=False,
                             default=func.time(func.now()))
+    amenity_id = Column(UUID(as_uuid=True), ForeignKey(
+        "spaces.id"), nullable=True)
     # Add this:
     preferred_date = Column(Date, nullable=False, default=date.today)
     user_id = Column(UUID(as_uuid=True))
@@ -66,7 +68,11 @@ class Ticket(Base):
 
     org = relationship("Org", back_populates="tickets")
     site = relationship("Site", back_populates="tickets")
-    space = relationship("Space", back_populates="tickets")
+    space = relationship(
+        "Space",
+        foreign_keys=[space_id],
+        back_populates="tickets"
+    )
     tenant = relationship("Tenant", back_populates="tickets")
     category = relationship("TicketCategory", back_populates="tickets")
 
@@ -77,6 +83,11 @@ class Ticket(Base):
     work_orders = relationship("TicketWorkOrder", back_populates="ticket")
     # Add this to your relationships in Ticket model
     vendor = relationship("Vendor", back_populates="tickets")
+    amenity = relationship(
+        "Space",
+        foreign_keys=[amenity_id],
+        back_populates="amenity_tickets"
+    )
 
     __table_args__ = (
 

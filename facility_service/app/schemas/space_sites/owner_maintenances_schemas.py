@@ -36,6 +36,8 @@ class OwnerMaintenanceOut(OwnerMaintenanceBase):
     site_name: Optional[str] = None
     building_name: Optional[str] = None
     invoice_id: Optional[UUID] = None
+    invoice_no: Optional[str] = None
+    invoice_status: Optional[str] = None
     owner_user_id: Optional[UUID] = None
     status: Optional[str] = "pending"
 

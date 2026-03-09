@@ -62,7 +62,8 @@ class Space(Base):
         "Ticket", foreign_keys="Ticket.space_id", back_populates="space")
     amenity_tickets = relationship(
         "Ticket",
-        foreign_keys="Ticket.amenity_id"
+        foreign_keys="Ticket.amenity_id",
+        back_populates="amenity"
     )
     parking_passes = relationship("ParkingPass", back_populates="space")
     owners = relationship(

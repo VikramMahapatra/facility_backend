@@ -62,8 +62,12 @@ class MasterQueryParams(BaseModel):
     space_id: Optional[str] = None
 
 
-class AttachmentOut(BaseModel):
-    id: str  # ADD THIS LINE - Attachment ID from database
+class DownloadAttachmentRequest(BaseModel):
+    id: UUID
+
+
+class AttachmentOut(EmptyStringModel):
+    id: Optional[str] = None
     file_name: str
     content_type: str
     file_data_base64: Optional[str] = None

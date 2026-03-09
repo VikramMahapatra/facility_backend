@@ -46,6 +46,9 @@ class TicketWorkOrderOut(TicketWorkOrderBase):
     # Calculated field (labour + material + other + tax)
     total_amount: Optional[Decimal] = None
     tax_code: Optional[str] = None  # From tax code relationship
+    invoice_id: Optional[UUID] = None
+    invoice_no: Optional[str] = None
+    invoice_status: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -45,7 +45,7 @@ def occupancy_timeline(
     return crud.get_occupancy_timeline(db, space_id, current_user)
 
 
-@router.post("/{space_id:uuid}/tenant/timeline")
+@router.post("/tenant/timeline")
 def occupancy_timeline(
     params: MasterQueryParams,
     db: Session = Depends(get_db),

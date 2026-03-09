@@ -114,7 +114,6 @@ class PaymentOut(BaseModel):
     ref_no: str
     amount: Decimal
     paid_at: Optional[date_type] = None
-    meta: Optional[Any] = None
     notes: Optional[str] = None
     customer_name: Optional[str] = None  # Add this field
 
@@ -187,6 +186,9 @@ class UserInvoiceOut(BaseModel):
     code: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    total_amount: Optional[float] = None
+    paid_amount: Optional[float] = None
+    pending_amount: Optional[float] = None
 
     class Config:
         from_attributes = True

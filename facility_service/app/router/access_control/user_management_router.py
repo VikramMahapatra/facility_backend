@@ -122,6 +122,19 @@ def search_user(
     )
 
 
+@router.get("/search-vendor-user", response_model=List[Lookup])
+def search_user(
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.search_vendor_user(
+        db=db,
+        org_id=current_user.org_id,
+        search_users=search
+    )
+
+
 @router.get("/search-staff-user", response_model=List[Lookup])
 def search_user(
     search: Optional[str] = Query(None),

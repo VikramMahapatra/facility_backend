@@ -746,7 +746,7 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
 def get_space_lookup(
     db: Session,
     site_id: str,
-    building_id: str,
+    building_id: str | None,
     user: UserToken,
     request_type: str | None   # unit | community
 ):
@@ -758,13 +758,13 @@ def get_space_lookup(
 
         if not allowed_space_ids:
             return {"spaces": [], "total": 0}
+
     space_query = (
         db.query(
             Space.id,
             Space.name
         )
         .join(Site, Space.site_id == Site.id)
-        .outerjoin(Building, Space.building_block_id == Building.id)
         .filter(
             Space.is_deleted == False,
             Site.is_deleted == False,

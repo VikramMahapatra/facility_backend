@@ -1548,7 +1548,7 @@ def create_termination_request(
     if not tenant:
         return error_response(status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR), message="Tenant not found")
 
-    lease = db.query(Lease).filter(Lease, Lease.tenant_id ==
+    lease = db.query(Lease).filter(Lease.tenant_id ==
                                    tenant.id, Lease.space_id == data.space_id)
 
     if lease.status != "active":

@@ -8,6 +8,8 @@ from typing import Dict, Optional
 from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.crud.access_control.user_management_crud import assign_owner_spaces, assign_tenant_spaces, handle_account_type_update
 from facility_service.app.crud.space_sites.space_occupancy_crud import get_current_occupancy_bulk
+from facility_service.app.enum.leasing_tenants_enum import LeaseChargeCodes
+from facility_service.app.models.financials.invoices import Invoice
 from facility_service.app.models.space_sites.user_sites import UserSite
 from shared.helpers.json_response_helper import error_response
 from shared.utils.app_status_code import AppStatusCode
@@ -562,45 +564,43 @@ def get_space_detail(
     if space_owner:
         space_is_owner = True
 
-        # Get maintenance details from OwnerMaintenanceCharge
-        owner_maint_query = db.query(OwnerMaintenanceCharge).filter(
-            OwnerMaintenanceCharge.space_owner_id == space_owner.id,
-            OwnerMaintenanceCharge.is_deleted == False
-        ).order_by(OwnerMaintenanceCharge.period_end.desc())
+        owner_maint_charges = db.query(OwnerMaintenanceCharge)\
+            .join(Invoice, OwnerMaintenanceCharge.invoice_id == Invoice.id, isouter=True)\
+            .filter(
+                OwnerMaintenanceCharge.space_owner_id == space_owner.id,
+                OwnerMaintenanceCharge.is_deleted == False
+        )\
+            .order_by(OwnerMaintenanceCharge.period_start.asc())\
+            .all()
 
-        owner_maint_charges = owner_maint_query.all()
-
-        # Calculate total maintenance paid
         total_maint_paid = sum(
-            c.amount for c in owner_maint_charges if c.status == "paid"
+            c.amount for c in owner_maint_charges
+            if c.invoice and c.invoice.status == "paid"
         ) if owner_maint_charges else 0.0
 
-        # Find current/latest maintenance period
-        current_date = date.today()
-        for charge in owner_maint_charges:
-            if charge.period_start <= current_date <= charge.period_end:
-                space_maintenance_detail = MaintenanceDetail(
-                    last_paid=charge.period_start if charge.status == "paid" else None,
-                    next_due_date=charge.period_end,
-                    next_maintenance_amount=float(charge.amount or 0),
-                    total_maintenance_paid=float(total_maint_paid)
-                )
-                break
-            elif charge.period_end < current_date and charge.status == "paid":
-                space_maintenance_detail = MaintenanceDetail(
-                    last_paid=charge.period_end,
-                    next_due_date=None,
-                    next_maintenance_amount=0.0,
-                    total_maintenance_paid=float(total_maint_paid)
-                )
-                break
+        last_paid = None
+        next_due_date = None
+        next_maintenance_amount = 0.0
 
-        # If no current period found, use default with total paid
-        if space_maintenance_detail.total_maintenance_paid == 0:
-            space_maintenance_detail.total_maintenance_paid = float(
-                total_maint_paid)
+        # Find last paid maintenance
+        for i, charge in enumerate(owner_maint_charges):
+            if charge.invoice and charge.invoice.status == "paid":
+                last_paid = charge.period_end
 
-        # 2. CHECK IF USER IS TENANT (for lease contract)
+                # Next maintenance charge
+                if i + 1 < len(owner_maint_charges):
+                    next_charge = owner_maint_charges[i + 1]
+                    next_due_date = next_charge.period_start
+                    next_maintenance_amount = float(next_charge.amount or 0)
+
+        space_maintenance_detail = MaintenanceDetail(
+            last_paid=last_paid,
+            next_due_date=next_due_date,
+            next_maintenance_amount=next_maintenance_amount,
+            total_maintenance_paid=float(total_maint_paid)
+        )
+
+    # 2. CHECK IF USER IS TENANT (for lease contract)
     if tenant and not space_is_owner:
         # Check if tenant has access to this space
         tenant_space = db.query(TenantSpace).filter(
@@ -634,35 +634,41 @@ def get_space_detail(
                 space_lease_contract_exist = True
 
                 # Get rent payments
-                rent_query = db.query(LeaseCharge).filter(
+                rent_query = db.query(LeaseCharge).join(Invoice).filter(
                     LeaseCharge.lease_id == lease.id,
                     LeaseCharge.is_deleted == False,
                     LeaseCharge.charge_code == LeaseChargeCodes.rent.value
                 )
 
-                rent_charges = rent_query.all()
+                rent_charges = rent_query.order_by(
+                    LeaseCharge.period_start.asc()).all()
+
                 total_rent_paid = sum(
-                    c.amount for c in rent_charges
+                    c.amount for c in rent_charges if c.invoice and c.invoice.status == "paid"
                 ) if rent_charges else 0.0
 
-                # Find current rent period
-                current_date = date.today()
-                all_rent_periods = rent_query.order_by(
-                    LeaseCharge.period_end.desc()
-                ).all()
+                last_rent_paid = None
+                next_rent_due = None
+                paid_charge = None
 
-                last_rent_paid, next_rent_due = None, None
-                for period in all_rent_periods:
-                    if period.period_start <= current_date <= period.period_end:
-                        last_rent_paid = period.period_start
-                        next_rent_due = period.period_end + \
-                            timedelta(days=1)
+                # Find last paid rent charge
+                for charge in reversed(rent_charges):
+                    if charge.invoice and charge.invoice.status == "paid":
+                        paid_charge = charge
+                        last_rent_paid = charge.period_end
                         break
-                    elif period.period_end <= current_date:
-                        last_rent_paid = period.period_end
-                        next_rent_due = period.period_end + \
-                            timedelta(days=1)
-                        break
+
+                # Find next rent charge after last paid
+                if paid_charge:
+                    next_charge = db.query(LeaseCharge).filter(
+                        LeaseCharge.lease_id == lease.id,
+                        LeaseCharge.is_deleted == False,
+                        LeaseCharge.charge_code == LeaseChargeCodes.rent.value,
+                        LeaseCharge.period_start > paid_charge.period_end
+                    ).order_by(LeaseCharge.period_start.asc()).first()
+
+                    if next_charge:
+                        next_rent_due = next_charge.period_start
 
             if space_lease_contract_exist:
                 space_lease_contract_detail = LeaseContractDetail(

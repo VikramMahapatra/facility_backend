@@ -746,9 +746,9 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
 def get_space_lookup(
     db: Session,
     site_id: str,
-    building_id: str | None,
     user: UserToken,
-    request_type: str | None   # unit | community
+    building_id: str | None = None,
+    request_type: str | None = None   # unit | community
 ):
     allowed_space_ids = None
 

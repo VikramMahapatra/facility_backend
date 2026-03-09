@@ -68,12 +68,12 @@ app = FastAPI(title="Facility Service API")
 # Create all tablesss
 Base.metadata.create_all(bind=facility_engine)
 
-# Allow requests from your React app
 origins = [
     "http://localhost:8080",
     "http://localhost:8081",
-    "http://127.0.0.1:8002"
-    # Add other origins if deploying later
+    "http://127.0.0.1:8002",
+    "http://facility.zentrixel.com",
+    "https://facility.zentrixel.com"
 ]
 
 app.add_middleware(

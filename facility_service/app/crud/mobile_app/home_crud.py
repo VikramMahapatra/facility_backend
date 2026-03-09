@@ -637,7 +637,7 @@ def get_space_detail(
                 rent_query = db.query(LeaseCharge).filter(
                     LeaseCharge.lease_id == lease.id,
                     LeaseCharge.is_deleted == False,
-                    LeaseCharge.charge_code == "RENT"
+                    LeaseCharge.charge_code == LeaseChargeCodes.rent.value
                 )
 
                 rent_charges = rent_query.all()

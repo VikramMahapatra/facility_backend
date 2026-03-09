@@ -14,7 +14,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from facility_service.app.crud.common.attachment_crud import AttachmentService
 from facility_service.app.crud.financials.invoice_email_service import InvoiceEmailService, format_address, get_tenant_detail
 from facility_service.app.crud.service_ticket.tickets_crud import fetch_role_admin
-from facility_service.app.crud.system.system_settings_crud import get_system_settings
+from facility_service.app.crud.system.system_settings_crud import get_system_currency, get_system_settings
+from facility_service.app.enum.leasing_tenants_enum import LeaseChargeCodes
 from facility_service.app.enum.module_enum import ModuleName
 from facility_service.app.models.common.attachments import Attachment
 from facility_service.app.models.financials.customer_advances import AdvanceAdjustment, CustomerAdvance
@@ -557,6 +558,7 @@ async def create_invoice(
         raise HTTPException(
             status_code=400, detail="Invoice must have at least one line")
 
+    request.currency = get_system_currency(db, org_id)
     invoice_data = request.model_dump(exclude={"org_id", "lines"})
     invoice_data.update({
         "org_id": org_id,
@@ -868,7 +870,7 @@ def get_pending_charges_by_customer(
     # ---------------------------
     # RENT
     # ---------------------------
-    if code == "rent":
+    if code == InvoiceType.rent.value:
         lease_charges = (
             db.query(LeaseCharge)
             .join(Lease, LeaseCharge.lease_id == Lease.id)
@@ -889,7 +891,7 @@ def get_pending_charges_by_customer(
             customers[tenant.user_id]["customer_email"] = tenant_user.email
             customers[tenant.user_id]["customer_phone"] = tenant_user.phone
             customers[tenant.user_id]["charges"].append({
-                "type": "rent",
+                "type": LeaseChargeCodes.rent.value,
                 "id": str(lc.id),
                 "period": f"{lc.period_start:%d %b %Y} - {lc.period_end:%d %b %Y}"
             })
@@ -1385,7 +1387,7 @@ def save_invoice_payment_detail(
                 # ---------------------------
                 line_codes = {line.code.lower() for line in invoice.lines}
                 for code in line_codes:
-                    if code == "rent":
+                    if code == InvoiceType.rent.value:
                         db.add(Notification(
                             user_id=invoice.user_id,
                             type=NotificationType.alert,
@@ -1440,7 +1442,7 @@ def save_invoice_payment_detail(
         if invoice.status == "paid":
             line_codes = {line.code.lower() for line in invoice.lines}
             for code in line_codes:
-                if code == "rent":
+                if code == InvoiceType.rent.value:
                     db.add(Notification(
                         user_id=invoice.user_id,
                         type=NotificationType.alert,

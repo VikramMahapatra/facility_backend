@@ -60,7 +60,7 @@ class InvoiceBase(BaseModel):
     user_id: UUID
     date: date_type
     due_date: Optional[date_type] = None
-    currency: str
+    currency: Optional[str] = None
     totals: Optional[Any] = None
     meta: Optional[Any] = None
     status: str

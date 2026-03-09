@@ -41,14 +41,20 @@ def auto_generate_monthly_invoices(
     }
 
     # =====================================================
-    # 1️⃣ RENT (AR)
+    # RENT (AR)
     # =====================================================
     rent_charges = db.query(LeaseCharge).join(Lease).filter(
         LeaseCharge.period_start >= today,
         LeaseCharge.period_start <= billing_end,
         LeaseCharge.charge_code == InvoiceType.rent.value,
-        LeaseCharge.invoice_id == None
+        LeaseCharge.invoice_id == None,
+        LeaseCharge.is_deleted == False,
+        Lease.org_id == org_id,
+        Lease.is_deleted == False,
+        Lease.status == "active"
     ).all()
+
+    print("rent charges", len(rent_charges))
 
     for charge in rent_charges:
         lease = charge.lease
@@ -71,12 +77,14 @@ def auto_generate_monthly_invoices(
         created["invoices"].append(invoice.invoice_no)
 
     # =====================================================
-    # 2️⃣ OWNER MAINTENANCE (AR)
+    # OWNER MAINTENANCE (AR)
     # =====================================================
     maint = db.query(OwnerMaintenanceCharge).filter(
         OwnerMaintenanceCharge.period_start >= today,
         OwnerMaintenanceCharge.period_start <= billing_end,
-        OwnerMaintenanceCharge.invoice_id == None
+        OwnerMaintenanceCharge.invoice_id == None,
+        OwnerMaintenanceCharge.org_id == org_id,
+        OwnerMaintenanceCharge.is_deleted == False
     ).all()
 
     for charge in maint:
@@ -100,7 +108,7 @@ def auto_generate_monthly_invoices(
         created["invoices"].append(invoice.invoice_no)
 
     # =====================================================
-    # 3️⃣ WORK ORDERS (AR or AP)
+    # WORK ORDERS
     # =====================================================
     work_orders = db.query(TicketWorkOrder).filter(
         TicketWorkOrder.created_at >= today,
@@ -132,7 +140,7 @@ def auto_generate_monthly_invoices(
             created["invoices"].append(invoice.invoice_no)
 
     # =====================================================
-    # 4️⃣ PARKING PASS (AR)
+    # PARKING PASS (AR)
     # =====================================================
     parking_passes = db.query(ParkingPass).filter(
         ParkingPass.valid_from >= today,
@@ -206,7 +214,7 @@ def create_ar_invoice(
             "tax": float(round(tax, 2)),
             "grand": float(round(grand, 2))
         },
-        lines=line
+        lines=[line]
     )
 
     db_invoice = create_invoice(db, org_id, invoice, None, current_user)

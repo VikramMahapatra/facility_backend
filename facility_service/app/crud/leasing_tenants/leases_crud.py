@@ -28,7 +28,7 @@ from ...models.leasing_tenants.tenants import Tenant
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
-from ...enum.leasing_tenants_enum import LeaseDefaultPayer, LeaseFrequency, LeaseStatus, TenantSpaceStatus, TenantStatus
+from ...enum.leasing_tenants_enum import LeaseChargeCodes, LeaseDefaultPayer, LeaseFrequency, LeaseStatus, TenantSpaceStatus, TenantStatus
 from shared.core.schemas import Lookup, UserToken
 
 from ...models.leasing_tenants.leases import Lease
@@ -1007,7 +1007,7 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
         .filter(
             LeaseCharge.lease_id == lease_id,
             LeaseCharge.is_deleted == False,
-            func.lower(LeaseCharge.charge_code) == "rent"
+            func.lower(LeaseCharge.charge_code) == LeaseChargeCodes.rent.value
         )
         .order_by(LeaseCharge.period_start.desc())
         .all()
@@ -1711,7 +1711,7 @@ def sync_rent_charges(db: Session, lease: Lease):
         db.query(LeaseCharge)
         .filter(
             LeaseCharge.lease_id == lease.id,
-            LeaseCharge.charge_code == "RENT",
+            LeaseCharge.charge_code == LeaseChargeCodes.rent.value,
             LeaseCharge.is_deleted == False
         )
         .all()
@@ -1748,7 +1748,7 @@ def sync_rent_charges(db: Session, lease: Lease):
             db.add(
                 LeaseCharge(
                     lease_id=lease.id,
-                    charge_code="RENT",
+                    charge_code=LeaseChargeCodes.rent.value,
                     period_start=start,
                     period_end=end,
                     amount=term.amount,

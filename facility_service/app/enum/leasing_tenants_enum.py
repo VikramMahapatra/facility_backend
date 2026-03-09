@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class LeaseFrequency (str ,Enum):
+class LeaseFrequency (str, Enum):
     monthly = "monthly"
     quaterly = "quaterly"
     yearly = "yearly"
@@ -37,3 +37,7 @@ class TenantSpaceStatus(str, Enum):
     rejected = "rejected"
     leased = "leased"
     ended = "ended"
+
+
+class LeaseChargeCodes(str, Enum):
+    rent = "rent"

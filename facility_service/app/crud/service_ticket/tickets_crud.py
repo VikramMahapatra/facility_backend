@@ -242,8 +242,8 @@ def get_tickets(db: Session, auth_db: Session, params: TicketFilterRequest, curr
                 assigned_to_name=assigned_to_name,
                 vendor_name=vendor_name,
                 preferred_time=t.preferred_time or datetime.utcnow().strftime("%H:%M"),  # ✅ required
-                preferred_date=t.preferred_date or date.today()
-
+                preferred_date=t.preferred_date or date.today(),
+                amenity_name=t.amenity.name if t.amenity else None
             )
         )
 
@@ -573,7 +573,8 @@ async def create_ticket(
             "category": new_ticket.category.category_name,
             # ✅ Include the names in response
             "assigned_to_name": assigned_to_name,
-            "vendor_name": vendor_name
+            "vendor_name": vendor_name,
+            "amenity_name":new_ticket.amenity.name if new_ticket.amenity else None
         }
     )
 

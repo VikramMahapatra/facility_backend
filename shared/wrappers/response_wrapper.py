@@ -103,29 +103,31 @@ class JsonResponseMiddleware(BaseHTTPMiddleware):
 
                 # --- FIX message if it contains embedded dict inside a string ---
                 msg = data.get("message")
+
                 # Detect bad message like: "400: {'data': ...}"
-                if isinstance(msg, str) and "{" in msg and "}" in msg:
+                if isinstance(msg, str) and msg.startswith(tuple(str(i) for i in range(100, 600))) and "{" in msg:
                     try:
-                        # Extract the JSON-like dict inside the string
+                        # Extract dict part after the first colon
                         inner = msg.split(":", 1)[1].strip()
-                        # convert to valid JSON
-                        inner = inner.replace("'", "\"")
+
+                        # Safely parse python dict string
                         parsed = ast.literal_eval(inner)
 
-                        # If parsed successfully, override the message + status_code
                         if isinstance(parsed, dict):
-                            data["message"] = parsed.get(
-                                "message", data["message"])
-                            data["status_code"] = parsed.get(
-                                "status_code", data["status_code"])
-                    except Exception as e:
-                        pass  # fallback to original message
-                return JSONResponse(
-                    status_code=response.status_code,
-                    content=replace_nulls_with_empty(data),
-                    headers={k: v for k, v in response.headers.items(
-                    ) if k.lower() != "content-length"},
-                )
+                            return JSONResponse(
+                                status_code=response.status_code,
+                                content=replace_nulls_with_empty({
+                                    "data": parsed.get("data", ""),
+                                    "status": parsed.get("status", "Failed"),
+                                    "status_code": parsed.get("status_code", data.get("status_code")),
+                                    "message": parsed.get("message", data.get("message"))
+                                }),
+                                headers={k: v for k, v in response.headers.items(
+                                ) if k.lower() != "content-length"},
+                            )
+
+                    except Exception:
+                        pass  # fallback if parsing fails
 
             message = error_message
 

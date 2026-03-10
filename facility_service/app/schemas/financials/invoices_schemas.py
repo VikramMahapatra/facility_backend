@@ -64,6 +64,7 @@ class InvoiceBase(BaseModel):
     totals: Optional[Any] = None
     meta: Optional[Any] = None
     status: str
+    send_email: Optional[bool] = False
 
     class Config:
         from_attributes = True
@@ -253,6 +254,10 @@ class InvoiceDetailRequest(BaseModel):
     limit: int = 10
     status: Optional[str] = None
     invoice_id: Optional[UUID] = None
+
+
+class InvoiceEmailRequest(BaseModel):
+    invoice_id: UUID
 
 
 class AutoInvoiceResponse(BaseModel):

@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from facility_service.app.crud.system.system_settings_crud import get_system_settings
+from facility_service.app.enum.revenue_enum import InvoiceType
 from facility_service.app.models.financials.customer_advances import AdvanceAdjustment
 from facility_service.app.models.financials.invoices import Invoice, PaymentAR
 from facility_service.app.models.leasing_tenants.tenants import Tenant
@@ -49,16 +50,25 @@ class InvoiceEmailService:
         # -----------------------------
         # Customer (User)
         # -----------------------------
-        customer = get_tenant_detail(db, invoice.user_id)
 
-        print(customer)
+        invoice_code = invoice.lines[0].code if invoice.lines else InvoiceType.rent.value
 
-        customer_detail = InvoiceCustomerDetail(
-            customer_name=customer.name if customer else "Customer",
-            space_name=invoice.space.name,
-            customer_phone=customer.phone,
-            customer_address=format_address(customer.address)
-        )
+        if invoice_code == InvoiceType.owner_maintenance.value:
+            customer = get_user_detail(invoice.user_id)
+            customer_detail = InvoiceCustomerDetail(
+                customer_name=customer.full_name if customer else "Customer",
+                space_name=invoice.space.name,
+                customer_phone=customer.phone,
+            )
+        else:
+            customer = get_tenant_detail(db, invoice.user_id)
+
+            customer_detail = InvoiceCustomerDetail(
+                customer_name=customer.name if customer else "Customer",
+                space_name=invoice.space.name,
+                customer_phone=customer.phone,
+                customer_address=format_address(customer.address)
+            )
 
         # -----------------------------
         # Invoice Total

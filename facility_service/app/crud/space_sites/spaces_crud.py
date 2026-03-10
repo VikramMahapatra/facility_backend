@@ -267,6 +267,7 @@ def create_space(db: Session, space: SpaceCreate):
                 and_(
                     func.lower(Space.name) == func.lower(space.name),
                     Space.building_block_id == None,
+                    Space.site_id == space.site_id,
                     Space.is_deleted == False,
                 )
             ).first()
@@ -274,8 +275,7 @@ def create_space(db: Session, space: SpaceCreate):
         if existing_space:
             return error_response(
                 message=f"Space with name '{space.name}' already exists",
-                status_code=str(AppStatusCode.DUPLICATE_ADD_ERROR),
-                http_status=400
+                status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
             )
 
         # Create space - exclude building_block
@@ -315,8 +315,7 @@ def create_space(db: Session, space: SpaceCreate):
         db.rollback()
         return error_response(
             message=str(e),
-            status_code=str(AppStatusCode.OPERATION_ERROR),
-            http_status=400
+            status_code=str(AppStatusCode.OPERATION_ERROR)
         )
 
 
@@ -325,8 +324,7 @@ def update_space(db: Session, space: SpaceUpdate):
     if not db_space:
         return error_response(
             message="Space not found",
-            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
-            http_status=404
+            status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR)
         )
     accessories_data = space.accessories
     update_data = space.model_dump(
@@ -746,9 +744,9 @@ def delete_space(db: Session, space_id: str) -> Optional[Space]:
 def get_space_lookup(
     db: Session,
     site_id: str,
-    building_id: str,
     user: UserToken,
-    request_type: str | None   # unit | community
+    building_id: str | None = None,
+    request_type: str | None = None   # unit | community
 ):
     allowed_space_ids = None
 
@@ -758,13 +756,13 @@ def get_space_lookup(
 
         if not allowed_space_ids:
             return {"spaces": [], "total": 0}
+
     space_query = (
         db.query(
             Space.id,
             Space.name
         )
         .join(Site, Space.site_id == Site.id)
-        .outerjoin(Building, Space.building_block_id == Building.id)
         .filter(
             Space.is_deleted == False,
             Site.is_deleted == False,

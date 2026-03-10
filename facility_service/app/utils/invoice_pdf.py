@@ -9,6 +9,7 @@ from reportlab.platypus import (
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib import colors
+from num2words import num2words
 
 from ..models.space_sites.orgs import Org
 from ..schemas.financials.invoices_schemas import InvoiceCustomerDetail
@@ -80,8 +81,9 @@ def generate_invoice_pdf(
     # --------------------------------------------------
     invoice_type_label = 'GENERAL'
     if invoice.lines and len(invoice.lines) > 0 and invoice.lines[0].code:
-        invoice_type_label = str(invoice.lines[0].code).upper()
-
+        raw_code = str(invoice.lines[0].code)
+        invoice_type_label = raw_code.replace('_', ' ').replace('-', ' ').upper()
+    
     title_text = f"{invoice_type_label} DETAILS"
     
     title_table = Table([[title_text]], colWidths=[PAGE_WIDTH])
@@ -146,7 +148,7 @@ def generate_invoice_pdf(
     # --------------------------------------------------
     # 5. TOTAL BAR
     # --------------------------------------------------
-    total_data = [['TOTAL', f"{grand_total:.2f}"]]
+    total_data = [['TOTAL', f"{grand_total:.2f} {system_settings.general.currency}"]]
     total_table = Table(total_data, colWidths=[415, 100])
     total_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#003b46")),
@@ -161,7 +163,8 @@ def generate_invoice_pdf(
     # --------------------------------------------------
     # 6. IN WORDS BOX
     # --------------------------------------------------
-    words_text = f"In Words: <b>{grand_total} {system_settings.general.currency} Only</b>"
+    amount_in_words = num2words(float(grand_total)).replace('-', ' ').title()
+    words_text = f"In Words: <b>{amount_in_words} {system_settings.general.currency} Only</b>"
 
     words_table = Table([[Paragraph(words_text, styles["Normal"])]], colWidths=[PAGE_WIDTH])
     words_table.setStyle(TableStyle([
@@ -260,90 +263,172 @@ def generate_payment_receipt_pdf(
     organization_name: str,
     customer_name: str,
     balance_after_payment: float,
-    system_settings: SystemSettingsOut
+    system_settings
 ):
-
     styles = getSampleStyleSheet()
     story = []
 
-    # --------------------------------------------------
-    # HEADER
-    # --------------------------------------------------
-    story.append(Paragraph(
-        f"<b>{organization_name}</b>",
-        styles["Title"]
-    ))
-
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph(
-        "<b>PAYMENT RECEIPT</b>",
-        styles["Heading2"]
-    ))
-
-    story.append(Spacer(1, 12))
+    PAGE_WIDTH = 515
 
     # --------------------------------------------------
-    # RECEIPT DETAILS
+    # 1. HEADER (Organization Details Centered)
     # --------------------------------------------------
-    receipt_data = [
-        ["Receipt No", f"RCPT-{str(payment.id)[:8]}"],
-        ["Invoice No", invoice.invoice_no],
-        ["Customer", customer_name],
-        ["Payment Date", payment.paid_at.strftime("%d %b %Y")],
-        ["Payment Method", payment.method.upper()],
-        ["Reference No", payment.ref_no or "-"],
+    header_html = f"""
+    <para align='center'>
+        <b><font size='18'>{organization_name}</font></b><br/><br/>
+    </para>
+    """
+    story.append(Paragraph(header_html, styles["Normal"]))
+    story.append(Spacer(1, 5))
+
+    line_table = Table([['']], colWidths=[PAGE_WIDTH], rowHeights=[2])
+    line_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#1E5631")),
+        ('PADDING', (0, 0), (-1, -1), 0),
+    ]))
+    story.append(line_table)
+    story.append(Spacer(1, 15))
+
+    # --------------------------------------------------
+    # 2. CUSTOMER & RECEIPT DETAILS GRID BOX
+    # --------------------------------------------------
+    info_data = [
+        ["Customer", f": {customer_name}", "Receipt No", f": RCPT-{str(payment.id)[:8]}"],
+        ["Invoice No", f": {invoice.invoice_no}", "Payment Date", f": {payment.paid_at.strftime('%d %b %Y')}"],
+        ["Pay Method", f": {payment.method.upper()}", "Reference No", f": {payment.ref_no or '-'}"],
     ]
 
-    details_table = Table(receipt_data, colWidths=[160, 340])
-
-    details_table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("PADDING", (0, 0), (-1, -1), 6),
+    info_table = Table(info_data, colWidths=[90, 180, 100, 145])
+    info_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 5),
     ]))
+    story.append(info_table)
+    story.append(Spacer(1, 15))
 
-    story.append(details_table)
+    # --------------------------------------------------
+    # 3. TITLE BAR
+    # --------------------------------------------------
+    title_table = Table([["PAYMENT RECEIPT"]], colWidths=[PAGE_WIDTH])
+    title_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#1E5631")),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('PADDING', (0, 0), (-1, -1), 5),
+    ]))
+    story.append(title_table)
+
+    # --------------------------------------------------
+    # 4. PAYMENT AMOUNT TABLE
+    # --------------------------------------------------
+    paid_amount = Decimal(payment.amount)
+    grand_total = Decimal(invoice.totals.get("grand", 0)) if invoice.totals else Decimal("0")
+
+    item_data = [
+        ['Description', 'Amount']
+    ]
+
+    desc = f"Payment received towards Invoice: {invoice.invoice_no}"
+    item_data.append([
+        Paragraph(desc, styles["Normal"]),
+        f"{paid_amount:.2f}"
+    ])
+    
+    item_data.append(['', ''])
+
+    item_table = Table(item_data, colWidths=[415, 100])
+    item_table.setStyle(TableStyle([
+        ('LINELEFT', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('LINERIGHT', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.HexColor("#1E5631")),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, -1), (-1, -1), 20),
+    ]))
+    story.append(item_table)
+
+    # --------------------------------------------------
+    # 5. TOTAL PAID BAR
+    # --------------------------------------------------
+    total_data = [['TOTAL PAID', f"{paid_amount:.2f} {system_settings.general.currency}"]]
+    
+    total_table = Table(total_data, colWidths=[415, 100])
+    total_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#1E5631")),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('PADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(total_table)
+
+    # --------------------------------------------------
+    # 6. IN WORDS BOX
+    # --------------------------------------------------
+    amount_in_words = num2words(float(paid_amount)).replace('-', ' ').title()
+    words_text = f"In Words: <b>{amount_in_words} {system_settings.general.currency} Only</b>"
+
+    words_table = Table([[Paragraph(words_text, styles["Normal"])]], colWidths=[PAGE_WIDTH])
+    words_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('PADDING', (0, 0), (-1, -1), 5),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+    ]))
+    story.append(words_table)
     story.append(Spacer(1, 20))
 
     # --------------------------------------------------
-    # PAYMENT SUMMARY
+    # 7. INVOICE BALANCE SUMMARY
     # --------------------------------------------------
-    grand_total = Decimal(invoice.totals.get("grand", 0))
-    paid_amount = Decimal(payment.amount)
+    summary_title = Table([["INVOICE BALANCE SUMMARY"]], colWidths=[PAGE_WIDTH])
+    summary_title.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#1E5631")),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('PADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(summary_title)
 
     summary_data = [
-        ["Invoice Total",
-            f"{grand_total:.2f} {system_settings.general.currency}"],
-        ["Amount Paid",
-            f"{paid_amount:.2f} {system_settings.general.currency}"],
-        ["Balance After Payment",
-            f"{Decimal(balance_after_payment):.2f} {system_settings.general.currency}"],
+        ["Invoice Total", "Amount Paid", "Balance After Payment"],
+        [
+            f"{grand_total:.2f} {system_settings.general.currency}", 
+            f"{paid_amount:.2f} {system_settings.general.currency}", 
+            f"{Decimal(balance_after_payment):.2f} {system_settings.general.currency}"
+        ]
     ]
-
-    summary_table = Table(summary_data, colWidths=[300, 200])
-
+    summary_table = Table(summary_data, colWidths=[171, 172, 172])
     summary_table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
-        ("PADDING", (0, 0), (-1, -1), 6),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('PADDING', (0, 0), (-1, -1), 5),
     ]))
-
     story.append(summary_table)
 
-    story.append(Spacer(1, 30))
-
     # --------------------------------------------------
-    # FOOTER
+    # 8. FOOTER
     # --------------------------------------------------
+    story.append(Spacer(1, 15))
     story.append(Paragraph(
-        "Payment received with thanks.",
-        styles["Italic"]
+        "<para align='right'><font color='#555555'><i>Payment received with thanks.<br/>This is a computer generated receipt and requires no authentication.</i></font></para>", 
+        styles["Normal"]
     ))
 
     # --------------------------------------------------
-    # FILE STORAGE (same pattern as invoice)
+    # 9. BUILD PDF
     # --------------------------------------------------
     BASE_DIR = "storage/receipts"
     org_dir = os.path.join(BASE_DIR, str(invoice.org_id))
@@ -356,9 +441,6 @@ def generate_payment_receipt_pdf(
         f"{receipt_no}.pdf"
     )
 
-    # --------------------------------------------------
-    # BUILD PDF
-    # --------------------------------------------------
     doc = SimpleDocTemplate(
         file_path,
         pagesize=A4,

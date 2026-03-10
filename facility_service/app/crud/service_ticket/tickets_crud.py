@@ -402,7 +402,7 @@ async def create_ticket(
             .scalar()
         )
         title = data.title
-        amenity_id = data.space_id
+        amenity_id = data.space_id if data.request_type == "community" else None
     else:
         # TENANT users - creating ticket for themselves
         ticket_user_id = user.user_id
@@ -422,6 +422,7 @@ async def create_ticket(
                 http_status=400
             )
         title = f"{category_name} - {space.name}"
+        amenity_id = data.amenity_id
 
     if not category_name:
         return error_response(
@@ -451,7 +452,7 @@ async def create_ticket(
         # ✅ Add assigned_to and vendor_id fields
         assigned_to=data.assigned_to if hasattr(data, "assigned_to") else None,
         vendor_id=data.vendor_id if hasattr(data, "vendor_id") else None,
-        amenity_id=amenity_id if amenity_id else data.space_id
+        amenity_id=amenity_id if amenity_id else None
     )
 
     session.add(new_ticket)

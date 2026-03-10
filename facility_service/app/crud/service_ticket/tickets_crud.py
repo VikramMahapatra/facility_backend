@@ -402,7 +402,7 @@ async def create_ticket(
             .scalar()
         )
         title = data.title
-        amenity_id = data.space_id
+        amenity_id = data.space_id if data.request_type == "community" else None
     else:
         # TENANT users - creating ticket for themselves
         ticket_user_id = user.user_id

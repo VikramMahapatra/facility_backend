@@ -3,14 +3,14 @@ from datetime import date
 import json
 import os
 from typing import List, Optional
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from facility_service.app.utils.invoice_generator import auto_generate_monthly_invoices
 from shared.helpers.json_response_helper import error_response, success_response
 from shared.utils.app_status_code import AppStatusCode
 from ...crud.financials import invoices_crud as crud
-from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, AutoInvoiceResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse, UserInvoiceOut
+from ...schemas.financials.invoices_schemas import AdvancePaymentCreate, AdvancePaymentOut, AdvancePaymentResponse, AutoInvoiceResponse, InvoiceCreate, InvoiceDetailRequest, InvoiceEmailRequest, InvoiceOut, InvoiceTotalsRequest, InvoiceTotalsResponse, InvoiceUpdate, InvoicesOverview, InvoicesRequest, InvoicesResponse, PaymentCreateWithInvoice, PaymentOut, PaymentResponse, UserInvoiceOut
 from shared.core.database import get_auth_db, get_facility_db as get_db
 from shared.core.auth import validate_current_token
 from shared.core.schemas import AttachmentOut, DownloadAttachmentRequest, Lookup, UserToken
@@ -143,6 +143,7 @@ def get_pending_charges_by_customer(
 
 @router.post("/create", response_model=InvoiceOut)
 async def create_invoice(
+        background_tasks: BackgroundTasks,
         invoice: str = Form(...),   # 👈 JSON string
         attachments: Optional[List[UploadFile]] = File(None),
         db: Session = Depends(get_db),
@@ -152,6 +153,7 @@ async def create_invoice(
     invoice_dict = json.loads(invoice)
     invoice_data = InvoiceCreate(**invoice_dict)
     return await crud.create_invoice(
+        background_tasks=background_tasks,
         db=db,
         org_id=current_user.org_id,
         request=invoice_data,
@@ -164,11 +166,13 @@ async def create_invoice(
 
 @router.post("/update", response_model=InvoiceOut)
 async def update_invoice(
-        invoice: str = Form(...),
-        attachments: Optional[List[UploadFile]] = File(None),
-        removed_attachment_ids: Optional[str] = Form(None),
-        db: Session = Depends(get_db),
-        current_user: UserToken = Depends(validate_current_token)):
+    background_tasks: BackgroundTasks,
+    invoice: str = Form(...),
+    attachments: Optional[List[UploadFile]] = File(None),
+    removed_attachment_ids: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
     invoice_dict = json.loads(invoice)
     invoice_data = InvoiceUpdate(**invoice_dict)
 
@@ -178,7 +182,14 @@ async def update_invoice(
         else []
     )
 
-    return await crud.update_invoice(db, invoice_data, attachments, removed_ids, current_user)
+    return await crud.update_invoice(
+        background_tasks,
+        db,
+        invoice_data,
+        attachments,
+        removed_ids,
+        current_user
+    )
 
 # ✅ FIXED: Convert UUID to string for CRUD
 # ---------------- Delete Invoice (Soft Delete) ----------------
@@ -205,12 +216,21 @@ def get_invoice_totals(
     )
 
 
-@router.get("/payement-method", response_model=List[Lookup])
+@router.get("/payment-method", response_model=List[Lookup])
 def invoice_payement_method_lookup(
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
     return crud.invoice_payement_method_lookup(db, current_user.org_id)
+
+
+@router.post("/send-invoice-email", response_model=None)
+def send_invoice_email(
+    params: InvoiceEmailRequest,
+    db: Session = Depends(get_db),
+    current_user: UserToken = Depends(validate_current_token)
+):
+    return crud.send_invoice_email(db, current_user.org_id, params.invoice_id)
 
 
 @router.get("/{invoice_id}/download")

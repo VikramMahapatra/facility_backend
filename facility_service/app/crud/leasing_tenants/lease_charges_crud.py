@@ -9,6 +9,7 @@ from sqlalchemy import String, and_, func, extract, or_, cast, Date
 from sqlalchemy import desc
 from decimal import Decimal, ROUND_HALF_UP
 
+from facility_service.app.crud.leasing_tenants.leases_crud import sync_rent_charges
 from facility_service.app.enum.leasing_tenants_enum import LeaseChargeCodes
 from facility_service.app.enum.revenue_enum import InvoiceType
 from facility_service.app.models.financials.invoices import Invoice, InvoiceLine
@@ -28,7 +29,7 @@ from ...models.leasing_tenants.tenants import Tenant
 from shared.core.schemas import Lookup, UserToken
 from ...models.leasing_tenants.lease_charges import LeaseCharge
 
-from ...models.leasing_tenants.leases import Lease
+from ...models.leasing_tenants.leases import Lease, RentPeriod
 from ...schemas.leasing_tenants.lease_charges_schemas import LeaseChargeCreate, LeaseChargeOut, LeaseChargeUpdate, LeaseChargeRequest
 from uuid import UUID
 from decimal import Decimal
@@ -541,12 +542,7 @@ def get_lease_rent_amount(
     start_date: date,
     end_date: date
 ):
-    """
-    Calculate lease rent amount for a given period including tax.
-    Returns: dict with base_amount, tax_amount, total_amount
-    """
 
-    # Fetch lease
     lease = db.query(Lease).filter(
         Lease.id == lease_id,
         Lease.is_deleted == False
@@ -555,10 +551,29 @@ def get_lease_rent_amount(
     if not lease:
         return {"error": "Lease not found"}
 
-    base_amount = lease.rent_amount or Decimal("0")
+    rent_amount = lease.rent_amount or Decimal("0")
 
-    # Fetch tax rate
-    tax_rate = 0
+    # --------------------------------
+    # Convert to monthly rent
+    # --------------------------------
+    if lease.rent_period == RentPeriod.annually:
+        monthly_rent = rent_amount / Decimal("12")
+    else:
+        monthly_rent = rent_amount
+
+    # --------------------------------
+    # Calculate duration in months
+    # --------------------------------
+    months = Decimal(lease_months_between(start_date, end_date))
+
+    base_amount = (monthly_rent * months).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    # --------------------------------
+    # Tax
+    # --------------------------------
+    tax_rate = Decimal("0")
 
     if tax_code_id:
         tax_rate = db.query(TaxCode.rate).filter(
@@ -566,45 +581,57 @@ def get_lease_rent_amount(
             TaxCode.is_deleted == False
         ).scalar() or Decimal("0")
 
-    # Determine frequency multiplier
-    if lease.frequency == "monthly":
-        multiplier = 1
-    elif lease.frequency == "quarterly":
-        multiplier = Decimal("3")
-    elif lease.frequency == "annually":
-        multiplier = Decimal("12")
-    else:
-        multiplier = 1  # fallback
-
-    # -----------------------------
-    # Calculate prorated rent for partial periods
-    # -----------------------------
-    # Assume monthly billing base
-    month_start = date(start_date.year, start_date.month, 1)
-    days_in_month = calendar.monthrange(month_start.year, month_start.month)[1]
-
-    active_days = (end_date - start_date).days + 1
-    monthly_amount = base_amount * multiplier
-    daily_rate = monthly_amount / Decimal(days_in_month)
-    prorated_base = daily_rate * Decimal(active_days)
-
-    # -----------------------------
-    # Apply tax
-    # -----------------------------
-    tax_amount = (prorated_base * tax_rate / Decimal("100")).quantize(
+    tax_amount = (base_amount * tax_rate / Decimal("100")).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    total_amount = (prorated_base + tax_amount).quantize(
+
+    total_amount = (base_amount + tax_amount).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
     return {
         "lease_id": lease.id,
-        "base_amount": prorated_base.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        "duration_months": months,
+        "base_amount": base_amount,
         "tax_amount": tax_amount,
         "total_amount": total_amount,
         "tax_rate": tax_rate
     }
+
+
+def lease_months_between(start_date: date, end_date: date) -> int:
+    months = (end_date.year - start_date.year) * \
+        12 + (end_date.month - start_date.month)
+
+    # If end day >= start day, count the month
+    if end_date.day >= start_date.day:
+        months += 1
+
+    return months
+
+
+def months_between(start_date: date, end_date: date) -> Decimal:
+    if not start_date or not end_date:
+        return Decimal("0")
+
+    months = Decimal(
+        (end_date.year - start_date.year) * 12 +
+        (end_date.month - start_date.month)
+    )
+
+    days = end_date.day - start_date.day
+
+    if days >= 0:
+        days_in_month = calendar.monthrange(
+            end_date.year, end_date.month)[1]
+        months += Decimal(days) / Decimal(days_in_month)
+    else:
+        months -= 1
+        prev_month_days = calendar.monthrange(
+            start_date.year, start_date.month)[1]
+        months += Decimal(prev_month_days + days) / Decimal(prev_month_days)
+
+    return months
 
 
 def auto_generate_lease_rent_charges(
@@ -615,24 +642,8 @@ def auto_generate_lease_rent_charges(
 ) -> Dict[str, Any]:
     """
     Auto-generate RENT lease charges for all active leases for a billing month
+    using LeasePaymentTerms (installments).
     """
-
-    # 🔹 Billing period
-    period_start = date(input_date.year, input_date.month, 1)
-    next_month = period_start.replace(day=28) + timedelta(days=4)
-    period_end = next_month.replace(day=1) - timedelta(days=1)
-
-    rent_code = LeaseChargeCodes.rent.value
-
-    # 🔹 Default tax (optional)
-    default_tax = db.query(TaxCode).filter(
-        TaxCode.org_id == current_user.org_id,
-        TaxCode.status == "active",
-        TaxCode.is_deleted == False
-    ).first()
-
-    tax_rate = default_tax.rate if default_tax else Decimal("0")
-    tax_code_id = default_tax.id if default_tax else None
 
     # 🔹 Fetch active leases
     leases = db.query(Lease).filter(
@@ -644,74 +655,21 @@ def auto_generate_lease_rent_charges(
     if not leases:
         raise HTTPException(status_code=404, detail="No active leases found")
 
-    created_ids = []
+    created_count = 0
 
     for lease in leases:
 
-        # Skip leases without rent
-        if not lease.rent_amount or lease.rent_amount <= 0:
+        # Skip leases without rent or without a tenant
+        if not lease.rent_amount or lease.rent_amount <= 0 or not lease.tenant_id:
             continue
 
-        # 🔹 Check overlapping RENT charge
-        existing = db.query(LeaseCharge).filter(
-            LeaseCharge.lease_id == lease.id,
-            func.lower(LeaseCharge.charge_code) == LeaseChargeCodes.rent.value,
-            LeaseCharge.is_deleted == False,
-            LeaseCharge.period_start <= period_end,
-            LeaseCharge.period_end >= period_start
-        ).order_by(LeaseCharge.created_at.desc()).first()
-
-        # 🔹 If exists → check invoice
-        if existing:
-            invoice_item = (
-                db.query(Invoice)
-                .join(
-                    InvoiceLine, Invoice.id == InvoiceLine.invoice_id
-                )
-                .filter(
-                    InvoiceLine.item_id == existing.id,
-                    InvoiceLine.code == InvoiceType.rent.value,
-                    Invoice.due_date >= date.today(),
-                    Invoice.is_deleted == False
-                ).first()
-            )
-
-            if invoice_item:
-                continue  # Already billed → NEVER recreate
-
-            # Not invoiced → allow regeneration only if overdue
-            continue
-
-        # 🔹 Calculate amounts
-        amount = lease.rent_amount
-        total_amount = amount + (amount * tax_rate / Decimal("100"))
-
-        # 🔹 Determine payer
-        if not lease.tenant_id:
-            continue
-
-        # 🔹 Create RENT lease charge
-        lease_charge = LeaseCharge(
-            lease_id=lease.id,
-            charge_code=rent_code,
-            period_start=period_start,
-            period_end=period_end,
-            amount=amount,
-            total_amount=total_amount,
-            tax_code_id=tax_code_id,
-            payer_id=lease.tenant_id,
-            is_deleted=False
-        )
-
-        db.add(lease_charge)
-        db.flush()
-        created_ids.append(lease_charge.id)
-
-    if not created_ids:
-        return {"charges": [], "total": 0}
+        # 🔹 Synchronize charges based on LeasePaymentTerms
+        sync_rent_charges(db, lease)
+        created_count += 1
 
     db.commit()
 
     return {
-        "total_charge_created": len(created_ids)
+        "total_leases_processed": len(leases),
+        "total_charges_created_or_synced": created_count
     }

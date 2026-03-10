@@ -7,7 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List
 from uuid import UUID
-from fastapi import HTTPException, UploadFile
+from fastapi import BackgroundTasks, HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import Date, and_, func, cast, literal, or_, case, Numeric, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -206,7 +206,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if om:
                     item_no = om.maintenance_no
-                    user_name = get_user_name(om.owner_user_id)
+                    user_name = get_user_name(om.space_owner.owner_user_id)
 
             # -------- PARKING PASS --------
             elif line.code == InvoiceType.parking_pass.value:
@@ -548,6 +548,7 @@ def calculate_invoice_status(
 
 
 async def create_invoice(
+    background_tasks: BackgroundTasks,
     db: Session,
     org_id: UUID,
     request: InvoiceCreate,
@@ -621,6 +622,8 @@ async def create_invoice(
 
             invoice_amount += float(line.amount or 0)
 
+        db.commit()
+
         if db_invoice.status == "issued":
             apply_advance_to_invoice(db, db_invoice)
 
@@ -639,17 +642,17 @@ async def create_invoice(
                 is_email=False
             )
             db.add(notification)
+            db.commit()
 
-            # send email
-            service = InvoiceEmailService()
-            customer = get_user_detail(db_invoice.user_id)
-            service.send_invoice_to_customer(
-                db=db,
-                invoice=db_invoice,
-                customer_email=customer.email
-            )
-
-        db.commit()
+            if request.send_email:  # send email
+                service = InvoiceEmailService()
+                customer = get_user_detail(db_invoice.user_id)
+                background_tasks.add_task(
+                    service.send_invoice_to_customer,
+                    db=db,
+                    invoice=db_invoice,
+                    customer_email=customer.email
+                )
 
         # ===============================
         # RESPONSE BUILD
@@ -679,11 +682,13 @@ async def create_invoice(
 
 
 async def update_invoice(
-        db: Session,
-        invoice_update: InvoiceUpdate,
-        attachments: list[UploadFile] | None,
-        removed_attachment_ids: list[UUID] | None,
-        current_user):
+    background_tasks: BackgroundTasks,
+    db: Session,
+    invoice_update: InvoiceUpdate,
+    attachments: list[UploadFile] | None,
+    removed_attachment_ids: list[UUID] | None,
+    current_user
+):
     db_invoice = db.query(Invoice).filter(
         Invoice.id == invoice_update.id,
         Invoice.org_id == current_user.org_id,
@@ -790,11 +795,12 @@ async def update_invoice(
     db.commit()
     db.refresh(db_invoice)
 
-    if db_invoice.status == "issued" and old_invoice_status == "draft":
+    if db_invoice.status == "issued" and old_invoice_status == "draft" and invoice_update.send_email:
         # send email
         service = InvoiceEmailService()
         customer = get_user_detail(db_invoice.user_id)
-        service.send_invoice_to_customer(
+        background_tasks.add_task(
+            service.send_invoice_to_customer,
             db=db,
             invoice=db_invoice,
             customer_email=customer.email
@@ -815,6 +821,34 @@ async def update_invoice(
     }
 
     return InvoiceOut.model_validate(invoice_dict)
+
+
+async def send_invoice_email(
+    background_tasks: BackgroundTasks,
+    db: Session,
+    org_id: UUID,
+    invoice_id: UUID
+):
+    db_invoice = db.query(Invoice).filter(
+        Invoice.id == invoice_id,
+        Invoice.org_id == org_id,
+        Invoice.is_deleted == False
+    ).first()
+
+    if not db_invoice:
+        return error_response(message="Invoice not found")
+
+    service = InvoiceEmailService()
+    customer = get_user_detail(db_invoice.user_id)
+
+    background_tasks.add_task(
+        service.send_invoice_to_customer,
+        db=db,
+        invoice=db_invoice,
+        customer_email=customer.email
+    )
+
+    return success_response(message="Invoice email scheduled to send")
 
 
 # ----------------- Soft Delete Invoice -----------------
@@ -899,7 +933,7 @@ def get_pending_charges_by_customer(
     # ---------------------------
     # MAINTENANCE
     # ---------------------------
-    elif code == "maintenance":
+    elif code == InvoiceType.owner_maintenance.value:
         maint_charges = (
             db.query(OwnerMaintenanceCharge)
             .filter(
@@ -927,7 +961,7 @@ def get_pending_charges_by_customer(
     # ---------------------------
     # PARKING PASS
     # ---------------------------
-    elif code == "parking pass":
+    elif code == InvoiceType.parking_pass.value:
         passes = (
             db.query(ParkingPass)
             .filter(
@@ -956,7 +990,7 @@ def get_pending_charges_by_customer(
     # ---------------------------
     # WORK ORDER
     # ---------------------------
-    elif code == "work_order":
+    elif code == InvoiceType.work_order.valu:
         work_orders = (
             db.query(TicketWorkOrder)
             .join(Ticket, Ticket.id == TicketWorkOrder.ticket_id)

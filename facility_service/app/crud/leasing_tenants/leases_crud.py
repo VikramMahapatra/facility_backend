@@ -1369,26 +1369,29 @@ def calculate_lease_term_duration(
     end_date: date,
     lease_frequency: str
 ) -> int:
+
     if not start_date or not end_date:
         return 0
 
-    # Total months between dates
-    total_months = (
+    months = (
         (end_date.year - start_date.year) * 12
         + (end_date.month - start_date.month)
-    ) + 1   # inclusive
+    )
+
+    # Adjust if end day is before start day
+    if end_date.day >= start_date.day:
+        months += 1
 
     if lease_frequency == "monthly":
-        return total_months
+        return months
 
     elif lease_frequency == "annually":
-        # Convert months → years
-        years = total_months // 12
-        return years
+        return months // 12
 
     else:
-        raise ValueError(
-            "Invalid lease_frequency. Must be 'monthly' or 'annually'")
+        return error_response(
+            message="Invalid lease_frequency. Must be 'monthly' or 'annually'"
+        )
 
 
 def validate_no_overlapping_lease(
@@ -1761,3 +1764,5 @@ def sync_rent_charges(db: Session, lease: Lease):
     for charge in existing_charges:
         if charge.id not in used_charge_ids:
             charge.is_deleted = True
+
+    db.flush()

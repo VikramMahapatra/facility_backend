@@ -374,14 +374,16 @@ def get_advance_payments(
 
 
 @router.post("/auto-generate", response_model=AutoInvoiceResponse)
-def auto_generate_lease_charges_endpoint(
+async def auto_generate_lease_charges_endpoint(
+    background_tasks: BackgroundTasks,
     date: date = Query(
         ..., description="Any date in the month to generate lease charges for"),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return auto_generate_monthly_invoices(
+    return await auto_generate_monthly_invoices(
+        background_tasks=background_tasks,
         db=db,
         org_id=current_user.org_id,
         target_date=date,

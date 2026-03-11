@@ -159,7 +159,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
         code = None
         item_no = None
-        user_name = None
+        user_name = get_user_name(invoice.user_id)
 
         # -----------------------------------------
         # Take first line for summary
@@ -178,7 +178,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if wo:
                     item_no = wo.wo_no
-                    user_name = get_user_name(wo.bill_to_id)
 
             # -------- RENT --------
             elif line.code == InvoiceType.rent.value:
@@ -193,10 +192,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if lease:
                     item_no = lease.lease_number
-
-                    # assuming lease.tenant_user_id
-                    user_name = get_user_name(lease.tenant.user_id)
-
             # -------- OWNER MAINTENANCE --------
             elif line.code == InvoiceType.owner_maintenance.value:
                 om = db.query(OwnerMaintenanceCharge).filter(
@@ -206,7 +201,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if om:
                     item_no = om.maintenance_no
-                    user_name = get_user_name(om.space_owner.owner_user_id)
 
             # -------- PARKING PASS --------
             elif line.code == InvoiceType.parking_pass.value:
@@ -217,7 +211,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if pass_obj:
                     item_no = pass_obj.pass_no
-                    user_name = get_user_name(pass_obj.user_id)
 
         # -----------------------------------------
         # Payments
@@ -560,7 +553,8 @@ async def create_invoice(
             status_code=400, detail="Invoice must have at least one line")
 
     request.currency = get_system_currency(db, org_id)
-    invoice_data = request.model_dump(exclude={"org_id", "lines"})
+    invoice_data = request.model_dump(
+        exclude={"org_id", "lines", "send_email"})
     invoice_data.update({
         "org_id": org_id,
         "status": request.status,

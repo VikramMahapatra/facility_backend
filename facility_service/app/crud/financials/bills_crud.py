@@ -778,8 +778,6 @@ def download_bill_pdf(
         .first()
     )
 
-    organization_name = organization.name if organization else "Organization"
-
     vendor = db.query(Vendor).get(bill.vendor_id)
     vendor_name = vendor.name if vendor else "Customer"
 
@@ -789,7 +787,7 @@ def download_bill_pdf(
 
     file_path = generate_bill_pdf(
         bill=bill,
-        organization_name=organization_name,
+        organization=organization,
         vendor_name=vendor_name,
         payments_total=float(payments_total),
         balance=float(balance),
@@ -815,17 +813,15 @@ def download_payment_receipt_pdf(
         .first()
     )
 
-    organization_name = organization.name if organization else "Organization"
-
     vendor = db.query(Vendor).get(bill.vendor_id)
     vendor_name = vendor.name if vendor else "Customer"
     system_settings = get_system_settings(db, bill.org_id)
 
     file_path = generate_bill_payment_pdf(
         payment,
-        organization_name=organization_name,
+        organization=organization,
         vendor_name=vendor_name,
-        bill_no=bill.bill_no,
+        bill_no= bill.bill_no,
         system_settings=system_settings
     )
 

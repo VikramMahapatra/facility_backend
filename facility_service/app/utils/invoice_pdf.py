@@ -32,7 +32,7 @@ def generate_invoice_pdf(
     PAGE_WIDTH = 515
 
     # --------------------------------------------------
-    # 1. HEADER (Organization Details Centered)
+    # 1. HEADER
     # --------------------------------------------------
     org_name = organization.name or "Organization"
     org_phone = organization.contact_phone or ""
@@ -45,7 +45,7 @@ def generate_invoice_pdf(
     </para>
     """
     story.append(Paragraph(header_html, styles["Normal"]))
-    story.append(Spacer(1, 13))
+    story.append(Spacer(1, 15))
 
     line_table = Table([['']], colWidths=[PAGE_WIDTH], rowHeights=[2])
     line_table.setStyle(TableStyle([
@@ -260,7 +260,7 @@ def generate_invoice_pdf(
 def generate_payment_receipt_pdf(
     payment,
     invoice,
-    organization_name: str,
+    organization,
     customer_name: str,
     balance_after_payment: float,
     system_settings
@@ -273,13 +273,18 @@ def generate_payment_receipt_pdf(
     # --------------------------------------------------
     # 1. HEADER (Organization Details Centered)
     # --------------------------------------------------
+    org_name = organization.name or "Organization"
+    org_phone = organization.contact_phone or ""
+    org_email = organization.billing_email or ""
+
     header_html = f"""
     <para align='center'>
-        <b><font size='18'>{organization_name}</font></b><br/><br/>
+        <b><font size='18'>{org_name}</font></b><br/><br/>
+        <font size='10'>Phone: {org_phone} | Email: {org_email}</font><br/><br/>
     </para>
     """
     story.append(Paragraph(header_html, styles["Normal"]))
-    story.append(Spacer(1, 5))
+    story.append(Spacer(1, 15))
 
     line_table = Table([['']], colWidths=[PAGE_WIDTH], rowHeights=[2])
     line_table.setStyle(TableStyle([
@@ -457,40 +462,89 @@ def generate_payment_receipt_pdf(
 
 def generate_bill_pdf(
     bill,
-    organization_name: str,
+    organization,
     vendor_name: str,
     payments_total: float,
     balance: float,
-    system_settings: SystemSettingsOut
+    system_settings
 ):
     styles = getSampleStyleSheet()
     story = []
 
-    # --------------------------------------------------
-    # HEADER
-    # --------------------------------------------------
-    story.append(Paragraph(f"<b>{organization_name}</b>", styles["Title"]))
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph("<b>VENDOR BILL</b>", styles["Heading2"]))
-    story.append(Spacer(1, 10))
-
-    story.append(
-        Paragraph(f"<b>Bill No:</b> {bill.bill_no}", styles["Normal"]))
-    story.append(Paragraph(f"<b>Vendor:</b> {vendor_name}", styles["Normal"]))
-    story.append(
-        Paragraph(
-            f"<b>Bill Date:</b> {bill.date.strftime('%d %b %Y')}",
-            styles["Normal"],
-        )
-    )
-
-    story.append(Spacer(1, 20))
+    PAGE_WIDTH = 515
 
     # --------------------------------------------------
-    # LINE ITEMS
+    # 1. HEADER
     # --------------------------------------------------
-    data = [["Description", "Amount", "Tax %"]]
+    org_name = organization.name or "Organization"
+    org_phone = organization.contact_phone or ""
+    org_email = organization.billing_email or ""
+
+    header_html = f"""
+    <para align='center'>
+        <b><font size='18'>{org_name}</font></b><br/><br/>
+        <font size='10'>Phone: {org_phone} | Email: {org_email}</font><br/><br/>
+    </para>
+    """
+    story.append(Paragraph(header_html, styles["Normal"]))
+    story.append(Spacer(1, 15))
+
+    line_table = Table([['']], colWidths=[PAGE_WIDTH], rowHeights=[2])
+    line_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#4a1c1c")),
+        ('PADDING', (0, 0), (-1, -1), 0),
+    ]))
+    story.append(line_table)
+    story.append(Spacer(1, 15))
+
+    # --------------------------------------------------
+    # 2. VENDOR & BILL DETAILS GRID BOX
+    # --------------------------------------------------
+    bill_date_str = bill.date.strftime('%d %b %Y') if bill.date else ""
+    #due_date_str = getattr(bill, 'due_date', None).due_date_str.strftime('%d %b %Y') if due_date_str else ""
+    space_name = getattr(bill, 'space_name', None)
+    if not space_name and hasattr(bill, 'space') and bill.space:
+        space_name = getattr(bill.space, 'name', None) or getattr(bill.space, 'code', None)
+    if not space_name:
+        space_name = "-"
+
+    info_data = [
+        ["Vendor", f": {vendor_name}", "Bill Number", f": {bill.bill_no}"],
+        ["Property/Space", f": {space_name}", "Bill Date", f": {bill_date_str}"],
+    #    ["", "", "Due Date", f": {due_date_str}"],
+    ]
+
+    info_table = Table(info_data, colWidths=[90, 180, 100, 145])
+    info_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 5),
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 15))
+
+    # --------------------------------------------------
+    # 3. TITLE BAR (Dark Slate / Navy)
+    # --------------------------------------------------
+    title_table = Table([["VENDOR BILL DETAILS"]], colWidths=[PAGE_WIDTH])
+    title_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#4a1c1c")),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('PADDING', (0, 0), (-1, -1), 5),
+    ]))
+    story.append(title_table)
+
+    # --------------------------------------------------
+    # 4. LINE ITEMS TABLE
+    # --------------------------------------------------
+    item_data = [
+        ['Work Order','Description', 'Tax %', 'Amount']
+    ]
 
     subtotal = Decimal("0")
     tax_total = Decimal("0")
@@ -498,66 +552,129 @@ def generate_bill_pdf(
     for line in bill.lines:
         amount = Decimal(line.amount)
         tax_pct = Decimal(line.tax_pct or 0)
-
         subtotal += amount
         tax_total += (amount * tax_pct) / 100
 
-        data.append([
-            line.description or "",
-            f"{amount:.2f} {system_settings.general.currency}",
-            f"{tax_pct:.2f}%"
+        desc = line.description or "Vendor Charge"
+
+        wo_ref = getattr(line, 'work_order_no', None)
+        if not wo_ref and hasattr(line, 'work_order') and line.work_order:
+            wo_ref = getattr(line.work_order, 'code', None) or getattr(line.work_order, 'name', None)
+        if not wo_ref and hasattr(line, 'item_id') and line.item_id:
+            wo_ref = f"WO-{str(line.item_id)[:6].upper()}"
+        if not wo_ref:
+            wo_ref = "-"
+
+        item_data.append([
+            wo_ref,
+            Paragraph(desc, styles["Normal"]),
+            f"{tax_pct:.2f}%",
+            f"{amount:.2f}"
         ])
 
-    table = Table(data, colWidths=[300, 120, 80])
+    grand_total = subtotal + tax_total
 
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 6),
+    item_data.append(['', '', '', ''])
+    item_data.append(['', '', 'SUB TOTAL', f"{subtotal:.2f}"])
+    
+    if tax_total > 0:
+        item_data.append(['', '', 'TAX', f"{tax_total:.2f}"])
+
+    item_table = Table(item_data, colWidths=[100, 235, 80, 100])
+    item_table.setStyle(TableStyle([
+        ('LINELEFT', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('LINERIGHT', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.HexColor("#4a1c1c")),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LINEABOVE', (2, -2), (-1, -1), 0.5, colors.grey),
+        ('FONTNAME', (1, -2), (1, -1), 'Helvetica-Bold'), 
+        ('PADDING', (0, 0), (-1, -1), 5),
     ]))
-
-    story.append(table)
-    story.append(Spacer(1, 20))
+    story.append(item_table)
 
     # --------------------------------------------------
-    # TOTALS
+    # 5. TOTAL BAR
     # --------------------------------------------------
-    totals = bill.totals or {}
+    total_data = [['TOTAL', f"{grand_total:.2f} {system_settings.general.currency}"]]
+    total_table = Table(total_data, colWidths=[415, 100])
+    total_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#4a1c1c")),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 13),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('PADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(total_table)
 
-    subtotal_val = Decimal(totals.get("sub", subtotal))
-    tax_val = Decimal(totals.get("tax", tax_total))
-    grand_total = Decimal(totals.get("grand", subtotal_val + tax_val))
+    # --------------------------------------------------
+    # 6. IN WORDS BOX
+    # --------------------------------------------------
+    amount_in_words = num2words(float(grand_total)).replace('-', ' ').title()
+    words_text = f"In Words: <b>{amount_in_words} {system_settings.general.currency} Only</b>"
+
+    words_table = Table([[Paragraph(words_text, styles["Normal"])]], colWidths=[PAGE_WIDTH])
+    words_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('PADDING', (0, 0), (-1, -1), 5),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+    ]))
+    story.append(words_table)
+    
+    story.append(Spacer(1, 25))
+
+    # --------------------------------------------------
+    # 7. BILL BALANCE SUMMARY
+    # --------------------------------------------------
+    summary_title = Table([["BILL BALANCE SUMMARY"]], colWidths=[PAGE_WIDTH])
+    summary_title.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#4a1c1c")),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('PADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(summary_title)
 
     summary_data = [
-        ["Subtotal", f"{subtotal_val:.2f} {system_settings.general.currency}"],
-        ["Tax", f"{tax_val:.2f} {system_settings.general.currency}"],
-        ["Grand Total",
-            f"{grand_total:.2f} {system_settings.general.currency}"],
-        ["Payments Made",
-            f"- {Decimal(payments_total):.2f} {system_settings.general.currency}"],
-        ["Balance Payable",
-            f"{Decimal(balance):.2f} {system_settings.general.currency}"],
+        ["Bill Total", "Payments Made", "Balance Payable"],
+        [
+            f"{grand_total:.2f} {system_settings.general.currency}", 
+            f"{Decimal(payments_total):.2f} {system_settings.general.currency}", 
+            f"{Decimal(balance):.2f} {system_settings.general.currency}"
+        ]
     ]
-
-    summary_table = Table(summary_data, colWidths=[300, 200])
-
+    summary_table = Table(summary_data, colWidths=[171, 172, 172])
     summary_table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("FONTNAME", (-1, -1), (-1, -1), "Helvetica-Bold"),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('PADDING', (0, 0), (-1, -1), 5),
     ]))
-
     story.append(summary_table)
 
-    story.append(Spacer(1, 30))
-    story.append(
-        Paragraph("This is a system generated vendor bill.", styles["Italic"])
-    )
+    # --------------------------------------------------
+    # 8. FOOTER / NOTES
+    # --------------------------------------------------
+    story.append(Spacer(1, 15))
+    story.append(Paragraph(
+        "<para align='right'><font color='#555555'><i>This is a system generated vendor bill and requires no authentication.</i></font></para>", 
+        styles["Normal"]
+    ))
+    
+    notes_text = getattr(bill, "meta", {}).get("notes", "") if isinstance(getattr(bill, "meta", {}), dict) else ""
+    if notes_text:
+        story.append(Spacer(1, 15))
+        notes_text = notes_text.replace("\n", "<br/>")
+        story.append(Paragraph(f"<b>Notes / Terms:</b><br/><br/>{notes_text}", styles["Normal"]))
 
     # --------------------------------------------------
-    # SAVE FILE
+    # 9. BUILD PDF
     # --------------------------------------------------
     safe_bill_no = bill.bill_no.replace("/", "-")
 
@@ -586,47 +703,180 @@ def generate_bill_pdf(
 
 def generate_bill_payment_pdf(
     payment,
-    organization_name: str,
+    organization,
     vendor_name: str,
     bill_no: str,
-    system_settings: SystemSettingsOut
+    system_settings
 ):
     styles = getSampleStyleSheet()
     story = []
 
-    story.append(Paragraph(f"<b>{organization_name}</b>", styles["Title"]))
-    story.append(Spacer(1, 12))
+    PAGE_WIDTH = 515
 
-    story.append(Paragraph("<b>PAYMENT VOUCHER</b>", styles["Heading2"]))
-    story.append(Spacer(1, 20))
+    # --------------------------------------------------
+    # 1. HEADER
+    # --------------------------------------------------
+    org_name = organization.name or "Organization"
+    org_phone = organization.contact_phone or ""
+    org_email = organization.billing_email or ""
 
-    data = [
-        ["Vendor", vendor_name],
-        ["Bill No", bill_no],
-        ["Payment Method", payment.method],
-        ["Reference No", payment.ref_no or "-"],
-        ["Amount Paid",
-            f"{payment.amount:.2f} {system_settings.general.currency}"],
-        ["Paid At", payment.paid_at.strftime("%d %b %Y %H:%M")],
+    header_html = f"""
+    <para align='center'>
+        <b><font size='18'>{org_name}</font></b><br/><br/>
+        <font size='10'>Phone: {org_phone} | Email: {org_email}</font><br/><br/>
+    </para>
+    """
+    story.append(Paragraph(header_html, styles["Normal"]))
+    story.append(Spacer(1, 15))
+
+    line_table = Table([['']], colWidths=[PAGE_WIDTH], rowHeights=[2])
+    line_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#8B4513")),
+        ('PADDING', (0, 0), (-1, -1), 0),
+    ]))
+    story.append(line_table)
+    story.append(Spacer(1, 15))
+
+    # --------------------------------------------------
+    # 2. VENDOR & VOUCHER DETAILS GRID BOX
+    # --------------------------------------------------
+    pay_date_str = payment.paid_at.strftime('%d %b %Y') if payment.paid_at else ""
+    pay_method = payment.method.upper() if payment.method else "-"
+
+    info_data = [
+        ["Vendor", f": {vendor_name}", "Voucher No", f": VCHR-{str(payment.id)[:8]}"],
+        ["Bill No", f": {bill_no}", "Payment Date", f": {pay_date_str}"],
+        ["Pay Method", f": {pay_method}", "Reference No", f": {payment.ref_no or '-'}"],
     ]
 
-    table = Table(data, colWidths=[200, 300])
-    story.append(table)
+    info_table = Table(info_data, colWidths=[90, 180, 100, 145])
+    info_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 5),
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 15))
 
-    story.append(Spacer(1, 40))
-    story.append(
-        Paragraph("Payment successfully recorded.", styles["Italic"])
-    )
+    # --------------------------------------------------
+    # 3. TITLE BAR
+    # --------------------------------------------------
+    title_table = Table([["VENDOR PAYMENT VOUCHER"]], colWidths=[PAGE_WIDTH])
+    title_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#8B4513")),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('PADDING', (0, 0), (-1, -1), 5),
+    ]))
+    story.append(title_table)
 
-    # SAVE
+    # --------------------------------------------------
+    # 4. PAYMENT AMOUNT TABLE
+    # --------------------------------------------------
+    paid_amount = Decimal(payment.amount)
+
+    item_data = [
+        ['Description', 'Amount']
+    ]
+
+    desc = f"Payment made towards Bill: {bill_no}"
+    item_data.append([
+        Paragraph(desc, styles["Normal"]),
+        f"{paid_amount:.2f}"
+    ])
+    
+    item_data.append(['', ''])
+
+    item_table = Table(item_data, colWidths=[415, 100])
+    item_table.setStyle(TableStyle([
+        ('LINELEFT', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('LINERIGHT', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.HexColor("#8B4513")),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, -1), (-1, -1), 20),
+    ]))
+    story.append(item_table)
+
+    # --------------------------------------------------
+    # 5. TOTAL PAID BAR
+    # --------------------------------------------------
+    total_data = [['TOTAL PAID', f"{paid_amount:.2f} {system_settings.general.currency}"]]
+    total_table = Table(total_data, colWidths=[415, 100])
+    total_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#8B4513")),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('PADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(total_table)
+
+    # --------------------------------------------------
+    # 6. IN WORDS BOX
+    # --------------------------------------------------
+    amount_in_words = num2words(float(paid_amount)).replace('-', ' ').title()
+    words_text = f"In Words: <b>{amount_in_words} {system_settings.general.currency} Only</b>"
+
+    words_table = Table([[Paragraph(words_text, styles["Normal"])]], colWidths=[PAGE_WIDTH])
+    words_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('PADDING', (0, 0), (-1, -1), 6),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+    ]))
+    story.append(words_table)
+    
+    # --------------------------------------------------
+    # 7. REMARKS / NOTES
+    # --------------------------------------------------
+    remarks = getattr(payment, "notes", None)
+    
+    if not remarks:
+        meta_data = getattr(payment, "meta", {})
+        if isinstance(meta_data, dict):
+            remarks = meta_data.get("remarks") or meta_data.get("notes")
+
+    if remarks:
+        story.append(Spacer(1, 20))
+        remarks_formatted = str(remarks).replace("\n", "<br/>")
+        story.append(Paragraph(f"<b>Remarks / Notes:</b><br/><br/>{remarks_formatted}", styles["Normal"]))
+
+    # --------------------------------------------------
+    # 8. FOOTER
+    # --------------------------------------------------
+    story.append(Spacer(1, 20))
+    story.append(Paragraph(
+        "<para align='right'><font color='#555555'><i>Payment successfully recorded.<br/>This is a system generated voucher and requires no authentication.</i></font></para>", 
+        styles["Normal"]
+    ))
+
+    # --------------------------------------------------
+    # 9. BUILD PDF
+    # --------------------------------------------------
     base_dir = "storage/bill_payments"
-    org_dir = os.path.join(base_dir, str(payment.org_id))
+    
+    org_id = getattr(payment, 'org_id', 'default_org')
+    org_dir = os.path.join(base_dir, str(org_id))
     os.makedirs(org_dir, exist_ok=True)
 
     filename = f"Bill_Payment_{payment.id}.pdf"
     file_path = os.path.join(org_dir, filename)
 
-    doc = SimpleDocTemplate(file_path, pagesize=A4)
+    doc = SimpleDocTemplate(
+        file_path, 
+        pagesize=A4,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=40,
+        bottomMargin=40,
+    )
     doc.build(story)
 
     return file_path

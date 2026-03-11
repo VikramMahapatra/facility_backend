@@ -5,7 +5,7 @@ from sqlalchemy import Integer, extract, func
 from sqlalchemy.orm import joinedload
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from fastapi import BackgroundTasks, HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
@@ -1527,7 +1527,11 @@ def generate_invoice_number(db: Session, org_id: UUID):
     return invoice_no
 
 
-def apply_advance_to_invoice(db: Session, invoice: Invoice):
+def apply_advance_to_invoice(
+    db: Session,
+    invoice: Invoice,
+    advance_id: Optional[UUID] = None
+):
 
     invoice_amount = Decimal(str(invoice.totals.get("grand", 0)))
     remaining = invoice_amount
@@ -1535,15 +1539,19 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
     if remaining <= 0:
         return
 
+    query = db.query(CustomerAdvance).filter(
+        CustomerAdvance.user_id == invoice.user_id,
+        CustomerAdvance.org_id == invoice.org_id,
+        CustomerAdvance.balance > 0
+    )
+
+    # ⭐ apply only specific advance
+    if advance_id:
+        query = query.filter(CustomerAdvance.id == advance_id)
+
     advances = (
-        db.query(CustomerAdvance)
-        .filter(
-            CustomerAdvance.user_id == invoice.user_id,
-            CustomerAdvance.org_id == invoice.org_id,
-            CustomerAdvance.balance > 0
-        )
-        .order_by(CustomerAdvance.created_at.asc())  # ⭐ FIFO
-        .with_for_update()  # ⭐ prevent race condition
+        query.order_by(CustomerAdvance.created_at.asc())
+        .with_for_update()
         .all()
     )
 
@@ -1557,10 +1565,8 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         if adv_balance <= 0:
             continue
 
-        # FIFO deduction
         use_amount = min(adv_balance, remaining)
 
-        # Safety guard
         if use_amount <= 0:
             continue
 
@@ -1581,7 +1587,6 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         db.add(payment)
 
         adv.balance = adv_balance - use_amount
-
         remaining -= use_amount
 
     if remaining <= 0:
@@ -1602,13 +1607,12 @@ def add_payment_detail(
     current_user: UserToken
 ):
     try:
+
         if payload.amount <= 0:
             return error_response(message="Amount must be greater than zero")
 
         if payload.method != "cash" and not payload.ref_no:
             return error_response(message="ref_no is mandatory and must be unique per invoice")
-
-        payment: CustomerAdvance | None = None
 
         payment = CustomerAdvance(
             org_id=current_user.org_id,
@@ -1621,8 +1625,26 @@ def add_payment_detail(
             notes=payload.notes,
             currency=payload.currency
         )
+
         db.add(payment)
-        db.flush()
+        db.flush()  # ⭐ get payment.id
+
+        # ⭐ Apply advance to invoices if provided
+        if payload.invoice_ids:
+
+            invoices = (
+                db.query(Invoice)
+                .filter(
+                    Invoice.id.in_(payload.invoice_ids),
+                    Invoice.org_id == current_user.org_id,
+                    Invoice.user_id == payload.user_id
+                )
+                .with_for_update()
+                .all()
+            )
+
+            for invoice in invoices:
+                apply_advance_to_invoice(db, invoice, advance_id=payment.id)
 
         db.add(Notification(
             user_id=payload.user_id,
@@ -1637,7 +1659,13 @@ def add_payment_detail(
         ))
 
         db.commit()
-        return success_response(data={"payment_id": str(payment.id)})
+
+        return success_response(
+            data={
+                "payment_id": str(payment.id),
+                "balance": float(payment.balance)
+            }
+        )
 
     except Exception as e:
         db.rollback()

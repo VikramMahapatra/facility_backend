@@ -225,12 +225,13 @@ def invoice_payement_method_lookup(
 
 
 @router.post("/send-invoice-email", response_model=None)
-def send_invoice_email(
+async def send_invoice_email(
+    background_tasks: BackgroundTasks,
     params: InvoiceEmailRequest,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.send_invoice_email(db, current_user.org_id, params.invoice_id)
+    return await crud.send_invoice_email(background_tasks, db, current_user.org_id, params.invoice_id)
 
 
 @router.get("/{invoice_id}/download")

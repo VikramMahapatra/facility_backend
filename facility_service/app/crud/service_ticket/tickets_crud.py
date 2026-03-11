@@ -151,6 +151,7 @@ def build_ticket_filters(
                 Ticket.space_id,
                 Ticket.assigned_to,
                 Ticket.vendor_id,
+                Ticket.amenity_id,
             ),
             selectinload(Ticket.category).load_only(
                 TicketCategory.category_name
@@ -160,6 +161,10 @@ def build_ticket_filters(
                 Site.name
             ),
             selectinload(Ticket.space).load_only(
+                Space.id,
+                Space.name
+            ),
+            selectinload(Ticket.amenity).load_only(
                 Space.id,
                 Space.name
             ),
@@ -575,7 +580,7 @@ async def create_ticket(
             # ✅ Include the names in response
             "assigned_to_name": assigned_to_name,
             "vendor_name": vendor_name,
-            "amenity_name":new_ticket.amenity.name if new_ticket.amenity else None
+            "amenity_name": new_ticket.amenity.name if new_ticket.amenity else None
         }
     )
 

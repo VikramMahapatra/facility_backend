@@ -75,6 +75,9 @@ def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
     if params.site_id:
         filters.append(Invoice.site_id == params.site_id)
 
+    if params.space_id:
+        filters.append(Invoice.space_id == params.space_id)
+
     if params.search:
         search_term = f"%{params.search}%"
         filters.append(or_(
@@ -82,7 +85,7 @@ def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
         ))
 
     if params.year:
-        base_query = base_query.filter(
+        filters.append(
             extract('year', Invoice.date) == params.year
         )
 

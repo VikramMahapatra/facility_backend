@@ -30,6 +30,7 @@ class SiteResponse(EmptyStringModel):
     org_id: Optional[UUID] = None
     org_name: Optional[str] = None
     address: Optional[Any] = None
+    currency: Optional[str] = None
 
 
 class MasterDetailResponse(EmptyStringModel):
@@ -37,6 +38,7 @@ class MasterDetailResponse(EmptyStringModel):
     status: str
     default_account_type: str
     account_types: Optional[List[UserOrganizationOut]] = None
+    currency: Optional[str] = None
 
 
 class Period(EmptyStringModel):

@@ -8,6 +8,7 @@ from typing import Dict, Optional
 from auth_service.app.models.user_organizations import UserOrganization
 from facility_service.app.crud.access_control.user_management_crud import assign_owner_spaces, assign_tenant_spaces, handle_account_type_update
 from facility_service.app.crud.space_sites.space_occupancy_crud import get_current_occupancy_bulk
+from facility_service.app.crud.system.system_settings_crud import get_system_currency
 from facility_service.app.enum.leasing_tenants_enum import LeaseChargeCodes
 from facility_service.app.models.financials.invoices import Invoice
 from facility_service.app.models.space_sites.user_sites import UserSite
@@ -50,6 +51,13 @@ from shared.utils.enums import OwnershipStatus, UserAccountType
 def get_home_sites(db: Session, auth_db: Session, user: UserToken):
     sites = []
     account_type = user.account_type.lower()
+
+    org_currency_cache = {}
+
+    def get_org_currency(org_id):
+        if org_id not in org_currency_cache:
+            org_currency_cache[org_id] = get_system_currency(db, org_id)
+        return org_currency_cache[org_id]
 
     if account_type in (UserAccountType.TENANT, UserAccountType.FLAT_OWNER):
         sites = []
@@ -102,7 +110,8 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
                 "is_primary": us.is_primary,
                 "org_id": site.org_id,
                 "org_name": site.org.name if site.org else None,
-                "address": site.address
+                "address": site.address,
+                "currency": get_org_currency(site.org_id)
             })
 
     elif account_type == UserAccountType.STAFF:
@@ -130,6 +139,7 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
                 "org_id": site.org_id,
                 "org_name": site.org.name if site.org else None,
                 "address": site.address,
+                "currency": get_org_currency(site.org_id)
             })
 
     else:
@@ -146,6 +156,7 @@ def get_home_sites(db: Session, auth_db: Session, user: UserToken):
                 "org_id": site.org_id,
                 "org_name": site.org.name if site.org else None,
                 "address": site.address,
+                "currency": get_org_currency(site.org_id)
             })
 
     user_orgs = (
@@ -669,6 +680,16 @@ def get_space_detail(
 
                     if next_charge:
                         next_rent_due = next_charge.period_start
+
+                else:
+                    first_charge = db.query(LeaseCharge).filter(
+                        LeaseCharge.lease_id == lease.id,
+                        LeaseCharge.is_deleted == False,
+                        LeaseCharge.charge_code == LeaseChargeCodes.rent.value
+                    ).order_by(LeaseCharge.period_start.asc()).first()
+
+                    if first_charge:
+                        next_rent_due = first_charge.period_start
 
             if space_lease_contract_exist:
                 space_lease_contract_detail = LeaseContractDetail(

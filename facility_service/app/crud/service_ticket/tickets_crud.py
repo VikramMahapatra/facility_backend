@@ -151,6 +151,7 @@ def build_ticket_filters(
                 Ticket.space_id,
                 Ticket.assigned_to,
                 Ticket.vendor_id,
+                Ticket.amenity_id,
             ),
             selectinload(Ticket.category).load_only(
                 TicketCategory.category_name
@@ -160,6 +161,10 @@ def build_ticket_filters(
                 Site.name
             ),
             selectinload(Ticket.space).load_only(
+                Space.id,
+                Space.name
+            ),
+            selectinload(Ticket.amenity).load_only(
                 Space.id,
                 Space.name
             ),
@@ -242,8 +247,8 @@ def get_tickets(db: Session, auth_db: Session, params: TicketFilterRequest, curr
                 assigned_to_name=assigned_to_name,
                 vendor_name=vendor_name,
                 preferred_time=t.preferred_time or datetime.utcnow().strftime("%H:%M"),  # ✅ required
-                preferred_date=t.preferred_date or date.today()
-
+                preferred_date=t.preferred_date or date.today(),
+                amenity_name=t.amenity.name if t.amenity else None
             )
         )
 
@@ -402,7 +407,7 @@ async def create_ticket(
             .scalar()
         )
         title = data.title
-        amenity_id = data.space_id
+        amenity_id = data.space_id if data.request_type == "community" else None
     else:
         # TENANT users - creating ticket for themselves
         ticket_user_id = user.user_id
@@ -422,6 +427,7 @@ async def create_ticket(
                 http_status=400
             )
         title = f"{category_name} - {space.name}"
+        amenity_id = data.amenity_id
 
     if not category_name:
         return error_response(
@@ -451,7 +457,7 @@ async def create_ticket(
         # ✅ Add assigned_to and vendor_id fields
         assigned_to=data.assigned_to if hasattr(data, "assigned_to") else None,
         vendor_id=data.vendor_id if hasattr(data, "vendor_id") else None,
-        amenity_id=amenity_id if amenity_id else data.space_id
+        amenity_id=amenity_id if amenity_id else None
     )
 
     session.add(new_ticket)
@@ -573,7 +579,8 @@ async def create_ticket(
             "category": new_ticket.category.category_name,
             # ✅ Include the names in response
             "assigned_to_name": assigned_to_name,
-            "vendor_name": vendor_name
+            "vendor_name": vendor_name,
+            "amenity_name": new_ticket.amenity.name if new_ticket.amenity else None
         }
     )
 

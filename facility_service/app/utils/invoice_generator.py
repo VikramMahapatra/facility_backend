@@ -4,6 +4,7 @@ from calendar import monthrange
 from decimal import Decimal
 from uuid import UUID
 
+from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
 
 from facility_service.app.crud.financials.bills_crud import generate_bill_number
@@ -28,7 +29,8 @@ def get_month_range(target_date: date):
     return today, billing_end
 
 
-def auto_generate_monthly_invoices(
+async def auto_generate_monthly_invoices(
+    background_tasks: BackgroundTasks,
     db: Session,
     org_id: UUID,
     target_date: date,
@@ -59,12 +61,13 @@ def auto_generate_monthly_invoices(
     for charge in rent_charges:
         lease = charge.lease
 
-        invoice = create_ar_invoice(
+        invoice = await create_ar_invoice(
+            background_tasks=background_tasks,
             db=db,
             org_id=org_id,
             site_id=lease.site_id,
             space_id=lease.space_id,
-            user_id=charge.lease.tenant_id,
+            user_id=lease.user_id,
             code=InvoiceType.rent.value,
             item_id=charge.id,
             description="Monthly Rent",
@@ -90,17 +93,18 @@ def auto_generate_monthly_invoices(
     for charge in maint:
         space = charge.space
 
-        invoice = create_ar_invoice(
+        invoice = await create_ar_invoice(
+            background_tasks=background_tasks,
             db=db,
             org_id=org_id,
-            user_id=charge.owner_id,
+            user_id=charge.space_owner.owner_user_id,
             site_id=space.site_id,
             space_id=charge.space_id,
             code=InvoiceType.owner_maintenance.value,
             item_id=charge.id,
             description="Owner Maintenance",
             amount=charge.amount,
-            due_date=charge.charge.period_end + timedelta(days=7),
+            due_date=charge.period_end + timedelta(days=7),
             current_user=current_user
         )
 
@@ -114,7 +118,7 @@ def auto_generate_monthly_invoices(
         TicketWorkOrder.created_at >= today,
         TicketWorkOrder.created_at <= billing_end,
         TicketWorkOrder.invoice_id == None,
-        TicketWorkOrder.bill_id == None
+        TicketWorkOrder.bill_to_type.in_(["tenant", "owner"])
     ).all()
 
     for wo in work_orders:
@@ -122,7 +126,8 @@ def auto_generate_monthly_invoices(
 
         # Vendor → AP Bill
         if wo.bill_to_type in ["tenant", "owner"]:
-            invoice = create_ar_invoice(
+            invoice = await create_ar_invoice(
+                background_tasks=background_tasks,
                 db=db,
                 org_id=org_id,
                 user_id=wo.bill_to_id,
@@ -150,10 +155,11 @@ def auto_generate_monthly_invoices(
 
     for p in parking_passes:
 
-        invoice = create_ar_invoice(
+        invoice = await create_ar_invoice(
+            background_tasks=background_tasks,
             db=db,
             org_id=org_id,
-            user_id=p.user_id,
+            user_id=p.partner_id,
             site_id=p.site_id,
             space_id=p.space_id,
             code=InvoiceType.parking_pass.value,
@@ -174,7 +180,8 @@ def auto_generate_monthly_invoices(
     )
 
 
-def create_ar_invoice(
+async def create_ar_invoice(
+    background_tasks: BackgroundTasks,
     db: Session,
     org_id: UUID,
     site_id: UUID,
@@ -214,10 +221,12 @@ def create_ar_invoice(
             "tax": float(round(tax, 2)),
             "grand": float(round(grand, 2))
         },
-        lines=[line]
+        lines=[line],
+        send_email=False
     )
 
-    db_invoice = create_invoice(db, org_id, invoice, None, current_user)
+    db_invoice = await create_invoice(
+        background_tasks, db, org_id, invoice, None, current_user)
 
     return db_invoice
 

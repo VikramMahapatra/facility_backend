@@ -225,12 +225,13 @@ def invoice_payement_method_lookup(
 
 
 @router.post("/send-invoice-email", response_model=None)
-def send_invoice_email(
+async def send_invoice_email(
+    background_tasks: BackgroundTasks,
     params: InvoiceEmailRequest,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.send_invoice_email(db, current_user.org_id, params.invoice_id)
+    return await crud.send_invoice_email(background_tasks, db, current_user.org_id, params.invoice_id)
 
 
 @router.get("/{invoice_id}/download")
@@ -374,14 +375,16 @@ def get_advance_payments(
 
 
 @router.post("/auto-generate", response_model=AutoInvoiceResponse)
-def auto_generate_lease_charges_endpoint(
+async def auto_generate_lease_charges_endpoint(
+    background_tasks: BackgroundTasks,
     date: date = Query(
         ..., description="Any date in the month to generate lease charges for"),
     db: Session = Depends(get_db),
     auth_db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return auto_generate_monthly_invoices(
+    return await auto_generate_monthly_invoices(
+        background_tasks=background_tasks,
         db=db,
         org_id=current_user.org_id,
         target_date=date,

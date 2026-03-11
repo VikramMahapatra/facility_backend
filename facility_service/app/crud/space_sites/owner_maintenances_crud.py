@@ -114,6 +114,8 @@ def get_owner_maintenance_by_id(db: Session, auth_db: Session, maintenance_id: s
         "building_name": building_name,
         "owner_user_id": owner_user_id,
         "invoice_id": maintenance.invoice_id,
+        "invoice_no": maintenance.invoice.invoice_no,
+        "invoice_status": maintenance.invoice.status,
         "space_owner_id": maintenance.space_owner_id  # Make sure this is included
     }
 

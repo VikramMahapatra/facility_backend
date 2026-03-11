@@ -66,6 +66,7 @@ class TicketOut(BaseModel):
     vendor_id: Optional[UUID] = None
     assigned_to_name: Optional[str] = None  # For displaying assigned user name
     vendor_name: Optional[str] = None      # For displaying vendor name
+    amenity_name: Optional[str] = None      # For displaying amenity name
 
     class Config:
         from_attributes = True

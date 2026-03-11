@@ -5,7 +5,7 @@ from sqlalchemy import Integer, extract, func
 from sqlalchemy.orm import joinedload
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from fastapi import BackgroundTasks, HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
@@ -75,6 +75,9 @@ def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
     if params.site_id:
         filters.append(Invoice.site_id == params.site_id)
 
+    if params.space_id:
+        filters.append(Invoice.space_id == params.space_id)
+
     if params.search:
         search_term = f"%{params.search}%"
         filters.append(or_(
@@ -82,7 +85,7 @@ def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
         ))
 
     if params.year:
-        base_query = base_query.filter(
+        filters.append(
             extract('year', Invoice.date) == params.year
         )
 
@@ -159,7 +162,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
         code = None
         item_no = None
-        user_name = None
+        user_name = get_user_name(invoice.user_id)
 
         # -----------------------------------------
         # Take first line for summary
@@ -178,7 +181,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if wo:
                     item_no = wo.wo_no
-                    user_name = get_user_name(wo.bill_to_id)
 
             # -------- RENT --------
             elif line.code == InvoiceType.rent.value:
@@ -193,10 +195,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if lease:
                     item_no = lease.lease_number
-
-                    # assuming lease.tenant_user_id
-                    user_name = get_user_name(lease.tenant.user_id)
-
             # -------- OWNER MAINTENANCE --------
             elif line.code == InvoiceType.owner_maintenance.value:
                 om = db.query(OwnerMaintenanceCharge).filter(
@@ -206,7 +204,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if om:
                     item_no = om.maintenance_no
-                    user_name = get_user_name(om.space_owner.owner_user_id)
 
             # -------- PARKING PASS --------
             elif line.code == InvoiceType.parking_pass.value:
@@ -217,7 +214,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if pass_obj:
                     item_no = pass_obj.pass_no
-                    user_name = get_user_name(pass_obj.user_id)
 
         # -----------------------------------------
         # Payments
@@ -560,7 +556,8 @@ async def create_invoice(
             status_code=400, detail="Invoice must have at least one line")
 
     request.currency = get_system_currency(db, org_id)
-    invoice_data = request.model_dump(exclude={"org_id", "lines"})
+    invoice_data = request.model_dump(
+        exclude={"org_id", "lines", "send_email"})
     invoice_data.update({
         "org_id": org_id,
         "status": request.status,
@@ -1533,7 +1530,11 @@ def generate_invoice_number(db: Session, org_id: UUID):
     return invoice_no
 
 
-def apply_advance_to_invoice(db: Session, invoice: Invoice):
+def apply_advance_to_invoice(
+    db: Session,
+    invoice: Invoice,
+    advance_id: Optional[UUID] = None
+):
 
     invoice_amount = Decimal(str(invoice.totals.get("grand", 0)))
     remaining = invoice_amount
@@ -1541,15 +1542,19 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
     if remaining <= 0:
         return
 
+    query = db.query(CustomerAdvance).filter(
+        CustomerAdvance.user_id == invoice.user_id,
+        CustomerAdvance.org_id == invoice.org_id,
+        CustomerAdvance.balance > 0
+    )
+
+    # ⭐ apply only specific advance
+    if advance_id:
+        query = query.filter(CustomerAdvance.id == advance_id)
+
     advances = (
-        db.query(CustomerAdvance)
-        .filter(
-            CustomerAdvance.user_id == invoice.user_id,
-            CustomerAdvance.org_id == invoice.org_id,
-            CustomerAdvance.balance > 0
-        )
-        .order_by(CustomerAdvance.created_at.asc())  # ⭐ FIFO
-        .with_for_update()  # ⭐ prevent race condition
+        query.order_by(CustomerAdvance.created_at.asc())
+        .with_for_update()
         .all()
     )
 
@@ -1563,10 +1568,8 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         if adv_balance <= 0:
             continue
 
-        # FIFO deduction
         use_amount = min(adv_balance, remaining)
 
-        # Safety guard
         if use_amount <= 0:
             continue
 
@@ -1587,7 +1590,6 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         db.add(payment)
 
         adv.balance = adv_balance - use_amount
-
         remaining -= use_amount
 
     if remaining <= 0:
@@ -1608,13 +1610,12 @@ def add_payment_detail(
     current_user: UserToken
 ):
     try:
+
         if payload.amount <= 0:
             return error_response(message="Amount must be greater than zero")
 
         if payload.method != "cash" and not payload.ref_no:
             return error_response(message="ref_no is mandatory and must be unique per invoice")
-
-        payment: CustomerAdvance | None = None
 
         payment = CustomerAdvance(
             org_id=current_user.org_id,
@@ -1627,8 +1628,26 @@ def add_payment_detail(
             notes=payload.notes,
             currency=payload.currency
         )
+
         db.add(payment)
-        db.flush()
+        db.flush()  # ⭐ get payment.id
+
+        # ⭐ Apply advance to invoices if provided
+        if payload.invoice_ids:
+
+            invoices = (
+                db.query(Invoice)
+                .filter(
+                    Invoice.id.in_(payload.invoice_ids),
+                    Invoice.org_id == current_user.org_id,
+                    Invoice.user_id == payload.user_id
+                )
+                .with_for_update()
+                .all()
+            )
+
+            for invoice in invoices:
+                apply_advance_to_invoice(db, invoice, advance_id=payment.id)
 
         db.add(Notification(
             user_id=payload.user_id,
@@ -1643,7 +1662,13 @@ def add_payment_detail(
         ))
 
         db.commit()
-        return success_response(data={"payment_id": str(payment.id)})
+
+        return success_response(
+            data={
+                "payment_id": str(payment.id),
+                "balance": float(payment.balance)
+            }
+        )
 
     except Exception as e:
         db.rollback()

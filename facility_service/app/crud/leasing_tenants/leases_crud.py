@@ -362,6 +362,7 @@ async def create(
         lease_data.update({
             "status": lease_status,
             "default_payer": "tenant",
+            "user_id": tenant.user_id,
             "end_date": end_date,
             "lease_number": f"LSE-{next_number:04d}"
         })

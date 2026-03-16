@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional, List
+from typing import Optional, List, Literal
 from uuid import UUID
 from decimal import Decimal
 from datetime import datetime
@@ -16,7 +16,7 @@ class MaintenanceTemplateBase(BaseModel):
     name: str = Field(..., max_length=100)
     calculation_type: str
     amount: Decimal
-
+    frequency: Literal["monthly", "quarterly", "biannually", "annually"]
     category: Optional[str] = None
     kind: Optional[str] = None
     sub_kind: Optional[str] = None

@@ -957,6 +957,7 @@ def get_lease_by_id(db: Session, lease_id: str):
             "lease_term_duration": lease_term_duration,
             "no_of_installments": len(payment_terms_list) if payment_terms_list else 0,
             "payment_terms": payment_terms_list,
+            
             "attachments": attachments_out
         }
     )
@@ -1121,11 +1122,22 @@ def get_lease_detail(db: Session, org_id: UUID, lease_id: UUID) -> dict:
 
     attachments_out = AttachmentService.get_attachments(
         db, ModuleName.leases, lease.id)
+    
+    
+    lease_term_duration = None
+
+    if lease.start_date and lease.end_date:
+        lease_term_duration = calculate_lease_term_duration(
+            lease.start_date,
+            lease.end_date,
+            lease.lease_frequency
+        )
 
     return {
 
         "id": lease.id,
         "lease_number": lease.lease_number or "",
+        "lease_term_duration": lease_term_duration,
         "status": lease.status,
         "start_date": lease.start_date.isoformat() if lease.start_date else None,
         "end_date": lease.end_date.isoformat() if lease.end_date else None,

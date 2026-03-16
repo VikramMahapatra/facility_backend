@@ -141,12 +141,14 @@ class LeaseDetailOut(BaseModel):
     # Basic lease info (EXACTLY like your image)
     id: UUID
     lease_number: str
+    lease_term_duration: Optional[int] = None
     status: str
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     rent_amount: Optional[Decimal] = None
     deposit_amount: Optional[Decimal] = None
     cam_rate: Optional[Decimal] = None
+    
 
     # Utilities (simple strings)
     electricity: Optional[str] = None

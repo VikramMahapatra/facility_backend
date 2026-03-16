@@ -15,6 +15,7 @@ class AdvancePaymentCreate(BaseModel):
     paid_at: Optional[date_type] = None
     notes: Optional[str] = None
     currency: Optional[str] = None
+    invoice_ids: Optional[List[UUID]] = None
 
     class Config:
         json_encoders = {

@@ -225,12 +225,13 @@ def invoice_payement_method_lookup(
 
 
 @router.post("/send-invoice-email", response_model=None)
-def send_invoice_email(
+async def send_invoice_email(
+    background_tasks: BackgroundTasks,
     params: InvoiceEmailRequest,
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    return crud.send_invoice_email(db, current_user.org_id, params.invoice_id)
+    return await crud.send_invoice_email(background_tasks, db, current_user.org_id, params.invoice_id)
 
 
 @router.get("/{invoice_id}/download")
@@ -351,16 +352,22 @@ def preview_invoice_number(
 
 
 @router.post("/add-payment", response_model=None)
-def add_payment(
-    payload: AdvancePaymentCreate,
+async def add_payment(
+    payment: str = Form(...),
+    attachments: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    """Record a payment against a bill."""
-    return crud.add_payment_detail(
+    """Record a payment against a invoice with optional attachments."""
+    
+    payment_dict = json.loads(payment)
+    payment_data = AdvancePaymentCreate(**payment_dict)
+    
+    return await crud.add_payment_detail(
         db=db,
-        payload=payload,
-        current_user=current_user
+        payload=payment_data,
+        current_user=current_user,
+        attachments=attachments
     )
 
 

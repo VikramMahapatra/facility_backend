@@ -6,3 +6,4 @@ class ModuleName(str, Enum):
     leases = "leases"
     tenants = "tenants"
     bills = "bills"
+    payments = "payments"

@@ -1604,10 +1604,11 @@ def apply_advance_to_invoice(
         invoice.is_paid = False
 
 
-def add_payment_detail(
+async def add_payment_detail(
     db: Session,
     payload: AdvancePaymentCreate,
-    current_user: UserToken
+    current_user: UserToken,
+    attachments: Optional[List[UploadFile]] = None
 ):
     try:
 
@@ -1631,6 +1632,14 @@ def add_payment_detail(
 
         db.add(payment)
         db.flush()  # ⭐ get payment.id
+
+        if attachments:
+            await AttachmentService.save_attachments(
+                db=db,
+                module=ModuleName.payments,
+                entity_id=payment.id,
+                files=attachments
+            )
 
         # ⭐ Apply advance to invoices if provided
         if payload.invoice_ids:

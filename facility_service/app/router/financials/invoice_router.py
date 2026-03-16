@@ -352,16 +352,22 @@ def preview_invoice_number(
 
 
 @router.post("/add-payment", response_model=None)
-def add_payment(
-    payload: AdvancePaymentCreate,
+async def add_payment(
+    payment: str = Form(...),
+    attachments: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    """Record a payment against a bill."""
-    return crud.add_payment_detail(
+    """Record a payment against a invoice with optional attachments."""
+    
+    payment_dict = json.loads(payment)
+    payment_data = AdvancePaymentCreate(**payment_dict)
+    
+    return await crud.add_payment_detail(
         db=db,
-        payload=payload,
-        current_user=current_user
+        payload=payment_data,
+        current_user=current_user,
+        attachments=attachments
     )
 
 

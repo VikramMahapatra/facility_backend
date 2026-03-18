@@ -27,6 +27,7 @@ class ComplaintOut(EmptyStringModel):
     is_overdue: Optional[bool] = False
     priority: Optional[str] = None
     amenity_name: Optional[str] = None
+    request_type: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

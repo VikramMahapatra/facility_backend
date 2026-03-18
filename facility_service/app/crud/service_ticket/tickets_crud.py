@@ -98,6 +98,29 @@ def build_ticket_filters(
         )
 
     # -------------------------------------------------
+    # FILTER: REQUEST_TYPE (unit/community)
+    # -------------------------------------------------
+    # if params.request_type and params.request_type.lower() != "all":
+    #     filters.append(
+    #         func.lower(Ticket.request_type) == params.request_type.lower()
+    #     )
+
+    request_types = []  # ✅ initialize first
+
+    if params.request_type:
+        request_types = [
+        rt.strip().lower()
+        for rt in params.request_type.split(",")
+        if rt.strip() and rt.strip().lower() != "all"
+    ]
+
+    if request_types:
+     filters.append(
+        func.lower(Ticket.request_type).in_(request_types)
+     )
+
+    
+    # -------------------------------------------------
     # FILTER: STATUS
     # -------------------------------------------------
     if params.status and params.status.lower() != "all":

@@ -3,6 +3,7 @@ import json
 import os
 from typing import List, Optional
 
+from django import db
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -134,20 +135,27 @@ def delete_bill(
         org_id=current_user.org_id
     )
 
-# Payments
+#### Payments
 
 
-@router.post("/save-payment", response_model=None)
-def save_bill_payment(
-    payload: BillPaymentCreate,
+@router.post("/add-payment", response_model=None)
+async def add_bill_payment(
+    payment: str = Form(...),
+    attachments: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
     current_user: UserToken = Depends(validate_current_token)
 ):
-    """Record a payment against a bill."""
-    return crud.save_bill_payment(
+    """Record a payment against a vendor bill with optional attachments."""
+    
+    payment_dict = json.loads(payment)
+    
+    payment_data = BillPaymentCreate(**payment_dict) 
+    
+    return await crud.save_bill_payment(
         db=db,
-        payload=payload,
-        current_user=current_user
+        payload=payment_data,
+        current_user=current_user,
+        attachments=attachments
     )
 
 

@@ -618,7 +618,9 @@ async def create_ticket(
             # ✅ Include the names in response
             "assigned_to_name": assigned_to_name,
             "vendor_name": vendor_name,
-            "amenity_name": new_ticket.amenity.name if new_ticket.amenity else None
+            "amenity_name": new_ticket.amenity.name if new_ticket.amenity else None,
+            "site_name": new_ticket.site.name if new_ticket.site else None,
+            "space_name": new_ticket.space.name if new_ticket.space else None,
         }
     )
 

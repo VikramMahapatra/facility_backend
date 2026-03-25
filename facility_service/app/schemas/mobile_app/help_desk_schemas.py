@@ -27,6 +27,7 @@ class ComplaintOut(EmptyStringModel):
     is_overdue: Optional[bool] = False
     priority: Optional[str] = None
     amenity_name: Optional[str] = None
+    request_type: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -40,7 +41,7 @@ class ComplaintCreate(EmptyStringModel):
         "%H:%M"))                    # REQUIRED
     preferred_date: date = Field(default_factory=date.today)
     priority: Optional[str] = None
-    amenity_id: Optional[UUID] = None
+    amenity_id: Optional[str] = None
 
     @classmethod
     def as_form(
@@ -82,6 +83,8 @@ class ComplaintResponse(EmptyStringModel):
     closed_date: Optional[datetime] = None
     priority: Optional[str] = None
     amenity_name: Optional[str] = None
+    space_name: Optional[str] = None
+    site_name: Optional[str] = None
     model_config = {"from_attributes": True}
 
 

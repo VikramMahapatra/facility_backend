@@ -7,7 +7,7 @@ from sqlalchemy import desc, distinct, select
 from fastapi import HTTPException, BackgroundTasks, UploadFile
 from sqlalchemy.orm import Session, selectinload, joinedload, load_only
 from uuid import UUID
-from sqlalchemy import and_, func, desc
+from sqlalchemy import and_, func, desc, or_ 
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.models.user_organizations import UserOrganization
@@ -38,7 +38,7 @@ from ...models.service_ticket.tickets_workflow import TicketWorkflow
 from shared.utils.app_status_code import AppStatusCode
 from shared.helpers.json_response_helper import error_response, success_response
 from ...schemas.service_ticket.tickets_schemas import AddCommentRequest, AddFeedbackRequest, AddReactionRequest, PossibleStatusesResponse, StatusOption, TicketActionRequest, TicketAdminRoleRequest, TicketAssignedToRequest, TicketCommentOut, TicketCommentRequest, TicketCreate, TicketDetailsResponse,  TicketFilterRequest, TicketOut, TicketReactionRequest, TicketUpdateRequest, TicketVendorRequest, TicketWorkFlowOut
-
+from sqlalchemy import or_, and_
 
 def build_ticket_filters(
     db: Session,
@@ -98,34 +98,72 @@ def build_ticket_filters(
         )
 
     # -------------------------------------------------
-    # FILTER: STATUS
+    # FILTER: REQUEST_TYPE (unit/community)
+    # -------------------------------------------------
+    request_types = []  # ✅ initialize first
+
+    if params.request_type:
+        request_types = [
+        rt.strip().lower()
+        for rt in params.request_type.split(",")
+        if rt.strip() and rt.strip().lower() != "all"
+    ]
+
+    if request_types:
+     filters.append(
+        func.lower(Ticket.request_type).in_(request_types)
+     )
+
+    # -------------------------------------------------
+    # FILTER: STATUS (MULTIPLE SUPPORT)
     # -------------------------------------------------
     if params.status and params.status.lower() != "all":
 
-        status = params.status.lower()
+        # Convert "overdue, open" → ["overdue", "open"]
+        status_list = [s.strip().lower() for s in params.status.split(",") if s.strip()]
 
-        if status == "overdue":
-            # Overdue = open tickets with SLA breached
-            filters.append(
-                and_(
-                    Ticket.status != "closed",
-                    func.extract('epoch', func.now() - Ticket.created_at) / 60 >
-                    func.coalesce(SlaPolicy.resolution_time_mins, 0)
-                )
+        normal_statuses = []
+        include_overdue = False
+
+        for status in status_list:
+             if status == "overdue":
+                include_overdue = True
+             else:
+                normal_statuses.append(status)
+
+        status_conditions = []
+
+            # Normal statuses (open, inprogress, closed)
+        if normal_statuses:
+            status_conditions.append(
+            func.lower(Ticket.status).in_(normal_statuses)
+         )
+
+        # Overdue condition
+        if include_overdue:
+            status_conditions.append(
+            and_(
+                Ticket.status != "closed",
+                func.extract('epoch', func.now() - Ticket.created_at) / 60 >
+                func.coalesce(SlaPolicy.resolution_time_mins, 0)
             )
+        )
 
-            # Overdue requires scaling to SLA joins
+        # Apply joins only if overdue is needed
+        if include_overdue:
             base_query = (
-                db.query(Ticket)
-                .join(Ticket.category)
-                .join(TicketCategory.sla_policy)
-                .filter(*filters)
-            )
-
+            db.query(Ticket)
+            .join(Ticket.category)
+            .join(TicketCategory.sla_policy)
+            .filter(*filters)
+            .filter(or_(*status_conditions))  # IMPORTANT: OR condition
+        )
         else:
-            # Normal status like 'open', 'inprogress', 'closed'
-            filters.append(func.lower(Ticket.status) == status)
-            base_query = db.query(Ticket).filter(*filters)
+            base_query = (
+            db.query(Ticket)
+            .filter(*filters)
+            .filter(or_(*status_conditions))
+         )
 
     else:
         # Status not provided → regular query
@@ -594,7 +632,9 @@ async def create_ticket(
             # ✅ Include the names in response
             "assigned_to_name": assigned_to_name,
             "vendor_name": vendor_name,
-            "amenity_name": new_ticket.amenity.name if new_ticket.amenity else None
+            "amenity_name": new_ticket.amenity.name if new_ticket.amenity else None,
+            "site_name": new_ticket.site.name if new_ticket.site else None,
+            "space_name": new_ticket.space.name if new_ticket.space else None,
         }
     )
 

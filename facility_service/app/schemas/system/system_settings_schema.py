@@ -1,15 +1,27 @@
 # schemas/system/system_settings_schema.py
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel
+from enum import Enum
+import zoneinfo
 
+class DateFormatEnum(str, Enum):
+    US = "MM/DD/YYYY"
+    EU = "DD/MM/YYYY"
+    ISO = "YYYY-MM-DD"
+
+class CurrencyEnum(str, Enum):
+    USD = "USD"
+    EUR = "EUR"
+    INR = "INR"
+    GBP = "GBP",
+    CAD = "CAD"
 
 class SystemGeneralSettings(BaseModel):
     system_name: str
     time_zone: str
-    date_format: str
-    currency: str
+    date_format: DateFormatEnum
+    currency: CurrencyEnum
     auto_backup: bool
     maintenance_mode: bool
 
@@ -43,10 +55,22 @@ class SystemSettingsOut(BaseModel):
 class SystemGeneralSettingsUpdate(BaseModel):
     system_name: Optional[str] = None
     time_zone: Optional[str] = None
-    date_format: Optional[str] = None
-    currency: Optional[str] = None
+    date_format: Optional[DateFormatEnum] = None
+    currency: Optional[CurrencyEnum] = None
     auto_backup: Optional[bool] = None
     maintenance_mode: Optional[bool] = None
+
+    @field_validator('time_zone')
+    @classmethod
+    def validate_timezone(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        try:
+            # This checks if the string exists in the official global timezone registry
+            zoneinfo.ZoneInfo(v)
+            return v
+        except zoneinfo.ZoneInfoNotFoundError:
+            raise ValueError(f"'{v}' is not a valid IANA time zone (e.g., 'Asia/Kolkata')")
 
 
 class SystemSecuritySettingsUpdate(BaseModel):

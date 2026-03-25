@@ -167,7 +167,7 @@ def create_user(
                 site_ids=tenant_site_ids
             )
 
-        elif user.account_type.lower() == UserAccountType.OWNER.value:
+        elif user.account_type.lower() == UserAccountType.FLAT_OWNER.value:
             # ✅ Find site
             site = facility_db.query(SiteSafe).filter(
                 SiteSafe.id == user.site_id).first()

@@ -21,8 +21,7 @@ class Ticket(Base):
     __tablename__ = "tickets"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ticket_no = Column(String(20), unique=True, nullable=False,
-                       default=lambda: f"TKT-{next(ticket_seq):03}")
+    ticket_no = Column(String(20), unique=True, nullable=False)
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"))
     site_id = Column(UUID(as_uuid=True), ForeignKey("sites.id"))
     space_id = Column(UUID(as_uuid=True), ForeignKey("spaces.id"))
@@ -245,10 +244,10 @@ class Ticket(Base):
 
 
 # Auto-generate ticket number
-@event.listens_for(Ticket, "before_insert")
-def generate_ticket_no(mapper, connection, target):
-    # Get next number from sequence
-    next_number = connection.execute(ticket_seq)
+# @event.listens_for(Ticket, "before_insert")
+# def generate_ticket_no(mapper, connection, target):
+#     # Get next number from sequence
+#     next_number = connection.execute(ticket_seq)
 
-    # Format as TKT-001, TKT-002, ...
-    target.ticket_no = f"TKT-{next_number:03}"
+#     # Format as TKT-001, TKT-002, ...
+#     target.ticket_no = f"TKT-{next_number:03}"

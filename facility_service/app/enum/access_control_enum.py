@@ -20,6 +20,7 @@ class UserTypeEnum(str, Enum):
     STAFF = "staff"
     TENANT = "tenant"
     VENDOR = "vendor"
+    SPACE_OWNER = "owner"
 
 
 class ApproverRoleEnum(str, Enum):

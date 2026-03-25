@@ -472,8 +472,9 @@ def bulk_update_spaces(db: Session, request: BulkSpaceRequest, org_id: UUID):
         errors = []
 
         # 1. Resolve Site ID
+        clean_site_name = s.siteName.strip() if s.siteName else ""
         site_id = db.query(Site.id).filter(
-            Site.name == s.siteName,
+            func.lower(Site.name) == clean_site_name.lower(),
             Site.is_deleted == False
         ).scalar()
 
@@ -482,9 +483,12 @@ def bulk_update_spaces(db: Session, request: BulkSpaceRequest, org_id: UUID):
 
         # 2. Resolve Building Block ID (Handling empty strings)
         building_id = None
-        if getattr(s, 'buildingBlockName', None) and s.buildingBlockName.strip() and site_id:
+        clean_building_name = getattr(s, 'buildingBlockName', None)
+        if clean_building_name and clean_building_name.strip() and site_id:
+            clean_building_name = clean_building_name.strip()           
+            
             building_id = db.query(Building.id).filter(
-                Building.name == s.buildingBlockName,
+                func.lower(Building.name) == clean_building_name.lower(),
                 Building.site_id == site_id,
                 Building.is_deleted == False
             ).scalar()

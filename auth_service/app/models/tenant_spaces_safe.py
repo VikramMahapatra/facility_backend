@@ -13,8 +13,7 @@ class TenantSpaceSafe(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     site_id = Column(UUID(as_uuid=True), ForeignKey(
         "sites.id", ondelete="CASCADE"))
-    space_id = Column(UUID(as_uuid=True), ForeignKey(
-        "spaces.id", ondelete="CASCADE"))
+    space_id = Column(UUID(as_uuid=True), nullable=False) 
     tenant_id = Column(UUID(as_uuid=True), ForeignKey(
         "tenants.id", ondelete="CASCADE"))
     status = Column(

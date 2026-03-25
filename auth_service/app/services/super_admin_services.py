@@ -9,6 +9,8 @@ from auth_service.app.models.rolepolicy import RolePolicy
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.schemas.superadminschema import OrgApprovalRequest
+from facility_service.app.models.system.system_settings import SystemSetting
+from facility_service.app.models.system.system_settings import SystemSetting
 from shared.helpers.email_helper import EmailHelper
 from shared.helpers.json_response_helper import error_response
 from shared.models.users import Users
@@ -186,6 +188,20 @@ def approve_org(background_tasks: BackgroundTasks, org_id: str, facility_db: Ses
                 )
 
         auth_db.bulk_save_objects(policies)
+
+    # ------------------------------------------------
+    # 7. Default system settings
+    # ------------------------------------------------
+    existing_settings = facility_db.query(SystemSetting).filter(
+        SystemSetting.org_id == org_id
+    ).first()
+
+    if not existing_settings:
+        default_settings = SystemSetting(
+            org_id=org_id,
+            system_name=f"{org.name} Workspace"
+        )
+        facility_db.add(default_settings)
 
     # ------------------------------------------------
 

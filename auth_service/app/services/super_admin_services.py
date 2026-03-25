@@ -8,7 +8,7 @@ from auth_service.app.models.orgs_safe import OrgSafe
 from auth_service.app.models.rolepolicy import RolePolicy
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
-from auth_service.app.schemas.superadminschema import OrgApprovalRequest
+from auth_service.app.schemas.superadminschema import OrgApprovalRequest, OrgRejectRequest
 from facility_service.app.models.system.system_settings import SystemSetting
 from facility_service.app.models.system.system_settings import SystemSetting
 from shared.helpers.email_helper import EmailHelper
@@ -76,7 +76,8 @@ def list_pending_orgs(facility_db: Session, params: OrgApprovalRequest):
                 "email": o.billing_email,
                 "phone": o.contact_phone,
                 "status": o.status,
-                "created_at": o.created_at.isoformat()
+                "created_at": o.created_at.isoformat(),
+                "rejection_reason": o.rejection_reason
             }
             for o in orgs
         ],
@@ -220,13 +221,20 @@ def approve_org(background_tasks: BackgroundTasks, org_id: str, facility_db: Ses
     return {"message": f"Organization '{org.name}' approved"}
 
 
-def reject_org(background_tasks: BackgroundTasks, org_id: str, facility_db: Session, auth_db: Session):
+def reject_org(
+        background_tasks: BackgroundTasks,
+        org_id: str,
+        request: OrgRejectRequest,
+        facility_db: Session,
+        auth_db: Session
+        ):
     org = facility_db.query(OrgSafe).filter(OrgSafe.id == org_id).first()
     if not org:
         return error_response(message="Organization not found")
 
     # Reject the organization
     org.status = "rejected"
+    org.rejection_reason = request.rejection_reason
 
     # Make related user organizations with account_type 'organization' rejected
     auth_db.query(UserOrganization).filter(
@@ -241,7 +249,8 @@ def reject_org(background_tasks: BackgroundTasks, org_id: str, facility_db: Sess
     context = {
         "organization_name": org.name,
         "organization_email": org.billing_email,
-        "rejection_reason": "Unfortunately, your organization registration did not meet our criteria at this time. Please review the requirements and consider reapplying in the future."}
+        "rejection_reason": request.rejection_reason
+        }
 
     send_rejection_email(background_tasks, db=auth_db,
                          email=org.billing_email, context=context)

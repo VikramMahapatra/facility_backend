@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from requests import Session
 from auth_service.app.models.orgs_safe import OrgSafe
-from auth_service.app.schemas.superadminschema import OrgApprovalRequest
+from auth_service.app.schemas.superadminschema import OrgApprovalRequest, OrgRejectRequest
 from shared.core import auth
 from shared.core.database import get_auth_db as get_db, get_facility_db
 from shared.core.schemas import UserToken
@@ -30,8 +30,8 @@ def approve_org(org_id: str, background_tasks: BackgroundTasks, facility_db: Ses
 
 
 @router.post("/orgs/{org_id}/reject")
-def reject_org(org_id: str, background_tasks: BackgroundTasks, facility_db: Session = Depends(get_facility_db), auth_db: Session = Depends(get_db)):
-    return super_admin_services.reject_org(background_tasks, org_id, facility_db, auth_db)
+def reject_org(org_id: str, request: OrgRejectRequest, background_tasks: BackgroundTasks, facility_db: Session = Depends(get_facility_db), auth_db: Session = Depends(get_db)):
+    return super_admin_services.reject_org(background_tasks, org_id, request, facility_db, auth_db)
 
 
 @router.get("/stats")

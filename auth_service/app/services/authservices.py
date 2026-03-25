@@ -130,9 +130,11 @@ def send_otp(background_tasks: BackgroundTasks, db: Session, facility_db: Sessio
             message=message
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error sending OTP:{str(e)}")
-
+        return error_response(
+            message=f"Error sending OTP: {str(e)}",
+            status_code="500", 
+            http_status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 def verify_otp(
         api_request: Request,
@@ -148,9 +150,11 @@ def verify_otp(
             # )
             check = {"status": "approved"}
         except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Twilio error: {str(e)}")
-
+            return error_response(
+                message=f"Twilio error: {str(e)}",
+                status_code="500",
+                http_status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         status_value = getattr(check, "status", None) or check.get("status")
 
         if status_value != "approved":
@@ -432,7 +436,8 @@ def resend_otp(background_tasks: BackgroundTasks, db: Session, facility_db: Sess
         )
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error resending OTP: {str(e)}"
+        return error_response(
+            message=f"Error resending OTP: {str(e)}",
+            status_code="500",
+            http_status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

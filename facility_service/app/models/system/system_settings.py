@@ -19,9 +19,9 @@ class SystemSetting(Base):
     org_id = Column(UUID(as_uuid=True), ForeignKey("orgs.id"), nullable=False)
     # ---------- General ----------
     system_name = Column(String(100), nullable=False)
-    time_zone = Column(String(50), nullable=False)
+    time_zone = Column(String(50), nullable=False, default="Asia/Kolkata")
     date_format = Column(String(20), nullable=False, default="MM/DD/YYYY")
-    currency = Column(String(10), nullable=False)
+    currency = Column(String(10), nullable=False, default="INR")
 
     auto_backup = Column(Boolean, default=True)
     maintenance_mode = Column(Boolean, default=False)

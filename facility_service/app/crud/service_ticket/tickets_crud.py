@@ -401,6 +401,18 @@ def get_ticket_details(db: Session, auth_db: Session, ticket_id: str):
     )
 
 
+def generate_ticket_number(session: Session, org_id: UUID) -> str:
+    max_ticket = session.query(Ticket.ticket_no).filter(Ticket.org_id == org_id).order_by(Ticket.ticket_no.desc()).first()
+    
+    if not max_ticket or not max_ticket[0]:
+        return "TKT-001"
+    
+    try:
+        last_num = int(max_ticket[0].split('-')[1])
+        return f"TKT-{last_num + 1:03}"
+    except (IndexError, ValueError):
+        return "TKT-001"
+
 async def create_ticket(
     background_tasks: BackgroundTasks,
     session: Session,
@@ -473,9 +485,11 @@ async def create_ticket(
             status_code=str(AppStatusCode.REQUIRED_VALIDATION_ERROR),
             http_status=400
         )
+    ticket_no = generate_ticket_number(session, space.org_id)
 
     new_ticket = Ticket(
         org_id=space.org_id,
+        ticket_no=ticket_no,
         site_id=space.site_id if space.site_id else data.site_id,
         space_id=data.space_id,
         tenant_id=tenant_id,   # Will be NULL for owners

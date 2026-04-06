@@ -41,7 +41,7 @@ class ComplaintCreate(EmptyStringModel):
         "%H:%M"))                    # REQUIRED
     preferred_date: date = Field(default_factory=date.today)
     priority: Optional[str] = None
-    amenity_id: Optional[str] = None
+    amenity_id: Optional[UUID] = None
 
     @classmethod
     def as_form(

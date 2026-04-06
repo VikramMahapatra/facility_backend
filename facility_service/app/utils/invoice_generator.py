@@ -13,6 +13,7 @@ from facility_service.app.models.financials.bills import Bill, BillLine
 from facility_service.app.models.financials.invoices import Invoice, InvoiceLine
 from facility_service.app.models.parking_access.parking_pass import ParkingPass
 from facility_service.app.models.service_ticket.tickets_work_order import TicketWorkOrder
+from facility_service.app.models.space_sites.sites import Site
 from facility_service.app.schemas.financials.bills_schemas import AutoBillResponse
 from facility_service.app.schemas.financials.invoices_schemas import AutoInvoiceResponse, InvoiceCreate, InvoiceLineCreate
 
@@ -36,7 +37,10 @@ async def auto_generate_monthly_invoices(
     target_date: date,
     current_user: UserToken
 ):
-    today, billing_end = get_month_range(target_date)
+    billing_start, billing_end = get_month_range(target_date)
+    today = date.today()
+    baseline_date = max(billing_start, today)
+    cal_due_date = baseline_date + timedelta(days=7)
 
     created = {
         "invoices": [],
@@ -46,7 +50,7 @@ async def auto_generate_monthly_invoices(
     # RENT (AR)
     # =====================================================
     rent_charges = db.query(LeaseCharge).join(Lease).filter(
-        LeaseCharge.period_start >= today,
+        LeaseCharge.period_start >= billing_start,
         LeaseCharge.period_start <= billing_end,
         LeaseCharge.charge_code == InvoiceType.rent.value,
         LeaseCharge.invoice_id == None,
@@ -61,18 +65,28 @@ async def auto_generate_monthly_invoices(
     for charge in rent_charges:
         lease = charge.lease
 
+        site_exists = db.query(Site).filter(Site.id == lease.site_id).first()
+        if not site_exists:
+            print(f"⚠️ Skipping Lease {lease.lease_number}: Site {lease.site_id} does not exist.")
+            continue # Skip to the next charge safely
+
+        #Also verify the tenant exists
+        if not lease.tenant_id:
+             print(f"⚠️ Skipping Lease {lease.lease_number}: No tenant assigned.")
+             continue
+
         invoice = await create_ar_invoice(
             background_tasks=background_tasks,
             db=db,
             org_id=org_id,
             site_id=lease.site_id,
             space_id=lease.space_id,
-            user_id=lease.user_id,
+            user_id=lease.tenant_id,
             code=InvoiceType.rent.value,
             item_id=charge.id,
             description="Monthly Rent",
             amount=charge.amount,
-            due_date=charge.period_end + timedelta(days=7),
+            due_date=cal_due_date,
             current_user=current_user
         )
 
@@ -83,7 +97,7 @@ async def auto_generate_monthly_invoices(
     # OWNER MAINTENANCE (AR)
     # =====================================================
     maint = db.query(OwnerMaintenanceCharge).filter(
-        OwnerMaintenanceCharge.period_start >= today,
+        OwnerMaintenanceCharge.period_start >= billing_start,
         OwnerMaintenanceCharge.period_start <= billing_end,
         OwnerMaintenanceCharge.invoice_id == None,
         OwnerMaintenanceCharge.org_id == org_id,
@@ -92,6 +106,10 @@ async def auto_generate_monthly_invoices(
 
     for charge in maint:
         space = charge.space
+
+        if not charge.space_owner or not charge.space_owner.owner_user_id:
+            print(f"⚠️ Skipping Maint Charge {charge.id}: No owner assigned to space.")
+            continue
 
         invoice = await create_ar_invoice(
             background_tasks=background_tasks,
@@ -104,7 +122,7 @@ async def auto_generate_monthly_invoices(
             item_id=charge.id,
             description="Owner Maintenance",
             amount=charge.amount,
-            due_date=charge.period_end + timedelta(days=7),
+            due_date=cal_due_date,
             current_user=current_user
         )
 
@@ -115,14 +133,19 @@ async def auto_generate_monthly_invoices(
     # WORK ORDERS
     # =====================================================
     work_orders = db.query(TicketWorkOrder).filter(
-        TicketWorkOrder.created_at >= today,
+        TicketWorkOrder.created_at >= billing_start,
         TicketWorkOrder.created_at <= billing_end,
         TicketWorkOrder.invoice_id == None,
+        TicketWorkOrder.org_id == org_id,
         TicketWorkOrder.bill_to_type.in_(["tenant", "owner"])
     ).all()
 
     for wo in work_orders:
         ticket = wo.ticket
+
+        if not ticket or not wo.bill_to_id:
+            print(f"⚠️ Skipping Work Order {wo.wo_no}: Missing ticket or bill_to_id.")
+            continue
 
         # Vendor → AP Bill
         if wo.bill_to_type in ["tenant", "owner"]:
@@ -137,7 +160,7 @@ async def auto_generate_monthly_invoices(
                 item_id=wo.id,
                 description=f"Work Order #{wo.wo_no}",
                 amount=wo.total_amount,
-                due_date=date.today() + timedelta(days=7),
+                due_date=cal_due_date,
                 current_user=current_user
             )
 
@@ -148,9 +171,10 @@ async def auto_generate_monthly_invoices(
     # PARKING PASS (AR)
     # =====================================================
     parking_passes = db.query(ParkingPass).filter(
-        ParkingPass.valid_from >= today,
+        ParkingPass.valid_from >= billing_start,
         ParkingPass.valid_from <= billing_end,
-        ParkingPass.invoice_id == None
+        ParkingPass.invoice_id == None,
+        ParkingPass.org_id == org_id
     ).all()
 
     for p in parking_passes:
@@ -166,7 +190,7 @@ async def auto_generate_monthly_invoices(
             item_id=p.id,
             description="Parking Pass",
             amount=p.charge_amount,
-            due_date=date.today() + timedelta(days=7),
+            due_date=cal_due_date,
             current_user=current_user
         )
 

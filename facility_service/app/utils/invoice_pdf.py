@@ -23,7 +23,10 @@ def generate_invoice_pdf(
     payments_total: float,
     advance_used: float,
     balance: float,
-    system_settings
+    system_settings,
+    work_order=None,
+    parking_pass=None,
+    owner_maintenance=None
 ):
     styles = getSampleStyleSheet()
     story = []
@@ -75,6 +78,114 @@ def generate_invoice_pdf(
     ]))
     story.append(info_table)
     story.append(Spacer(1, 15))
+
+    # --------------------------------------------------
+    # 2.5 WORK ORDER CONTEXT
+    # --------------------------------------------------
+    if work_order:
+        wo_title = Table([["WORK ORDER SUMMARY"]], colWidths=[PAGE_WIDTH])
+        wo_title.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f4f4f5")), # Light gray
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(wo_title)
+
+        # Build the descriptive text
+        desc_text = work_order.description.replace('\n', '<br/>') if work_order.description else "No description provided."
+        instructions = f"<br/><br/><b>Special Instructions:</b> {work_order.special_instructions}" if work_order.special_instructions else ""
+        
+        wo_details_html = f"""
+        <para>
+            <b>Work Order No:</b> {work_order.wo_no} <br/><br/>
+            <b>Task Description:</b><br/>
+            {desc_text}
+            {instructions}
+        </para>
+        """
+        wo_details = Table([[Paragraph(wo_details_html, styles["Normal"])]], colWidths=[PAGE_WIDTH])
+        wo_details.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('PADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(wo_details)
+        story.append(Spacer(1, 15))
+
+    # --------------------------------------------------
+    # 2.6 PARKING PASS CONTEXT (IF APPLICABLE)
+    # --------------------------------------------------
+    if parking_pass:
+        pp_title = Table([["PARKING PASS DETAILS"]], colWidths=[PAGE_WIDTH])
+        pp_title.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f4f4f5")),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(pp_title)
+
+        # Safely format dates and names
+        valid_from = parking_pass.valid_from.strftime('%d %b %Y') if parking_pass.valid_from else "N/A"
+        valid_to = parking_pass.valid_to.strftime('%d %b %Y') if parking_pass.valid_to else "N/A"
+        holder_name = parking_pass.pass_holder_name or customer.customer_name # Fallback to invoice customer
+
+        pp_details_html = f"""
+        <para>
+            <b>Pass No:</b> {parking_pass.pass_no} <br/><br/>
+            <b>Vehicle No:</b> {parking_pass.vehicle_no} <br/><br/>
+            <b>Pass Holder:</b> {holder_name} <br/><br/>
+            <b>Validity Period:</b> {valid_from} to {valid_to}
+        </para>
+        """
+        pp_details = Table([[Paragraph(pp_details_html, styles["Normal"])]], colWidths=[PAGE_WIDTH])
+        pp_details.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('PADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(pp_details)
+        story.append(Spacer(1, 15))
+
+    # --------------------------------------------------
+    # 2.7 OWNER MAINTENANCE CONTEXT (IF APPLICABLE)
+    # --------------------------------------------------
+    if owner_maintenance:
+        om_title = Table([["MAINTENANCE CHARGE DETAILS"]], colWidths=[PAGE_WIDTH])
+        om_title.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f4f4f5")),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(om_title)
+
+        # Safely format dates
+        start_str = owner_maintenance.period_start.strftime('%d %b %Y') if owner_maintenance.period_start else "N/A"
+        end_str = owner_maintenance.period_end.strftime('%d %b %Y') if owner_maintenance.period_end else "N/A"
+
+        om_details_html = f"""
+        <para>
+            <b>Maintenance No:</b> {owner_maintenance.maintenance_no} <br/><br/>
+            <b>Billing Period:</b> {start_str} to {end_str} <br/><br/>
+            <b>Space:</b> {customer.space_name}
+        </para>
+        """
+        om_details = Table([[Paragraph(om_details_html, styles["Normal"])]], colWidths=[PAGE_WIDTH])
+        om_details.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('PADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(om_details)
+        story.append(Spacer(1, 15))
 
     # --------------------------------------------------
     # 3. TITLE BAR

@@ -1772,13 +1772,67 @@ def download_invoice_pdf(
         .first()
     )
 
-    customer = get_tenant_detail(db, invoice.user_id)
+    work_order = None
+    parking_pass = None
+    owner_maintenance = None
+    
+    if invoice.lines and len(invoice.lines) > 0:
+
+        code = str(invoice.lines[0].code).upper()
+
+        if code == "WORKORDER":
+            work_order = db.query(TicketWorkOrder).filter(TicketWorkOrder.invoice_id == invoice.id).first()
+        elif code == "PARKING_PASS":
+            parking_pass = db.query(ParkingPass).filter(ParkingPass.invoice_id == invoice.id).first()
+        elif code == "OWNER_MAINTENANCE":
+            owner_maintenance = db.query(OwnerMaintenanceCharge).filter(OwnerMaintenanceCharge.invoice_id == invoice.id).first()
+
+    customer_name = "N/A"
+    customer_phone = "N/A"
+    customer_address = "N/A"
+    space_name = invoice.space.name if invoice.space else "N/A"
+
+    if owner_maintenance and owner_maintenance.space_owner:
+        owner_record = owner_maintenance.space_owner
+        
+        if owner_record.owner_user_id:
+            auth_db = AuthSessionLocal()
+            try:
+                user = auth_db.query(Users).filter(Users.id == owner_record.owner_user_id).first()
+                if user:
+                    customer_name = user.full_name or "Property Owner"
+                    customer_phone = user.phone or "N/A"
+
+                    if hasattr(user, 'address') and user.address:
+                        customer_address = format_address(user.address) 
+                    else:
+                        customer_address = "N/A"
+            finally:
+                auth_db.close()
+                
+        elif owner_record.owner_org_id:
+            org_owner = db.query(Org).filter(Org.id == owner_record.owner_org_id).first()
+            if org_owner:
+                customer_name = org_owner.name or "Property Owner"
+                customer_phone = org_owner.contact_phone or "N/A"
+
+                if getattr(org_owner, 'address', None):
+                    customer_address = format_address(org_owner.address)
+                else:
+                    customer_address = "N/A" # model doesn't have address field
+    else:
+        customer = get_tenant_detail(db, invoice.user_id)
+        if customer:
+            customer_name = customer.name or "N/A"
+            customer_phone = customer.phone or "N/A"
+            if getattr(customer, 'address', None):
+                customer_address = format_address(customer.address)
 
     customer_detail = InvoiceCustomerDetail(
-        customer_name=customer.name if customer else "Customer",
-        space_name=invoice.space.name,
-        customer_phone=customer.phone,
-        customer_address=format_address(customer.address)
+        customer_name=customer_name,
+        space_name=space_name,
+        customer_phone=customer_phone,
+        customer_address=customer_address
     )
 
     advance_used, payments_total, balance = calculate_balance(db, invoice)
@@ -1792,7 +1846,10 @@ def download_invoice_pdf(
         payments_total=float(payments_total),
         advance_used=float(advance_used),
         balance=float(balance),
-        system_settings=system_settings
+        system_settings=system_settings,
+        work_order=work_order,
+        parking_pass=parking_pass,
+        owner_maintenance=owner_maintenance
     )
 
     filename = f"Invoice_{invoice.invoice_no}.pdf"

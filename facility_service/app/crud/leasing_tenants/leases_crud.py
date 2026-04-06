@@ -1174,7 +1174,7 @@ def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID, space_id
     )
 
     if not tenant:
-        return error_response(status_code=404, detail="Tenant not found")
+        return error_response(status_code=404, message="Tenant not found")
 
     results = []
 

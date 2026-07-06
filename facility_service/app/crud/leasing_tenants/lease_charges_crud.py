@@ -671,5 +671,5 @@ def auto_generate_lease_rent_charges(
 
     return {
         "total_leases_processed": len(leases),
-        "total_charges_created_or_synced": created_count
+        "total_charge_created": created_count
     }

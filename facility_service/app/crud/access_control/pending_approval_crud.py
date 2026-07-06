@@ -48,9 +48,13 @@ def get_all_users_for_approval(
     )
 
     if params.status:
-        base_query = base_query.filter(
-            func.lower(UserOrganization.status) == params.status.lower()
-        )
+        target_status = params.status.lower()
+        if target_status == "pending_approval":
+            target_status = "pending" 
+        
+    base_query = base_query.filter(
+        func.lower(UserOrganization.status) == target_status
+    )
 
     # func.lower(Users.status) == "pending_approval",
     # func.lower(UserOrganization.status) == "pending",
@@ -153,7 +157,7 @@ def update_user_approval_status(
         return error_response(message="User is not associated with this organization")
 
     # 3️⃣ Only Tenant & Owner supported
-    if user_org.account_type.notin_([UserAccountType.TENANT, UserAccountType.FLAT_OWNER]):
+    if user_org.account_type not in ([UserAccountType.TENANT, UserAccountType.FLAT_OWNER]):
         return error_response(message="Approval is only allowed for tenant or owner")
 
     if request.status == ApprovalStatus.reject and not request.rejection_reason:

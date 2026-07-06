@@ -5,7 +5,7 @@ from sqlalchemy import Integer, extract, func
 from sqlalchemy.orm import joinedload
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from fastapi import BackgroundTasks, HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
@@ -75,6 +75,9 @@ def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
     if params.site_id:
         filters.append(Invoice.site_id == params.site_id)
 
+    if params.space_id:
+        filters.append(Invoice.space_id == params.space_id)
+
     if params.search:
         search_term = f"%{params.search}%"
         filters.append(or_(
@@ -82,7 +85,7 @@ def build_invoices_filters(org_id: UUID, params: InvoicesRequest):
         ))
 
     if params.year:
-        base_query = base_query.filter(
+        filters.append(
             extract('year', Invoice.date) == params.year
         )
 
@@ -159,7 +162,7 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
         code = None
         item_no = None
-        user_name = None
+        user_name = get_user_name(invoice.user_id)
 
         # -----------------------------------------
         # Take first line for summary
@@ -178,7 +181,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if wo:
                     item_no = wo.wo_no
-                    user_name = get_user_name(wo.bill_to_id)
 
             # -------- RENT --------
             elif line.code == InvoiceType.rent.value:
@@ -193,10 +195,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if lease:
                     item_no = lease.lease_number
-
-                    # assuming lease.tenant_user_id
-                    user_name = get_user_name(lease.tenant.user_id)
-
             # -------- OWNER MAINTENANCE --------
             elif line.code == InvoiceType.owner_maintenance.value:
                 om = db.query(OwnerMaintenanceCharge).filter(
@@ -206,7 +204,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if om:
                     item_no = om.maintenance_no
-                    user_name = get_user_name(om.space_owner.owner_user_id)
 
             # -------- PARKING PASS --------
             elif line.code == InvoiceType.parking_pass.value:
@@ -217,7 +214,6 @@ def get_invoices(db: Session, org_id: UUID, params: InvoicesRequest) -> Invoices
 
                 if pass_obj:
                     item_no = pass_obj.pass_no
-                    user_name = get_user_name(pass_obj.user_id)
 
         # -----------------------------------------
         # Payments
@@ -560,7 +556,8 @@ async def create_invoice(
             status_code=400, detail="Invoice must have at least one line")
 
     request.currency = get_system_currency(db, org_id)
-    invoice_data = request.model_dump(exclude={"org_id", "lines"})
+    invoice_data = request.model_dump(
+        exclude={"org_id", "lines", "send_email"})
     invoice_data.update({
         "org_id": org_id,
         "status": request.status,
@@ -1533,7 +1530,11 @@ def generate_invoice_number(db: Session, org_id: UUID):
     return invoice_no
 
 
-def apply_advance_to_invoice(db: Session, invoice: Invoice):
+def apply_advance_to_invoice(
+    db: Session,
+    invoice: Invoice,
+    advance_id: Optional[UUID] = None
+):
 
     invoice_amount = Decimal(str(invoice.totals.get("grand", 0)))
     remaining = invoice_amount
@@ -1541,15 +1542,19 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
     if remaining <= 0:
         return
 
+    query = db.query(CustomerAdvance).filter(
+        CustomerAdvance.user_id == invoice.user_id,
+        CustomerAdvance.org_id == invoice.org_id,
+        CustomerAdvance.balance > 0
+    )
+
+    # ⭐ apply only specific advance
+    if advance_id:
+        query = query.filter(CustomerAdvance.id == advance_id)
+
     advances = (
-        db.query(CustomerAdvance)
-        .filter(
-            CustomerAdvance.user_id == invoice.user_id,
-            CustomerAdvance.org_id == invoice.org_id,
-            CustomerAdvance.balance > 0
-        )
-        .order_by(CustomerAdvance.created_at.asc())  # ⭐ FIFO
-        .with_for_update()  # ⭐ prevent race condition
+        query.order_by(CustomerAdvance.created_at.asc())
+        .with_for_update()
         .all()
     )
 
@@ -1563,10 +1568,8 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         if adv_balance <= 0:
             continue
 
-        # FIFO deduction
         use_amount = min(adv_balance, remaining)
 
-        # Safety guard
         if use_amount <= 0:
             continue
 
@@ -1587,7 +1590,6 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         db.add(payment)
 
         adv.balance = adv_balance - use_amount
-
         remaining -= use_amount
 
     if remaining <= 0:
@@ -1602,19 +1604,19 @@ def apply_advance_to_invoice(db: Session, invoice: Invoice):
         invoice.is_paid = False
 
 
-def add_payment_detail(
+async def add_payment_detail(
     db: Session,
     payload: AdvancePaymentCreate,
-    current_user: UserToken
+    current_user: UserToken,
+    attachments: Optional[List[UploadFile]] = None
 ):
     try:
+
         if payload.amount <= 0:
             return error_response(message="Amount must be greater than zero")
 
         if payload.method != "cash" and not payload.ref_no:
             return error_response(message="ref_no is mandatory and must be unique per invoice")
-
-        payment: CustomerAdvance | None = None
 
         payment = CustomerAdvance(
             org_id=current_user.org_id,
@@ -1627,8 +1629,34 @@ def add_payment_detail(
             notes=payload.notes,
             currency=payload.currency
         )
+
         db.add(payment)
-        db.flush()
+        db.flush()  # ⭐ get payment.id
+
+        if attachments:
+            await AttachmentService.save_attachments(
+                db=db,
+                module=ModuleName.payments,
+                entity_id=payment.id,
+                files=attachments
+            )
+
+        # ⭐ Apply advance to invoices if provided
+        if payload.invoice_ids:
+
+            invoices = (
+                db.query(Invoice)
+                .filter(
+                    Invoice.id.in_(payload.invoice_ids),
+                    Invoice.org_id == current_user.org_id,
+                    Invoice.user_id == payload.user_id
+                )
+                .with_for_update()
+                .all()
+            )
+
+            for invoice in invoices:
+                apply_advance_to_invoice(db, invoice, advance_id=payment.id)
 
         db.add(Notification(
             user_id=payload.user_id,
@@ -1643,7 +1671,13 @@ def add_payment_detail(
         ))
 
         db.commit()
-        return success_response(data={"payment_id": str(payment.id)})
+
+        return success_response(
+            data={
+                "payment_id": str(payment.id),
+                "balance": float(payment.balance)
+            }
+        )
 
     except Exception as e:
         db.rollback()
@@ -1738,13 +1772,67 @@ def download_invoice_pdf(
         .first()
     )
 
-    customer = get_tenant_detail(db, invoice.user_id)
+    work_order = None
+    parking_pass = None
+    owner_maintenance = None
+    
+    if invoice.lines and len(invoice.lines) > 0:
+
+        code = str(invoice.lines[0].code).upper()
+
+        if code == "WORKORDER":
+            work_order = db.query(TicketWorkOrder).filter(TicketWorkOrder.invoice_id == invoice.id).first()
+        elif code == "PARKING_PASS":
+            parking_pass = db.query(ParkingPass).filter(ParkingPass.invoice_id == invoice.id).first()
+        elif code == "OWNER_MAINTENANCE":
+            owner_maintenance = db.query(OwnerMaintenanceCharge).filter(OwnerMaintenanceCharge.invoice_id == invoice.id).first()
+
+    customer_name = "N/A"
+    customer_phone = "N/A"
+    customer_address = "N/A"
+    space_name = invoice.space.name if invoice.space else "N/A"
+
+    if owner_maintenance and owner_maintenance.space_owner:
+        owner_record = owner_maintenance.space_owner
+        
+        if owner_record.owner_user_id:
+            auth_db = AuthSessionLocal()
+            try:
+                user = auth_db.query(Users).filter(Users.id == owner_record.owner_user_id).first()
+                if user:
+                    customer_name = user.full_name or "Property Owner"
+                    customer_phone = user.phone or "N/A"
+
+                    if hasattr(user, 'address') and user.address:
+                        customer_address = format_address(user.address) 
+                    else:
+                        customer_address = "N/A"
+            finally:
+                auth_db.close()
+                
+        elif owner_record.owner_org_id:
+            org_owner = db.query(Org).filter(Org.id == owner_record.owner_org_id).first()
+            if org_owner:
+                customer_name = org_owner.name or "Property Owner"
+                customer_phone = org_owner.contact_phone or "N/A"
+
+                if getattr(org_owner, 'address', None):
+                    customer_address = format_address(org_owner.address)
+                else:
+                    customer_address = "N/A" # model doesn't have address field
+    else:
+        customer = get_tenant_detail(db, invoice.user_id)
+        if customer:
+            customer_name = customer.name or "N/A"
+            customer_phone = customer.phone or "N/A"
+            if getattr(customer, 'address', None):
+                customer_address = format_address(customer.address)
 
     customer_detail = InvoiceCustomerDetail(
-        customer_name=customer.name if customer else "Customer",
-        space_name=invoice.space.name,
-        customer_phone=customer.phone,
-        customer_address=format_address(customer.address)
+        customer_name=customer_name,
+        space_name=space_name,
+        customer_phone=customer_phone,
+        customer_address=customer_address
     )
 
     advance_used, payments_total, balance = calculate_balance(db, invoice)
@@ -1758,7 +1846,10 @@ def download_invoice_pdf(
         payments_total=float(payments_total),
         advance_used=float(advance_used),
         balance=float(balance),
-        system_settings=system_settings
+        system_settings=system_settings,
+        work_order=work_order,
+        parking_pass=parking_pass,
+        owner_maintenance=owner_maintenance
     )
 
     filename = f"Invoice_{invoice.invoice_no}.pdf"

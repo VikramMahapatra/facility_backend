@@ -26,7 +26,9 @@ class MaintenanceTemplate(Base):
     category = Column(String(32), nullable=True)
     kind = Column(String(32), nullable=True)
     sub_kind = Column(String(32), nullable=True)
-
+    frequency = Column(String(16), default="monthly",
+                       nullable=True)  # maintenance frequency
+    
     is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True),

@@ -362,6 +362,7 @@ async def create(
         lease_data.update({
             "status": lease_status,
             "default_payer": "tenant",
+            "user_id": tenant.user_id,
             "end_date": end_date,
             "lease_number": f"LSE-{next_number:04d}"
         })
@@ -1173,7 +1174,7 @@ def get_tenant_space_detail(db: Session, org_id: UUID, tenant_id: UUID, space_id
     )
 
     if not tenant:
-        return error_response(status_code=404, detail="Tenant not found")
+        return error_response(status_code=404, message="Tenant not found")
 
     results = []
 

@@ -927,19 +927,12 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> Li
 
     for lease_charge in lease_charges:
         # Find invoices for this lease charge
-        invoice = (
-            db.query(Invoice)
-            .join(
-                InvoiceLine, Invoice.id == InvoiceLine.invoice_id
-            )
-            .filter(
-                InvoiceLine.item_id == lease_charge.id,
-                InvoiceLine.code == InvoiceType.rent.value,
-                Invoice.is_deleted == False
-            ).first()
-        )
+        invoices = db.query(Invoice).filter(
+            Invoice.id == lease_charge.invoice_id,
+            Invoice.is_deleted == False
+        ).all()
 
-        if invoice:
+        for invoice in invoices:
             # Get payments for this invoice
             payments = db.query(PaymentAR).filter(
                 PaymentAR.invoice_id == invoice.id,
@@ -948,13 +941,13 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> Li
 
             for payment in payments:
                 tenant_payments.append({
-                    "type": "Lease",
+                    "type": InvoiceType.rent.value,
                     "payment_date": payment.paid_at,
                     "amount": payment.amount,
                     "invoice_no": invoice.invoice_no,
                     "reference": payment.ref_no,
                     "method": payment.method,
-                    "description": f"Lease Charge: {lease_charge.charge_code.code if lease_charge.charge_code else 'Charge'}",
+                    "description": payment.meta.get("notes") if payment.meta else None,
                     "site": invoice.site.name if invoice.site else None
                 })
 
@@ -988,7 +981,7 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> Li
 
                 for payment in payments:
                     tenant_payments.append({
-                        "type": "Work Order",
+                        "type": InvoiceType.work_order.value,
                         "payment_date": payment.paid_at,
                         "amount": payment.amount,
                         "invoice_no": invoice.invoice_no,
@@ -1007,8 +1000,7 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> Li
     for parking_pass in parking_passes:
         # Find invoices for this parking pass
         invoices = db.query(Invoice).filter(
-            Invoice.billable_item_type == "parking pass",
-            Invoice.billable_item_id == parking_pass.id,
+            Invoice.id == parking_pass.invoice_id,
             Invoice.is_deleted == False
         ).all()
 
@@ -1021,7 +1013,7 @@ def get_tenant_payment_history(db: Session, tenant_id: UUID, org_id: UUID) -> Li
 
             for payment in payments:
                 tenant_payments.append({
-                    "type": "Parking",
+                    "type": InvoiceType.parking_pass.value,
                     "payment_date": payment.paid_at,
                     "amount": payment.amount,
                     "invoice_no": invoice.invoice_no,

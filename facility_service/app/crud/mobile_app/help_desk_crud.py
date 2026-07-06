@@ -72,10 +72,11 @@ def raise_complaint(db: Session, complaint_data: ComplaintCreate, current_user: 
     # Create response with comments = 0 for new complaint
     response_data = {
         **complaint.__dict__,
-        "comments": 0  # ✅ New complaints have 0 comments
+        "comments": 0,  # ✅ New complaints have 0 comments
     }
 
     return ComplaintResponse.model_validate(response_data)
+
 
 
 def get_complaint_details(db: Session, service_request_id: str) -> ComplaintDetailsResponse:

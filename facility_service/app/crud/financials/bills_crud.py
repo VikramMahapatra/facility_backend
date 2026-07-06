@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Dict, List
+from typing import Dict, List, Optional
 from uuid import UUID
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
@@ -439,84 +439,69 @@ def delete_bill(db: Session, bill_id: str, org_id: UUID):
     return success_response(message="Bill deleted successfully")
 
 
-def save_bill_payment(
+async def save_bill_payment(
     db: Session,
     payload: BillPaymentCreate,
-    current_user: UserToken
+    current_user: UserToken,
+    attachments: Optional[List[UploadFile]] = None
 ):
     try:
-        # ---------------------------
-        # 0. Validate bill
-        # ---------------------------
-        if not payload.bill_id:
-            return error_response(message="Bill is required")
+        target_bill_id = getattr(payload, 'bill_id', None)
+        
+        if not target_bill_id:
+            return error_response(message="Bill reference is required")
 
+        # ---------------------------
+        # 1. Fetch & Lock Bill (Row Lock perfectly prevents race conditions)
+        # ---------------------------
         bill: Bill = db.query(Bill).filter(
-            Bill.id == payload.bill_id,
+            Bill.id == target_bill_id,
             Bill.is_deleted == False
-        ).first()
+        ).with_for_update().first()
 
         if not bill:
             return error_response(message="Invalid bill ID")
 
-        # ---------------------------
-        # 1. Validate bill status
-        # ---------------------------
-        if bill.status == "draft":
-            return error_response(
-                message="Cannot add payments to draft bills"
-            )
-
-        if bill.status == "paid":
-            return error_response(
-                message="Bill is already fully paid"
-            )
+        if bill.status in ["draft", "paid"]:
+            return error_response(message=f"Cannot add payments to a {bill.status} bill")
 
         # ---------------------------
         # 2. Validate ref_no
         # ---------------------------
         if payload.method != "cash" and not payload.ref_no:
-            return error_response(
-                message="ref_no is mandatory for non-cash payments"
-            )
+            return error_response(message="ref_no is mandatory for non-cash payments")
 
-        # prevent duplicate ref_no per bill
         if payload.ref_no:
-            duplicate = db.query(BillPayment).filter(
-                BillPayment.bill_id == bill.id,
-                BillPayment.ref_no == payload.ref_no,
-                BillPayment.is_deleted == False
+            duplicate = db.query(BillPayment).filter_by(
+                bill_id=bill.id, 
+                ref_no=payload.ref_no, 
+                is_deleted=False
             ).first()
-
             if duplicate:
-                return error_response(
-                    message=f"Duplicate payment ref_no '{payload.ref_no}' for this bill"
-                )
+                return error_response(message=f"Duplicate payment ref_no '{payload.ref_no}'")
 
         # ---------------------------
-        # 3. Prevent Overpayment
+        # 3. Check Overpayment
         # ---------------------------
-        bill_total = float(bill.totals.get("grand") or 0)
-
-        existing_payments = db.query(BillPayment).filter(
-            BillPayment.bill_id == bill.id,
-            BillPayment.is_deleted == False
-        ).all()
-
-        already_paid = sum(float(p.amount) for p in existing_payments)
+        bill_total = float(bill.totals.get("grand", 0))
         incoming_amount = float(payload.amount or 0)
 
-        new_total_paid = already_paid + incoming_amount
+        already_paid_result = db.query(func.sum(BillPayment.amount)).filter(
+            BillPayment.bill_id == bill.id,
+            BillPayment.is_deleted == False
+        ).scalar()
+        
+        already_paid = float(already_paid_result or 0)
 
-        if new_total_paid > bill_total + 0.01:
+        if (already_paid + incoming_amount) > (bill_total + 0.01):
             remaining = bill_total - already_paid
-            return error_response(
-                message=f"Payment exceeds bill total. Remaining payable amount is {round(remaining, 2)}"
-            )
+            return error_response(message=f"Payment exceeds bill total. Remaining: {round(remaining, 2)}")
 
         # ---------------------------
         # 4. Create payment
         # ---------------------------
+        meta_data = {"notes": payload.notes} if getattr(payload, 'notes', None) else None
+
         payment = BillPayment(
             bill_id=bill.id,
             org_id=current_user.org_id,
@@ -524,31 +509,27 @@ def save_bill_payment(
             method=payload.method,
             ref_no=payload.ref_no,
             paid_at=payload.paid_at or datetime.utcnow(),
+            meta=meta_data
         )
 
         db.add(payment)
-        db.flush()
+        db.flush() # Get payment.id
 
         # ---------------------------
-        # 5. Recalculate bill status
+        # 5. Save Attachments
         # ---------------------------
-        new_status = calculate_bill_status(db, bill)
-        bill.status = new_status
+        if attachments:
+            await AttachmentService.save_attachments(
+                db=db,
+                module=ModuleName.bills,
+                entity_id=payment.id,
+                files=attachments
+            )
 
         # ---------------------------
-        # 6. Safety check (race condition guard)
+        # 6. Finalize Status
         # ---------------------------
-        payments = db.query(BillPayment).filter(
-            BillPayment.bill_id == bill.id,
-            BillPayment.is_deleted == False
-        ).all()
-
-        total_paid = sum(float(p.amount) for p in payments)
-
-        if total_paid > bill_total + 0.01:
-            db.rollback()
-            return error_response(message="Overpayment detected")
-
+        bill.status = calculate_bill_status(db, bill)
         db.commit()
 
         return success_response(data={"payment_id": str(payment.id)})
@@ -778,8 +759,6 @@ def download_bill_pdf(
         .first()
     )
 
-    organization_name = organization.name if organization else "Organization"
-
     vendor = db.query(Vendor).get(bill.vendor_id)
     vendor_name = vendor.name if vendor else "Customer"
 
@@ -789,7 +768,7 @@ def download_bill_pdf(
 
     file_path = generate_bill_pdf(
         bill=bill,
-        organization_name=organization_name,
+        organization=organization,
         vendor_name=vendor_name,
         payments_total=float(payments_total),
         balance=float(balance),
@@ -815,17 +794,15 @@ def download_payment_receipt_pdf(
         .first()
     )
 
-    organization_name = organization.name if organization else "Organization"
-
     vendor = db.query(Vendor).get(bill.vendor_id)
     vendor_name = vendor.name if vendor else "Customer"
     system_settings = get_system_settings(db, bill.org_id)
 
     file_path = generate_bill_payment_pdf(
         payment,
-        organization_name=organization_name,
+        organization=organization,
         vendor_name=vendor_name,
-        bill_no=bill.bill_no,
+        bill_no= bill.bill_no,
         system_settings=system_settings
     )
 

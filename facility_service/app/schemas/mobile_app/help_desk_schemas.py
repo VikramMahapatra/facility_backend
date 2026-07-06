@@ -26,6 +26,8 @@ class ComplaintOut(EmptyStringModel):
     closed_date: Optional[datetime] = None
     is_overdue: Optional[bool] = False
     priority: Optional[str] = None
+    amenity_name: Optional[str] = None
+    request_type: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -80,7 +82,9 @@ class ComplaintResponse(EmptyStringModel):
     created_at: datetime
     closed_date: Optional[datetime] = None
     priority: Optional[str] = None
-
+    amenity_name: Optional[str] = None
+    space_name: Optional[str] = None
+    site_name: Optional[str] = None
     model_config = {"from_attributes": True}
 
 

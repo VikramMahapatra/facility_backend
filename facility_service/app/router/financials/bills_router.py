@@ -2,8 +2,6 @@ from datetime import date
 import json
 import os
 from typing import List, Optional
-
-from django import db
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -135,7 +133,7 @@ def delete_bill(
         org_id=current_user.org_id
     )
 
-#### Payments
+# Payments
 
 
 @router.post("/add-payment", response_model=None)
@@ -146,11 +144,11 @@ async def add_bill_payment(
     current_user: UserToken = Depends(validate_current_token)
 ):
     """Record a payment against a vendor bill with optional attachments."""
-    
+
     payment_dict = json.loads(payment)
-    
-    payment_data = BillPaymentCreate(**payment_dict) 
-    
+
+    payment_data = BillPaymentCreate(**payment_dict)
+
     return await crud.save_bill_payment(
         db=db,
         payload=payment_data,

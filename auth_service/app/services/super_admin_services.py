@@ -9,8 +9,6 @@ from auth_service.app.models.rolepolicy import RolePolicy
 from auth_service.app.models.roles import Roles
 from auth_service.app.models.user_organizations import UserOrganization
 from auth_service.app.schemas.superadminschema import OrgApprovalRequest, OrgRejectRequest
-from facility_service.app.models.system.system_settings import SystemSetting
-from facility_service.app.models.system.system_settings import SystemSetting
 from shared.helpers.email_helper import EmailHelper
 from shared.helpers.json_response_helper import error_response
 from shared.models.users import Users
@@ -190,19 +188,19 @@ def approve_org(background_tasks: BackgroundTasks, org_id: str, facility_db: Ses
 
         auth_db.bulk_save_objects(policies)
 
-    # ------------------------------------------------
-    # 7. Default system settings
-    # ------------------------------------------------
-    existing_settings = facility_db.query(SystemSetting).filter(
-        SystemSetting.org_id == org_id
-    ).first()
+    # # ------------------------------------------------
+    # # 7. Default system settings
+    # # ------------------------------------------------
+    # existing_settings = facility_db.query(SystemSetting).filter(
+    #     SystemSetting.org_id == org_id
+    # ).first()
 
-    if not existing_settings:
-        default_settings = SystemSetting(
-            org_id=org_id,
-            system_name=f"{org.name} Workspace"
-        )
-        facility_db.add(default_settings)
+    # if not existing_settings:
+    #     default_settings = SystemSetting(
+    #         org_id=org_id,
+    #         system_name=f"{org.name} Workspace"
+    #     )
+    #     facility_db.add(default_settings)
 
     # ------------------------------------------------
 
@@ -227,7 +225,7 @@ def reject_org(
         request: OrgRejectRequest,
         facility_db: Session,
         auth_db: Session
-        ):
+):
     org = facility_db.query(OrgSafe).filter(OrgSafe.id == org_id).first()
     if not org:
         return error_response(message="Organization not found")
@@ -250,7 +248,7 @@ def reject_org(
         "organization_name": org.name,
         "organization_email": org.billing_email,
         "rejection_reason": request.rejection_reason
-        }
+    }
 
     send_rejection_email(background_tasks, db=auth_db,
                          email=org.billing_email, context=context)
